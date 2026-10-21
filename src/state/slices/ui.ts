@@ -26,6 +26,8 @@ export type Dialog =
   | { type: "project"; id?: string; clientId?: string }
   /** Edit a client (`id`) or create one. */
   | { type: "client"; id?: string }
+  /** One line of text, e.g. a name; `onSubmit` gets it trimmed and never blank. */
+  | { type: "prompt"; title: string; label: string; initial: string; confirmLabel: string; onSubmit: (value: string) => void }
   /** The Day header's timeline settings. */
   | { type: "timelineSettings" }
   /** A recording write overlaps `recordings`; replace their overlapped part, or cancel. */

@@ -108,7 +108,13 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `choose_save_path` | `fileName, extension` | `string \| null` (the save panel; `null` when cancelled) | `io` |
 | `reveal_path` | `path: String` | – (Finder shows the enclosing folder with `path` selected) | `io` |
 | `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, available, error }` | – (errors are reported inside) |
-| `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes }` | `db`, `io`, `invalid_input` |
+| `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes, recordings, activities }` | `db`, `io`, `invalid_input` |
+| `report_run` (`reports/commands.rs`) | `filter: ReportFilter` | `ReportResult` (see [Reports](#reports)) | `invalid_input` (a range that ends before it starts), `db` |
+| `report_text` | `filter: ReportFilter` | the report as text (`reports::text`) | the same |
+| `saved_reports_list` | – | `SavedReport[] { id, name, filter, position }`, by position | `db` |
+| `saved_report_save` | `name, filter` | `SavedReport` (appended) | `invalid_input` (`field: name`), `db` |
+| `saved_report_rename` | `id, name` | `SavedReport` | `not_found`, `invalid_input` |
+| `saved_report_delete` | `id` | – | `not_found` |
 | `day_view` (`day/commands.rs`) | `day: String` | `DayView` (see [Day view](#day-view)); logs the time it took at debug level | `invalid_input`, `db` |
 | `app_settings_set` (`commands.rs`) | `bundleId: String` (the app key: bundle id, else the app name), `patch: AppSettingPatch { groupByApp?, titles?, ownLane?, hidden? }` (`null` returns `groupByApp`/`titles` to the timeline's setting) | `Settings`; applied under the settings store's lock (`SettingsStore::update_app`), so concurrent changes never undo each other; an override that ends up default is removed (`Settings::with_app`) | `invalid_input` (blank key), `io` |
 | `apps_list` (`day/commands.rs`) | – | `KnownApp[] { appKey, app, totalMs, lastSeen }` (`day::apps::known_apps`): every tracker app and every app with an override, by name | `db` |
@@ -213,6 +219,28 @@ tags): `DayView.recordings` (`RecordingBlock`: clipped span, project, client, co
 names, `running`, `clippedStart`/`clippedEnd`), `ActivityBlock.covered` when at least half of a block lies
 inside recordings, and `totals.recordedMs`.
 
+## Reports
+
+`reports/mod.rs`: `run(db, filter, today, now)` resolves the range (`resolve`: today, yesterday, this or
+last week from Monday, this or last month, or custom days), reads the recordings sharing time with it and
+calls the pure `build`. A `ReportFilter` reuses the settings' `Group` and `Rounding`, so the Reports screen
+starts from `settings.reports`.
+
+- Rows: each recording's part in each day of the range (the running one ends now), so a recording over
+  midnight counts on both days, as in the Day view. Client, project and tag lists narrow
+  together (empty: all; a tag filter keeps recordings with any chosen tag); archived projects only with
+  `includeArchived`. Notes are trimmed.
+- Rounding is per recording (`rounding_step`: nearest, half up, or up), at least one step for a recording
+  longer than zero; totals sum the rounded rows, each recording once.
+- Groups: by project (`Client / Project`, ordered by client then project, client-less last, with color and
+  shade), by tag (by name, "No tag" last; a recording with several tags counts in each, which sets
+  `tagOverlap`; a tag filter limits the groups to the chosen tags), by day (`Mon 2026-10-20`), week
+  (`Week 43 · 20 – 26 Oct 2026`) or month (`October 2026`). A group lists its distinct notes in the order
+  they first occur, each with its days, and its rows by start.
+- `reports/text.rs` renders the text the screen copies and the CLI prints (format in [ux.md](ux.md#reports)).
+- `reports/saved.rs`: saved reports in `saved_reports` (the filter as JSON; a filter this version can't read
+  opens as the default). Presets stay relative, so a saved "this month" follows the calendar.
+
 ## Events to the page
 
 `events.rs` names every event and its payload, so all emitting goes through one place.
@@ -255,6 +283,7 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `activity add --json` (no other flags) | `activityAdd`, items from a JSON array of `ActivityInput` on stdin (times in UTC ms) | `added 3 activities` |
 | `activity start --source S --title T [--start ISO] [--app A] [--url U] [--path P]` | `activityStart { input }`, start default now | `started planner at 10:00` |
 | `activity stop --source S [--end ISO]` | `activityStop { source, end }`, end default now | `stopped planner at 10:45 (45 min)` or `nothing to stop for planner` |
+| `report [today\|yesterday\|week\|last-week\|month\|last-month\|DAY\|FROM TO] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30] [--up]` | `report { request: ReportRequest }` (`cli/report.rs` parses the range and flags); the app resolves names (`reports::cli`: an id, an exact name ignoring case, or a unique start; several matches list them) and runs the report | the report text; `--json`: the `ReportResult` plus `text` |
 | `record --project P --from ISO --to ISO [--note N] [--tag T]… [--replace]` | `record { request: RecordRequest }` (`overlap: replace` with `--replace`, else `cancel`); the app resolves the project (`projects::resolve`) and tags by name (`tags::resolve_names`, unknown → `not_found`) | `recorded 09:00–10:30 (1:30) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: the `Recording` plus `projectName` |
 
 `parse(args, now, tz, stdin) -> Result<CliOutcome, CliError>` is pure: `CliOutcome` is `Run { hidden,

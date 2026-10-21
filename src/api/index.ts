@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -60,6 +60,13 @@ export const api = {
   /** Apps the tracker recorded in the last `days` days, most time first. */
   appsSeen: (days: number) => invoke<AppSeen[]>("apps_seen", { days }),
   appsList: () => invoke<KnownApp[]>("apps_list"),
+  reportRun: (filter: ReportFilter) => invoke<ReportResult>("report_run", { filter }),
+  /** The report as the plain text the CLI prints. */
+  reportText: (filter: ReportFilter) => invoke<string>("report_text", { filter }),
+  savedReportsList: () => invoke<SavedReport[]>("saved_reports_list"),
+  savedReportSave: (name: string, filter: ReportFilter) => invoke<SavedReport>("saved_report_save", { name, filter }),
+  savedReportRename: (id: string, name: string) => invoke<SavedReport>("saved_report_rename", { id, name }),
+  savedReportDelete: (id: string) => invoke<null>("saved_report_delete", { id }),
   /** Closed spans of other apps, all or none; returns their ids. */
   activityAdd: (items: ActivityInput[]) => invoke<number[]>("activity_add", { items }),
   /** Opens a span of `input.source`, closing its open one. */

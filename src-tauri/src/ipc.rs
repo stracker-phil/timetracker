@@ -20,6 +20,7 @@ use crate::activity::ActivityInput;
 use crate::db::time::{Day, Ms};
 use crate::error::{AppError, ErrorKind};
 use crate::recordings::cli::RecordRequest;
+use crate::reports::cli::ReportRequest;
 use crate::tracker::PauseUntil;
 
 /// Every request another process can make. Each CLI subcommand is one message; `remote::handle`
@@ -62,6 +63,9 @@ pub enum IpcMessage {
     Record {
         request: RecordRequest,
     },
+    Report {
+        request: ReportRequest,
+    },
     /// Runs JavaScript in the window (used by scripts/dev to drive the UI).
     #[cfg(debug_assertions)]
     Eval {
@@ -85,6 +89,7 @@ impl IpcMessage {
             IpcMessage::ActivityStart { .. } => "ActivityStart",
             IpcMessage::ActivityStop { .. } => "ActivityStop",
             IpcMessage::Record { .. } => "Record",
+            IpcMessage::Report { .. } => "Report",
             #[cfg(debug_assertions)]
             IpcMessage::Eval { .. } => "Eval",
         }
@@ -353,6 +358,8 @@ fn same_user(stream: &tokio::net::UnixStream) -> bool {
 mod tests {
     use super::*;
     use crate::recordings::Overlap;
+    use crate::reports::Range;
+    use crate::store::settings::{Group, Rounding};
     use crate::test_support::temp_config_dir;
     use tokio::sync::mpsc;
 
@@ -494,7 +501,29 @@ mod tests {
                 end: Some(5_000),
             },
             record_message(),
+            report_message(),
         ]
+    }
+
+    fn report_message() -> IpcMessage {
+        IpcMessage::Report {
+            request: ReportRequest {
+                range: Range::Custom {
+                    from: day("2026-10-01"),
+                    to: day("2026-10-07"),
+                },
+                group_by: Group::Tag,
+                rounding: Rounding::Up15,
+                clients: vec!["acme".into()],
+                projects: vec![],
+                tags: vec!["admin".into()],
+            },
+        }
+    }
+
+    #[test]
+    fn a_report_message_is_of_the_kind_report() {
+        assert_eq!(report_message().kind(), "Report");
     }
 
     fn record_message() -> IpcMessage {
@@ -592,6 +621,37 @@ mod tests {
                     "request": {
                         "project": "acme", "start": 1000, "end": 2000, "note": "fix login",
                         "tags": ["admin", "internal meeting"], "overlap": "replace"
+                    }
+                }),
+            ),
+            (
+                report_message(),
+                serde_json::json!({
+                    "type": "report",
+                    "request": {
+                        "range": { "kind": "custom", "from": "2026-10-01", "to": "2026-10-07" },
+                        "groupBy": "tag", "rounding": "up15",
+                        "clients": ["acme"], "projects": [], "tags": ["admin"]
+                    }
+                }),
+            ),
+            (
+                IpcMessage::Report {
+                    request: ReportRequest {
+                        range: Range::LastWeek,
+                        group_by: Group::Project,
+                        rounding: Rounding::None,
+                        clients: vec![],
+                        projects: vec![],
+                        tags: vec![],
+                    },
+                },
+                serde_json::json!({
+                    "type": "report",
+                    "request": {
+                        "range": { "kind": "lastWeek" },
+                        "groupBy": "project", "rounding": "none",
+                        "clients": [], "projects": [], "tags": []
                     }
                 }),
             ),

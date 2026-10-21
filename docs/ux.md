@@ -196,6 +196,32 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   or deletes them.
 - Every change ends in a toast with Undo.
 
+## Reports
+
+The Reports screen: the range as title, Copy as text and Save report… on the right; below, the filter bar
+(range presets, clients, projects, tags, group by, rounding, archived projects). Each group is its label
+with a color dot (by project), the hours in mono on the right, the notes in `--o2` below, and "3
+recordings" that unfolds a table. The total closes the list; with rounding, the unrounded hours stand
+beside it in `--o3`. Saved reports sit under Reports in the sidebar.
+
+The copied text, also what `timetracker report` prints:
+
+```text
+2026-10-19 – 2026-10-25 · rounded to 15 min
+
+Northwind / Website relaunch  3:30 h
+  - fix login (Mon, Wed)
+  - review (Fri)
+
+Internal  1:15 h
+
+Total  4:45 h
+```
+
+Notes carry their weekdays when the range is longer than a day (dates beyond a week), except by day.
+Grouped by tag, `Tags overlap: a recording with several tags counts in each.` follows the total when it
+applies. No recordings: the header, then `No recordings.`
+
 ## Keys
 
 Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`). Bare keys never fire
@@ -217,6 +243,7 @@ in inputs or dialogs. `Tab` is never bound: it moves the keyboard focus.
 | ⌫ | day | delete the focused recording (Undo in the toast) |
 | ⌥↑ / ⌥↓, ⌥⇧↓ / ⌥⇧↑ | day | move the focused recording, extend or shorten it, by one snap step |
 | Escape | day | clear the selection and the focus |
+| ⌘⇧C | reports | copy the report as text (`reports.copyText`) |
 | ⌘Z / ⌘⇧Z | global | undo / redo the last recording change (outside text fields) |
 | ⌘W | global | close (hide) the window (`window.hide`) |
 | ⌘Q | menu | quit (`app.quit`) |

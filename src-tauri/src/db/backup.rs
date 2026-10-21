@@ -14,6 +14,7 @@ use super::tags::Tag;
 use super::time::{Ms, now_ms};
 use super::{Db, activities, away, clients, projects, recordings, tags};
 use crate::error::{AppError, AppResult};
+use crate::reports::saved::{self, SavedReport};
 
 pub const BACKUP_VERSION: u32 = 1;
 
@@ -32,9 +33,7 @@ pub struct Backup {
     /// Filled once rules exist.
     #[ts(type = "unknown[]")]
     pub rules: Vec<serde_json::Value>,
-    /// Filled once saved reports exist.
-    #[ts(type = "unknown[]")]
-    pub saved_reports: Vec<serde_json::Value>,
+    pub saved_reports: Vec<SavedReport>,
 }
 
 pub async fn export(db: &Db) -> AppResult<Backup> {
@@ -49,7 +48,7 @@ pub async fn export(db: &Db) -> AppResult<Backup> {
         away_spans: away::all(&mut tx).await?,
         recordings: recordings::all(&mut tx).await?,
         rules: Vec::new(),
-        saved_reports: Vec::new(),
+        saved_reports: saved::all(&mut tx).await?,
     };
     tx.commit().await?;
     Ok(backup)
@@ -60,6 +59,8 @@ pub async fn export(db: &Db) -> AppResult<Backup> {
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct BackupWritten {
     pub bytes: u64,
+    pub recordings: usize,
+    pub activities: usize,
 }
 
 /// Writes the backup as pretty JSON to an absolute path, through a temp file beside it.
@@ -70,13 +71,16 @@ pub async fn write_to(db: &Db, path: &Path) -> AppResult<BackupWritten> {
             path.display()
         )));
     }
-    let json = serde_json::to_vec_pretty(&export(db).await?)?;
+    let backup = export(db).await?;
+    let json = serde_json::to_vec_pretty(&backup)?;
     let mut temp = path.as_os_str().to_owned();
     temp.push(".tmp");
     tokio::fs::write(&temp, &json).await?;
     tokio::fs::rename(&temp, path).await?;
     Ok(BackupWritten {
         bytes: json.len() as u64,
+        recordings: backup.recordings.len(),
+        activities: backup.activities.len(),
     })
 }
 
@@ -211,6 +215,50 @@ mod tests {
         let json: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(json["version"], 1);
         assert!(!dir.path().join("backup.json.tmp").exists());
+    }
+
+    #[tokio::test]
+    async fn export_contains_the_saved_reports_in_order() {
+        use crate::reports::{Range, ReportFilter};
+        let db = Db::open_memory().await.unwrap();
+        let weekly = ReportFilter {
+            range: Range::LastWeek,
+            ..ReportFilter::default()
+        };
+        let first = saved::save(&db, "Weekly", &weekly).await.unwrap();
+        let second = saved::save(&db, "Today", &ReportFilter::default())
+            .await
+            .unwrap();
+
+        let backup = serde_json::to_value(export(&db).await.unwrap()).unwrap();
+
+        assert_eq!(backup["savedReports"].as_array().unwrap().len(), 2);
+        assert_eq!(backup["savedReports"][0]["id"], first.id);
+        assert_eq!(backup["savedReports"][0]["name"], "Weekly");
+        assert_eq!(
+            backup["savedReports"][0]["filter"]["range"],
+            json!({ "kind": "lastWeek" })
+        );
+        assert_eq!(backup["savedReports"][1]["id"], second.id);
+        assert_eq!(backup["savedReports"][1]["position"], 1);
+    }
+
+    #[tokio::test]
+    async fn write_to_reports_the_recording_and_activity_counts() {
+        let (dir, db) = crate::test_support::temp_db().await;
+        let p = project(&db, "Website").await;
+        for i in 0..3 {
+            crate::test_support::recording(&db, &p.id, i * 10_000, Some(i * 10_000 + 1_000)).await;
+        }
+        for i in 0..2 {
+            activity(&db, i * 10_000, Some(i * 10_000 + 1_000), "Code", "main.rs").await;
+        }
+
+        let written = write_to(&db, &dir.path().join("backup.json"))
+            .await
+            .unwrap();
+
+        assert_eq!((written.recordings, written.activities), (3, 2));
     }
 
     #[tokio::test]

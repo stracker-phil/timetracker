@@ -137,7 +137,9 @@ pub enum Rounding {
     Up30,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, clap::ValueEnum, TS,
+)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum Group {

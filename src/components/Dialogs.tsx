@@ -2,6 +2,7 @@ import { useStore } from "../state/store";
 import { OverlapDialog } from "./day/OverlapDialog";
 import { TimelineSettingsPopover } from "./day/TimelineSettingsPopover";
 import { Modal } from "./Modal";
+import { PromptDialog } from "./PromptDialog";
 import { ClientSheet } from "./projects/ClientSheet";
 import { ProjectSheet } from "./projects/ProjectSheet";
 import { SettingsDialog } from "./settings/SettingsDialog";
@@ -43,6 +44,8 @@ export function Dialogs() {
       return <ProjectSheet key={dialog.id ?? ""} id={dialog.id} initialClientId={dialog.clientId} onClose={useStore.getState().closeDialog} />;
     case "overlap":
       return <OverlapDialog recordings={dialog.recordings} onReplace={dialog.onReplace} onCancel={dialog.onCancel} />;
+    case "prompt":
+      return <PromptDialog {...dialog} />;
     case "timelineSettings":
       return <TimelineSettingsPopover />;
     case "client":

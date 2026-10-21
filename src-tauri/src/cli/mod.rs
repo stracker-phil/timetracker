@@ -4,6 +4,7 @@
 //! `remote::handle` and, when it prints something, its arm in `reply::render`.
 
 pub mod reply;
+pub mod report;
 pub mod time;
 
 use std::ffi::OsString;
@@ -19,6 +20,7 @@ use crate::ipc::{IpcMessage, MAX_MESSAGE_BYTES};
 use crate::recordings::Overlap;
 use crate::recordings::cli::RecordRequest;
 use crate::store::settings::LogLevel;
+use report::ReportArgs;
 
 const EXAMPLES: &str = "Examples:
   timetracker                     start TimeTracker or bring it to the front
@@ -29,7 +31,8 @@ const EXAMPLES: &str = "Examples:
   timetracker activity add --source planner --title \"Weekly sync\" --start 10:00 --end 10:45
   timetracker activity start --source planner --title Break
   timetracker activity stop --source planner
-  timetracker record --project acme --from 09:00 --to 09:30 --note standup --tag \"internal meeting\"";
+  timetracker record --project acme --from 09:00 --to 09:30 --note standup --tag \"internal meeting\"
+  timetracker report last-week --by tag --round 15";
 
 /// Items per request of a batch; the line limit may split it further.
 const MAX_BATCH_ITEMS: usize = 200;
@@ -103,6 +106,8 @@ enum Command {
         #[arg(long)]
         replace: bool,
     },
+    /// Print the hours and notes of a day or range, ready to paste into a timesheet
+    Report(ReportArgs),
 }
 
 #[derive(Subcommand, Debug)]
@@ -313,6 +318,9 @@ fn message<Tz: TimeZone>(
                 },
             },
         },
+        Command::Report(args) => IpcMessage::Report {
+            request: args.request(now, tz)?,
+        },
         Command::Activity(ActivityCommand::Stop { source, end }) => {
             external::validate_source(&source).map_err(|e| e.to_string())?;
             IpcMessage::ActivityStop {
@@ -398,6 +406,7 @@ mod tests {
     use super::*;
     use crate::db::time::Day;
     use crate::ipc::IpcRequest;
+    use crate::store::settings::{Group, Rounding};
     use crate::tracker::PauseUntil;
 
     fn ms(rfc3339: &str) -> Ms {
@@ -944,6 +953,182 @@ mod tests {
                 ],
                 "Not a time: `later`",
             ),
+        ];
+        for (args, expected) in cases {
+            let err = run(&args).unwrap_err();
+            assert!(!err.in_app, "{args:?}");
+            assert!(err.message.contains(expected), "{args:?}: {}", err.message);
+        }
+    }
+
+    fn report_request(
+        range: crate::reports::Range,
+        group_by: Group,
+        rounding: Rounding,
+    ) -> crate::reports::cli::ReportRequest {
+        crate::reports::cli::ReportRequest {
+            range,
+            group_by,
+            rounding,
+            clients: vec![],
+            projects: vec![],
+            tags: vec![],
+        }
+    }
+
+    #[test]
+    fn report_without_arguments_reports_today_by_project_unrounded() {
+        use crate::reports::Range;
+        assert_eq!(
+            remote(&["report"]),
+            (
+                IpcMessage::Report {
+                    request: report_request(Range::Today, Group::Project, Rounding::None)
+                },
+                false,
+                false
+            )
+        );
+    }
+
+    #[test]
+    fn report_range_words_and_days_become_ranges() {
+        use crate::reports::Range;
+        let cases = [
+            (vec!["report", "today"], Range::Today),
+            (vec!["report", "yesterday"], Range::Yesterday),
+            (vec!["report", "week"], Range::ThisWeek),
+            (vec!["report", "last-week"], Range::LastWeek),
+            (vec!["report", "month"], Range::ThisMonth),
+            (vec!["report", "last-month"], Range::LastMonth),
+            (
+                vec!["report", "2026-10-01"],
+                Range::Custom {
+                    from: day("2026-10-01"),
+                    to: day("2026-10-01"),
+                },
+            ),
+            (
+                vec!["report", "2026-10-01", "2026-10-07"],
+                Range::Custom {
+                    from: day("2026-10-01"),
+                    to: day("2026-10-07"),
+                },
+            ),
+            (
+                vec!["report", "2026-10-07", "2026-10-07"],
+                Range::Custom {
+                    from: day("2026-10-07"),
+                    to: day("2026-10-07"),
+                },
+            ),
+        ];
+        for (args, range) in cases {
+            assert_eq!(
+                remote(&args).0,
+                IpcMessage::Report {
+                    request: report_request(range, Group::Project, Rounding::None)
+                },
+                "{args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn report_flags_set_grouping_rounding_and_json() {
+        use crate::reports::Range;
+        let (message, json, starts_app) = remote(&[
+            "report",
+            "last-week",
+            "--by",
+            "tag",
+            "--round",
+            "15",
+            "--up",
+            "--json",
+        ]);
+        assert_eq!(
+            message,
+            IpcMessage::Report {
+                request: report_request(Range::LastWeek, Group::Tag, Rounding::Up15)
+            }
+        );
+        assert!(json);
+        assert!(!starts_app);
+    }
+
+    #[test]
+    fn report_round_without_up_rounds_to_the_nearest_step() {
+        for (minutes, rounding) in [
+            ("5", Rounding::Nearest5),
+            ("6", Rounding::Nearest6),
+            ("10", Rounding::Nearest10),
+            ("15", Rounding::Nearest15),
+            ("30", Rounding::Nearest30),
+        ] {
+            let IpcMessage::Report { request } = remote(&["report", "--round", minutes]).0 else {
+                panic!("not a report");
+            };
+            assert_eq!(request.rounding, rounding, "{minutes}");
+        }
+    }
+
+    #[test]
+    fn report_by_takes_every_grouping() {
+        for (word, group) in [
+            ("project", Group::Project),
+            ("tag", Group::Tag),
+            ("day", Group::Day),
+            ("week", Group::Week),
+            ("month", Group::Month),
+        ] {
+            let IpcMessage::Report { request } = remote(&["report", "--by", word]).0 else {
+                panic!("not a report");
+            };
+            assert_eq!(request.group_by, group, "{word}");
+        }
+    }
+
+    #[test]
+    fn report_filters_can_be_repeated() {
+        let IpcMessage::Report { request } = remote(&[
+            "report",
+            "--client",
+            "acme",
+            "--client",
+            "globex",
+            "--project",
+            "portal",
+            "--tag",
+            "admin",
+            "--tag",
+            "support",
+        ])
+        .0
+        else {
+            panic!("not a report");
+        };
+        assert_eq!(request.clients, ["acme", "globex"]);
+        assert_eq!(request.projects, ["portal"]);
+        assert_eq!(request.tags, ["admin", "support"]);
+    }
+
+    #[test]
+    fn report_errors_name_the_problem_and_stay_in_the_terminal() {
+        let cases: Vec<(Vec<&str>, &str)> = vec![
+            (vec!["report", "someday"], "Not a range: `someday`"),
+            (
+                vec!["report", "2026-10-01", "someday"],
+                "Not a day: `someday`",
+            ),
+            (
+                vec!["report", "2026-10-07", "2026-10-01"],
+                "The range starts after it ends",
+            ),
+            (vec!["report", "--up"], "--round"),
+            (vec!["report", "--round", "7"], "7"),
+            (vec!["report", "--by", "year"], "year"),
+            (vec!["report", "today", "yesterday", "week"], "week"),
         ];
         for (args, expected) in cases {
             let err = run(&args).unwrap_err();

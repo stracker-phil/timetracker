@@ -1,4 +1,5 @@
 import { api, TEXT_SIZES, type Settings } from "../api";
+import { copyReport, promptSaveReport } from "../components/reports/actions";
 import { VIEWS } from "../components/views";
 import { stepBlock, stepLane } from "../lib/blockFocus";
 import { TIMELINE_ZOOM, useStore } from "../state/store";
@@ -125,6 +126,8 @@ const APP_COMMANDS: Command[] = [
   { id: "recording.shrink", title: "Shorten recording", scope: "day", defaultBinding: "Alt+Shift+ArrowUp", when: hasFocusedRecording, run: () => shiftRecording(0, -1) },
   { id: "edit.undo", title: "Undo recording change", scope: "global", defaultBinding: "Mod+Z", when: outsideTextField, run: () => void useStore.getState().undo() },
   { id: "edit.redo", title: "Redo recording change", scope: "global", defaultBinding: "Mod+Shift+Z", when: outsideTextField, run: () => void useStore.getState().redo() },
+  { id: "reports.copyText", title: "Copy report as text", scope: "reports", defaultBinding: "Mod+Shift+C", run: () => void copyReport() },
+  { id: "reports.save", title: "Save report…", scope: "reports", run: promptSaveReport },
   { id: "projects.new", title: "New project…", scope: "projects", defaultBinding: "Mod+N", run: () => useStore.getState().openDialog({ type: "project" }) },
   { id: "clients.new", title: "New client…", scope: "projects", run: () => useStore.getState().openDialog({ type: "client" }) },
   { id: "logs.open", title: "Open log folder", scope: "global", menu: true, run: () => void api.openLogFolder() },

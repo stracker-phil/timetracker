@@ -1,11 +1,12 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type ProjectInput, type RecordingInput, type RecordingPatch, type Settings, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type ProjectInput, type RecordingInput, type RecordingPatch, type ReportFilter, type Settings, type UiState } from "../api/types";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
 import { client, DEFAULT_TAGS, project } from "./projectFixtures";
 import { recording } from "./recordingFixtures";
+import { reportResult, savedReport } from "./reportFixtures";
 import { settings } from "./settings";
 
 const noUnlisten = () => Promise.resolve(() => {});
@@ -29,7 +30,7 @@ export function createApiMock(): typeof realApi {
     chooseSavePath: vi.fn().mockResolvedValue(null),
     revealPath: vi.fn().mockResolvedValue(undefined),
     dataInfo: vi.fn().mockResolvedValue(dataInfo()),
-    backupExport: vi.fn().mockResolvedValue({ bytes: 0 }),
+    backupExport: vi.fn().mockResolvedValue({ bytes: 0, recordings: 0, activities: 0 }),
     trackerStatus: vi.fn().mockResolvedValue(trackerStatus()),
     trackerPause: vi.fn().mockResolvedValue(trackerStatus({ state: { kind: "paused", until: null }, text: "Paused" })),
     trackerResume: vi.fn().mockResolvedValue(trackerStatus()),
@@ -63,6 +64,12 @@ export function createApiMock(): typeof realApi {
     tagsList: vi.fn().mockResolvedValue(DEFAULT_TAGS),
     tagsSave: vi.fn(async (id: string | null, name: string) => ({ id: id ?? `tag-${name}`, name, createdAt: 0 })),
     tagsDelete: vi.fn().mockResolvedValue(undefined),
+    reportRun: vi.fn().mockResolvedValue(reportResult()),
+    reportText: vi.fn().mockResolvedValue("Mon 2026-10-20\n\nNo recordings.\n"),
+    savedReportsList: vi.fn().mockResolvedValue([]),
+    savedReportSave: vi.fn(async (name: string, filter: ReportFilter) => savedReport({ name, filter })),
+    savedReportRename: vi.fn(async (id: string, name: string) => savedReport({ id, name })),
+    savedReportDelete: vi.fn().mockResolvedValue(null),
     onLaunch: vi.fn(noUnlisten),
     onCommand: vi.fn(noUnlisten),
     onRemote: vi.fn(noUnlisten),

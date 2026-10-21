@@ -158,7 +158,7 @@ fn invalid_field(field: &str, message: impl Into<String>) -> AppError {
 }
 
 /// The trimmed name of a client, project or tag.
-fn required_name(name: &str) -> AppResult<String> {
+pub(crate) fn required_name(name: &str) -> AppResult<String> {
     let name = name.trim();
     if name.is_empty() {
         return Err(invalid_field("name", "must not be empty"));

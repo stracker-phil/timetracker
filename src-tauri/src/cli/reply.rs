@@ -11,6 +11,7 @@ use crate::db::time::{Day, Ms};
 use crate::ipc::IpcMessage;
 use crate::recordings::cli::Recorded;
 use crate::remote::StatusReport;
+use crate::reports::cli::Reported;
 use crate::tracker::{TrackerState, TrackerStatus};
 
 /// The text for `result`, the reply to `message`; `None` when the subcommand prints nothing.
@@ -75,6 +76,7 @@ pub fn render<Tz: TimeZone>(
                 recorded.project_name
             ))
         }
+        IpcMessage::Report { .. } => Some(read::<Reported>(result)?.text.trim_end().to_string()),
         _ => None,
     })
 }
@@ -501,6 +503,43 @@ mod tests {
         assert_eq!(
             render_at_now(&record_message(), &result),
             Ok(Some("recorded 09:00–11:05 (2:05) for Acme".into()))
+        );
+    }
+
+    fn report_message() -> IpcMessage {
+        IpcMessage::Report {
+            request: crate::reports::cli::ReportRequest {
+                range: crate::reports::Range::Today,
+                group_by: crate::store::settings::Group::Project,
+                rounding: crate::store::settings::Rounding::None,
+                clients: vec![],
+                projects: vec![],
+                tags: vec![],
+            },
+        }
+    }
+
+    #[test]
+    fn report_prints_the_reply_text_without_the_trailing_newline() {
+        let result = json!({
+            "text": "Wed 2026-10-21\n\nAcme / Portal  1:30 h\n\nTotal  1:30 h\n",
+            "from": "2026-10-21",
+            "totalMs": 5_400_000,
+        });
+        assert_eq!(
+            render_at_now(&report_message(), &result),
+            Ok(Some(
+                "Wed 2026-10-21\n\nAcme / Portal  1:30 h\n\nTotal  1:30 h".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_report_reply_without_text_is_an_error() {
+        let err = render_at_now(&report_message(), &json!({ "totalMs": 1 })).unwrap_err();
+        assert!(
+            err.starts_with("The running TimeTracker sent an unexpected reply"),
+            "{err}"
         );
     }
 

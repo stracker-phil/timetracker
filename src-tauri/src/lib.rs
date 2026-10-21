@@ -17,6 +17,7 @@ pub mod pending;
 pub mod projects;
 pub mod recordings;
 pub mod remote;
+pub mod reports;
 pub mod state;
 pub mod store;
 #[cfg(any(test, feature = "test-util"))]
@@ -396,6 +397,12 @@ fn start_app(
             recordings::commands::undo,
             recordings::commands::redo,
             recordings::commands::undo_status,
+            reports::commands::report_run,
+            reports::commands::report_text,
+            reports::commands::saved_reports_list,
+            reports::commands::saved_report_save,
+            reports::commands::saved_report_rename,
+            reports::commands::saved_report_delete,
             remote::remote_reply,
         ])
         .build(tauri::generate_context!())

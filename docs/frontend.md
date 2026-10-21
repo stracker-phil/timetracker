@@ -50,7 +50,8 @@ error's message, returning the `AppError`.
 | `ui` | `toasts` (an optional `action`, e.g. Undo), `dialog` (`settings { page? }`, `shortcuts`, `confirm`, `project { id?, clientId? }`, `client { id? }`), `paletteOpen`, `paletteSeed` |
 | `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`), `setView`, `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `goToday`, `prevDay`, `nextDay` (calendar steps in `lib/day.ts`); each remembers the day as `uiState.lastDay`, and `restoreDay` shows it again at boot when it is at most 30 days old |
 | `day` | `dayView` (the shown day's `DayView`; the previous one stays while the next day loads), `dayError`, `loadDay` (drops answers for a day no longer shown), `focusedBlock`/`focusBlock`, `detailsBlock`/`toggleDetails` (the card opened by keyboard), `blockMenuRequest`/`requestBlockMenu`, `setAppSetting(appKey, patch)` (stores the returned settings; the Day view reloads on the `data_changed` it causes) |
-| `data` | `dataVersion` (every day changed), `dayVersions` (per day), `dataChanged(event)` (called on every `data_changed` event); `selectDayVersion(day)` changes when that day's data may have changed |
+| `reports` | `reportFilter` (`null` follows `settings.reports` through `defaultFilter`), `setReportFilter(patch)`, `savedReports`/`loadSavedReports` (boot), `saveReport(name)` (the shown filter), `renameSavedReport`, `deleteSavedReport`, `openSavedReport` (its filter, and the Reports view) |
+| `data` | `dataVersion` (every day changed), `dayVersions` (per day), `changeCount` (every event, for views over many days), `dataChanged(event)` (called on every `data_changed` event); `selectDayVersion(day)` changes when that day's data may have changed |
 | `projects` | `projects` (`ProjectListItem[]`, archived included), `clients`, `tags` (`TagListItem[]`), `recent`, `projectsLoaded`; `loadProjects` (boot, and every `data_changed` of `projects` or `tags`); `saveProject(id, input)`, `archiveProject`, `saveClient`, `archiveClient`, `saveTag`, `deleteTag` reload after the write and reject on failure (toasted, unless the error has a `field` for the form). Helpers: `groupProjects(projects, clients, archived)`, `projectLabel` |
 | `tracker` | `tracker` (`TrackerStatus`, or `null` while the tracker is off), `setTracker`, `loadTracker`, `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then reloads the status), `permissionDialogHidden` |
 | `recordings` | `selection` (`{ start, end, blockIds }`, unsnapped; Rust snaps on save), `selectionSnap` (as Rust will store it), `setSelection`, `extendSelection(blockId)`, `focusedRecording`/`focusRecording`, `editor` (`create { start, end }` or `edit { id }`)/`openEditor`/`closeEditor`, `undoStatus`/`loadUndoStatus`, `createRecording(input)`, `updateRecording(id, patch)`, `deleteRecording(id)`, `undo`, `redo`. A write runs with `overlap: cancel`; on `overlap` it opens the overlap dialog and runs again with `replace`. One write at a time; each ends with a toast offering Undo. A field error rejects for the editor, others are toasted |
@@ -149,6 +150,18 @@ Tracker components:
 
 `lib/blockFocus.ts`: `stepBlock` (time order across lanes) and `stepLane` (the nearest block in the next
 lane with blocks) for J/K/H/L. The status bar shows the selection as `09:00–10:30 · 1:30`.
+
+### Reports screen
+
+`components/reports/`: `ReportsView` (the `reports` view) runs `reportRun(filter)` keyed by the filter and
+`changeCount`: a header with the range, Copy as text (`reports.copyText`, ⌘⇧C: `reportText` to the
+clipboard) and Save report… (`reports.save`: the `prompt` dialog, then `saveReport`); `ReportFilters`
+(range presets and Custom dates, `MultiSelect` for clients, projects and tags, Group by, Rounding, Archived
+projects); one `ReportGroupTable` per group (color dot, label, `h:mm h`, the notes, the recordings on
+request); the total, and the tag overlap caveat. `actions.ts` holds the two commands' actions. The sidebar
+lists saved reports under Reports: a click opens one, right-click renames (prompt) or deletes (confirm).
+
+`PromptDialog` (`dialog: prompt { title, label, initial, confirmLabel, onSubmit }`) asks for one line.
 
 ### Projects screen
 

@@ -11,6 +11,7 @@ import { resetStore, type View } from "./state/store";
 import { activityRow, trackerStatus } from "./test/data";
 import { dayView } from "./test/dayFixtures";
 import { projectItem, tag } from "./test/projectFixtures";
+import { savedReport } from "./test/reportFixtures";
 
 const mocked = vi.mocked(api, true);
 
@@ -21,8 +22,8 @@ async function renderApp(patch: Parameters<typeof resetStore>[0] = {}) {
   await screen.findByRole("button", { name: "13 px" });
 }
 
-/** The Day view is a region, every other view a placeholder or page with a level-1 heading. */
-const mainHeading = (name: string) => (name === "Day" ? screen.getByRole("region", { name: "Day" }) : screen.getByRole("heading", { level: 1, name }));
+/** The Day and Reports views are regions, every other view a placeholder or page with a level-1 heading. */
+const mainHeading = (name: string) => (name === "Day" || name === "Reports" ? screen.getByRole("region", { name }) : screen.getByRole("heading", { level: 1, name }));
 const sidebarEntry = (name: string) => within(screen.getByRole("navigation", { name: "Views" })).getByRole("button", { name: new RegExp(`^${name}`) });
 
 describe("App", () => {
@@ -90,6 +91,19 @@ describe("App", () => {
       mocked.getUiState.mockResolvedValueOnce({ ...EMPTY_UI_STATE, lastDay: yesterday });
       await renderApp();
       await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith(yesterday));
+    });
+  });
+
+  describe("reports", () => {
+    it("lists the saved reports under Reports on boot", async () => {
+      mocked.savedReportsList.mockResolvedValueOnce([savedReport({ name: "Weekly" })]);
+      await renderApp();
+      expect(await within(screen.getByRole("group", { name: "Saved reports" })).findByRole("button", { name: "Weekly" })).toBeInTheDocument();
+    });
+
+    it("shows the Reports view", async () => {
+      await renderApp({ view: "reports" });
+      expect(await screen.findByRole("region", { name: "Reports" })).toBeInTheDocument();
     });
   });
 

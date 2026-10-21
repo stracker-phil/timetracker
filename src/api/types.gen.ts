@@ -93,13 +93,9 @@ export type Backup = { version: number, exportedAt: number, clients: Array<Clien
 /**
  * Filled once rules exist.
  */
-rules: unknown[], 
-/**
- * Filled once saved reports exist.
- */
-savedReports: unknown[], };
+rules: unknown[], savedReports: Array<SavedReport>, };
 
-export type BackupWritten = { bytes: number, };
+export type BackupWritten = { bytes: number, recordings: number, activities: number, };
 
 export type CaptureSettings = { 
 /**
@@ -274,6 +270,11 @@ lastUsed: number | null,
  */
 recordedMs30d: number, };
 
+/**
+ * Presets stay relative, so a saved "this month" report shows the current month.
+ */
+export type Range = { "kind": "today" } | { "kind": "yesterday" } | { "kind": "thisWeek" } | { "kind": "lastWeek" } | { "kind": "thisMonth" } | { "kind": "lastMonth" } | { "kind": "custom", from: Day, to: Day, };
+
 export type Recording = { id: string, projectId: string, start: number, 
 /**
  * `None` only for the running timer.
@@ -320,9 +321,56 @@ export type RemoteEvent = { id: string, request: RemoteRequest, };
 
 export type RemoteRequest = { "type": "showDay", day: Day, };
 
+export type ReportFilter = { range: Range, 
+/**
+ * Empty lists keep everything; the lists narrow together.
+ */
+clientIds: Array<string>, projectIds: Array<string>, tagIds: Array<string>, groupBy: Group, rounding: Rounding, includeArchived: boolean, };
+
+export type ReportGroup = { key: string, label: string, 
+/**
+ * The project's color and shade when grouped by project.
+ */
+color: string | null, shade: number | null, durationMs: number, roundedMs: number, 
+/**
+ * Distinct notes in the order they first occur.
+ */
+notes: Array<ReportNote>, 
+/**
+ * By start.
+ */
+rows: Array<ReportRow>, };
+
+export type ReportNote = { text: string, 
+/**
+ * The days the note occurs on, ascending.
+ */
+days: Array<Day>, };
+
+export type ReportResult = { filter: ReportFilter, from: Day, to: Day, groups: Array<ReportGroup>, 
+/**
+ * Every row once, also when tags overlap.
+ */
+totalMs: number, totalRoundedMs: number, 
+/**
+ * Grouped by tag and a recording has several tags, so it counts in each of their groups.
+ */
+tagOverlap: boolean, };
+
+/**
+ * A recording's part in one day of the range.
+ */
+export type ReportRow = { id: string, day: Day, start: number, end: number, durationMs: number, roundedMs: number, projectId: string, project: string, client: string | null, color: string, shade: number, 
+/**
+ * Sorted by name.
+ */
+tags: Array<string>, note: string, };
+
 export type ReportSettings = { rounding: Rounding, defaultGroup: Group, };
 
 export type Rounding = "none" | "nearest5" | "nearest6" | "nearest10" | "nearest15" | "nearest30" | "up5" | "up6" | "up10" | "up15" | "up30";
+
+export type SavedReport = { id: string, name: string, filter: ReportFilter, position: number, };
 
 export type Settings = { 
 /**

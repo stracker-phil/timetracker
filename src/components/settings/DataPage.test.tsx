@@ -91,9 +91,9 @@ describe("Settings Data page", () => {
 
     it("writes the backup to the chosen path and confirms with a toast", async () => {
       mocked.chooseSavePath.mockResolvedValue("/tmp/backup.json");
-      mocked.backupExport.mockResolvedValue({ bytes: 10 });
+      mocked.backupExport.mockResolvedValue({ bytes: 10, recordings: 1234, activities: 56 });
       await userEvent.click(screen.getByRole("button", { name: /Export backup/ }));
-      expect(await screen.findByText("Backup written")).toBeInTheDocument();
+      expect(await screen.findByText("Backup written: 1,234 recordings, 56 activity spans")).toBeInTheDocument();
       expect(mocked.chooseSavePath).toHaveBeenCalledWith(expect.stringMatching(/^timetracker-backup-\d{4}-\d{2}-\d{2}$/), "json");
       expect(mocked.backupExport).toHaveBeenCalledWith("/tmp/backup.json");
     });
@@ -103,7 +103,7 @@ describe("Settings Data page", () => {
       await userEvent.click(screen.getByRole("button", { name: /Export backup/ }));
       await vi.waitFor(() => expect(mocked.chooseSavePath).toHaveBeenCalled());
       expect(mocked.backupExport).not.toHaveBeenCalled();
-      expect(screen.queryByText("Backup written")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Backup written/)).not.toBeInTheDocument();
     });
 
     it("shows an error toast when the export fails", async () => {
@@ -111,7 +111,7 @@ describe("Settings Data page", () => {
       mocked.backupExport.mockRejectedValue({ kind: "io", message: "disk full", code: null });
       await userEvent.click(screen.getByRole("button", { name: /Export backup/ }));
       expect(await screen.findByText(/Backup failed: disk full/)).toBeInTheDocument();
-      expect(screen.queryByText("Backup written")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Backup written/)).not.toBeInTheDocument();
     });
   });
 });

@@ -6,6 +6,7 @@ import { Dialogs } from "./components/Dialogs";
 import { EmptyView } from "./components/EmptyView";
 import { PermissionDialog } from "./components/PermissionDialog";
 import { ProjectsPage } from "./components/projects/ProjectsPage";
+import { ReportsView } from "./components/reports/ReportsView";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { Toasts } from "./components/Toasts";
@@ -44,6 +45,7 @@ function useBackendEvents() {
     void loadUiState().then(restoreDay);
     void loadTracker();
     void loadProjects();
+    void useStore.getState().loadSavedReports();
     const unlisten = [
       api.onLaunch(() => void drainLaunches()),
       api.onCommand(runMenuCommand),
@@ -74,6 +76,8 @@ function ViewContent({ view }: { view: View }) {
       return <DayPage />;
     case "projects":
       return <ProjectsPage />;
+    case "reports":
+      return <ReportsView />;
     default:
       return <EmptyView />;
   }

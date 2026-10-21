@@ -154,7 +154,7 @@ the field:
 ## Backup
 
 `backup_export(path)` calls `backup::write_to`, which writes `Backup` as pretty JSON through `<path>.tmp` and a rename, and returns
-`{ bytes }`. The path comes from the save panel (`choose_save_path`) and must be absolute.
+`{ bytes, recordings, activities }`. The path comes from the save panel (`choose_save_path`) and must be absolute.
 
 ```json
 {
@@ -163,12 +163,12 @@ the field:
   "clients": [], "projects": [], "tags": [],
   "activities": [], "awaySpans": [],
   "recordings": [{ "id": "…", "projectId": "…", "start": 0, "end": 0, "note": "", "tagIds": [], "createdAt": 0, "updatedAt": 0 }],
-  "rules": [], "savedReports": []
+  "rules": [], "savedReports": [{ "id": "…", "name": "This month", "filter": { "range": { "kind": "thisMonth" }, "…": "…" }, "position": 0 }]
 }
 ```
 
 Rows have the shape of their IPC types (`Client`, `Project`, `Tag`, `ActivityRow`, `AwayRow`, `Recording`).
-`rules` and `savedReports` stay empty until those features exist. There is no import yet.
+`rules` stays empty until rules exist. There is no import yet.
 
 ## Migrations
 
@@ -177,7 +177,7 @@ the crate when the folder changes. Migrations are forward-only: add `NNNN_<name>
 never edit a file that has shipped. A downgrade restores a backup. `0002_drop_billing.sql` removed the billing
 columns (`projects.billable`, `projects.hourly_rate`, `recordings.billable`): TimeTracker tracks time only.
 `0003_client_colors.sql` gave clients the color most of their projects had and spread shades over each
-client's projects.
+client's projects. `0004_saved_reports.sql` adds `saved_reports (id, name, filter, position)`.
 
 ## Tests
 
