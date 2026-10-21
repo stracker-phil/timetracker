@@ -166,6 +166,20 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .sidebar-body { padding-top: 0.769rem; }
 .sidebar-nav { display: flex; flex-direction: column; }
 .sidebar-foot { padding: 0.615rem 1.231rem; border-top: 1px solid var(--line); font-size: var(--fs-small); color: var(--o3); }
+.tracker-status { display: flex; align-items: center; gap: 0.462rem; }
+.tracker-dot { flex: none; width: 0.462rem; height: 0.462rem; border-radius: 50%; background: var(--o3); }
+.tracker-dot.running { background: var(--accent); }
+.tracker-dot.attention { background: var(--style-red); }
+
+/* ---------- activity debug list (until the Day view) ---------- */
+.activity-debug { flex: 1; overflow: auto; padding: 1.231rem; }
+.activity-debug h2 { margin: 1.231rem 0 0.462rem; font-size: var(--fs-base); font-weight: 500; }
+.activity-debug-head { display: flex; align-items: center; gap: 0.462rem; }
+.activity-debug-head .input { width: auto; }
+.debug-table { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
+.debug-table th { text-align: left; font-weight: 500; color: var(--o2); }
+.debug-table th, .debug-table td { padding: 0.154rem 0.615rem 0.154rem 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.debug-table td:last-child { white-space: normal; }
 
 /* ---------- splitter: a hairline with a wider invisible grab area ---------- */
 .splitter { position: relative; z-index: 3; background: var(--line); outline: none; }

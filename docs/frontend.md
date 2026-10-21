@@ -20,7 +20,8 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
    1. `loadSettings()` loads settings and keybindings; `installCommands()` runs again to apply the user's
       bindings, then `drainLaunches()` pulls the queued launch events (`take_launch_events`).
    2. It subscribes to `launch` (drain again), `command` (menu and tray → `runMenuCommand`), `remote`
-      (→ `answerRemote`, which always replies with `remoteReply`) and `data_changed` (bumps `dataVersion`).
+      (→ `answerRemote`, which always replies with `remoteReply`), `data_changed` (bumps `dataVersion`) and
+      `tracker_status` (→ `setTracker`); `loadTracker()` fetches the current status once.
    3. It adds a capture-phase `keydown` → `handleKeydown`, `error` / `unhandledrejection` → error toast, and
       `beforeunload` → `flushUiState`.
 7. `applyAppearance(settings, systemDark)` runs whenever settings or the OS appearance change.
@@ -30,9 +31,9 @@ App
 └─ .app grid
    ├─ Toolbar        traffic-light inset, app title, Day/Week/Month segmented control, Settings button
    ├─ Sidebar        Day, Week, Month, Reports, Projects; a tracker status line at the bottom
-   ├─ main           EmptyView: the active view's name (later steps put the views here)
+   ├─ main           ActivityDebug for Day (until the Day view), else EmptyView: the active view's name
    └─ StatusBar      left: status text; right: zoom
-Dialogs (settings, shortcuts, confirm) · CommandPalette · Toasts
+Dialogs (settings, shortcuts, confirm) · PermissionDialog · CommandPalette · Toasts
 ```
 
 ## Store
@@ -46,6 +47,7 @@ error's message, returning the `AppError`.
 | `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings`, `saveKeybindings` |
 | `ui` | `toasts`, `dialog` (`settings { page? }`, `shortcuts`, `confirm`), `paletteOpen`, `paletteSeed`, `view` (`day`, `week`, `month`, `reports`, `projects`), `setView` |
 | `data` | `dataVersion`, `bumpData` (called on every `data_changed` event) |
+| `tracker` | `tracker` (`TrackerStatus`, or `null` while the tracker is off), `setTracker`, `loadTracker`, `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then reloads the status), `permissionDialogHidden` |
 | `viewState` | `uiState` (`UiState` from Rust), `setPaneSize`, `toggleSidebar`; a debounced writer saves it, `flushUiState` writes at once |
 
 Components select narrowly (`useStore((s) => s.view)`), never the whole store. `lib/useApiResult` loads a
@@ -57,8 +59,8 @@ showing that data.
 Only `api.ts` files import `@tauri-apps/api` or `@tauri-apps/plugin-*`: the core's is `src/api/index.ts`, an
 optional module's is `src/<module>/api.ts` ([ADR 0002](adr/0002-ipc-in-api-files.md)); `test/boundary.test.ts`
 enforces it. `src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers for the commands in
-[backend.md](backend.md#tauri-commands) plus the subscriptions `onLaunch`, `onCommand`, `onRemote` and
-`onDataChanged`, and `toAppError`, which normalizes rejections to `AppError`.
+[backend.md](backend.md#tauri-commands) plus the subscriptions `onLaunch`, `onCommand`, `onRemote`,
+`onTrackerStatus` and `onDataChanged`, and `toAppError`, which normalizes rejections to `AppError`.
 
 The IPC types are generated from Rust with ts-rs ([ADR 0004](adr/0004-generated-ipc-types.md)) into
 `src/api/types.gen.ts`; never edit it. `src/api/types.ts` re-exports them plus the frontend-only constants:
@@ -83,6 +85,8 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   A command shown in the menu has the same id and default as its `MENU_ITEMS` entry in `menu.rs`.
 - **Palette.** `CommandPalette` lists the commands of the active scopes with their key caps, filtered by the
   typed text (a leading `>` is ignored); `runCommand(id)` runs one.
+- **Tracker.** `tracker.pause` (until resumed; while tracking) and `tracker.resume` (while paused), no default
+  bindings.
 - **Window.** `window.hide` calls `api.hideWindow`; `app.quit` is handled by Rust when it comes from the menu.
 
 ## Components
@@ -90,6 +94,21 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 Shell components in `components/`: `Toolbar` (Day/Week/Month switch), `Sidebar` (the entries of `views.ts`), `StatusBar`, `EmptyView`, `Modal`, `ContextMenu`,
 `Toasts`, `Field` (`InsetField`, `KeyCap`), `Splitter`, `ErrorBoundary`, `CommandPalette`,
 `ShortcutsDialog`, `Dialogs`.
+
+Tracker components:
+
+- `TrackerStatus` (sidebar foot): a dot (accent while running, `--o3` while away or paused, `--style-red`
+  without permission), the status text Rust computed (the tray shows the same), and Pause (a `ContextMenu`:
+  15 minutes, 1 hour, until tomorrow, until resumed) while running or away, Resume while paused, and
+  "Allow…" (shows the permission dialog again) without permission. "Tracking off" while `tracker` is `null`.
+- `PermissionDialog`: a `Modal` while the state is `needsPermission`. It explains why Accessibility is needed
+  and what is never captured; "Open System Settings" (`openPrivacySettings`) and "Check again"
+  (`requestPermission`). It disappears once the status is no longer `needsPermission`. Escape hides it
+  (`permissionDialogHidden` in the `tracker` slice) until "Allow…" or until the permission is lost again.
+- `ActivityDebug`: temporary, until step 06's Day view. A date field with previous/next day buttons and
+  two plain tables from `activityList(day)` and `awayList(day)`, reloaded on `data_changed` and on tracker
+  statuses at most every 10 s (a status inside the 10 s reloads when they end). Its previous/next day buttons
+  step the date in the page; the Day view moves that to Rust.
 
 ### Settings pages
 

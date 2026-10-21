@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 import { api, toAppError, type LaunchEvent } from "./api";
+import { ActivityDebug } from "./components/ActivityDebug";
 import { CommandPalette } from "./components/CommandPalette";
 import { Dialogs } from "./components/Dialogs";
 import { EmptyView } from "./components/EmptyView";
+import { PermissionDialog } from "./components/PermissionDialog";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { Toasts } from "./components/Toasts";
@@ -32,17 +34,19 @@ function handleLaunchEvents(events: LaunchEvent[]) {
 
 function useBackendEvents() {
   useEffect(() => {
-    const { loadSettings, loadUiState, toast, bumpData } = useStore.getState();
+    const { loadSettings, loadUiState, loadTracker, setTracker, toast, bumpData } = useStore.getState();
     const drainLaunches = () => api.takeLaunchEvents().then(handleLaunchEvents, (e) => toast("error", `Launch request failed: ${toAppError(e).message}`));
 
     // Re-installing applies the user's keybinding overrides, which arrive with the settings.
     void loadSettings().then(() => (installCommands(), drainLaunches()));
     void loadUiState();
+    void loadTracker();
     const unlisten = [
       api.onLaunch(() => void drainLaunches()),
       api.onCommand(runMenuCommand),
       api.onRemote((e) => void answerRemote(e)),
       api.onDataChanged(bumpData),
+      api.onTrackerStatus(setTracker),
     ];
 
     const onError = (e: ErrorEvent) => toast("error", `Unexpected error: ${e.message}`);
@@ -64,11 +68,12 @@ function useBackendEvents() {
 /** Hiding the sidebar removes it entirely; `main` keeps its tree position so views keep their state. */
 function Workspace() {
   const sidebarHidden = useStore((s) => s.uiState.sidebarHidden);
+  const view = useStore((s) => s.view);
   return (
     <div className={sidebarHidden ? "workspace no-sidebar" : "workspace"}>
       {!sidebarHidden && <Sidebar />}
       <main className="main">
-        <EmptyView />
+        {view === "day" ? <ActivityDebug /> : <EmptyView />}
       </main>
     </div>
   );
@@ -91,6 +96,7 @@ export default function App() {
         <StatusBar />
       </div>
       <Dialogs />
+      <PermissionDialog />
       <CommandPalette />
       <Toasts />
     </>

@@ -42,6 +42,12 @@ function toggleSettings() {
   else s.openDialog({ type: "settings" });
 }
 
+/** A tracker that exists and is not paused. */
+function isTracking() {
+  const kind = useStore.getState().tracker?.state.kind;
+  return kind !== undefined && kind !== "paused";
+}
+
 const APP_COMMANDS: Command[] = [
   { id: "settings.toggle", title: "Settings…", scope: "global", defaultBinding: "Mod+,", menu: true, run: toggleSettings },
   { id: "shortcuts.show", title: "Keyboard shortcuts", scope: "global", defaultBinding: "Shift+?", menu: true, run: toggleShortcuts },
@@ -52,6 +58,8 @@ const APP_COMMANDS: Command[] = [
   { id: "zoom.out", title: "Zoom out", scope: "global", defaultBinding: "Mod+-", menu: true, run: () => zoomBy(-1) },
   { id: "zoom.reset", title: "Reset zoom", scope: "global", defaultBinding: "Mod+0", menu: true, run: resetZoom },
   { id: "window.hide", title: "Close window", scope: "global", defaultBinding: "Mod+W", menu: true, run: () => void api.hideWindow() },
+  { id: "tracker.pause", title: "Pause tracking", scope: "global", when: () => isTracking(), run: () => void useStore.getState().pauseTracker("resumed") },
+  { id: "tracker.resume", title: "Resume tracking", scope: "global", when: () => useStore.getState().tracker?.state.kind === "paused", run: () => void useStore.getState().resumeTracker() },
   { id: "logs.open", title: "Open log folder", scope: "global", menu: true, run: () => void api.openLogFolder() },
   { id: "app.quit", title: "Quit TimeTracker", scope: "global", defaultBinding: "Mod+Q", menu: true, run: () => void api.quitApp() },
 ];

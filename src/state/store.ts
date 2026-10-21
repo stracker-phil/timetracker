@@ -1,6 +1,7 @@
 import { create, type StoreApi } from "zustand";
 import { dataSlice, type DataSlice } from "./slices/data";
 import { settingsSlice, type SettingsSlice } from "./slices/settings";
+import { trackerSlice, type TrackerSlice } from "./slices/tracker";
 import { uiSlice, type UiSlice } from "./slices/ui";
 import { viewStateSlice, type ViewStateSlice } from "./slices/viewState";
 
@@ -9,7 +10,7 @@ export { flushUiState } from "./slices/viewState";
 export type { Dialog, Toast, View } from "./slices/ui";
 
 /** Every slice's members; modules add theirs with `declare module "../state/store" { interface Store { … } }`. */
-export interface Store extends SettingsSlice, UiSlice, ViewStateSlice, DataSlice {}
+export interface Store extends SettingsSlice, UiSlice, ViewStateSlice, DataSlice, TrackerSlice {}
 
 type SetStore = StoreApi<Store>["setState"];
 type GetStore = StoreApi<Store>["getState"];
@@ -40,3 +41,4 @@ registerSlice(settingsSlice);
 registerSlice(uiSlice);
 registerSlice(viewStateSlice);
 registerSlice(dataSlice);
+registerSlice(trackerSlice);

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AppError, BackupWritten, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, RemoteEvent, Settings, UiState } from "./types";
+import type { ActivityRow, AppError, AwayRow, BackupWritten, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -30,12 +30,25 @@ export const api = {
   /** Where the data lives and what it holds; never rejects, a broken store reports `available: false`. */
   dataInfo: () => invoke<DataInfo>("data_info"),
   backupExport: (path: string) => invoke<BackupWritten>("backup_export", { path }),
+  /** Rejects with `db` when the data store is not available, so the tracker is off. */
+  trackerStatus: () => invoke<TrackerStatus>("tracker_status"),
+  trackerPause: (until: PauseUntil) => invoke<TrackerStatus>("tracker_pause", { until }),
+  trackerResume: () => invoke<TrackerStatus>("tracker_resume"),
+  /** Shows the system prompt once per run, then reports the permission as it is now. */
+  requestPermission: () => invoke<PermissionStatus>("request_permission"),
+  /** System Settings → Privacy & Security → Accessibility. */
+  openPrivacySettings: () => invoke<void>("open_privacy_settings"),
+  /** The day's rows cut to the day; open rows end now. */
+  activityList: (day: string) => invoke<ActivityRow[]>("activity_list", { day }),
+  awayList: (day: string) => invoke<AwayRow[]>("away_list", { day }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   /** Native menu and tray items emit the id of the command they run. */
   onCommand: (handler: (id: string) => void): Promise<UnlistenFn> => listen<string>("command", (e) => handler(e.payload)),
   /** Requests from other processes; answer each with `remoteReply`. */
   onRemote: (handler: (event: RemoteEvent) => void): Promise<UnlistenFn> => listen<RemoteEvent>("remote", (e) => handler(e.payload)),
+  /** The tracker's state changed, or its heartbeat (at least every 10 s while it runs). */
+  onTrackerStatus: (handler: (status: TrackerStatus) => void): Promise<UnlistenFn> => listen<TrackerStatus>("tracker_status", (e) => handler(e.payload)),
   /** Data of one day (or every day, `day: null`) changed in Rust; views showing it reload. */
   onDataChanged: (handler: (event: DataChanged) => void): Promise<UnlistenFn> => listen<DataChanged>("data_changed", (e) => handler(e.payload)),
 };

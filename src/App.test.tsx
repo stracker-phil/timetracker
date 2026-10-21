@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,7 @@ vi.mock("./api", async (orig) => ({ ...(await orig<object>()), api: (await impor
 import App from "./App";
 import { api } from "./api";
 import { resetStore, type View } from "./state/store";
+import { activityRow, trackerStatus } from "./test/data";
 
 const mocked = vi.mocked(api, true);
 
@@ -17,7 +18,8 @@ async function renderApp(patch: Parameters<typeof resetStore>[0] = {}) {
   await screen.findByRole("button", { name: "13 px" });
 }
 
-const mainHeading = (name: string) => screen.getByRole("heading", { level: 1, name });
+/** The Day view is the activity list (a region), every other view a placeholder with a level-1 heading. */
+const mainHeading = (name: string) => (name === "Day" ? screen.getByRole("region", { name: "Activity" }) : screen.getByRole("heading", { level: 1, name }));
 const sidebarEntry = (name: string) => within(screen.getByRole("navigation", { name: "Views" })).getByRole("button", { name: new RegExp(`^${name}`) });
 
 describe("App", () => {
@@ -94,6 +96,64 @@ describe("App", () => {
       await renderApp();
       await userEvent.click(screen.getByRole("button", { name: "Toggle sidebar" }));
       expect(screen.queryByRole("complementary", { name: "Sidebar" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("tracker", () => {
+    const sidebar = () => within(screen.getByRole("complementary", { name: "Sidebar" }));
+
+    it("shows the status loaded on boot in the sidebar", async () => {
+      mocked.trackerStatus.mockResolvedValueOnce(trackerStatus({ text: "Tracking · Mail" }));
+      await renderApp();
+      expect(await sidebar().findByText("Tracking · Mail")).toBeInTheDocument();
+    });
+
+    it("shows that tracking is off when the status cannot be loaded", async () => {
+      mocked.trackerStatus.mockRejectedValueOnce({ kind: "unavailable", message: "No data store", code: null });
+      await renderApp();
+      expect(await sidebar().findByText("Tracking off")).toBeInTheDocument();
+    });
+
+    it("follows the tracker status events", async () => {
+      await renderApp();
+      const onStatus = mocked.onTrackerStatus.mock.calls[0][0];
+      act(() => onStatus(trackerStatus({ text: "Tracking · Safari", current: activityRow() })));
+      expect(sidebar().getByText("Tracking · Safari")).toBeInTheDocument();
+    });
+
+    it("asks for the permission while the tracker needs it", async () => {
+      await renderApp();
+      const onStatus = mocked.onTrackerStatus.mock.calls[0][0];
+      act(() => onStatus(trackerStatus({ state: { kind: "needsPermission" }, permission: "denied", text: "Needs permission" })));
+      expect(await screen.findByRole("dialog", { name: "Allow TimeTracker to read window titles" })).toBeInTheDocument();
+    });
+  });
+
+  describe("permission dialog", () => {
+    const needsPermission = () => trackerStatus({ state: { kind: "needsPermission" }, permission: "denied", text: "Needs permission" });
+    const dialogName = "Allow TimeTracker to read window titles";
+
+    it("reopens from the sidebar's Allow… button after it was dismissed", async () => {
+      await renderApp();
+      act(() => mocked.onTrackerStatus.mock.calls[0][0](needsPermission()));
+      await screen.findByRole("dialog", { name: dialogName });
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog", { name: dialogName })).not.toBeInTheDocument();
+
+      await userEvent.click(within(screen.getByRole("complementary", { name: "Sidebar" })).getByRole("button", { name: "Allow…" }));
+      expect(await screen.findByRole("dialog", { name: dialogName })).toBeInTheDocument();
+    });
+
+    it("shows again on its own when the permission is lost anew after a dismissal", async () => {
+      await renderApp();
+      const onStatus = mocked.onTrackerStatus.mock.calls[0][0];
+      act(() => onStatus(needsPermission()));
+      await screen.findByRole("dialog", { name: dialogName });
+      await userEvent.keyboard("{Escape}");
+
+      act(() => onStatus(trackerStatus()));
+      act(() => onStatus(needsPermission()));
+      expect(await screen.findByRole("dialog", { name: dialogName })).toBeInTheDocument();
     });
   });
 

@@ -1,4 +1,4 @@
-import type { DataInfo } from "../api/types";
+import type { ActivityRow, DataInfo, TrackerStatus } from "../api/types";
 
 /** An available, empty data store; `patch` overrides fields. */
 export function dataInfo(patch: Partial<DataInfo> = {}): DataInfo {
@@ -12,6 +12,28 @@ export function dataInfo(patch: Partial<DataInfo> = {}): DataInfo {
     firstActivity: null,
     available: true,
     error: null,
+    ...patch,
+  };
+}
+
+/** A running tracker without a current activity; `patch` overrides fields. */
+export function trackerStatus(patch: Partial<TrackerStatus> = {}): TrackerStatus {
+  return { state: { kind: "running" }, current: null, permission: "granted", text: "Tracking", ...patch };
+}
+
+/** A closed tracker row; `patch` overrides fields. */
+export function activityRow(patch: Partial<ActivityRow> = {}): ActivityRow {
+  return {
+    id: 1,
+    source: "tracker",
+    start: 0,
+    end: 60_000,
+    app: "Safari",
+    bundleId: "com.apple.Safari",
+    title: "Start Page",
+    url: null,
+    path: null,
+    private: false,
     ...patch,
   };
 }

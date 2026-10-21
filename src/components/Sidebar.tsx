@@ -1,6 +1,7 @@
 import { useBindingLabel } from "../commands";
 import { useStore } from "../state/store";
 import { KeyCap } from "./Field";
+import { TrackerStatus } from "./TrackerStatus";
 import { VIEWS } from "./views";
 
 function NavEntry({ view }: { view: (typeof VIEWS)[number] }) {
@@ -27,7 +28,7 @@ export function Sidebar() {
           ))}
         </nav>
       </div>
-      <div className="sidebar-foot" role="status">Tracker not started</div>
+      <TrackerStatus />
     </aside>
   );
 }

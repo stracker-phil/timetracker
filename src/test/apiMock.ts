@@ -2,7 +2,7 @@ import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
 import { EMPTY_UI_STATE, type Keybindings, type Settings, type UiState } from "../api/types";
-import { dataInfo } from "./data";
+import { dataInfo, trackerStatus } from "./data";
 import { settings } from "./settings";
 
 const noUnlisten = () => Promise.resolve(() => {});
@@ -27,9 +27,17 @@ export function createApiMock(): typeof realApi {
     revealPath: vi.fn().mockResolvedValue(undefined),
     dataInfo: vi.fn().mockResolvedValue(dataInfo()),
     backupExport: vi.fn().mockResolvedValue({ bytes: 0 }),
+    trackerStatus: vi.fn().mockResolvedValue(trackerStatus()),
+    trackerPause: vi.fn().mockResolvedValue(trackerStatus({ state: { kind: "paused", until: null }, text: "Paused" })),
+    trackerResume: vi.fn().mockResolvedValue(trackerStatus()),
+    requestPermission: vi.fn().mockResolvedValue("granted"),
+    openPrivacySettings: vi.fn().mockResolvedValue(undefined),
+    activityList: vi.fn().mockResolvedValue([]),
+    awayList: vi.fn().mockResolvedValue([]),
     onLaunch: vi.fn(noUnlisten),
     onCommand: vi.fn(noUnlisten),
     onRemote: vi.fn(noUnlisten),
+    onTrackerStatus: vi.fn(noUnlisten),
     onDataChanged: vi.fn(noUnlisten),
   };
 }
