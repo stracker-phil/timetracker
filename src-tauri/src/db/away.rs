@@ -119,6 +119,46 @@ pub async fn delete_range(db: &Db, from: Ms, to: Ms) -> AppResult<u64> {
     )
 }
 
+/// How many spans share time with `[from, to)`: what `take_range_on` would delete.
+pub async fn count_range(db: &Db, from: Ms, to: Ms) -> AppResult<i64> {
+    Ok(sqlx::query_scalar(
+        r#"SELECT count(*) FROM away_spans WHERE start < ?2 AND ("end" IS NULL OR "end" > ?1)"#,
+    )
+    .bind(from)
+    .bind(to)
+    .fetch_one(db.pool())
+    .await?)
+}
+
+/// Deletes every span that shares time with `[from, to)`, whole, and returns them by start.
+pub async fn take_range_on(
+    conn: &mut SqliteConnection,
+    from: Ms,
+    to: Ms,
+) -> AppResult<Vec<AwayRow>> {
+    let mut rows: Vec<AwayRow> = sqlx::query_as(
+        r#"DELETE FROM away_spans WHERE start < ?2 AND ("end" IS NULL OR "end" > ?1) RETURNING *"#,
+    )
+    .bind(from)
+    .bind(to)
+    .fetch_all(conn)
+    .await?;
+    rows.sort_by_key(|row| (row.start, row.id));
+    Ok(rows)
+}
+
+/// Inserts `row` under its own id, e.g. to restore a deleted span.
+pub async fn restore_on(conn: &mut SqliteConnection, row: &AwayRow) -> AppResult<()> {
+    sqlx::query(r#"INSERT INTO away_spans (id, start, "end", reason) VALUES (?1, ?2, ?3, ?4)"#)
+        .bind(row.id)
+        .bind(row.start)
+        .bind(row.end)
+        .bind(row.reason)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
 pub(super) async fn all(conn: &mut SqliteConnection) -> AppResult<Vec<AwayRow>> {
     Ok(sqlx::query_as("SELECT * FROM away_spans ORDER BY id")
         .fetch_all(conn)
@@ -298,5 +338,69 @@ mod tests {
             ids(list_for_range(&db, 0, 1_000).await.unwrap()),
             [before, running]
         );
+    }
+
+    #[tokio::test]
+    async fn count_range_counts_what_take_range_would_delete() {
+        let db = Db::open_memory().await.unwrap();
+        insert(&db, away(0, AwayReason::Idle)).await.unwrap();
+        close_open(&db, 100).await.unwrap();
+        insert(&db, away(150, AwayReason::Lock)).await.unwrap();
+        close_open(&db, 250).await.unwrap();
+        insert(&db, away(190, AwayReason::Paused)).await.unwrap();
+
+        assert_eq!(count_range(&db, 100, 200).await.unwrap(), 2);
+        assert_eq!(count_range(&db, 0, 50).await.unwrap(), 1);
+        assert_eq!(count_range(&db, 100_000, 200_000).await.unwrap(), 1);
+        let taken = take_range_on(&mut *db.pool().acquire().await.unwrap(), 100, 200)
+            .await
+            .unwrap();
+        assert_eq!(taken.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn take_range_returns_the_deleted_spans_by_start_and_restore_puts_them_back() {
+        let db = Db::open_memory().await.unwrap();
+        let late = insert(&db, away(150, AwayReason::Lock)).await.unwrap();
+        close_open(&db, 160).await.unwrap();
+        let early = insert(&db, away(90, AwayReason::Sleep)).await.unwrap();
+        close_open(&db, 110).await.unwrap();
+        let kept = insert(&db, away(300, AwayReason::Idle)).await.unwrap();
+
+        let taken = take_range_on(&mut *db.pool().acquire().await.unwrap(), 100, 200)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            taken,
+            [
+                AwayRow {
+                    id: early,
+                    start: 90,
+                    end: Some(110),
+                    reason: AwayReason::Sleep
+                },
+                AwayRow {
+                    id: late,
+                    start: 150,
+                    end: Some(160),
+                    reason: AwayReason::Lock
+                },
+            ]
+        );
+        let ids = |rows: Vec<AwayRow>| rows.into_iter().map(|r| r.id).collect::<Vec<_>>();
+        assert_eq!(ids(list_for_range(&db, 0, 1_000).await.unwrap()), [kept]);
+
+        for row in &taken {
+            restore_on(&mut *db.pool().acquire().await.unwrap(), row)
+                .await
+                .unwrap();
+        }
+
+        assert_eq!(
+            ids(list_for_range(&db, 0, 1_000).await.unwrap()),
+            [early, late, kept]
+        );
+        assert_eq!(list_for_range(&db, 0, 1_000).await.unwrap()[..2], taken[..]);
     }
 }

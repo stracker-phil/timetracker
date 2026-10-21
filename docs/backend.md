@@ -83,6 +83,7 @@ itself. Panics unwind ([ADR 0014](adr/0014-panic-unwind.md)), so code takes `std
 | `ui_state` | `UiStateStore` | `ui_state.json` |
 | `launches` | `LaunchQueue` | launch events the page has not taken yet |
 | `data` | `DataStore` | the database file and the open `Db`, or why it could not be opened ([data.md](data.md)) |
+| `deleted_activity` | `activity::delete::DeleteBuffer` | the rows of the last activity delete, for its 30 s undo ([Activity deletion](#activity-deletion)) |
 | `config_dir` | `PathBuf` | the config dir |
 | `log_override` | `Option<LogLevel>` | the CLI `--log-level` |
 
@@ -169,10 +170,32 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `activity_start` | `input: ActivityInput` | `ActivityRow` (open) | `invalid_input`, `overlap`, `db` |
 | `activity_stop` | `source: String, end: Ms \| null` | `ActivityRow \| null` | `invalid_input`, `db` |
 | `activity_sources` | – | `string[]`: external source names, the latest first | `db` |
+| `activity_count` | `from: Ms, to: Ms` | `ActivityCount { activities, away }`: the spans `activity_delete` would remove | `invalid_input` (from ≥ to, over a year), `db` |
+| `activity_delete` | `from: Ms, to: Ms` | `DeleteResult { activities, away, undoUntil }` | `invalid_input` (from ≥ to, over a year), `db` |
+| `activity_delete_undo` | – | `DeleteResult` of the restored rows | `not_found` "Nothing to undo", `db` |
 
 To add a command: write it in its module (or `commands.rs` for app-wide ones), register it in
 `generate_handler!`, export its types with ts-rs, add the wrapper to `src/api/index.ts` and a default to
 `src/test/apiMock.ts`.
+
+## Activity deletion
+
+`activity/delete.rs`, called through `activity::{count, delete_range, undo_delete}` (which emit the events)
+by the commands and the CLI. Activity is never edited (ADR 0005), so deletion works on whole rows:
+
+- `delete(db, buffer, tracker, from, to, now)` removes, in one transaction, every `activities` and
+  `away_spans` row with `start < to AND (end IS NULL OR end > from)` (`activities::take_range_on`,
+  `away::take_range_on`, `DELETE … RETURNING`). Rows crossing the bounds go whole; recordings are untouched.
+  The range must be non-empty and at most 366 days (`invalid_input`). When the tracker's open span was
+  deleted, `Tracker::reset_span(ids, now)` forgets it, so the next poll opens a new one.
+- The rows go into `AppState.deleted_activity` (`DeleteBuffer`, one `DeletedActivity`; a new delete replaces
+  it). `DeleteResult.undo_until` is `now + UNDO_WINDOW_MS` (30 s).
+- `undo(db, buffer, now)` re-inserts the rows under their original ids (`restore_on`; ids are never reused,
+  `AUTOINCREMENT`) in one transaction and clears the buffer. Rows that were open come back closed at the
+  time of the delete, since the tracker has opened a new span since. After the window, or with nothing
+  deleted, it is `not_found` "Nothing to undo"; a failed undo keeps the buffer.
+- Both emit `data_changed { kind: activity, day }` for every local day from the earliest start to the latest
+  end of the range and its rows. `count(db, from, to)` is the dialog's preview (`ActivityCount`).
 
 ## Day view
 
@@ -368,6 +391,8 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `activity add --json` (no other flags) | `activityAdd`, items from a JSON array of `ActivityInput` on stdin (times in UTC ms) | `added 3 activities` |
 | `activity start --source S --title T [--start ISO] [--app A] [--url U] [--path P]` | `activityStart { input }`, start default now | `started planner at 10:00` |
 | `activity stop --source S [--end ISO]` | `activityStop { source, end }`, end default now | `stopped planner at 10:45 (45 min)` or `nothing to stop for planner` |
+| `activity delete DAY` / `activity delete FROM TO` | `activityDelete { from, to }`: `DAY` (`YYYY-MM-DD`, `today`, `yesterday`) is its local bounds; `FROM`/`TO` as `instant` | `deleted 412 activity spans and 3 away spans` and `undo within 30 s: timetracker activity undo` |
+| `activity undo` | `activityDeleteUndo` | `restored 412 activity spans and 3 away spans`; nothing to undo exits 1 with `Nothing to undo` |
 | `report [today\|yesterday\|week\|last-week\|month\|last-month\|DAY\|FROM TO] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30] [--up]` | `report { request: ReportRequest }` (`cli/report.rs` parses the range and flags); the app resolves names (`reports::cli`: an id, an exact name ignoring case, or a unique start; several matches list them) and runs the report | the report text; `--json`: the `ReportResult` plus `text` |
 | `start PROJECT [--note N] [--tag T]…` | `timerStart { request: TimerStartRequest }`; the app resolves the project and tags like `record` | `started Acme at 09:15`; `--json`: the `Recording` plus `projectName` |
 | `stop` | `timerStop` | `stopped 09:15–10:40 (1:25)` or `no timer running` (exit 0) |
@@ -454,6 +479,8 @@ Every message is logged by type (`IpcMessage::kind`, never the contents).
 | `activityAdd { items }` | `activity::add` | `{ ids }` |
 | `activityStart { input }` | `activity::start` | `ActivityRow` |
 | `activityStop { source, end }` | `activity::stop` | `ActivityRow` or `null` |
+| `activityDelete { from, to }` | `activity::delete_range` | `DeleteResult` |
+| `activityDeleteUndo` | `activity::undo_delete` | `DeleteResult` |
 | `eval { js }` | runs in the window | `null` |
 | `devSeed { years, yes }` | `dev::seed`: refused unless `yes` when activity before today exists, then `test_support::seed::seed_years` (seed 42) and `data_changed` for activity, recordings, projects and tags | `SeedStats` |
 

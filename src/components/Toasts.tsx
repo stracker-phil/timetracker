@@ -9,7 +9,8 @@ const ACTION_DISMISS_MS = 10_000;
 function ToastItem({ toast }: { toast: Toast }) {
   const dismiss = useStore((s) => s.dismissToast);
   useEffect(() => {
-    const timer = setTimeout(() => dismiss(toast.id), toast.action ? ACTION_DISMISS_MS : AUTO_DISMISS_MS[toast.kind]);
+    const ttl = toast.action ? (toast.action.ttlMs ?? ACTION_DISMISS_MS) : AUTO_DISMISS_MS[toast.kind];
+    const timer = setTimeout(() => dismiss(toast.id), ttl);
     return () => clearTimeout(timer);
   }, [toast, dismiss]);
   const [details, setDetails] = useState(false);

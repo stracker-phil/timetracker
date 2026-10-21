@@ -305,6 +305,7 @@ in inputs or dialogs. `Tab` is never bound: it moves the keyboard focus.
 | ⌥↑ / ⌥↓, ⌥⇧↓ / ⌥⇧↑ | day | move the focused recording, extend or shorten it, by one snap step |
 | Escape | day | clear the selection and the focus |
 | ⌘⇧L | day | switch between Timeline and List (`day.toggleList`) |
+| – | day | delete the shown day's activity, or a range's (`activity.deleteDay`, `activity.deleteRange`; also in the Day header's ⋯ menu; Undo in the toast for 30 s) |
 | ⌘T / ⌘⇧. | global | open the timer picker / stop the running timer (`timer.start`, `timer.stop`); ⌘⇧T opens the picker from any app |
 | ⌘⇧C | reports | copy the report as text (`reports.copyText`) |
 | ⌘Z / ⌘⇧Z | global | undo / redo the last recording change (outside text fields) |

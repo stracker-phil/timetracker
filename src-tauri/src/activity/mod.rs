@@ -1,16 +1,21 @@
 //! Activity writes that come from outside the tracker: the CLI, deep links and the page share these.
 
 pub mod commands;
+pub mod delete;
 pub mod external;
+
+use std::sync::Arc;
 
 use tauri::{AppHandle, Manager};
 
 use crate::db::Db;
 use crate::db::activities::ActivityRow;
-use crate::db::time::{Ms, now_ms};
+use crate::db::time::{Day, Ms, now_ms};
 use crate::error::AppResult;
 use crate::events::{self, DataKind};
 use crate::state::AppState;
+use crate::tracker::Tracker;
+pub use delete::{ActivityCount, DeleteResult};
 pub use external::ActivityInput;
 
 fn db(app: &AppHandle) -> AppResult<Db> {
@@ -52,4 +57,37 @@ pub async fn stop(
         notify(app, std::slice::from_ref(row));
     }
     Ok(stopped)
+}
+
+pub async fn count(app: &AppHandle, from: Ms, to: Ms) -> AppResult<ActivityCount> {
+    delete::count(&db(app)?, from, to).await
+}
+
+pub async fn delete_range(app: &AppHandle, from: Ms, to: Ms) -> AppResult<DeleteResult> {
+    let tracker = app.try_state::<Arc<Tracker>>().map(|t| Arc::clone(&t));
+    let state = app.state::<AppState>();
+    let outcome = delete::delete(
+        &db(app)?,
+        &state.deleted_activity,
+        tracker.as_deref(),
+        from,
+        to,
+        now_ms(),
+    )
+    .await?;
+    notify_days(app, &outcome.days);
+    Ok(outcome.result)
+}
+
+pub async fn undo_delete(app: &AppHandle) -> AppResult<DeleteResult> {
+    let state = app.state::<AppState>();
+    let outcome = delete::undo(&db(app)?, &state.deleted_activity, now_ms()).await?;
+    notify_days(app, &outcome.days);
+    Ok(outcome.result)
+}
+
+fn notify_days(app: &AppHandle, days: &[Day]) {
+    for day in days {
+        events::data_changed(app, DataKind::Activity, Some(*day));
+    }
 }

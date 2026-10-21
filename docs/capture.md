@@ -132,6 +132,9 @@ or pass it on to recording:
 
 Nothing is split at midnight; readers clip (`time::clip`, `activities::list_clipped`).
 
+When the user deletes activity that holds the open row, `reset_span(deleted_ids, now)` drops it from the
+tracker without writing, so the next tick opens a new row ([backend.md](backend.md#activity-deletion)).
+
 ### Pause
 
 `pause(until, now)` takes `PauseUntil`: `{ minutes: n }`, `tomorrow` (the next local midnight) or `resumed`.

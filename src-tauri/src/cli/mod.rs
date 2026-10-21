@@ -32,6 +32,7 @@ const EXAMPLES: &str = "Examples:
   timetracker activity add --source planner --title \"Weekly sync\" --start 10:00 --end 10:45
   timetracker activity start --source planner --title Break
   timetracker activity stop --source planner
+  timetracker activity delete today   delete today's activity (undo within 30 s: activity undo)
   timetracker record --project acme --from 09:00 --to 09:30 --note standup --tag \"internal meeting\"
   timetracker report last-week --by tag --round 15
   timetracker start acme --note \"weekly call\" --tag \"external meeting\"
@@ -86,7 +87,7 @@ enum Command {
     },
     /// Resume paused tracking
     Resume,
-    /// Write another app's activity (a planner, a meeting tool) into its own lane
+    /// Write another app's activity (a planner, a meeting tool) into its own lane, or delete activity
     #[command(subcommand)]
     Activity(ActivityCommand),
     /// Record time for a project
@@ -172,6 +173,15 @@ enum ActivityCommand {
         #[arg(long)]
         end: Option<String>,
     },
+    /// Delete the activity and away spans of a day or range, whole when they cross it; recordings stay
+    Delete {
+        /// A day (YYYY-MM-DD, today, yesterday), or with TO the start (2026-10-21T09:30, 09:30)
+        from: String,
+        /// The end of the range, like the start
+        to: Option<String>,
+    },
+    /// Restore the activity of the last delete, within 30 s of it
+    Undo,
 }
 
 #[derive(Args, Debug)]
@@ -380,6 +390,14 @@ fn message<Tz: TimeZone>(
         Command::Report(args) => IpcMessage::Report {
             request: args.request(now, tz)?,
         },
+        Command::Activity(ActivityCommand::Delete { from, to }) => {
+            let (from, to) = match to {
+                Some(to) => (time::instant(&from, now, tz)?, time::instant(&to, now, tz)?),
+                None => time::day(&from, now, tz)?.bounds_in(tz),
+            };
+            IpcMessage::ActivityDelete { from, to }
+        }
+        Command::Activity(ActivityCommand::Undo) => IpcMessage::ActivityDeleteUndo,
         Command::Activity(ActivityCommand::Stop { source, end }) => {
             external::validate_source(&source).map_err(|e| e.to_string())?;
             IpcMessage::ActivityStop {
@@ -811,6 +829,86 @@ mod tests {
                 end: Some(ms("2026-10-21T10:45:00+02:00"))
             }
         );
+    }
+
+    #[test]
+    fn activity_delete_of_a_day_spans_that_local_day() {
+        for (arg, day_text) in [
+            ("today", "2026-10-21"),
+            ("yesterday", "2026-10-20"),
+            ("2026-10-25", "2026-10-25"),
+        ] {
+            let (from, to) = day(day_text).bounds_in(&Vienna);
+            assert_eq!(
+                remote(&["activity", "delete", arg]),
+                (IpcMessage::ActivityDelete { from, to }, false, false),
+                "{arg}"
+            );
+        }
+    }
+
+    #[test]
+    fn activity_delete_of_a_day_with_a_dst_change_spans_its_real_length() {
+        let (from, to) = day("2026-10-25").bounds_in(&Vienna);
+        assert_eq!(to - from, 25 * 3_600_000);
+        assert_eq!(
+            remote(&["activity", "delete", "2026-10-25"]).0,
+            IpcMessage::ActivityDelete { from, to }
+        );
+    }
+
+    #[test]
+    fn activity_delete_with_two_times_spans_exactly_that_range() {
+        for (args, from, to) in [
+            (
+                ["2026-10-21T09:30", "2026-10-21T11:00"],
+                "2026-10-21T09:30:00+02:00",
+                "2026-10-21T11:00:00+02:00",
+            ),
+            (
+                ["09:30", "11:00"],
+                "2026-10-21T09:30:00+02:00",
+                "2026-10-21T11:00:00+02:00",
+            ),
+            (
+                ["2026-10-20T22:00", "now"],
+                "2026-10-20T22:00:00+02:00",
+                "2026-10-21T12:00:00+02:00",
+            ),
+        ] {
+            assert_eq!(
+                remote(&["activity", "delete", args[0], args[1]]).0,
+                IpcMessage::ActivityDelete {
+                    from: ms(from),
+                    to: ms(to)
+                },
+                "{args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn activity_undo_becomes_its_message() {
+        assert_eq!(
+            remote(&["activity", "undo"]),
+            (IpcMessage::ActivityDeleteUndo, false, false)
+        );
+    }
+
+    #[test]
+    fn activity_delete_rejects_missing_or_unreadable_times() {
+        for args in [
+            &["activity", "delete"][..],
+            &["activity", "delete", "nonsense"],
+            &["activity", "delete", "09:30", "nonsense"],
+            &["activity", "delete", "nonsense", "11:00"],
+            &["activity", "delete", "09:30", "11:00", "12:00"],
+            &["activity", "undo", "now"],
+        ] {
+            let err = run(args).unwrap_err();
+            assert!(!err.in_app, "{args:?}");
+            assert!(!err.message.is_empty(), "{args:?}");
+        }
     }
 
     #[test]

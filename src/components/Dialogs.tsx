@@ -1,4 +1,5 @@
 import { useStore } from "../state/store";
+import { DeleteActivityDialog } from "./day/DeleteActivityDialog";
 import { OverlapDialog } from "./day/OverlapDialog";
 import { TimelineSettingsPopover } from "./day/TimelineSettingsPopover";
 import { Modal } from "./Modal";
@@ -49,6 +50,8 @@ export function Dialogs() {
       return <PromptDialog {...dialog} />;
     case "timelineSettings":
       return <TimelineSettingsPopover />;
+    case "deleteActivity":
+      return <DeleteActivityDialog key={`${dialog.day}-${dialog.range}`} day={dialog.day} bounds={dialog.bounds} range={dialog.range} />;
     case "rule":
       return <RuleSheet key={dialog.id ?? ""} id={dialog.id} draft={dialog.draft} onClose={useStore.getState().closeDialog} />;
     case "client":

@@ -88,7 +88,11 @@ deleted id is never reused and an undo can restore rows by id.
 - Activity and recordings are separate layers ([ADR 0005](adr/0005-activity-and-recordings-are-separate-layers.md)):
   nothing turns activity into recordings on its own.
 - Activity and away rows are never edited, except to set `end` on the open span. Deleting activity is an
-  explicit user action and deletes crossing rows whole.
+  explicit user action (`activity_delete`, `timetracker activity delete`) and deletes crossing rows whole:
+  every activity and away row with `start < to AND (end IS NULL OR end > from)`, in one transaction, with
+  recordings untouched. For 30 s the deleted rows stay in memory; `activity_delete_undo` re-inserts them
+  under their ids (open ones closed at the time of the delete). The flow is in
+  [backend.md](backend.md#activity-deletion).
 - Spans are stored unsplit. A reader clips them to the range it shows, so a span across midnight shows on
   both days.
 - Recordings never overlap each other; the running timer is the one recording without `end`, and it counts
@@ -152,8 +156,8 @@ there are no `query!` macros (they need a database at compile time).
 | `clients.rs` | `list(include_archived)`, `get`, `insert(name)`, `update(id, name)`, `set_archived(id, bool)` | names unique (archived clients count); lists by name ignoring case; archiving keeps the first `archived_at` and archives the client's projects in the same transaction; restoring restores the client only |
 | `projects.rs` | `list`, `list_items(include_archived, now)`, `get`, `insert(ProjectInput)`, `update(id, ProjectInput)`, `set_archived`, `recent(limit)`, `resolve(name_or_id)`, `count` | see [Projects, clients and tags](#projects-clients-and-tags) |
 | `tags.rs` | `list`, `list_with_usage`, `insert(name)`, `rename(id, name)`, `delete(id)`, `resolve_names(names)`, `seed_defaults` | names unique ignoring case: `insert` of a taken name returns the existing tag, `rename` to it is `invalid_input`; `DEFAULT_TAGS` are seeded once per data store (`meta.tags_seeded`), so deleting them all does not bring them back |
-| `activities.rs` | `apps_seen(from, now)`, `list_clipped(from, to, now)`, `close_stale(source, duration)`, `replace_open(id, NewActivity)`, `insert(NewActivity) -> id`, `close_open(source, end)`, `open_by_source`, `overlapping(source, start, end)`, `sources_with_prefix(prefix)` (latest first); `insert_on`, `get_on`, `close_open_on`, `open_by_source_on`, `overlapping_on` take a connection so a caller can combine them in a transaction; `list_for_range(from, to)`, `list_sources(from, to)`, `delete_range(from, to)`, `count`, `first_start` | ranges are `[from, to)` and include open spans; touching edges do not overlap; results are not clipped; `close_open` never sets an end before the start |
-| `away.rs` | `insert(NewAway) -> id`, `close_open(end)`, `open`, `list_for_range`, `delete_range` | as for activities; `AwayReason` is stored and sent as `idle`, `sleep`, `lock`, `paused` |
+| `activities.rs` | `apps_seen(from, now)`, `list_clipped(from, to, now)`, `close_stale(source, duration)`, `replace_open(id, NewActivity)`, `insert(NewActivity) -> id`, `close_open(source, end)`, `open_by_source`, `overlapping(source, start, end)`, `sources_with_prefix(prefix)` (latest first); `insert_on`, `get_on`, `close_open_on`, `open_by_source_on`, `overlapping_on` take a connection so a caller can combine them in a transaction; `list_for_range(from, to)`, `list_sources(from, to)`, `delete_range(from, to)`, `count_range(from, to)`, `count`, `first_start`; `take_range_on(from, to)` deletes and returns the rows, `restore_on(row)` inserts one under its id | ranges are `[from, to)` and include open spans; touching edges do not overlap; results are not clipped; `close_open` never sets an end before the start |
+| `away.rs` | `insert(NewAway) -> id`, `close_open(end)`, `open`, `list_for_range`, `delete_range`, `count_range`, `take_range_on`, `restore_on` | as for activities; `AwayReason` is stored and sent as `idle`, `sleep`, `lock`, `paused` |
 | `recordings.rs` | `insert(NewRecording)`, `get`, `update(id, RecordingPatch)`, `delete(id) -> Recording`, `list_for_range`, `running`, `overlapping(start, end, except)`, `count` | one transaction per write, tags included; `tag_ids` ordered by tag name; the project and every tag must exist (`not_found`); a note with a line break is `invalid_input`, notes are stored trimmed; `end` must be after `start`; `delete` returns the row so it can be restored under its id |
 | `backup.rs` | `export(db) -> Backup`, `write_to(db, path)` | every table, read in one transaction |
 

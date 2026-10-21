@@ -5,6 +5,7 @@ use chrono::{DateTime, TimeZone};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use crate::activity::DeleteResult;
 use crate::activity::external::SOURCE_PREFIX;
 use crate::db::activities::ActivityRow;
 use crate::db::recordings::Recording;
@@ -62,6 +63,17 @@ pub fn render<Tz: TimeZone>(
                 None => format!("nothing to stop for {source}"),
             })
         }
+        IpcMessage::ActivityDelete { .. } => {
+            let deleted = read::<DeleteResult>(result)?;
+            Some(format!(
+                "deleted {}\nundo within 30 s: timetracker activity undo",
+                spans(&deleted)
+            ))
+        }
+        IpcMessage::ActivityDeleteUndo => Some(format!(
+            "restored {}",
+            spans(&read::<DeleteResult>(result)?)
+        )),
         IpcMessage::Record { .. } => {
             let recorded = read::<Recorded>(result)?;
             let r = &recorded.recording;
@@ -110,6 +122,18 @@ pub fn render<Tz: TimeZone>(
         }
         _ => None,
     })
+}
+
+/// `412 activity spans and 3 away spans`.
+fn spans(result: &DeleteResult) -> String {
+    let plural = |n: usize| if n == 1 { "" } else { "s" };
+    format!(
+        "{} activity span{} and {} away span{}",
+        result.activities,
+        plural(result.activities),
+        result.away,
+        plural(result.away)
+    )
 }
 
 /// `1:30`.
@@ -474,6 +498,50 @@ mod tests {
             render_at_now(&message, &Value::Null),
             Ok(Some("nothing to stop for planner".into()))
         );
+    }
+
+    fn deleted(activities: usize, away: usize) -> Value {
+        json!({ "activities": activities, "away": away, "undoUntil": now() + 30_000 })
+    }
+
+    #[test]
+    fn delete_prints_the_counts_and_how_to_undo() {
+        let message = IpcMessage::ActivityDelete { from: 0, to: 1 };
+        for (activities, away, counts) in [
+            (412, 3, "412 activity spans and 3 away spans"),
+            (1, 1, "1 activity span and 1 away span"),
+            (0, 0, "0 activity spans and 0 away spans"),
+        ] {
+            assert_eq!(
+                render_at_now(&message, &deleted(activities, away)),
+                Ok(Some(format!(
+                    "deleted {counts}\nundo within 30 s: timetracker activity undo"
+                ))),
+                "{activities} {away}"
+            );
+        }
+    }
+
+    #[test]
+    fn undo_prints_what_was_restored() {
+        assert_eq!(
+            render_at_now(&IpcMessage::ActivityDeleteUndo, &deleted(2, 1)),
+            Ok(Some("restored 2 activity spans and 1 away span".into()))
+        );
+    }
+
+    #[test]
+    fn delete_and_undo_replies_of_the_wrong_shape_are_errors() {
+        for message in [
+            IpcMessage::ActivityDelete { from: 0, to: 1 },
+            IpcMessage::ActivityDeleteUndo,
+        ] {
+            let err = render_at_now(&message, &json!({ "activities": 1 })).unwrap_err();
+            assert!(
+                err.starts_with("The running TimeTracker sent an unexpected reply"),
+                "{message:?}: {err}"
+            );
+        }
     }
 
     fn record_message() -> IpcMessage {

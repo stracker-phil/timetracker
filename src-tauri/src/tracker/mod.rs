@@ -257,6 +257,19 @@ impl Tracker {
         Ok(self.status().permission)
     }
 
+    /// Forgets the open span when its row is among `deleted`, so the next tick opens a new one.
+    pub async fn reset_span(&self, deleted: &[i64], now: Ms) {
+        let mut inner = self.inner.lock().await;
+        if inner
+            .current
+            .as_ref()
+            .is_some_and(|current| deleted.contains(&current.id))
+        {
+            inner.current = None;
+            self.publish(&mut inner, now);
+        }
+    }
+
     /// Closes the open activity, for a restart after the loop stopped unexpectedly.
     async fn interrupt(&self, now: Ms) -> AppResult<()> {
         let mut inner = self.inner.lock().await;

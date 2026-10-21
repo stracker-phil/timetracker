@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::activity::delete::DeleteBuffer;
 use crate::db::{self, DB_FILE, DataStore};
 use crate::ipc::IpcMessage;
 use crate::launch::LaunchQueue;
@@ -16,6 +17,8 @@ pub struct AppState {
     pub data: DataStore,
     /// Recording changes of this run; also serializes recording writes.
     pub undo: tokio::sync::Mutex<UndoStack>,
+    /// The last activity delete, for its undo window.
+    pub deleted_activity: DeleteBuffer,
     pub config_dir: PathBuf,
     /// `--log-level` from the CLI; wins over the stored level until the app quits.
     pub log_override: Option<LogLevel>,
@@ -34,6 +37,7 @@ impl AppState {
             ui_state: UiStateStore::open(config_dir),
             launches,
             undo: Default::default(),
+            deleted_activity: DeleteBuffer::default(),
             config_dir: config_dir.to_path_buf(),
             log_override: None,
         }

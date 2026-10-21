@@ -144,6 +144,40 @@ async fn an_unchanged_snapshot_keeps_the_single_row_open() {
 }
 
 #[tokio::test]
+async fn resetting_the_open_span_makes_the_next_tick_open_a_new_row() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+    let open = f.tracker.status().current.unwrap();
+    activities::delete_range(&f.db, 0, Ms::MAX).await.unwrap();
+
+    f.tracker.reset_span(&[open.id], T + SECOND).await;
+    assert_eq!(f.tracker.status().current, None);
+    f.tracker.tick(T + 5 * SECOND).await.unwrap();
+
+    assert_eq!(spans(&f.db).await, [title("a.rs", T + 5 * SECOND, None)]);
+    assert_eq!(
+        f.tracker.status().current.map(|row| row.title),
+        Some("a.rs".into())
+    );
+}
+
+#[tokio::test]
+async fn resetting_other_rows_keeps_the_open_span() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+    let open = f.tracker.status().current.unwrap();
+
+    f.tracker.reset_span(&[open.id + 100], T + SECOND).await;
+    f.tracker.reset_span(&[], T + SECOND).await;
+    f.tracker.tick(T + 5 * SECOND).await.unwrap();
+
+    assert_eq!(f.tracker.status().current.as_ref(), Some(&open));
+    assert_eq!(spans(&f.db).await, [title("a.rs", T, None)]);
+}
+
+#[tokio::test]
 async fn a_window_in_front_for_under_a_second_is_replaced_in_place() {
     let f = fixture().await;
     f.source.show("Safari", "Tab");

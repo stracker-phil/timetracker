@@ -33,7 +33,7 @@ describe("Toasts", () => {
   });
 
   describe("auto dismiss", () => {
-    async function showFor(ms: number, action?: { label: string; run: () => void }) {
+    async function showFor(ms: number, action?: { label: string; run: () => void; ttlMs?: number }) {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       useStore.getState().toast("info", "Heads up", action);
       render(<Toasts />);
@@ -52,6 +52,21 @@ describe("Toasts", () => {
 
     it("removes a toast with an action after 10 s", async () => {
       await showFor(10_100, { label: "Undo", run: vi.fn() });
+      expect(screen.queryByText("Heads up")).not.toBeInTheDocument();
+    });
+
+    it("keeps a toast with a ttlMs beyond the 10 s default", async () => {
+      await showFor(15_000, { label: "Undo", run: vi.fn(), ttlMs: 30_000 });
+      expect(screen.getByText("Heads up")).toBeInTheDocument();
+    });
+
+    it("removes a toast with a ttlMs after that time", async () => {
+      await showFor(30_100, { label: "Undo", run: vi.fn(), ttlMs: 30_000 });
+      expect(screen.queryByText("Heads up")).not.toBeInTheDocument();
+    });
+
+    it("removes a toast with a shorter ttlMs before the 10 s default", async () => {
+      await showFor(2100, { label: "Undo", run: vi.fn(), ttlMs: 2000 });
       expect(screen.queryByText("Heads up")).not.toBeInTheDocument();
     });
   });

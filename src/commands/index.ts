@@ -40,6 +40,17 @@ const resetZoom = () => (onTimeline() ? useStore.getState().setTimelineZoom(TIME
 
 const timerRuns = () => !!useStore.getState().timer?.running;
 
+/** The shown day's view, once loaded: its bounds come from Rust. */
+const shownDayView = () => {
+  const s = useStore.getState();
+  return s.dayView?.day === s.day ? s.dayView : null;
+};
+
+function openDeleteActivity(range: boolean) {
+  const view = shownDayView();
+  if (view) useStore.getState().openDialog({ type: "deleteActivity", day: view.day, bounds: view.bounds, range });
+}
+
 /** Moves the block focus within the shown day's view. */
 function moveFocus(step: typeof stepBlock, by: 1 | -1) {
   const s = useStore.getState();
@@ -129,6 +140,8 @@ const APP_COMMANDS: Command[] = [
   { id: "day.blockMenu", title: "Block actions…", scope: "day", defaultBinding: "Ctrl+Enter", when: hasFocusedBlock, run: () => useStore.getState().requestBlockMenu() },
   { id: "day.toggleList", title: "Toggle timeline and list", scope: "day", defaultBinding: "Mod+Shift+L", run: toggleList },
   { id: "day.settings", title: "Timeline settings", scope: "day", run: () => useStore.getState().openDialog({ type: "timelineSettings" }) },
+  { id: "activity.deleteDay", title: "Delete activity for this day…", scope: "day", when: () => !!shownDayView(), run: () => openDeleteActivity(false) },
+  { id: "activity.deleteRange", title: "Delete activity in a range…", scope: "day", when: () => !!shownDayView(), run: () => openDeleteActivity(true) },
   { id: "day.clearFocus", title: "Clear selection", scope: "day", defaultBinding: "Escape", when: () => hasFocusedBlock() || hasSelection() || hasFocusedRecording(), run: clearDayFocus },
   { id: "recording.open", title: "Record selection or edit recording", scope: "day", defaultBinding: "Enter", when: () => hasSelection() || hasFocusedRecording(), run: openRecording },
   { id: "recording.create", title: "New recording from selection", scope: "day", menu: true, when: hasSelection, run: () => (useStore.getState().focusRecording(null), openRecording()) },

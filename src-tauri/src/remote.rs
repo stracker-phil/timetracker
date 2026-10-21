@@ -178,6 +178,10 @@ pub async fn handle(app: AppHandle, message: IpcMessage) -> HandlerResult {
         }
         IpcMessage::ActivityStart { input } => json(activity::start(&app, &input).await?),
         IpcMessage::ActivityStop { source, end } => json(activity::stop(&app, &source, end).await?),
+        IpcMessage::ActivityDelete { from, to } => {
+            json(activity::delete_range(&app, from, to).await?)
+        }
+        IpcMessage::ActivityDeleteUndo => json(activity::undo_delete(&app).await?),
         IpcMessage::Record { request } => json(recordings::cli::record(&app, request).await?),
         IpcMessage::Report { request } => json(reports::cli::report(&app, request).await?),
         IpcMessage::TimerStart { request } => {

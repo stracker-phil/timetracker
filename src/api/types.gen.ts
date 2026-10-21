@@ -27,6 +27,11 @@ members: Array<number>,
 col: number, cols: number, private: boolean, };
 
 /**
+ * How many spans deleting a range would remove.
+ */
+export type ActivityCount = { activities: number, away: number, };
+
+/**
  * One span from another app. `source` is the bare name (`planner`); `app` defaults to it.
  */
 export type ActivityInput = { source: string, title: string, start: number, end: number | null, app: string | null, url: string | null, path: string | null, };
@@ -199,6 +204,15 @@ hiddenApps: Array<HiddenApp>,
  * What the rules suggest recording, by start; filled by `commands::load`.
  */
 suggestions: Array<Suggestion>, };
+
+/**
+ * How many spans a delete removed or an undo restored.
+ */
+export type DeleteResult = { activities: number, away: number, 
+/**
+ * When the undo window of the delete closes.
+ */
+undoUntil: number, };
 
 export type ErrorKind = "db" | "io" | "invalid_input" | "not_found" | "overlap" | "permission_required" | "tracker_paused" | "session_not_found" | "cancelled";
 

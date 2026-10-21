@@ -226,6 +226,55 @@ pub async fn delete_range(db: &Db, from: Ms, to: Ms) -> AppResult<u64> {
     )
 }
 
+/// How many rows share time with `[from, to)`: what `take_range_on` would delete.
+pub async fn count_range(db: &Db, from: Ms, to: Ms) -> AppResult<i64> {
+    Ok(sqlx::query_scalar(
+        r#"SELECT count(*) FROM activities WHERE start < ?2 AND ("end" IS NULL OR "end" > ?1)"#,
+    )
+    .bind(from)
+    .bind(to)
+    .fetch_one(db.pool())
+    .await?)
+}
+
+/// Deletes every row that shares time with `[from, to)`, whole, and returns them by start.
+pub async fn take_range_on(
+    conn: &mut SqliteConnection,
+    from: Ms,
+    to: Ms,
+) -> AppResult<Vec<ActivityRow>> {
+    let mut rows: Vec<ActivityRow> = sqlx::query_as(
+        r#"DELETE FROM activities WHERE start < ?2 AND ("end" IS NULL OR "end" > ?1) RETURNING *"#,
+    )
+    .bind(from)
+    .bind(to)
+    .fetch_all(conn)
+    .await?;
+    rows.sort_by_key(|row| (row.start, row.id));
+    Ok(rows)
+}
+
+/// Inserts `row` under its own id, e.g. to restore a deleted row.
+pub async fn restore_on(conn: &mut SqliteConnection, row: &ActivityRow) -> AppResult<()> {
+    sqlx::query(
+        r#"INSERT INTO activities (id, source, start, "end", app, bundle_id, title, url, path, private)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"#,
+    )
+    .bind(row.id)
+    .bind(&row.source)
+    .bind(row.start)
+    .bind(row.end)
+    .bind(&row.app)
+    .bind(&row.bundle_id)
+    .bind(&row.title)
+    .bind(&row.url)
+    .bind(&row.path)
+    .bind(row.private)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 /// An app the tracker recorded, for pickers such as the excluded apps.
 #[derive(Debug, Clone, PartialEq, Serialize, TS, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -518,6 +567,59 @@ mod tests {
             [before, after]
         );
         assert_eq!(delete_range(&db, 100, 200).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn count_range_counts_what_take_range_would_delete() {
+        let db = Db::open_memory().await.unwrap();
+        activity(&db, 0, Some(100), "Touches", "").await;
+        activity(&db, 90, Some(110), "Cross", "").await;
+        activity(&db, 150, Some(160), "In", "").await;
+        activity(&db, 190, None, "Open", "").await;
+        activity(&db, 200, Some(300), "Touches", "").await;
+
+        assert_eq!(count_range(&db, 100, 200).await.unwrap(), 3);
+        assert_eq!(count_range(&db, 0, 0).await.unwrap(), 0);
+        assert_eq!(count_range(&db, 400, 500).await.unwrap(), 1);
+        let taken = take_range_on(&mut *db.pool().acquire().await.unwrap(), 100, 200)
+            .await
+            .unwrap();
+        assert_eq!(taken.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn take_range_returns_the_deleted_rows_by_start() {
+        let db = Db::open_memory().await.unwrap();
+        let late = activity(&db, 150, Some(160), "Late", "").await;
+        let early = activity(&db, 90, Some(110), "Early", "").await;
+        let kept = activity(&db, 200, Some(300), "Kept", "").await;
+
+        let taken = take_range_on(&mut *db.pool().acquire().await.unwrap(), 100, 200)
+            .await
+            .unwrap();
+
+        assert_eq!(taken, [early, late]);
+        assert_eq!(list_for_range(&db, 0, 1_000).await.unwrap(), [kept]);
+    }
+
+    #[tokio::test]
+    async fn restore_puts_a_taken_row_back_under_its_id() {
+        let db = Db::open_memory().await.unwrap();
+        let mut row = activity(&db, 150, Some(160), "In", "title").await;
+        row.url = Some("https://example.com".into());
+        row.bundle_id = Some("com.example".into());
+        row.path = Some("/tmp/x".into());
+        row.private = true;
+        take_range_on(&mut *db.pool().acquire().await.unwrap(), 0, 1_000)
+            .await
+            .unwrap();
+        assert!(list_for_range(&db, 0, 1_000).await.unwrap().is_empty());
+
+        restore_on(&mut *db.pool().acquire().await.unwrap(), &row)
+            .await
+            .unwrap();
+
+        assert_eq!(list_for_range(&db, 0, 1_000).await.unwrap(), [row]);
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleInput, RulePreview, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, DeleteResult, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleInput, RulePreview, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -90,6 +90,12 @@ export const api = {
   activityStop: (source: string, end: number | null) => invoke<ActivityRow | null>("activity_stop", { source, end }),
   /** The names of the sources that reported activity, the latest first. */
   activitySources: () => invoke<string[]>("activity_sources"),
+  /** How many activity and away spans share time with `[from, to)`: what `activityDelete` would remove. */
+  activityCount: (from: number, to: number) => invoke<ActivityCount>("activity_count", { from, to }),
+  /** Deletes those spans whole (recordings stay); `activityDeleteUndo` restores them until `undoUntil`. */
+  activityDelete: (from: number, to: number) => invoke<DeleteResult>("activity_delete", { from, to }),
+  /** Restores the last delete within 30 s of it; `not_found` after. */
+  activityDeleteUndo: () => invoke<DeleteResult>("activity_delete_undo"),
   clientsList: (includeArchived: boolean) => invoke<Client[]>("clients_list", { includeArchived }),
   /** `id: null` creates; a taken or blank name rejects with `field.path` `name`. */
   clientsSave: (id: string | null, input: ClientInput) => invoke<Client>("clients_save", { id, input }),

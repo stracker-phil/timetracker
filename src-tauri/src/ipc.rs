@@ -61,6 +61,12 @@ pub enum IpcMessage {
         source: String,
         end: Option<Ms>,
     },
+    /// Deletes activity and away spans that share time with `[from, to)`.
+    ActivityDelete {
+        from: Ms,
+        to: Ms,
+    },
+    ActivityDeleteUndo,
     Record {
         request: RecordRequest,
     },
@@ -100,6 +106,8 @@ impl IpcMessage {
             IpcMessage::ActivityAdd { .. } => "ActivityAdd",
             IpcMessage::ActivityStart { .. } => "ActivityStart",
             IpcMessage::ActivityStop { .. } => "ActivityStop",
+            IpcMessage::ActivityDelete { .. } => "ActivityDelete",
+            IpcMessage::ActivityDeleteUndo => "ActivityDeleteUndo",
             IpcMessage::Record { .. } => "Record",
             IpcMessage::Report { .. } => "Report",
             IpcMessage::TimerStart { .. } => "TimerStart",

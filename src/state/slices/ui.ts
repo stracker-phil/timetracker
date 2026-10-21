@@ -14,6 +14,8 @@ export interface Toast {
 export interface ToastAction {
   label: string;
   run: () => void;
+  /** Overrides how long the toast stays. */
+  ttlMs?: number;
 }
 
 export type Dialog =
@@ -32,6 +34,8 @@ export type Dialog =
   | { type: "prompt"; title: string; label: string; initial: string; confirmLabel: string; onSubmit: (value: string) => void }
   /** The Day header's timeline settings. */
   | { type: "timelineSettings" }
+  /** Delete the activity of `day` (its `bounds`), or of a range starting there when `range`. */
+  | { type: "deleteActivity"; day: string; bounds: [number, number]; range: boolean }
   /** A recording write overlaps `recordings`; replace their overlapped part, or cancel. */
   | { type: "overlap"; recordings: Recording[]; onReplace: () => void; onCancel: () => void };
 
