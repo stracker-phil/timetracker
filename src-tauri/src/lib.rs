@@ -368,6 +368,7 @@ fn start_app(
             db::commands::apps_seen,
             db::commands::away_list,
             day::commands::day_view,
+            day::commands::apps_list,
             tracker::commands::tracker_status,
             tracker::commands::tracker_pause,
             tracker::commands::tracker_resume,

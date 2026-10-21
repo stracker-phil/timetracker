@@ -232,7 +232,7 @@ impl Default for TimelineSettings {
     }
 }
 
-/// Per-app overrides of the timeline settings, keyed by bundle id.
+/// Per-app overrides of the timeline settings, keyed by bundle id (the app's name without one).
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(default, rename_all = "camelCase")]
@@ -244,15 +244,31 @@ pub struct AppOverride {
     pub own_lane: bool,
 }
 
-/// The fields of one app's `AppOverride` to change; absent ones stay.
+/// The fields of one app's `AppOverride` to change; absent ones stay, `null` returns an override to the
+/// timeline's own setting.
 #[derive(Deserialize, Clone, Debug, Default, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettingPatch {
+    #[serde(default, deserialize_with = "present")]
+    #[ts(optional)]
+    pub group_by_app: Option<Option<bool>>,
+    #[serde(default, deserialize_with = "present")]
+    #[ts(optional)]
+    pub titles: Option<Option<Titles>>,
     #[ts(optional)]
     pub own_lane: Option<bool>,
     #[ts(optional)]
     pub hidden: Option<bool>,
+}
+
+/// Tells a field sent as `null` (`Some(None)`) from an absent one (`None`).
+fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, TS)]
@@ -374,13 +390,22 @@ impl Settings {
         self
     }
 
-    /// `patch` applied to the app's override; an override that ends up empty is removed.
-    pub fn with_app(mut self, bundle_id: &str, patch: &AppSettingPatch) -> AppResult<Settings> {
-        let bundle_id = bundle_id.trim();
-        if bundle_id.is_empty() {
-            return Err(AppError::InvalidInput("An app needs a bundle id".into()));
+    /// `patch` applied to the app's override; an override that ends up empty is removed. `key` is the
+    /// app's bundle id, or its name when it has none.
+    pub fn with_app(mut self, key: &str, patch: &AppSettingPatch) -> AppResult<Settings> {
+        let key = key.trim();
+        if key.is_empty() {
+            return Err(AppError::InvalidInput(
+                "An app needs a bundle id or a name".into(),
+            ));
         }
-        let app = self.apps.entry(bundle_id.to_string()).or_default();
+        let app = self.apps.entry(key.to_string()).or_default();
+        if let Some(group_by_app) = patch.group_by_app {
+            app.group_by_app = group_by_app;
+        }
+        if let Some(titles) = patch.titles {
+            app.titles = titles;
+        }
         if let Some(own_lane) = patch.own_lane {
             app.own_lane = own_lane;
         }
@@ -388,7 +413,7 @@ impl Settings {
             app.hidden = hidden;
         }
         if *app == AppOverride::default() {
-            self.apps.remove(bundle_id);
+            self.apps.remove(key);
         }
         Ok(self)
     }
@@ -468,6 +493,22 @@ impl SettingsStore {
             })
             .await
     }
+
+    /// `Settings::with_app` on the current settings under the store's lock, so concurrent app
+    /// changes never undo each other. Returns `(previous, saved)`.
+    pub async fn update_app(
+        &self,
+        key: String,
+        patch: AppSettingPatch,
+    ) -> AppResult<(Settings, Settings)> {
+        self.store
+            .update_async(move |current| {
+                let next = current.clone().with_app(&key, &patch)?.sanitized();
+                let previous = std::mem::replace(current, next);
+                Ok((previous, current.clone()))
+            })
+            .await?
+    }
 }
 
 #[cfg(test)]
@@ -496,7 +537,117 @@ mod tests {
     }
 
     fn patch(own_lane: Option<bool>, hidden: Option<bool>) -> AppSettingPatch {
-        AppSettingPatch { own_lane, hidden }
+        AppSettingPatch {
+            own_lane,
+            hidden,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn with_app_sets_group_by_app_and_titles() {
+        let updated = Settings::default()
+            .with_app(
+                "com.apple.mail",
+                &AppSettingPatch {
+                    group_by_app: Some(Some(false)),
+                    titles: Some(Some(Titles::App)),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        assert_eq!(
+            updated.apps["com.apple.mail"],
+            AppOverride {
+                group_by_app: Some(false),
+                titles: Some(Titles::App),
+                ..AppOverride::default()
+            }
+        );
+    }
+
+    #[test]
+    fn with_app_resets_a_field_sent_as_null_and_keeps_an_absent_one() {
+        let start = settings(|s| {
+            s.apps.insert(
+                "com.apple.mail".into(),
+                AppOverride {
+                    group_by_app: Some(false),
+                    titles: Some(Titles::App),
+                    ..AppOverride::default()
+                },
+            );
+        });
+
+        let updated = start
+            .with_app(
+                "com.apple.mail",
+                &AppSettingPatch {
+                    group_by_app: Some(None),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        assert_eq!(
+            updated.apps["com.apple.mail"],
+            AppOverride {
+                titles: Some(Titles::App),
+                ..AppOverride::default()
+            }
+        );
+    }
+
+    #[test]
+    fn with_app_removes_an_entry_whose_overrides_are_all_reset() {
+        let start = Settings::default()
+            .with_app(
+                "Notes",
+                &AppSettingPatch {
+                    group_by_app: Some(Some(true)),
+                    titles: Some(Some(Titles::Document)),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(start.apps.contains_key("Notes"));
+
+        let updated = start
+            .with_app(
+                "Notes",
+                &AppSettingPatch {
+                    group_by_app: Some(None),
+                    titles: Some(None),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        assert!(updated.apps.is_empty());
+    }
+
+    #[test]
+    fn an_app_patch_tells_a_null_field_from_an_absent_one() {
+        let patch: AppSettingPatch = serde_json::from_value(json!({
+            "groupByApp": null,
+            "titles": "app",
+            "ownLane": true
+        }))
+        .unwrap();
+        let empty: AppSettingPatch = serde_json::from_value(json!({})).unwrap();
+
+        assert_eq!(
+            patch,
+            AppSettingPatch {
+                group_by_app: Some(None),
+                titles: Some(Some(Titles::App)),
+                own_lane: Some(true),
+                hidden: None,
+            }
+        );
+        assert_eq!(empty, AppSettingPatch::default());
+        assert_eq!(empty.group_by_app, None);
     }
 
     #[test]
@@ -994,6 +1145,83 @@ mod tests {
         let (previous, _) = store.update(Settings::default()).await.unwrap();
 
         assert_eq!(previous, first);
+    }
+
+    #[tokio::test]
+    async fn concurrent_app_updates_for_different_apps_both_survive() {
+        let dir = temp_config_dir();
+        let store = SettingsStore::open(dir.path());
+
+        let (hide, own) = tokio::join!(
+            store.update_app("com.apple.Safari".into(), patch(None, Some(true))),
+            store.update_app("com.tinyspeck.slackmacgap".into(), patch(Some(true), None)),
+        );
+        hide.unwrap();
+        own.unwrap();
+
+        let expected = HashMap::from([
+            (
+                "com.apple.Safari".to_string(),
+                AppOverride {
+                    hidden: true,
+                    ..AppOverride::default()
+                },
+            ),
+            (
+                "com.tinyspeck.slackmacgap".to_string(),
+                AppOverride {
+                    own_lane: true,
+                    ..AppOverride::default()
+                },
+            ),
+        ]);
+        assert_eq!(store.get().apps, expected);
+        assert_eq!(SettingsStore::open(dir.path()).get().apps, expected);
+    }
+
+    #[tokio::test]
+    async fn a_blank_key_in_update_app_is_invalid_input_and_changes_nothing() {
+        let dir = temp_config_dir();
+        let store = SettingsStore::open(dir.path());
+        let (_, before) = store
+            .update_app("com.apple.mail".into(), patch(Some(true), None))
+            .await
+            .unwrap();
+
+        let err = store
+            .update_app("  ".into(), patch(None, Some(true)))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), crate::error::ErrorKind::InvalidInput);
+        assert_eq!(store.get(), before);
+        assert_eq!(SettingsStore::open(dir.path()).get(), before);
+    }
+
+    #[tokio::test]
+    async fn update_app_returns_the_settings_before_and_after_the_change() {
+        let dir = temp_config_dir();
+        let store = SettingsStore::open(dir.path());
+
+        let (previous, saved) = store
+            .update_app("com.apple.mail".into(), patch(Some(true), None))
+            .await
+            .unwrap();
+
+        assert_eq!(previous, Settings::default());
+        assert_eq!(
+            saved,
+            settings(|s| {
+                s.apps.insert(
+                    "com.apple.mail".into(),
+                    AppOverride {
+                        own_lane: true,
+                        ..AppOverride::default()
+                    },
+                );
+            })
+        );
+        assert_eq!(store.get(), saved);
     }
 
     #[test]

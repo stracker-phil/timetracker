@@ -26,6 +26,8 @@ export type Dialog =
   | { type: "project"; id?: string; clientId?: string }
   /** Edit a client (`id`) or create one. */
   | { type: "client"; id?: string }
+  /** The Day header's timeline settings. */
+  | { type: "timelineSettings" }
   /** A recording write overlaps `recordings`; replace their overlapped part, or cancel. */
   | { type: "overlap"; recordings: Recording[]; onReplace: () => void; onCancel: () => void };
 

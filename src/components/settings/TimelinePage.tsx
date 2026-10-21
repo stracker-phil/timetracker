@@ -1,31 +1,66 @@
-import { api } from "../../api";
+import { api, type AppOverride, type AppSettingPatch, type KnownApp } from "../../api";
+import { formatHm } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
 import type { SettingsPageProps } from "../../registry/settingsPages";
 import { useStore } from "../../state/store";
-import { Group, Row } from "./controls";
+import { Group, Row, SegmentedButtons } from "./controls";
+import { TimelineControls } from "./TimelineControls";
 
-const NAME_DAYS = 365;
+const GROUPING = ["default", "on", "off"] as const;
+const TITLES = ["default", "document", "app"] as const;
 
-/** Apps hidden from the timeline (its block menu hides them), each with Show. */
-export function TimelinePage({ s }: SettingsPageProps) {
-  const hidden = Object.entries(s.apps)
-    .filter(([, app]) => app.hidden)
-    .map(([bundleId]) => bundleId)
-    .sort();
-  const { data: apps } = useApiResult(hidden.length > 0 ? `apps-seen:${NAME_DAYS}` : null, () => api.appsSeen(NAME_DAYS));
-  const nameOf = (bundleId: string) => apps?.find((a) => a.bundleId === bundleId)?.app ?? bundleId;
-  const show = (bundleId: string) => void useStore.getState().setAppSetting(bundleId, { hidden: false });
+function groupingOf(app: AppOverride | undefined): (typeof GROUPING)[number] {
+  if (app?.groupByApp == null) return "default";
+  return app.groupByApp ? "on" : "off";
+}
 
+function AppSwitch({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <Group title="Hidden apps">
-      {hidden.length === 0 && <Row label="No hidden apps" description="Right-click a block on the timeline to hide its app." />}
-      {hidden.map((bundleId) => (
-        <Row key={bundleId} label={nameOf(bundleId)} description={<span className="mono">{bundleId}</span>}>
-          <button type="button" className="btn" onClick={() => show(bundleId)}>
-            Show
-          </button>
-        </Row>
-      ))}
-    </Group>
+    <label className="inline-switch">
+      <input className="switch" type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {label}
+    </label>
+  );
+}
+
+function AppRow({ app, override }: { app: KnownApp; override: AppOverride | undefined }) {
+  const set = (patch: AppSettingPatch) => void useStore.getState().setAppSetting(app.appKey, patch);
+  return (
+    <Row label={app.app} description={<span className="mono">{app.totalMs > 0 ? formatHm(app.totalMs) : app.appKey}</span>} stacked>
+      <div className="app-controls">
+        <span className="o3">Group by app</span>
+        <SegmentedButtons
+          label={`Group ${app.app} by app`}
+          options={GROUPING}
+          value={groupingOf(override)}
+          onChange={(v) => set({ groupByApp: v === "default" ? null : v === "on" })}
+        />
+        <span className="o3">Titles</span>
+        <SegmentedButtons
+          label={`Titles of ${app.app}`}
+          options={TITLES}
+          value={override?.titles ?? "default"}
+          onChange={(v) => set({ titles: v === "default" ? null : v })}
+        />
+        <AppSwitch label="Hidden" checked={!!override?.hidden} onChange={(hidden) => set({ hidden })} />
+        <AppSwitch label="Own lane" checked={!!override?.ownLane} onChange={(ownLane) => set({ ownLane })} />
+      </div>
+    </Row>
+  );
+}
+
+export function TimelinePage({ s }: SettingsPageProps) {
+  const { data: apps, error } = useApiResult("apps", api.appsList);
+  return (
+    <>
+      <Group>
+        <TimelineControls timeline={s.timeline} />
+      </Group>
+      <Group title="Apps">
+        {error && <Row label="Could not list the apps" description={error.message} />}
+        {apps?.length === 0 && <Row label="No apps tracked yet" />}
+        {apps?.map((app) => <AppRow key={app.appKey} app={app} override={s.apps[app.appKey]} />)}
+      </Group>
+    </>
   );
 }

@@ -110,7 +110,8 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, available, error }` | – (errors are reported inside) |
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes }` | `db`, `io`, `invalid_input` |
 | `day_view` (`day/commands.rs`) | `day: String` | `DayView` (see [Day view](#day-view)); logs the time it took at debug level | `invalid_input`, `db` |
-| `app_settings_set` (`commands.rs`) | `bundleId: String, patch: AppSettingPatch { ownLane?, hidden? }` | `Settings`; an override that ends up default is removed (`Settings::with_app`); emits `data_changed { kind: settings, day: null }` | `invalid_input` (blank bundle id), `io` |
+| `app_settings_set` (`commands.rs`) | `bundleId: String` (the app key: bundle id, else the app name), `patch: AppSettingPatch { groupByApp?, titles?, ownLane?, hidden? }` (`null` returns `groupByApp`/`titles` to the timeline's setting) | `Settings`; applied under the settings store's lock (`SettingsStore::update_app`), so concurrent changes never undo each other; an override that ends up default is removed (`Settings::with_app`) | `invalid_input` (blank key), `io` |
+| `apps_list` (`day/commands.rs`) | – | `KnownApp[] { appKey, app, totalMs, lastSeen }` (`day::apps::known_apps`): every tracker app and every app with an override, by name | `db` |
 | `recording_create` (`recordings/commands.rs`) | `input: RecordingInput { projectId, start, end, note, tagIds }, overlap: Overlap` | `Recording` (snapped) | `invalid_input` (`field`), `overlap` (`details`: the recordings in the way), `not_found`, `db` |
 | `recording_update` | `id, patch: RecordingPatch, overlap` | `Recording` | the same |
 | `recording_delete` | `id` | – | `not_found`, `db` |
@@ -152,17 +153,32 @@ from the day before included) and calls it. `ViewSettings` is a copy of `Setting
 `Settings.apps`. In order:
 
 1. `clipped_blocks`: every activity cut to the day's bounds (an open span ends at `now`); private rows keep
-   the app and read "Private" without URL or path. Block ids are `a<activity id>`, `members` the activity ids.
-2. `without_hidden_apps`: apps with `apps[bundleId].hidden` vanish (lanes, totals, gaps).
-3. Seams for timeline settings, each a named function that returns its input for now: `group_by_app`,
-   `bridge_gaps` (continuity), `drop_noise`, `choose_titles`, and `summary_lane` (returns no lane).
-4. `lanes_of`: the `activity` lane (always), one `app:<bundleId>` lane per app with `ownLane`, one
-   `source:<name>` lane per external source; app and source lanes sorted by label.
-5. `packed` per lane: by start, longer first; each block takes the lowest free column; a cluster of
-   overlapping blocks shares its width (`col` of `cols`).
-6. Away blocks (clipped), gaps (`GAP_MIN` 2 min or longer, between the first activity's start and the last
-   one's end, without activity or away) and totals: `trackedMs` the union of tracker spans, `awayMs` the
-   union of away spans, `recordedMs` 0 until recordings. `covered` is false until recordings.
+   the app and read "Private" without URL or path. `appKey` is the bundle id, else the app name: what
+   `Settings.apps` overrides are keyed by.
+2. Totals, gaps, `firstActivity` and `sources` come from these raw rows, so hiding and merging never change
+   them: `trackedMs` the union of tracker spans, `awayMs` the union of away spans, `recordedMs` the sum of
+   the recordings' parts in the day; gaps are holes of `GAP_MIN` (2 min) or longer between the first
+   activity's start and the last one's end, without activity or away.
+3. External rows go to their source lanes as they are. Tracker rows run through `day/transform.rs`:
+   `without_hidden` drops apps with `hidden`; `identified` labels each row (`titles`: the title, or the app
+   when empty or in `app` mode; private rows "Private") and keys it by app (`groupByApp`) or by app and
+   label, a per-app override winning over `timeline`; private rows get a key of their own.
+4. `lanes::summary` (with `summaryLane`): the day in intervals of `summaryMinutes` from its start; each goes
+   to the key with the most time in it (ties: the earlier start); a run of equal winners is one block from
+   the winner's first start to its last end inside the run, id `s<start>`.
+5. `transform::grouped`: rows of one key that touch, or whose gap is shorter than the continuity (off 0,
+   short 2, regular 8, extended 16 min), become one block unless a sleep, lock or pause lies between
+   (`breaks_continuity`; idle is bridged). Other keys' rows in the gap stay their own blocks, beside it.
+   Blocks shorter than the noise threshold (off 0, low 2, medium 4, high 6 min) are dropped. A block shows
+   its longest row (`title`, `label`, URL, path); its id is `a<first member id>`, `members` every row.
+6. `lanes::lanes`: the `activity` lane (unless `showAllActivity` is off), one `app:<appKey>` lane per app
+   with `ownLane` in the order of first appearance, one `source:<name>` lane per external source by name;
+   `packed` per lane: by start, longer first, each block in the lowest free column, a cluster of overlapping
+   blocks sharing its width (`col` of `cols`).
+7. `mark_covered`: a block of any lane is `covered` when at least half of it lies inside recordings.
+
+`DayView` also carries `compact` (from `timeline`) and `hiddenApps` (every hidden override, named from the
+day's rows, else by its key) for the header's popover.
 
 ## Recordings
 
@@ -386,7 +402,7 @@ save leaves memory unchanged. `JsonStore::open_with` normalizes the loaded value
 
 | File | Contents |
 |---|---|
-| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports` each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets unknown accents (`ACCENTS`) and schemes (`SCHEMES`) to `orange`, `ayu-light`, `ayu-mirage`; turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. |
+| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports` each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets unknown accents (`ACCENTS`) and schemes (`SCHEMES`) to `orange`, `ayu-light`, `ayu-mirage`; turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline` or `apps` emits `data_changed { kind: settings, day: null }`, so every open day reloads. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed. A trailing `++` is the `+` key |
 | `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay`, `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id) |
 | `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere |

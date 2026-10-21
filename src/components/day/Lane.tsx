@@ -19,7 +19,7 @@ interface Props {
 export const Lane = memo(function Lane({ lane, origin, pxPerMinute, range, focusedBlock }: Props) {
   const y = (ms: number) => ((ms - origin) / 60_000) * pxPerMinute;
   return (
-    <div className="lane" data-lane-id={lane.id}>
+    <div className={`lane lane--${lane.kind}`} data-lane-id={lane.id}>
       {lane.blocks.map((block) => {
         const top = y(block.start);
         const height = Math.max(MIN_BLOCK_PX, y(block.end) - top);

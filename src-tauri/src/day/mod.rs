@@ -1,9 +1,12 @@
 //! The Day view as a pure function of the day's rows and the timeline settings (ADR 0012): the page
 //! positions blocks from `start`, `end`, `col` and `cols` and computes nothing.
 
+pub mod apps;
 pub mod commands;
+mod lanes;
 #[cfg(test)]
 mod testing;
+mod transform;
 
 use std::collections::HashMap;
 
@@ -26,7 +29,7 @@ const PRIVATE_TITLE: &str = "Private";
 #[derive(Debug, Clone, Default)]
 pub struct ViewSettings {
     pub timeline: TimelineSettings,
-    /// Keyed by bundle id.
+    /// Keyed by `ActivityBlock::app_key`.
     pub apps: HashMap<String, AppOverride>,
 }
 
@@ -40,9 +43,14 @@ impl From<&Settings> for ViewSettings {
 }
 
 impl ViewSettings {
-    fn app(&self, bundle_id: Option<&str>) -> Option<&AppOverride> {
-        self.apps.get(bundle_id?)
+    fn app(&self, key: &str) -> Option<&AppOverride> {
+        self.apps.get(key)
     }
+}
+
+/// What app overrides are keyed by: the bundle id, or the app's name without one.
+pub fn app_key(bundle_id: Option<&str>, app: &str) -> String {
+    bundle_id.unwrap_or(app).to_string()
 }
 
 /// Rows as stored: unclipped, open spans with `end: None`.
@@ -74,7 +82,7 @@ pub struct ProjectRef {
 pub struct DayView {
     pub day: Day,
     pub bounds: (Ms, Ms),
-    /// Activity lane first, then app lanes, then source lanes.
+    /// Summary lane, activity lane, app lanes, source lanes; each only when present.
     pub lanes: Vec<Lane>,
     /// The recordings column, by start.
     pub recordings: Vec<RecordingBlock>,
@@ -84,6 +92,19 @@ pub struct DayView {
     pub first_activity: Option<Ms>,
     /// Every source of the day's activity, sorted.
     pub sources: Vec<String>,
+    /// The timeline's compact density.
+    pub compact: bool,
+    /// Every app the settings hide, by name.
+    pub hidden_apps: Vec<HiddenApp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct HiddenApp {
+    pub app_key: String,
+    /// Its name on this day, else the key.
+    pub app: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -100,11 +121,12 @@ pub enum LaneKind {
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct Lane {
-    /// `activity`, `app:<bundle id>` or `source:<name>`.
+    /// `summary`, `activity`, `app:<app key>` or `source:<name>`.
     pub id: String,
     pub kind: LaneKind,
     pub label: String,
-    pub bundle_id: Option<String>,
+    /// The app of an app lane.
+    pub app_key: Option<String>,
     pub blocks: Vec<ActivityBlock>,
 }
 
@@ -112,13 +134,17 @@ pub struct Lane {
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct ActivityBlock {
-    /// `a<activity id>`.
+    /// `a<first member id>`; `s<start>` in the summary lane.
     pub id: String,
     pub start: Ms,
     pub end: Ms,
     pub app: String,
     pub bundle_id: Option<String>,
+    pub app_key: String,
+    /// The window title of its longest member.
     pub title: String,
+    /// What the block shows: the document name or the app, by the title setting.
+    pub label: String,
     pub url: Option<String>,
     pub path: Option<String>,
     pub source: String,
@@ -181,43 +207,57 @@ pub struct Gap {
 pub struct DayTotals {
     /// The day's part of its recordings.
     pub recorded_ms: i64,
-    /// Tracker activity, overlaps counted once; external sources are not tracked time.
+    /// Tracker activity, overlaps counted once, hidden apps and noise included; external sources are not
+    /// tracked time.
     pub tracked_ms: i64,
     pub away_ms: i64,
 }
 
 pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
-    let blocks = clipped_blocks(input);
-    let blocks = without_hidden_apps(blocks, settings);
-    let blocks = group_by_app(blocks, settings);
-    let blocks = bridge_gaps(blocks, settings);
-    let blocks = drop_noise(blocks, settings);
-    let blocks = choose_titles(blocks, settings);
+    let rows = clipped_blocks(input);
     let recordings = recording_blocks(input);
-    let recorded: Vec<(Ms, Ms)> = recordings.iter().map(|r| (r.start, r.end)).collect();
-    let blocks = marked_covered(blocks, &recorded);
-
     let away = away_blocks(input);
-    let activity: Vec<(Ms, Ms)> = blocks.iter().map(|b| (b.start, b.end)).collect();
+
+    // Totals and gaps describe what was captured, before any setting hides or merges it.
+    let span = |b: &ActivityBlock| (b.start, b.end);
+    let activity: Vec<(Ms, Ms)> = rows.iter().map(span).collect();
     let away_spans: Vec<(Ms, Ms)> = away.iter().map(|a| (a.start, a.end)).collect();
-    let tracked: Vec<(Ms, Ms)> = blocks
-        .iter()
-        .filter(|b| b.source == TRACKER_SOURCE)
-        .map(|b| (b.start, b.end))
-        .collect();
+    let recorded: Vec<(Ms, Ms)> = recordings.iter().map(|r| (r.start, r.end)).collect();
     let totals = DayTotals {
         recorded_ms: recorded.iter().map(|(start, end)| end - start).sum(),
-        tracked_ms: union_length(tracked),
+        tracked_ms: union_length(
+            rows.iter()
+                .filter(|b| b.source == TRACKER_SOURCE)
+                .map(span)
+                .collect(),
+        ),
         away_ms: union_length(away_spans.clone()),
     };
     let gaps = gaps(&activity, &away_spans);
     let first_activity = activity.iter().map(|s| s.0).min();
-    let mut sources: Vec<String> = blocks.iter().map(|b| b.source.clone()).collect();
+    let mut sources: Vec<String> = rows.iter().map(|b| b.source.clone()).collect();
     sources.sort();
     sources.dedup();
+    let hidden_apps = hidden_apps(&rows, settings);
 
-    let mut lanes: Vec<Lane> = summary_lane(&blocks, settings).into_iter().collect();
-    lanes.extend(lanes_of(blocks, settings));
+    let (tracker, external): (Vec<_>, Vec<_>) =
+        rows.into_iter().partition(|b| b.source == TRACKER_SOURCE);
+    let pieces = transform::identified(transform::without_hidden(tracker, settings), settings);
+    let barriers: Vec<(Ms, Ms)> = away
+        .iter()
+        .filter(|a| transform::breaks_continuity(a.reason))
+        .map(|a| (a.start, a.end))
+        .collect();
+    let timeline = &settings.timeline;
+    let mut lanes: Vec<Lane> = Vec::new();
+    if timeline.summary_lane {
+        let interval = Ms::from(timeline.summary_minutes) * 60_000;
+        lanes.push(lanes::summary(&pieces, interval, input.bounds));
+    }
+    let tracker = transform::grouped(pieces, settings, &barriers);
+    lanes.extend(lanes::lanes(tracker, external, settings));
+    mark_covered(&mut lanes, &recorded);
+
     DayView {
         day: input.day,
         bounds: input.bounds,
@@ -228,7 +268,31 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
         totals,
         first_activity,
         sources,
+        compact: timeline.compact,
+        hidden_apps,
     }
+}
+
+fn hidden_apps(rows: &[ActivityBlock], settings: &ViewSettings) -> Vec<HiddenApp> {
+    let mut hidden: Vec<HiddenApp> = settings
+        .apps
+        .iter()
+        .filter(|(_, app)| app.hidden)
+        .map(|(key, _)| HiddenApp {
+            app_key: key.clone(),
+            app: rows
+                .iter()
+                .find(|b| &b.app_key == key)
+                .map_or_else(|| key.clone(), |b| b.app.clone()),
+        })
+        .collect();
+    hidden.sort_by(|a, b| {
+        a.app
+            .to_lowercase()
+            .cmp(&b.app.to_lowercase())
+            .then_with(|| a.app_key.cmp(&b.app_key))
+    });
+    hidden
 }
 
 fn recording_blocks(input: &DayInput) -> Vec<RecordingBlock> {
@@ -266,21 +330,15 @@ fn recording_blocks(input: &DayInput) -> Vec<RecordingBlock> {
 }
 
 /// A block is covered when at least half of it lies inside recordings.
-fn marked_covered(blocks: Vec<ActivityBlock>, recorded: &[(Ms, Ms)]) -> Vec<ActivityBlock> {
+fn mark_covered(lanes: &mut [Lane], recorded: &[(Ms, Ms)]) {
     let recorded = union(recorded.to_vec());
-    blocks
-        .into_iter()
-        .map(|block| {
-            let inside: Ms = recorded
-                .iter()
-                .map(|&(start, end)| (end.min(block.end) - start.max(block.start)).max(0))
-                .sum();
-            ActivityBlock {
-                covered: 2 * inside >= block.end - block.start,
-                ..block
-            }
-        })
-        .collect()
+    for block in lanes.iter_mut().flat_map(|l| l.blocks.iter_mut()) {
+        let inside: Ms = recorded
+            .iter()
+            .map(|&(start, end)| (end.min(block.end) - start.max(block.start)).max(0))
+            .sum();
+        block.covered = 2 * inside >= block.end - block.start;
+    }
 }
 
 fn away_blocks(input: &DayInput) -> Vec<AwayBlock> {
@@ -311,13 +369,20 @@ fn clipped_blocks(input: &DayInput) -> Vec<ActivityBlock> {
             } else {
                 (row.title.clone(), row.url.clone(), row.path.clone())
             };
+            let label = if title.is_empty() {
+                row.app.clone()
+            } else {
+                title.clone()
+            };
             Some(ActivityBlock {
                 id: format!("a{}", row.id),
                 start,
                 end,
                 app: row.app.clone(),
                 bundle_id: row.bundle_id.clone(),
+                app_key: app_key(row.bundle_id.as_deref(), &row.app),
                 title,
+                label,
                 url,
                 path,
                 source: row.source.clone(),
@@ -329,148 +394,6 @@ fn clipped_blocks(input: &DayInput) -> Vec<ActivityBlock> {
             })
         })
         .collect()
-}
-
-fn without_hidden_apps(blocks: Vec<ActivityBlock>, settings: &ViewSettings) -> Vec<ActivityBlock> {
-    blocks
-        .into_iter()
-        .filter(|b| {
-            !settings
-                .app(b.bundle_id.as_deref())
-                .is_some_and(|a| a.hidden)
-        })
-        .collect()
-}
-
-/// Group by app: merges an app's neighboring blocks. Passes them through for now.
-fn group_by_app(blocks: Vec<ActivityBlock>, _settings: &ViewSettings) -> Vec<ActivityBlock> {
-    blocks
-}
-
-/// Continuity: closes short gaps between blocks. Passes them through for now.
-fn bridge_gaps(blocks: Vec<ActivityBlock>, _settings: &ViewSettings) -> Vec<ActivityBlock> {
-    blocks
-}
-
-/// Noise cancellation: hides short blocks. Passes them through for now.
-fn drop_noise(blocks: Vec<ActivityBlock>, _settings: &ViewSettings) -> Vec<ActivityBlock> {
-    blocks
-}
-
-/// Chooses which title a block shows. Passes them through for now.
-fn choose_titles(blocks: Vec<ActivityBlock>, _settings: &ViewSettings) -> Vec<ActivityBlock> {
-    blocks
-}
-
-/// The summary lane, one block per interval. None for now.
-fn summary_lane(_blocks: &[ActivityBlock], _settings: &ViewSettings) -> Option<Lane> {
-    None
-}
-
-/// The activity lane (always present), then app lanes and source lanes by label, each packed.
-fn lanes_of(blocks: Vec<ActivityBlock>, settings: &ViewSettings) -> Vec<Lane> {
-    let mut activity = Vec::new();
-    let mut apps: HashMap<String, (String, Vec<ActivityBlock>)> = HashMap::new();
-    let mut sources: HashMap<String, Vec<ActivityBlock>> = HashMap::new();
-    for block in blocks {
-        if let Some(name) = block.source.strip_prefix(EXTERNAL_PREFIX) {
-            sources.entry(name.to_string()).or_default().push(block);
-        } else if let Some(bundle_id) = block.bundle_id.as_deref()
-            && settings.app(Some(bundle_id)).is_some_and(|a| a.own_lane)
-        {
-            let lane = apps
-                .entry(bundle_id.to_string())
-                .or_insert_with(|| (block.app.clone(), Vec::new()));
-            lane.1.push(block);
-        } else {
-            activity.push(block);
-        }
-    }
-
-    let mut app_lanes: Vec<Lane> = apps
-        .into_iter()
-        .map(|(bundle_id, (label, blocks))| Lane {
-            id: format!("app:{bundle_id}"),
-            kind: LaneKind::App,
-            label,
-            bundle_id: Some(bundle_id),
-            blocks: packed(blocks),
-        })
-        .collect();
-    app_lanes.sort_by(by_label);
-    let mut source_lanes: Vec<Lane> = sources
-        .into_iter()
-        .map(|(name, blocks)| Lane {
-            id: format!("source:{name}"),
-            kind: LaneKind::Source,
-            label: name,
-            bundle_id: None,
-            blocks: packed(blocks),
-        })
-        .collect();
-    source_lanes.sort_by(by_label);
-
-    let mut lanes = vec![Lane {
-        id: "activity".into(),
-        kind: LaneKind::Activity,
-        label: "Activity".into(),
-        bundle_id: None,
-        blocks: packed(activity),
-    }];
-    lanes.extend(app_lanes);
-    lanes.extend(source_lanes);
-    lanes
-}
-
-fn by_label(a: &Lane, b: &Lane) -> std::cmp::Ordering {
-    a.label
-        .to_lowercase()
-        .cmp(&b.label.to_lowercase())
-        .then_with(|| a.id.cmp(&b.id))
-}
-
-/// Sorted by start, longer first. Each block takes the lowest column that is free at its start;
-/// blocks connected by overlap form a cluster and share its width (`cols`) evenly.
-fn packed(mut blocks: Vec<ActivityBlock>) -> Vec<ActivityBlock> {
-    blocks.sort_by(|a, b| {
-        a.start
-            .cmp(&b.start)
-            .then(b.end.cmp(&a.end))
-            .then_with(|| a.id.cmp(&b.id))
-    });
-    let mut column_ends: Vec<Ms> = Vec::new();
-    let mut cluster_start = 0;
-    let mut cluster_end = Ms::MIN;
-    for i in 0..blocks.len() {
-        if blocks[i].start >= cluster_end {
-            close_cluster(&mut blocks[cluster_start..i], column_ends.len());
-            column_ends.clear();
-            cluster_start = i;
-        }
-        let block = &mut blocks[i];
-        let col = match column_ends.iter().position(|&end| end <= block.start) {
-            Some(free) => {
-                column_ends[free] = block.end;
-                free
-            }
-            None => {
-                column_ends.push(block.end);
-                column_ends.len() - 1
-            }
-        };
-        block.col = u8::try_from(col).unwrap_or(u8::MAX);
-        cluster_end = cluster_end.max(block.end);
-    }
-    let len = blocks.len();
-    close_cluster(&mut blocks[cluster_start..len], column_ends.len());
-    blocks
-}
-
-fn close_cluster(cluster: &mut [ActivityBlock], columns: usize) {
-    let cols = u8::try_from(columns.max(1)).unwrap_or(u8::MAX);
-    for block in cluster {
-        block.cols = cols;
-    }
 }
 
 /// Sorted spans with overlapping and touching ones merged.
@@ -551,6 +474,10 @@ mod tests {
 
     fn code(id: i64, start_min: i64, end_min: i64) -> ActivityRow {
         activity(id, mins(start_min), Some(mins(end_min)), "Code", "")
+    }
+
+    fn titled(id: i64, start_min: i64, end_min: i64, title: &str) -> ActivityRow {
+        activity(id, mins(start_min), Some(mins(end_min)), "Code", title)
     }
 
     fn activity_lane(view: &DayView) -> &Lane {
@@ -710,7 +637,7 @@ mod tests {
             let rows = times
                 .iter()
                 .enumerate()
-                .map(|(i, &(s, e))| code(i as i64 + 1, s, e))
+                .map(|(i, &(s, e))| titled(i as i64 + 1, s, e, &format!("window {i}")))
                 .collect();
 
             let view = view(&input(rows, vec![]), &settings());
@@ -721,7 +648,7 @@ mod tests {
 
     #[test]
     fn of_two_blocks_starting_together_the_longer_one_takes_column_zero() {
-        let rows = vec![code(1, 0, 30), code(2, 0, 60)];
+        let rows = vec![titled(1, 0, 30, "short"), titled(2, 0, 60, "long")];
 
         let view = view(&input(rows, vec![]), &settings());
 
@@ -738,7 +665,7 @@ mod tests {
         let lane = activity_lane(&view);
         assert_eq!(lane.kind, LaneKind::Activity);
         assert_eq!(lane.label, "Activity");
-        assert_eq!(lane.bundle_id, None);
+        assert_eq!(lane.app_key, None);
         assert!(lane.blocks.is_empty());
         assert!(view.gaps.is_empty());
         assert_eq!(view.totals, DayTotals::default());
@@ -748,9 +675,9 @@ mod tests {
     #[test]
     fn lanes_are_activity_then_app_lanes_then_source_lanes_each_sorted() {
         let rows = vec![
-            code(1, 0, 10),
+            activity(1, mins(0), Some(mins(10)), "Mail", ""),
             activity(2, mins(10), Some(mins(20)), "Notes", ""),
-            activity(3, mins(20), Some(mins(30)), "Mail", ""),
+            code(3, 20, 30),
             from_source(code(4, 30, 40), "external:planner"),
             from_source(code(5, 40, 50), "external:calendar"),
         ];
@@ -762,14 +689,14 @@ mod tests {
             lane_ids(&view),
             [
                 "activity",
-                "app:test.code",
                 "app:test.mail",
+                "app:test.code",
                 "source:calendar",
                 "source:planner"
             ]
         );
         let labels: Vec<&str> = view.lanes.iter().map(|l| l.label.as_str()).collect();
-        assert_eq!(labels, ["Activity", "Code", "Mail", "calendar", "planner"]);
+        assert_eq!(labels, ["Activity", "Mail", "Code", "calendar", "planner"]);
         let kinds: Vec<LaneKind> = view.lanes.iter().map(|l| l.kind).collect();
         assert_eq!(
             kinds,
@@ -782,12 +709,12 @@ mod tests {
             ]
         );
         assert_eq!(
-            lane(&view, "app:test.code").bundle_id.as_deref(),
+            lane(&view, "app:test.code").app_key.as_deref(),
             Some("test.code")
         );
         assert_eq!(block_ids(activity_lane(&view)), ["a2"]);
-        assert_eq!(block_ids(lane(&view, "app:test.code")), ["a1"]);
-        assert_eq!(block_ids(lane(&view, "app:test.mail")), ["a3"]);
+        assert_eq!(block_ids(lane(&view, "app:test.code")), ["a3"]);
+        assert_eq!(block_ids(lane(&view, "app:test.mail")), ["a1"]);
         assert_eq!(block_ids(lane(&view, "source:planner")), ["a4"]);
         assert_eq!(block_ids(lane(&view, "source:calendar")), ["a5"]);
     }
@@ -796,8 +723,8 @@ mod tests {
     fn blocks_of_an_app_lane_are_packed_separately_from_the_activity_lane() {
         let rows = vec![
             code(1, 0, 60),
-            activity(2, mins(30), Some(mins(90)), "Mail", ""),
-            activity(3, mins(30), Some(mins(90)), "Mail", ""),
+            activity(2, mins(30), Some(mins(90)), "Mail", "inbox"),
+            activity(3, mins(30), Some(mins(90)), "Mail", "drafts"),
         ];
         let settings = own_lane(settings(), &bundle_of("Mail"));
 
@@ -808,18 +735,27 @@ mod tests {
     }
 
     #[test]
-    fn an_app_without_a_bundle_id_stays_in_the_activity_lane() {
+    fn an_app_without_a_bundle_id_is_keyed_by_its_name() {
         let row = with_bundle_id(code(1, 0, 10), None);
-        let settings = own_lane(hidden(settings(), &bundle_of("Code")), "other");
 
-        let view = view(&input(vec![row], vec![]), &settings);
+        let by_name = view(
+            &input(vec![row.clone()], vec![]),
+            &own_lane(settings(), "Code"),
+        );
+        let by_other_key = view(
+            &input(vec![row], vec![]),
+            &own_lane(hidden(settings(), &bundle_of("Code")), "other"),
+        );
 
-        assert_eq!(lane_ids(&view), ["activity"]);
-        assert_eq!(block_ids(activity_lane(&view)), ["a1"]);
+        assert_eq!(lane_ids(&by_name), ["activity", "app:Code"]);
+        assert_eq!(block_ids(lane(&by_name, "app:Code")), ["a1"]);
+        assert_eq!(lane(&by_name, "app:Code").app_key.as_deref(), Some("Code"));
+        assert_eq!(lane_ids(&by_other_key), ["activity"]);
+        assert_eq!(block_ids(activity_lane(&by_other_key)), ["a1"]);
     }
 
     #[test]
-    fn a_hidden_app_vanishes_from_lanes_totals_gaps_and_sources() {
+    fn a_hidden_app_vanishes_from_the_lanes_but_still_counts_and_leaves_no_gap() {
         let rows = vec![
             code(1, 0, 10),
             activity(2, mins(10), Some(mins(60)), "Mail", ""),
@@ -833,11 +769,13 @@ mod tests {
 
         let view = view(&input(rows, vec![]), &settings);
 
-        assert_eq!(lane_ids(&view), ["activity"]);
+        assert_eq!(lane_ids(&view), ["activity", "source:planner"]);
         assert_eq!(block_ids(activity_lane(&view)), ["a1", "a3"]);
-        assert_eq!(view.totals.tracked_ms, mins(20));
-        assert_eq!(gap_spans(&view), [(mins(10), mins(60))]);
-        assert_eq!(view.sources, ["tracker"]);
+        assert_eq!(block_ids(lane(&view, "source:planner")), ["a4"]);
+        assert_eq!(view.totals.tracked_ms, mins(70));
+        assert!(view.gaps.is_empty());
+        assert_eq!(view.sources, ["external:planner", "tracker"]);
+        assert_eq!(view.first_activity, Some(0));
     }
 
     #[test]
@@ -980,7 +918,9 @@ mod tests {
                 end: mins(20),
                 app: "Code".into(),
                 bundle_id: Some("test.code".into()),
+                app_key: "test.code".into(),
                 title: "main.rs".into(),
+                label: "main.rs".into(),
                 url: Some("https://example.com".into()),
                 path: Some("/tmp/main.rs".into()),
                 source: "tracker".into(),
@@ -1029,14 +969,16 @@ mod tests {
                     "id": "activity",
                     "kind": "activity",
                     "label": "Activity",
-                    "bundleId": null,
+                    "appKey": null,
                     "blocks": [{
                         "id": "a1",
                         "start": mins(10),
                         "end": mins(20),
                         "app": "Code",
                         "bundleId": "test.code",
+                        "appKey": "test.code",
                         "title": "main.rs",
+                        "label": "main.rs",
                         "url": null,
                         "path": null,
                         "source": "tracker",
@@ -1052,7 +994,9 @@ mod tests {
                 "gaps": [],
                 "totals": {"recordedMs": 0, "trackedMs": mins(10), "awayMs": mins(10)},
                 "firstActivity": mins(10),
-                "sources": ["tracker"]
+                "sources": ["tracker"],
+                "compact": false,
+                "hiddenApps": []
             })
         );
     }
@@ -1067,13 +1011,6 @@ mod tests {
         ] {
             assert_eq!(serde_json::to_value(kind).unwrap(), json!(expected));
         }
-    }
-
-    #[test]
-    fn the_summary_lane_is_not_built_yet() {
-        let view = view(&input(vec![code(1, 0, 10)], vec![]), &settings());
-
-        assert!(view.lanes.iter().all(|l| l.kind != LaneKind::Summary));
     }
 
     fn covered_flags(rows: Vec<ActivityRow>, recordings: Vec<Recording>) -> Vec<bool> {

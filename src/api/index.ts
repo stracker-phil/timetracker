@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -59,6 +59,7 @@ export const api = {
   setAppSetting: (bundleId: string, patch: AppSettingPatch) => invoke<Settings>("app_settings_set", { bundleId, patch }),
   /** Apps the tracker recorded in the last `days` days, most time first. */
   appsSeen: (days: number) => invoke<AppSeen[]>("apps_seen", { days }),
+  appsList: () => invoke<KnownApp[]>("apps_list"),
   /** Closed spans of other apps, all or none; returns their ids. */
   activityAdd: (items: ActivityInput[]) => invoke<number[]>("activity_add", { items }),
   /** Opens a span of `input.source`, closing its open one. */

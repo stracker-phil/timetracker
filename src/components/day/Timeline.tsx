@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
-import type { ActivityBlock, DayView, Lane as LaneData } from "../../api";
-import { copyText } from "../../lib/clipboard";
+import type { DayView } from "../../api";
 import { findBlock } from "../../lib/blockFocus";
 import { isToday } from "../../lib/day";
 import { formatClock } from "../../lib/format";
 import { useStore } from "../../state/store";
-import { useContextMenu, type MenuEntry } from "../ContextMenu";
+import { useContextMenu } from "../ContextMenu";
+import { blockMenu } from "./blockMenu";
 import { HoverCard } from "./HoverCard";
 import { Lane } from "./Lane";
 import { LaneHeader } from "./LaneHeader";
@@ -21,8 +21,11 @@ const MINUTE_MS = 60_000;
 const SHOW_CARD_MS = 300;
 const HIDE_CARD_MS = 150;
 const NOW_TICK_MS = 30_000;
+/** Compact density draws the day at this share of the zoom's height. */
+const COMPACT_SCALE = 0.6;
 
 const blockIdAt = (target: EventTarget) => (target instanceof Element ? (target.closest<HTMLElement>("[data-block-id]")?.dataset.blockId ?? null) : null);
+const gearAt = (target: EventTarget) => (target instanceof Element ? target.closest<HTMLElement>("[data-block-gear]") : null);
 
 function useNow(live: boolean): number {
   const [now, setNow] = useState(() => Date.now());
@@ -57,34 +60,10 @@ function useHoveredBlock() {
   };
 }
 
-function blockMenu(block: ActivityBlock, lane: LaneData): MenuEntry[] {
-  const { setAppSetting, toast } = useStore.getState();
-  const bundleId = block.bundleId;
-  const entries: MenuEntry[] = [];
-  if (bundleId && block.source === "tracker") {
-    entries.push(
-      lane.kind === "app"
-        ? { label: "Back to activity lane", action: () => void setAppSetting(bundleId, { ownLane: false }) }
-        : { label: `Own lane for ${block.app}`, action: () => void setAppSetting(bundleId, { ownLane: true }) },
-      {
-        label: `Hide ${block.app}`,
-        action: () =>
-          void setAppSetting(bundleId, { hidden: true }).then(
-            (hidden) => hidden && toast("info", `${block.app} is hidden from the timeline`, { label: "Undo", run: () => void setAppSetting(bundleId, { hidden: false }) }),
-          ),
-      },
-      "separator",
-    );
-  }
-  entries.push({ label: "Copy title", action: () => void copyText(block.title, "the title") });
-  const { url } = block;
-  if (url) entries.push({ label: "Copy URL", action: () => void copyText(url, "the URL") });
-  return entries;
-}
-
 /** The day's scroll box. */
 export function Timeline({ view }: { view: DayView }) {
-  const pxPerMinute = useStore((s) => s.uiState.timelineZoom);
+  const zoom = useStore((s) => s.uiState.timelineZoom);
+  const pxPerMinute = view.compact ? zoom * COMPACT_SCALE : zoom;
   const focusedBlock = useStore((s) => s.focusedBlock);
   const detailsBlock = useStore((s) => s.detailsBlock);
   const menuRequest = useStore((s) => s.blockMenuRequest);
@@ -111,7 +90,7 @@ export function Timeline({ view }: { view: DayView }) {
 
   const openMenu = (anchor: { x: number; y: number } | MouseEvent, id: string) => {
     const found = findBlock(view, id);
-    if (found) menu.open(anchor, blockMenu(found.block, view.lanes[found.lane]));
+    if (found) menu.open(anchor, blockMenu(found.block, view.lanes[found.lane], useStore.getState().settings));
   };
 
   useEffect(() => {
@@ -126,7 +105,7 @@ export function Timeline({ view }: { view: DayView }) {
   const card = findBlock(view, cardId);
 
   return (
-    <div className="timeline" ref={scrollRef} onMouseLeave={hover.leave}>
+    <div className={view.compact ? "timeline timeline--compact" : "timeline"} ref={scrollRef} onMouseLeave={hover.leave}>
       <LaneHeader lanes={view.lanes} />
       <div className="timeline-body" style={{ height: y(end) }}>
         <RecordingsColumn ref={columnRef} recordings={view.recordings} y={y} pxPerMinute={pxPerMinute} selection={selection} />
@@ -135,7 +114,14 @@ export function Timeline({ view }: { view: DayView }) {
           className={pxPerMinute >= HALF_HOURS_FROM_PX ? "lanes half-hours" : "lanes"}
           style={{ "--hour-px": `${60 * pxPerMinute}px` } as CSSProperties}
           onMouseOver={(e) => hover.over(blockIdAt(e.target))}
-          onPointerDown={press}
+          onPointerDown={(e) => gearAt(e.target) === null && press(e)}
+          onClick={(e) => {
+            const gear = gearAt(e.target);
+            const id = blockIdAt(e.target);
+            if (!gear || !id) return;
+            const rect = gear.getBoundingClientRect();
+            openMenu({ x: rect.left, y: rect.bottom }, id);
+          }}
           onContextMenu={(e) => {
             const id = blockIdAt(e.target);
             if (id) openMenu(e, id);

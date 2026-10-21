@@ -159,6 +159,27 @@ lane, an external source's lane (its name in mono). Lane labels stick to the top
 - **Empty day:** "Nothing tracked on this day" with the tracker's status line; without the Accessibility
   permission "Tracking needs permission" with Allow….
 - **Zoom** is 1–8 px per minute (default 2.5), kept in `ui_state.json` as `timelineZoom`.
+- **Summary lane** comes first, on `--band`: one block per run of intervals with the same main app.
+- **Compact** draws the day at 60% of the zoom, every block on one line.
+- **Block gear:** a hovered block shows a gear at its top right; it opens the same menu as a right-click.
+
+### Timeline settings
+
+Settings → Timeline and the Day header's gear (both save at once; the Day view reloads):
+
+| Setting | Values | Does |
+|---|---|---|
+| Summary lane | on (15 min) | a first lane with the main app of every 5, 10, 15, 20, 30, 45 or 60 minutes |
+| Show all activity | on | the activity lane; off leaves the summary, app and source lanes |
+| Compact activity | off | shorter rows, one line per block |
+| Group by app and website | on | one block per app, whatever its windows are called; off splits by title |
+| Continuity | short | joins blocks of one app across gaps under 2 (short), 8 (regular) or 16 (extended) min; never across sleep, lock or a pause |
+| Noise cancellation | low | hides blocks under 2 (low), 4 (medium) or 6 (high) min; tracked time still counts them |
+| Titles | document | label blocks with the document or page name, or with the app |
+| Time snapping | 5 min | the grid recordings snap to: 1, 5, 10 or 15 min |
+
+Per app (Settings → Timeline → Apps, or a block's menu): Group by app and Titles (default follows the
+timeline), Hidden (gone from every lane; the header popover lists hidden apps with Unhide), Own lane.
 
 ## Recordings
 

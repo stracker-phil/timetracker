@@ -24,7 +24,9 @@ export function block(patch: Partial<ActivityBlock> = {}): ActivityBlock {
     end: at("09:30"),
     app: "Safari",
     bundleId: "com.apple.Safari",
+    appKey: "com.apple.Safari",
     title: "Start Page",
+    label: patch.title ?? "Start Page",
     url: null,
     path: null,
     source: "tracker",
@@ -59,7 +61,7 @@ export function recordingBlock(patch: Partial<RecordingBlock> = {}): RecordingBl
 
 /** The Activity lane without blocks; `patch` overrides fields. */
 export function lane(patch: Partial<Lane> = {}): Lane {
-  return { id: "activity", kind: "activity", label: "Activity", bundleId: null, blocks: [], ...patch };
+  return { id: "activity", kind: "activity", label: "Activity", appKey: null, blocks: [], ...patch };
 }
 
 /** An external source lane (`source:<name>`) whose blocks all carry that source. */
@@ -67,9 +69,14 @@ export function sourceLane(name: string, blocks: ActivityBlock[]): Lane {
   return lane({ id: `source:${name}`, kind: "source", label: name, blocks: blocks.map((b) => ({ ...b, source: `external:${name}` })) });
 }
 
-/** An app lane (`app:<bundle id>`). */
-export function appLane(label: string, bundleId: string, blocks: ActivityBlock[]): Lane {
-  return lane({ id: `app:${bundleId}`, kind: "app", label, bundleId, blocks });
+/** An app lane (`app:<app key>`). */
+export function appLane(label: string, appKey: string, blocks: ActivityBlock[]): Lane {
+  return lane({ id: `app:${appKey}`, kind: "app", label, appKey, blocks });
+}
+
+/** The Summary lane. */
+export function summaryLane(blocks: ActivityBlock[]): Lane {
+  return lane({ id: "summary", kind: "summary", label: "Summary", blocks });
 }
 
 export function away(patch: Partial<AwayBlock> = {}): AwayBlock {
@@ -93,6 +100,8 @@ export function dayView(patch: Partial<DayView> = {}): DayView {
     day,
     bounds: dayBounds(day),
     lanes,
+    compact: false,
+    hiddenApps: [],
     away: [],
     gaps: [],
     recordings: [],

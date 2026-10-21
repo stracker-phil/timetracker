@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 import type { DayTotals } from "../../api";
 import { useBindingLabel } from "../../commands";
 import { formatDayLabel, isToday } from "../../lib/day";
@@ -13,6 +13,7 @@ export function DayHeader({ day, totals }: { day: string; totals: DayTotals | nu
   const prevKeys = useBindingLabel("nav.prevDay");
   const nextKeys = useBindingLabel("nav.nextDay");
   const todayKeys = useBindingLabel("nav.today");
+  const settingsKeys = useBindingLabel("day.settings");
   return (
     <header className="day-head">
       <button type="button" className="icon-btn" aria-label="Previous day" title={withKeys("Previous day", prevKeys)} onClick={prevDay}>
@@ -30,6 +31,16 @@ export function DayHeader({ day, totals }: { day: string; totals: DayTotals | nu
           recorded {formatHm(totals.recordedMs)} · tracked {formatHm(totals.trackedMs)} · away {formatHm(totals.awayMs)}
         </span>
       )}
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label="Timeline settings"
+        title={withKeys("Timeline settings", settingsKeys)}
+        data-timeline-settings
+        onClick={() => useStore.getState().openDialog({ type: "timelineSettings" })}
+      >
+        <SlidersHorizontal size="1.077rem" />
+      </button>
     </header>
   );
 }

@@ -113,6 +113,7 @@ const APP_COMMANDS: Command[] = [
   { id: "day.nextLane", title: "Block in the lane to the right", scope: "day", defaultBinding: "L", run: () => moveFocus(stepLane, 1) },
   { id: "day.details", title: "Block details", scope: "day", defaultBinding: "Space", when: hasFocusedBlock, run: () => useStore.getState().toggleDetails() },
   { id: "day.blockMenu", title: "Block actions…", scope: "day", defaultBinding: "Ctrl+Enter", when: hasFocusedBlock, run: () => useStore.getState().requestBlockMenu() },
+  { id: "day.settings", title: "Timeline settings", scope: "day", run: () => useStore.getState().openDialog({ type: "timelineSettings" }) },
   { id: "day.clearFocus", title: "Clear selection", scope: "day", defaultBinding: "Escape", when: () => hasFocusedBlock() || hasSelection() || hasFocusedRecording(), run: clearDayFocus },
   { id: "recording.open", title: "Record selection or edit recording", scope: "day", defaultBinding: "Enter", when: () => hasSelection() || hasFocusedRecording(), run: openRecording },
   { id: "recording.create", title: "New recording from selection", scope: "day", menu: true, when: hasSelection, run: () => (useStore.getState().focusRecording(null), openRecording()) },

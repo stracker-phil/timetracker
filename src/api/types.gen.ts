@@ -2,9 +2,17 @@
 
 export type ActivityBlock = { 
 /**
- * `a<activity id>`.
+ * `a<first member id>`; `s<start>` in the summary lane.
  */
-id: string, start: number, end: number, app: string, bundleId: string | null, title: string, url: string | null, path: string | null, source: string, 
+id: string, start: number, end: number, app: string, bundleId: string | null, appKey: string, 
+/**
+ * The window title of its longest member.
+ */
+title: string, 
+/**
+ * What the block shows: the document name or the app, by the title setting.
+ */
+label: string, url: string | null, path: string | null, source: string, 
 /**
  * At least half of it lies inside recordings.
  */
@@ -52,7 +60,7 @@ details?: unknown, };
 export type AppErrorField = { path: string, message: string, };
 
 /**
- * Per-app overrides of the timeline settings, keyed by bundle id.
+ * Per-app overrides of the timeline settings, keyed by bundle id (the app's name without one).
  */
 export type AppOverride = { groupByApp: boolean | null, titles: Titles | null, hidden: boolean, ownLane: boolean, };
 
@@ -66,9 +74,10 @@ export type AppSeen = { bundleId: string | null,
 app: string, lastSeen: number, totalMs: number, };
 
 /**
- * The fields of one app's `AppOverride` to change; absent ones stay.
+ * The fields of one app's `AppOverride` to change; absent ones stay, `null` returns an override to the
+ * timeline's own setting.
  */
-export type AppSettingPatch = { ownLane?: boolean, hidden?: boolean, };
+export type AppSettingPatch = { groupByApp?: boolean | null, titles?: Titles | null, ownLane?: boolean, hidden?: boolean, };
 
 export type AwayBlock = { id: number, start: number, end: number, reason: AwayReason, };
 
@@ -143,13 +152,14 @@ export type DayTotals = {
  */
 recordedMs: number, 
 /**
- * Tracker activity, overlaps counted once; external sources are not tracked time.
+ * Tracker activity, overlaps counted once, hidden apps and noise included; external sources are not
+ * tracked time.
  */
 trackedMs: number, awayMs: number, };
 
 export type DayView = { day: Day, bounds: [number, number], 
 /**
- * Activity lane first, then app lanes, then source lanes.
+ * Summary lane, activity lane, app lanes, source lanes; each only when present.
  */
 lanes: Array<Lane>, 
 /**
@@ -159,7 +169,15 @@ recordings: Array<RecordingBlock>, away: Array<AwayBlock>, gaps: Array<Gap>, tot
 /**
  * Every source of the day's activity, sorted.
  */
-sources: Array<string>, };
+sources: Array<string>, 
+/**
+ * The timeline's compact density.
+ */
+compact: boolean, 
+/**
+ * Every app the settings hide, by name.
+ */
+hiddenApps: Array<HiddenApp>, };
 
 export type ErrorKind = "db" | "io" | "invalid_input" | "not_found" | "overlap" | "permission_required" | "tracker_paused" | "session_not_found" | "cancelled";
 
@@ -170,11 +188,31 @@ export type Gap = { start: number, end: number, };
 
 export type Group = "project" | "tag" | "day" | "week" | "month";
 
+export type HiddenApp = { appKey: string, 
+/**
+ * Its name on this day, else the key.
+ */
+app: string, };
+
+export type KnownApp = { 
+/**
+ * What its override is keyed by.
+ */
+appKey: string, 
+/**
+ * Its latest name; the key for an override of an app never tracked.
+ */
+app: string, totalMs: number, lastSeen: number | null, };
+
 export type Lane = { 
 /**
- * `activity`, `app:<bundle id>` or `source:<name>`.
+ * `summary`, `activity`, `app:<app key>` or `source:<name>`.
  */
-id: string, kind: LaneKind, label: string, bundleId: string | null, blocks: Array<ActivityBlock>, };
+id: string, kind: LaneKind, label: string, 
+/**
+ * The app of an app lane.
+ */
+appKey: string | null, blocks: Array<ActivityBlock>, };
 
 export type LaneKind = "summary" | "activity" | "app" | "source";
 

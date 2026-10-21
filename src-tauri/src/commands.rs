@@ -96,7 +96,6 @@ pub async fn update_settings(
     save_settings(&app, &state, settings).await
 }
 
-/// Changes one app's timeline override; every day may look different, so they all reload.
 #[tauri::command]
 pub async fn app_settings_set(
     app: AppHandle,
@@ -104,9 +103,8 @@ pub async fn app_settings_set(
     bundle_id: String,
     patch: AppSettingPatch,
 ) -> AppResult<Settings> {
-    let settings = state.settings.get().with_app(&bundle_id, &patch)?;
-    let saved = save_settings(&app, &state, settings).await?;
-    events::data_changed(&app, DataKind::Settings, None);
+    let (previous, saved) = state.settings.update_app(bundle_id, patch).await?;
+    settings_saved(&app, &previous, &saved);
     Ok(saved)
 }
 
@@ -116,13 +114,21 @@ async fn save_settings(
     settings: Settings,
 ) -> AppResult<Settings> {
     let (previous, saved) = state.settings.update(settings).await?;
-    apply_settings(app, Some(&previous), &saved);
+    settings_saved(app, &previous, &saved);
+    Ok(saved)
+}
+
+fn settings_saved(app: &AppHandle, previous: &Settings, saved: &Settings) {
+    apply_settings(app, Some(previous), saved);
+    // The timeline settings shape every day's view, so they all reload.
+    if previous.timeline != saved.timeline || previous.apps != saved.apps {
+        events::data_changed(app, DataKind::Settings, None);
+    }
     if let Some(tracker) = app.try_state::<std::sync::Arc<Tracker>>() {
         tracker.set_settings(saved.tracker.clone());
         tracker.set_capture(saved.capture.clone());
     }
     log::info!("Settings updated");
-    Ok(saved)
 }
 
 #[tauri::command]

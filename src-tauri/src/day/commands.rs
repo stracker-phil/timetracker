@@ -1,9 +1,9 @@
+use std::collections::HashMap;
 use std::time::Instant;
 
 use tauri::State;
 
-use std::collections::HashMap;
-
+use super::apps::{KnownApp, known_apps};
 use super::{DayInput, DayView, ProjectRef, ViewSettings, view};
 use crate::db::time::{Day, Ms, now_ms};
 use crate::db::{Db, activities, away, clients, projects, recordings, tags};
@@ -67,12 +67,18 @@ pub async fn day_view(state: State<'_, AppState>, day: String) -> AppResult<DayV
     Ok(result)
 }
 
+#[tauri::command]
+pub async fn apps_list(state: State<'_, AppState>) -> AppResult<Vec<KnownApp>> {
+    known_apps(&state.data.db()?, &state.settings.get(), now_ms()).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::day::RecordingBlock;
     use crate::db::activities::NewActivity;
     use crate::db::away::{AwayReason, NewAway};
+    use crate::store::settings::{Continuity, Noise};
     use crate::test_support::{activity, client_with_color, project, recording, temp_db};
 
     const HOUR: Ms = 3_600_000;
@@ -189,7 +195,7 @@ mod tests {
                 "com.apple.mail",
                 &crate::store::settings::AppSettingPatch {
                     own_lane: Some(true),
-                    hidden: None,
+                    ..Default::default()
                 },
             )
             .unwrap();
@@ -197,7 +203,7 @@ mod tests {
         let view = load(&db, today, &settings, start + HOUR).await.unwrap();
 
         let ids: Vec<&str> = view.lanes.iter().map(|l| l.id.as_str()).collect();
-        assert_eq!(ids, ["activity", "app:com.apple.mail"]);
+        assert_eq!(ids, ["summary", "activity", "app:com.apple.mail"]);
     }
 
     #[tokio::test]
@@ -289,7 +295,15 @@ mod tests {
             (first.totals.recorded_ms, second.totals.recorded_ms),
             (HOUR, 2 * HOUR)
         );
-        let covered = |view: &DayView| view.lanes[0].blocks.iter().all(|b| b.covered);
+        let covered = |view: &DayView| {
+            let blocks = &view
+                .lanes
+                .iter()
+                .find(|l| l.id == "activity")
+                .unwrap()
+                .blocks;
+            !blocks.is_empty() && blocks.iter().all(|b| b.covered)
+        };
         assert!(covered(&first) && covered(&second));
     }
 
@@ -335,8 +349,14 @@ mod tests {
         }
         tx.commit().await.unwrap();
 
+        let mut settings = Settings::default();
+        settings.timeline.summary_lane = false;
+        settings.timeline.group_by_app = false;
+        settings.timeline.continuity = Continuity::Off;
+        settings.timeline.noise = Noise::Off;
+
         let started = Instant::now();
-        let view = load(&db, today, &Settings::default(), start + 12 * HOUR)
+        let view = load(&db, today, &settings, start + 12 * HOUR)
             .await
             .unwrap();
         let elapsed = started.elapsed();

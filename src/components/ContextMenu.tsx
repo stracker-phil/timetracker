@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Check } from "lucide-react";
 
 interface MenuItem {
   label: string;
@@ -9,6 +10,8 @@ interface MenuItem {
   title?: string;
   /** A secondary line under the label. */
   detail?: string;
+  /** Makes the item a checkbox item; it shows a check mark when true. */
+  checked?: boolean;
 }
 
 export type MenuEntry = MenuItem | "separator";
@@ -88,8 +91,9 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
         ) : (
           <button
             key={`${i}-${item.label}`}
-            role="menuitem"
-            className={item.detail ? "with-detail" : undefined}
+            role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+            aria-checked={item.checked}
+            className={[item.detail && "with-detail", item.checked !== undefined && "checkable"].filter(Boolean).join(" ") || undefined}
             disabled={item.disabled}
             title={item.title}
             onClick={() => {
@@ -97,6 +101,7 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
               item.action();
             }}
           >
+            {item.checked !== undefined && <Check size="0.923rem" className="menu-check" aria-hidden="true" visibility={item.checked ? "visible" : "hidden"} />}
             {item.detail ? (
               <>
                 <span>{item.label}</span>

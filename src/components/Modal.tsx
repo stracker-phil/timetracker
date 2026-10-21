@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { isRecordingTarget } from "../commands/registry";
 
@@ -9,6 +9,8 @@ interface Props {
   className?: string;
   labelledBy?: string;
   label?: string;
+  /** Places the sheet itself, e.g. under the button that opened it. */
+  style?: CSSProperties;
   children: ReactNode;
 }
 
@@ -19,7 +21,7 @@ function focusables(root: HTMLElement): HTMLElement[] {
 }
 
 /** Keeps Tab inside the sheet and returns focus to the element that opened it. */
-export function Modal({ onClose, variant = "sheet", className = "", labelledBy, label, children }: Props) {
+export function Modal({ onClose, variant = "sheet", className = "", labelledBy, label, style, children }: Props) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -78,6 +80,7 @@ export function Modal({ onClose, variant = "sheet", className = "", labelledBy, 
         aria-modal="true"
         aria-labelledby={labelledBy}
         aria-label={label}
+        style={style}
         tabIndex={-1}
         onKeyDown={trapTab}
       >

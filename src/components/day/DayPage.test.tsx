@@ -5,14 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api, type DayView } from "../../api";
-import { handleKeydown, installCommands } from "../../commands";
+import { handleKeydown, installCommands, runCommand } from "../../commands";
 import { today } from "../../lib/day";
 import { resetStore, useStore } from "../../state/store";
 import { trackerStatus } from "../../test/data";
-import { appLane, at, away, block, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane } from "../../test/dayFixtures";
+import { appLane, at, away, block, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane } from "../../test/dayFixtures";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
 import { settings } from "../../test/settings";
+import { Dialogs } from "../Dialogs";
 import { PermissionDialog } from "../PermissionDialog";
 import { Toasts } from "../Toasts";
 import { DayPage } from "./DayPage";
@@ -25,8 +26,8 @@ const PX_PER_MINUTE = 2.5;
 const MINUTE_MS = 60_000;
 
 const docs = block({ id: "a1", app: "Safari", title: "Docs", start: at("09:00"), end: at("09:30"), url: "https://example.com/docs" });
-const todo = block({ id: "a2", app: "Notes", title: "Todo", bundleId: "com.apple.Notes", start: at("10:00"), end: at("10:30") });
-const standup = block({ id: "a3", app: "Planner", title: "Standup", bundleId: null, start: at("10:00"), end: at("11:00") });
+const todo = block({ id: "a2", app: "Notes", title: "Todo", bundleId: "com.apple.Notes", appKey: "com.apple.Notes", start: at("10:00"), end: at("10:30") });
+const standup = block({ id: "a3", app: "Planner", title: "Standup", bundleId: null, appKey: "Planner", start: at("10:00"), end: at("11:00") });
 const busyDay = () => dayView({ lanes: [lane({ blocks: [docs, todo] }), sourceLane("planner", [standup])] });
 
 const website = projectItem({ project: { id: "p-site", name: "Website" } });
@@ -40,13 +41,14 @@ const px = (time: string) => ((at(time) - dayBounds(DAY)[0]) / MINUTE_MS) * PX_P
 
 function renderDay(view: DayView, patch: Parameters<typeof resetStore>[0] = {}) {
   mocked.dayView.mockResolvedValue(view);
-  resetStore({ day: view.day, permissionDialogHidden: true, ...patch });
+  resetStore({ day: view.day, permissionDialogHidden: true, settings: settings(), ...patch });
   installCommands();
   return render(
     <>
       <DayPage />
       <Toasts />
       <PermissionDialog />
+      <Dialogs />
     </>,
   );
 }
@@ -151,6 +153,83 @@ describe("DayPage", () => {
       expect(screen.getByRole("button", { name: "Today" })).toBeDisabled();
       act(() => useStore.getState().prevDay());
       expect(screen.getByRole("button", { name: "Today" })).toBeEnabled();
+    });
+  });
+
+  describe("block labels", () => {
+    it("shows the app and the label of a block", async () => {
+      const doc = block({ id: "a6", app: "Preview", title: "Report.pdf — Page 2", label: "Report.pdf" });
+      renderDay(dayView({ lanes: [lane({ blocks: [doc] })] }));
+      const el = await blockEl("Preview: Report.pdf");
+      expect(within(el).getByText("Preview")).toBeInTheDocument();
+      expect(within(el).getByText("Report.pdf")).toBeInTheDocument();
+    });
+
+    it("shows only the app when the label is the app", async () => {
+      const plain = block({ id: "a7", app: "Safari", title: "Docs", label: "Safari" });
+      renderDay(dayView({ lanes: [lane({ blocks: [plain] })] }));
+      const el = await blockEl("Safari");
+      expect(within(el).getAllByText("Safari")).toHaveLength(1);
+      expect(within(el).queryByText("Docs")).not.toBeInTheDocument();
+    });
+
+    it("marks the summary lane by its kind", async () => {
+      renderDay(dayView({ lanes: [summaryLane([docs]), lane({ blocks: [todo] })] }));
+      const el = await blockEl("Safari: Docs");
+      expect(el.closest("[data-lane-id]")).toHaveClass("lane--summary");
+      expect(screen.getByLabelText("Notes: Todo").closest("[data-lane-id]")).toHaveClass("lane--activity");
+    });
+  });
+
+  describe("compact timeline", () => {
+    it("draws the day at 60% of the zoom", async () => {
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], compact: true }));
+      expect(await blockEl("Safari: Docs")).toHaveStyle({ height: "45px" });
+      expect(scrollBox()).toHaveClass("timeline--compact");
+    });
+
+    it("draws the full zoom otherwise", async () => {
+      renderDay(busyDay());
+      await blockEl("Safari: Docs");
+      expect(scrollBox()).not.toHaveClass("timeline--compact");
+    });
+  });
+
+  describe("timeline settings", () => {
+    const mail = { appKey: "com.apple.Mail", app: "Mail" };
+
+    it("opens from the header and lists the hidden apps", async () => {
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], hiddenApps: [mail] }));
+      await blockEl("Safari: Docs");
+      await userEvent.click(screen.getByRole("button", { name: "Timeline settings" }));
+      const dialog = within(await screen.findByRole("dialog", { name: "Timeline settings" }));
+      expect(dialog.getByRole("heading", { name: "Hidden apps: 1" })).toBeInTheDocument();
+      expect(dialog.getByText("Mail")).toBeInTheDocument();
+    });
+
+    it("says no app is hidden when none is", async () => {
+      renderDay(busyDay());
+      await blockEl("Safari: Docs");
+      await userEvent.click(screen.getByRole("button", { name: "Timeline settings" }));
+      expect(await screen.findByRole("heading", { name: "Hidden apps: 0" })).toBeInTheDocument();
+      expect(screen.getByText("No hidden apps")).toBeInTheDocument();
+    });
+
+    it("shows a hidden app again with Unhide", async () => {
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], hiddenApps: [mail] }));
+      await blockEl("Safari: Docs");
+      await userEvent.click(screen.getByRole("button", { name: "Timeline settings" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Unhide" }));
+      expect(mocked.setAppSetting).toHaveBeenCalledWith("com.apple.Mail", { hidden: false });
+    });
+
+    it("opens with the day.settings command", async () => {
+      renderDay(busyDay());
+      await blockEl("Safari: Docs");
+      act(() => {
+        runCommand("day.settings");
+      });
+      expect(await screen.findByRole("dialog", { name: "Timeline settings" })).toBeInTheDocument();
     });
   });
 
@@ -333,7 +412,7 @@ describe("DayPage", () => {
       renderDay(busyDay());
       await blockEl("Safari: Docs");
       await userEvent.keyboard("j{Control>}{Enter}{/Control}");
-      expect(await screen.findByRole("menuitem", { name: "Own lane for Safari" })).toBeInTheDocument();
+      expect(await screen.findByRole("menuitemcheckbox", { name: "Own lane" })).toBeInTheDocument();
       expect(screen.queryByRole("dialog", { name: "Safari details" })).not.toBeInTheDocument();
     });
 
@@ -409,10 +488,16 @@ describe("DayPage", () => {
       return screen.findByRole("menu");
     }
 
-    it("offers own lane, hide and copy for a tracker block with a bundle id and url", async () => {
+    it("offers the app settings, hide and copy for a tracker block with a url", async () => {
       renderDay(busyDay());
       const menu = within(await openMenu("Safari: Docs"));
-      expect(menu.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Own lane for Safari", "Hide Safari", "Copy title", "Copy URL"]);
+      expect(menu.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Hide Safari", "Copy title", "Copy URL"]);
+      expect(menu.getAllByRole("menuitemcheckbox").map((i) => i.textContent)).toEqual(["Group by app", "Titles: Document name", "Titles: App name", "Own lane"]);
+    });
+
+    it("checks Group by app when the timeline groups by app", async () => {
+      renderDay(busyDay());
+      expect(within(await openMenu("Safari: Docs")).getByRole("menuitemcheckbox", { name: "Group by app" })).toHaveAttribute("aria-checked", "true");
     });
 
     it("omits Copy URL when the block has none", async () => {
@@ -429,16 +514,25 @@ describe("DayPage", () => {
 
     it("moves the app to its own lane", async () => {
       renderDay(busyDay());
-      await userEvent.click(within(await openMenu("Safari: Docs")).getByRole("menuitem", { name: "Own lane for Safari" }));
+      const ownLane = within(await openMenu("Safari: Docs")).getByRole("menuitemcheckbox", { name: "Own lane" });
+      expect(ownLane).toHaveAttribute("aria-checked", "false");
+      await userEvent.click(ownLane);
       expect(mocked.setAppSetting).toHaveBeenCalledWith("com.apple.Safari", { ownLane: true });
     });
 
     it("moves an app lane's block back to the activity lane", async () => {
       renderDay(dayView({ lanes: [lane({ blocks: [todo] }), appLane("Safari", "com.apple.Safari", [docs])] }));
-      const menu = within(await openMenu("Safari: Docs"));
-      expect(menu.queryByRole("menuitem", { name: "Own lane for Safari" })).not.toBeInTheDocument();
-      await userEvent.click(menu.getByRole("menuitem", { name: "Back to activity lane" }));
+      const ownLane = within(await openMenu("Safari: Docs")).getByRole("menuitemcheckbox", { name: "Own lane" });
+      expect(ownLane).toHaveAttribute("aria-checked", "true");
+      await userEvent.click(ownLane);
       expect(mocked.setAppSetting).toHaveBeenCalledWith("com.apple.Safari", { ownLane: false });
+    });
+
+    it("opens the same menu from the gear of a block", async () => {
+      renderDay(busyDay());
+      await blockEl("Safari: Docs");
+      await userEvent.click(screen.getByRole("button", { name: "Actions for Safari" }));
+      expect(await screen.findByRole("menuitemcheckbox", { name: "Group by app" })).toBeInTheDocument();
     });
 
     it("hides the app and offers Undo, which shows it again", async () => {

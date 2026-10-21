@@ -2,11 +2,12 @@
 
 use std::collections::HashMap;
 
-use super::{DayInput, ProjectRef, ViewSettings};
+use super::{DayInput, DayView, Lane, ProjectRef, ViewSettings, view};
 use crate::db::activities::ActivityRow;
 use crate::db::away::{AwayReason, AwayRow};
 use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms};
+use crate::store::settings::{AppOverride, Continuity, Noise, TimelineSettings};
 
 pub const MIN: Ms = 60_000;
 pub const HOUR: Ms = 60 * MIN;
@@ -41,6 +42,40 @@ pub fn activity(id: i64, start: Ms, end: Option<Ms>, app: &str, title: &str) -> 
         path: None,
         private: false,
     }
+}
+
+/// Tracker rows from `(start_min, end_min, app, title)` tuples; ids 1..n.
+pub fn rows(spec: &[(i64, i64, &str, &str)]) -> Vec<ActivityRow> {
+    spec.iter()
+        .enumerate()
+        .map(|(i, &(start, end, app, title))| {
+            activity(i as i64 + 1, mins(start), Some(mins(end)), app, title)
+        })
+        .collect()
+}
+
+/// The view of a day holding only `activities`.
+pub fn render(activities: Vec<ActivityRow>, settings: &ViewSettings) -> DayView {
+    view(&input(activities, Vec::new()), settings)
+}
+
+pub fn lane_by_id<'a>(view: &'a DayView, id: &str) -> &'a Lane {
+    view.lanes
+        .iter()
+        .find(|l| l.id == id)
+        .unwrap_or_else(|| panic!("no lane {id}"))
+}
+
+pub fn lane_id_list(view: &DayView) -> Vec<&str> {
+    view.lanes.iter().map(|l| l.id.as_str()).collect()
+}
+
+/// `(start_min, end_min, members)` of each block of a lane, in lane order.
+pub fn shape(lane: &Lane) -> Vec<(i64, i64, Vec<i64>)> {
+    lane.blocks
+        .iter()
+        .map(|b| (b.start / MIN, b.end / MIN, b.members.clone()))
+        .collect()
 }
 
 pub fn from_source(row: ActivityRow, source: &str) -> ActivityRow {
@@ -87,19 +122,41 @@ pub fn away(id: i64, start: Ms, end: Option<Ms>, reason: AwayReason) -> AwayRow 
     }
 }
 
-/// Default timeline settings and no app overrides.
+/// Raw timeline settings: no summary lane, no grouping by app, no bridging, no noise filter; everything
+/// else at its default, and no app overrides.
 pub fn settings() -> ViewSettings {
-    ViewSettings::default()
+    with_timeline(ViewSettings::default(), |t| {
+        t.summary_lane = false;
+        t.group_by_app = false;
+        t.continuity = Continuity::Off;
+        t.noise = Noise::Off;
+    })
 }
 
-pub fn own_lane(mut settings: ViewSettings, bundle_id: &str) -> ViewSettings {
-    settings.apps.entry(bundle_id.into()).or_default().own_lane = true;
+pub fn with_timeline(
+    mut settings: ViewSettings,
+    edit: impl FnOnce(&mut TimelineSettings),
+) -> ViewSettings {
+    edit(&mut settings.timeline);
     settings
 }
 
-pub fn hidden(mut settings: ViewSettings, bundle_id: &str) -> ViewSettings {
-    settings.apps.entry(bundle_id.into()).or_default().hidden = true;
+/// Edits the override of `key`, creating it first.
+pub fn with_override(
+    mut settings: ViewSettings,
+    key: &str,
+    edit: impl FnOnce(&mut AppOverride),
+) -> ViewSettings {
+    edit(settings.apps.entry(key.into()).or_default());
     settings
+}
+
+pub fn own_lane(settings: ViewSettings, key: &str) -> ViewSettings {
+    with_override(settings, key, |a| a.own_lane = true)
+}
+
+pub fn hidden(settings: ViewSettings, key: &str) -> ViewSettings {
+    with_override(settings, key, |a| a.hidden = true)
 }
 
 /// A day of `(0, 24 h)` seen at `NOW`, without recordings.
