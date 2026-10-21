@@ -92,8 +92,10 @@ fn set_launch_at_login(app: &AppHandle, enabled: bool) {
 pub async fn update_settings(
     app: AppHandle,
     state: State<'_, AppState>,
-    settings: Settings,
+    mut settings: Settings,
 ) -> AppResult<Settings> {
+    // The page's copy may predate a data folder move, which owns `dataDir`.
+    settings.data_dir = state.settings.get().data_dir;
     // A shortcut the system refuses is reported on its row and not saved.
     if settings.timer_shortcut != state.settings.get().timer_shortcut {
         timers::shortcut::register(&app, &settings.timer_shortcut)?;
@@ -212,6 +214,23 @@ pub async fn choose_save_path(
     let path = path
         .into_path()
         .map_err(|e| AppError::Io(format!("The chosen path is not a file path: {e}")))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// The native folder panel, which can also create a folder; `None` when the user cancels.
+#[tauri::command]
+pub async fn choose_folder(app: AppHandle) -> AppResult<Option<String>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().pick_folder(move |path| {
+        let _ = tx.send(path);
+    });
+    let chosen = rx
+        .await
+        .map_err(|_| AppError::Io("The folder panel closed without an answer".into()))?;
+    let Some(path) = chosen else { return Ok(None) };
+    let path = path
+        .into_path()
+        .map_err(|e| AppError::Io(format!("The chosen folder is not a file path: {e}")))?;
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 

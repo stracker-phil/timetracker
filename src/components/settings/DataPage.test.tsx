@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -125,6 +125,103 @@ describe("Settings Data page", () => {
         'claude mcp add timetracker -- "/Applications/Time Tracker.app/Contents/MacOS/timetracker" mcp',
       );
       expect(await screen.findByText("Copied the command")).toBeInTheDocument();
+    });
+  });
+
+  describe("Move…", () => {
+    const moveButton = () => screen.getByRole("button", { name: /Move…/ });
+    const sheet = () => screen.findByRole("dialog", { name: "Move the data folder?" });
+
+    beforeEach(() => renderDataPage({ dir: "/data/dir" }));
+
+    it("does nothing when the folder panel is cancelled", async () => {
+      mocked.chooseFolder.mockResolvedValue(null);
+      await userEvent.click(moveButton());
+      await vi.waitFor(() => expect(mocked.chooseFolder).toHaveBeenCalled());
+      expect(screen.queryByRole("dialog", { name: "Move the data folder?" })).not.toBeInTheDocument();
+      expect(mocked.dataMove).not.toHaveBeenCalled();
+    });
+
+    it("asks for confirmation with both paths and the note that old files stay", async () => {
+      mocked.chooseFolder.mockResolvedValue("/new/place");
+      await userEvent.click(moveButton());
+      const dialog = within(await sheet());
+      expect(dialog.getByText("/new/place")).toBeInTheDocument();
+      expect(dialog.getByText("/data/dir")).toBeInTheDocument();
+      expect(dialog.getByText(/The old files stay in/)).toBeInTheDocument();
+      expect(mocked.dataMove).not.toHaveBeenCalled();
+    });
+
+    it("closes the sheet without moving when Cancel is pressed", async () => {
+      mocked.chooseFolder.mockResolvedValue("/new/place");
+      await userEvent.click(moveButton());
+      await userEvent.click(within(await sheet()).getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("dialog", { name: "Move the data folder?" })).not.toBeInTheDocument();
+      expect(mocked.dataMove).not.toHaveBeenCalled();
+    });
+
+    it("moves to the chosen folder, toasts, and shows the new location", async () => {
+      mocked.chooseFolder.mockResolvedValue("/new/place");
+      mocked.dataMove.mockResolvedValue(dataInfo({ dir: "/new/place" }));
+      await userEvent.click(moveButton());
+      mocked.dataInfo.mockResolvedValue(dataInfo({ dir: "/new/place" }));
+      await userEvent.click(within(await sheet()).getByRole("button", { name: "Move" }));
+      expect(mocked.dataMove).toHaveBeenCalledWith("/new/place");
+      expect(await screen.findByText("Data moved to /new/place. The old files are still in /data/dir.")).toBeInTheDocument();
+      expect(await screen.findByText("/new/place")).toBeInTheDocument();
+      expect(mocked.getSettings).toHaveBeenCalled();
+      expect(screen.queryByRole("dialog", { name: "Move the data folder?" })).not.toBeInTheDocument();
+    });
+
+    it("shows Moving… and disables the buttons while the copy runs", async () => {
+      mocked.chooseFolder.mockResolvedValue("/new/place");
+      let finish: (info: ReturnType<typeof dataInfo>) => void = () => {};
+      mocked.dataMove.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+      await userEvent.click(moveButton());
+      await userEvent.click(within(await sheet()).getByRole("button", { name: "Move" }));
+      const dialog = within(await sheet());
+      expect(dialog.getByRole("button", { name: "Moving…" })).toBeDisabled();
+      expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+      finish(dataInfo({ dir: "/new/place" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Move the data folder?" })).not.toBeInTheDocument());
+    });
+
+    it("renders a refused target inline and closes the sheet", async () => {
+      mocked.chooseFolder.mockResolvedValue("/not/empty");
+      mocked.dataMove.mockRejectedValue({ kind: "invalid_input", message: "That folder already contains a database", code: null });
+      await userEvent.click(moveButton());
+      await userEvent.click(within(await sheet()).getByRole("button", { name: "Move" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("That folder already contains a database");
+      expect(screen.queryByRole("dialog", { name: "Move the data folder?" })).not.toBeInTheDocument();
+      expect(screen.queryByText(/Moving the data folder failed/)).not.toBeInTheDocument();
+    });
+
+    it("toasts other errors instead of showing them inline", async () => {
+      mocked.chooseFolder.mockResolvedValue("/new/place");
+      mocked.dataMove.mockRejectedValue({ kind: "io", message: "Disk full", code: null });
+      await userEvent.click(moveButton());
+      await userEvent.click(within(await sheet()).getByRole("button", { name: "Move" }));
+      expect(await screen.findByText(/Moving the data folder failed/)).toBeInTheDocument();
+      expect(within(screen.getByRole("dialog")).queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("clears an earlier refusal after a successful move", async () => {
+      mocked.chooseFolder.mockResolvedValue("/x");
+      mocked.dataMove.mockRejectedValueOnce({ kind: "invalid_input", message: "Refused", code: null });
+      await userEvent.click(moveButton());
+      await userEvent.click(within(await sheet()).getByRole("button", { name: "Move" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Refused");
+      mocked.dataMove.mockResolvedValue(dataInfo({ dir: "/x" }));
+      await userEvent.click(moveButton());
+      await userEvent.click(within(await sheet()).getByRole("button", { name: "Move" }));
+      await waitFor(() => expect(within(screen.getByRole("dialog")).queryByRole("alert")).not.toBeInTheDocument());
+    });
+  });
+
+  describe("Move… when the store could not be opened", () => {
+    it("is disabled", async () => {
+      await renderDataPage({ available: false, error: "locked" });
+      expect(screen.getByRole("button", { name: /Move…/ })).toBeDisabled();
     });
   });
 

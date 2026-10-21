@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::db::{self, DB_FILE, DataStore};
+use crate::ipc::IpcMessage;
 use crate::launch::LaunchQueue;
 use crate::recordings::undo::UndoStack;
 use crate::store::keybindings::KeybindingsStore;
@@ -24,16 +25,96 @@ impl AppState {
     /// Blocks while the database opens, so it must not run inside async code.
     pub fn open(config_dir: &Path) -> Self {
         let settings = SettingsStore::open(config_dir);
-        let db_file = db::data_dir(&settings.get(), config_dir).join(DB_FILE);
+        let launches = LaunchQueue::default();
+        let db_file = data_dir_at_startup(&settings, config_dir, &launches).join(DB_FILE);
         Self {
             data: tauri::async_runtime::block_on(DataStore::open(db_file)),
             settings,
             keybindings: KeybindingsStore::open(config_dir),
             ui_state: UiStateStore::open(config_dir),
-            launches: LaunchQueue::default(),
+            launches,
             undo: Default::default(),
             config_dir: config_dir.to_path_buf(),
             log_override: None,
         }
+    }
+}
+
+/// A chosen data folder that is gone (an unmounted volume) leaves the setting alone; this run uses
+/// the default folder and the page says so once it loads.
+fn data_dir_at_startup(
+    settings: &SettingsStore,
+    config_dir: &Path,
+    launches: &LaunchQueue,
+) -> PathBuf {
+    let dir = db::data_dir(&settings.get(), config_dir);
+    let default = db::default_data_dir(config_dir);
+    if dir == default || dir.is_dir() {
+        return dir;
+    }
+    let message = format!("Data folder {} not found; using the default", dir.display());
+    log::error!("{message}");
+    launches.push(IpcMessage::Error { message });
+    default
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::launch::LaunchEvent;
+    use crate::test_support::temp_config_dir;
+
+    fn store_data_dir(config_dir: &Path, data_dir: &Path) {
+        let raw = serde_json::json!({ "dataDir": data_dir.display().to_string() });
+        std::fs::write(config_dir.join("settings.json"), raw.to_string()).unwrap();
+    }
+
+    #[test]
+    fn startup_opens_the_default_data_folder_without_a_chosen_one() {
+        let config = temp_config_dir();
+
+        let state = AppState::open(config.path());
+
+        assert_eq!(state.data.file(), config.path().join("data").join(DB_FILE));
+        assert!(state.data.db().is_ok());
+        assert_eq!(state.launches.take_events(), vec![]);
+    }
+
+    #[test]
+    fn startup_opens_the_chosen_data_folder_when_it_exists() {
+        let config = temp_config_dir();
+        let chosen = temp_config_dir();
+        store_data_dir(config.path(), chosen.path());
+
+        let state = AppState::open(config.path());
+
+        assert_eq!(state.data.file(), chosen.path().join(DB_FILE));
+        assert!(state.data.db().is_ok());
+        assert_eq!(state.launches.take_events(), vec![]);
+    }
+
+    #[test]
+    fn startup_falls_back_to_the_default_folder_when_the_chosen_one_is_gone() {
+        let config = temp_config_dir();
+        let gone = config.path().join("unmounted-volume");
+        store_data_dir(config.path(), &gone);
+
+        let state = AppState::open(config.path());
+
+        assert_eq!(state.data.file(), config.path().join("data").join(DB_FILE));
+        assert!(state.data.db().is_ok());
+        assert_eq!(
+            state.settings.get().data_dir,
+            Some(gone.display().to_string())
+        );
+        assert_eq!(
+            state.launches.take_events(),
+            vec![LaunchEvent::Error {
+                message: format!(
+                    "Data folder {} not found; using the default",
+                    gone.display()
+                )
+            }]
+        );
     }
 }

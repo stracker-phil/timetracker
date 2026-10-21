@@ -279,7 +279,7 @@ Enter picks, Esc closes the list without closing the sheet around it; the list c
 | Tracking → Tracker | `TrackerPage`: away after (idle minutes), check every (poll seconds) |
 | Tracking → Timeline | `TimelinePage` (`TimelinePage.tsx`): `TimelineControls` (summary lane and its interval slider, show all activity, compact, group by app, continuity, noise, titles, time snapping; each saved quietly), then Apps from `appsList()`: per app Group by app and Titles (Default or a value), Hidden, Own lane |
 | System → General | Launch at login |
-| System → Data | the data folder (Reveal in Finder), counts, first activity, size on disk, Export backup… (save panel → `backupExport`, toast "Backup written"); an alert when the store could not be opened |
+| System → Data | the data folder (Reveal in Finder; Move…: `chooseFolder` → a `Modal` sheet that says the database is copied, tracking pauses meanwhile and the old files stay → `dataMove` with the Move button busy (`Moving…`, Escape ignored) → toast "Data moved to …", settings and the page's `DataInfo` reload; an `invalid_input` refusal shows under the row, other errors toast), counts, first activity, size on disk, Export backup… (save panel → `backupExport`, toast "Backup written"); an alert when the store could not be opened |
 | System → Logging | log level, Open log folder |
 
 A change saves through `saveSettings` (`api.updateSettings`) and applies at once.

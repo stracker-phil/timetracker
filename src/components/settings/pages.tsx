@@ -1,7 +1,7 @@
 /** The core settings pages. Modules register their own pages from their install function. */
-import { Activity, Copy, Database, Download, EyeOff, FolderOpen, GanttChart, Keyboard, Palette, Power, ScrollText } from "lucide-react";
-import { useId } from "react";
-import { api, BUNDLED_FONTS, LOG_LEVELS, SCHEMES, TEXT_SIZES, type LogLevel, type SchemeId } from "../../api";
+import { Activity, Copy, Database, Download, EyeOff, FolderInput, FolderOpen, GanttChart, Keyboard, Palette, Power, ScrollText } from "lucide-react";
+import { useId, useState } from "react";
+import { api, BUNDLED_FONTS, LOG_LEVELS, SCHEMES, TEXT_SIZES, toAppError, type DataInfo, type LogLevel, type SchemeId } from "../../api";
 import { copyText } from "../../lib/clipboard";
 import { formatBytes, formatCount, formatDay } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
@@ -9,6 +9,7 @@ import { registerSettingsPage, type SettingsPageProps } from "../../registry/set
 import { fail } from "../../state/requests";
 import { useStore } from "../../state/store";
 import { AccentSwatches } from "../Accent";
+import { Modal } from "../Modal";
 import { capitalize, Group, NumberField, Row, Segmented, Switch, TextField } from "./controls";
 import { CapturePage, TrackerPage } from "./CapturePage";
 import { ShortcutsPage } from "./ShortcutsPage";
@@ -116,6 +117,98 @@ async function revealFolder(file: string) {
   }
 }
 
+/** Asks before copying the data into `target`; stays open, busy, while the copy runs. */
+function MoveSheet({ from, target, moving, onMove, onCancel }: { from: string; target: string; moving: boolean; onMove: () => void; onCancel: () => void }) {
+  return (
+    <Modal onClose={() => !moving && onCancel()} labelledBy="move-data-title">
+      <h2 id="move-data-title">Move the data folder?</h2>
+      <p>
+        TimeTracker copies its database to <span className="mono selectable">{target}</span> and uses it from then on. Tracking pauses while it copies.
+      </p>
+      <p className="hint">
+        The old files stay in <span className="mono selectable">{from}</span>. Delete them in Finder once you no longer need them.
+      </p>
+      <div className="actions">
+        <button type="button" className="btn" disabled={moving} onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="button" className="btn btn-primary" autoFocus disabled={moving} aria-busy={moving} onClick={onMove}>
+          {moving ? "Moving…" : "Move"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+type MoveOutcome = { kind: "moved" } | { kind: "refused"; reason: string } | { kind: "failed" };
+
+/** Moves the data into `target`; failures other than a refused folder are toasted. */
+async function moveData(from: string, target: string): Promise<MoveOutcome> {
+  try {
+    const moved = await api.dataMove(target);
+    const { toast, loadSettings } = useStore.getState();
+    toast("success", `Data moved to ${moved.dir}. The old files are still in ${from}.`);
+    // The store's copy of the settings still names the old folder.
+    void loadSettings();
+    return { kind: "moved" };
+  } catch (e) {
+    const err = toAppError(e);
+    if (err.kind === "invalid_input") return { kind: "refused", reason: err.message };
+    fail(err, "Moving the data folder failed");
+    return { kind: "failed" };
+  }
+}
+
+/** Location row with Reveal and Move…; a refused target shows under the row. */
+function FolderGroup({ info, onMoved }: { info: DataInfo; onMoved: () => void }) {
+  const [target, setTarget] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
+
+  const choose = async () => {
+    try {
+      const path = await api.chooseFolder();
+      if (path) setTarget(path);
+    } catch (e) {
+      fail(e, "Couldn't choose a folder");
+    }
+  };
+
+  const move = async (path: string) => {
+    setMoving(true);
+    const outcome = await moveData(info.dir, path);
+    if (outcome.kind === "moved") {
+      setRefused(null);
+      onMoved();
+    } else if (outcome.kind === "refused") {
+      setRefused(outcome.reason);
+    }
+    setMoving(false);
+    setTarget(null);
+  };
+
+  return (
+    <Group title="Folder">
+      <Row label="Location" description={<span className="mono selectable">{info.dir}</span>}>
+        <button type="button" className="btn" onClick={() => void revealFolder(info.file)}>
+          <FolderOpen size="1.077rem" /> Reveal in Finder
+        </button>
+        <button type="button" className="btn" disabled={!info.available} onClick={() => void choose()}>
+          <FolderInput size="1.077rem" /> Move…
+        </button>
+      </Row>
+      {refused && (
+        <div className="settings-row">
+          <div className="form-field-error selectable" role="alert">
+            {refused}
+          </div>
+        </div>
+      )}
+      {target && <MoveSheet from={info.dir} target={target} moving={moving} onMove={() => void move(target)} onCancel={() => setTarget(null)} />}
+    </Group>
+  );
+}
+
 function CountRow({ label, value }: { label: string; value: string }) {
   return (
     <Row label={label}>
@@ -132,7 +225,7 @@ function mcpAddCommand(binaryPath: string): string {
 
 function DataPage({ s, set }: SettingsPageProps) {
   const dataVersion = useStore((s) => s.dataVersion);
-  const { data: info } = useApiResult(`data-info:${dataVersion}`, api.dataInfo);
+  const { data: info, reload } = useApiResult(`data-info:${dataVersion}`, api.dataInfo);
   if (!info) return null;
   return (
     <>
@@ -141,13 +234,7 @@ function DataPage({ s, set }: SettingsPageProps) {
           The data store could not be opened, so nothing is recorded: {info.error}
         </div>
       )}
-      <Group title="Folder">
-        <Row label="Location" description={<span className="mono selectable">{info.dir}</span>}>
-          <button type="button" className="btn" onClick={() => void revealFolder(info.file)}>
-            <FolderOpen size="1.077rem" /> Reveal in Finder
-          </button>
-        </Row>
-      </Group>
+      <FolderGroup info={info} onMoved={reload} />
       {info.available && (
         <Group title="Contents">
           <CountRow label="Activity spans" value={formatCount(info.activities)} />

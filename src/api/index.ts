@@ -26,9 +26,11 @@ export const api = {
   /** The native save panel; `null` when the user cancels. */
   chooseSavePath: (fileName: string, extension: string) => invoke<string | null>("choose_save_path", { fileName, extension }),
   /** Opens the enclosing folder in Finder with `path` selected. */
+  chooseFolder: () => invoke<string | null>("choose_folder"),
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),
   /** Where the data lives and what it holds; never rejects, a broken store reports `available: false`. */
   dataInfo: () => invoke<DataInfo>("data_info"),
+  dataMove: (path: string) => invoke<DataInfo>("data_move", { path }),
   backupExport: (path: string) => invoke<BackupWritten>("backup_export", { path }),
   /** Rejects with `db` when the data store is not available, so the tracker is off. */
   trackerStatus: () => invoke<TrackerStatus>("tracker_status"),

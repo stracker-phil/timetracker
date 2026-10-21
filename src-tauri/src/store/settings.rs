@@ -509,6 +509,21 @@ impl SettingsStore {
             .await
     }
 
+    /// Only the data folder move changes `dataDir`. Returns `(previous, saved)`.
+    pub async fn set_data_dir(&self, dir: Option<String>) -> AppResult<(Settings, Settings)> {
+        self.store
+            .update_async(move |current| {
+                let next = Settings {
+                    data_dir: dir,
+                    ..current.clone()
+                }
+                .sanitized();
+                let previous = std::mem::replace(current, next);
+                (previous, current.clone())
+            })
+            .await
+    }
+
     /// `Settings::with_app` on the current settings under the store's lock, so concurrent app
     /// changes never undo each other. Returns `(previous, saved)`.
     pub async fn update_app(

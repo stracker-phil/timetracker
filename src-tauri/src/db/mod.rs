@@ -8,6 +8,7 @@ pub mod clients;
 pub mod commands;
 pub mod projects;
 pub mod recordings;
+pub mod relocate;
 pub mod tags;
 pub mod time;
 
@@ -136,15 +137,21 @@ impl Db {
 pub fn data_dir(settings: &Settings, config_dir: &Path) -> PathBuf {
     match settings.data_dir.as_deref().map(Path::new) {
         Some(dir) if dir.is_absolute() => dir.to_path_buf(),
-        _ => config_dir.join("data"),
+        _ => default_data_dir(config_dir),
     }
 }
 
+pub fn default_data_dir(config_dir: &Path) -> PathBuf {
+    config_dir.join("data")
+}
+
 /// The database file and the open database, or why it could not be opened. The app keeps running
-/// without it; commands that need it fail with `db`.
+/// without it; commands that need it fail with `db`. Both change when the data folder moves.
 pub struct DataStore {
-    file: PathBuf,
+    file: RwLock<PathBuf>,
     db: RwLock<Result<Db, String>>,
+    /// Held for a whole move, so two moves never overlap.
+    moving: tokio::sync::Mutex<()>,
 }
 
 impl DataStore {
@@ -154,13 +161,14 @@ impl DataStore {
             e.to_string()
         });
         DataStore {
-            file,
+            file: RwLock::new(file),
             db: RwLock::new(db),
+            moving: tokio::sync::Mutex::new(()),
         }
     }
 
-    pub fn file(&self) -> &Path {
-        &self.file
+    pub fn file(&self) -> PathBuf {
+        self.file.read_unpoisoned().clone()
     }
 
     pub fn db(&self) -> AppResult<Db> {
@@ -168,6 +176,18 @@ impl DataStore {
             message: "The data store is not available".into(),
             code: None,
         })
+    }
+
+    /// Makes the store unavailable for `reason` and returns the database it had open.
+    fn take(&self, reason: &str) -> AppResult<Db> {
+        let db = self.db()?;
+        *self.db.write_unpoisoned() = Err(reason.to_string());
+        Ok(db)
+    }
+
+    fn put(&self, file: PathBuf, db: Result<Db, String>) {
+        *self.file.write_unpoisoned() = file;
+        *self.db.write_unpoisoned() = db;
     }
 
     pub async fn close(&self) {

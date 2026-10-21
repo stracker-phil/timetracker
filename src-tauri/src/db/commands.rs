@@ -1,16 +1,20 @@
 use std::path::Path;
 
 use serde::Serialize;
-use tauri::State;
+use std::sync::Arc;
+
+use tauri::{AppHandle, Manager, State};
 use ts_rs::TS;
 
 use super::activities::{ActivityRow, AppSeen};
 use super::away::AwayRow;
 use super::backup::{self, BackupWritten};
 use super::time::{Day, Ms, now_ms};
-use super::{DataStore, Db, activities, away, projects, recordings};
+use super::{DataStore, Db, activities, away, projects, recordings, relocate};
 use crate::error::AppResult;
 use crate::state::AppState;
+use crate::timers;
+use crate::tracker::Tracker;
 
 /// Settings → Data. When the store is not available the counts are zero and `error` says why.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -91,7 +95,7 @@ pub async fn info(store: &DataStore) -> DataInfo {
             .map(|dir| dir.display().to_string())
             .unwrap_or_default(),
         file: file.display().to_string(),
-        size_bytes: size_on_disk(file),
+        size_bytes: size_on_disk(&file),
         activities: counts.activities,
         recordings: counts.recordings,
         projects: counts.projects,
@@ -105,6 +109,26 @@ pub async fn info(store: &DataStore) -> DataInfo {
 #[tauri::command]
 pub async fn data_info(state: State<'_, AppState>) -> AppResult<DataInfo> {
     Ok(info(&state.data).await)
+}
+
+/// Moves the database into the folder `path`; the old files stay.
+#[tauri::command]
+pub async fn data_move(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> AppResult<DataInfo> {
+    let tracker = app.try_state::<Arc<Tracker>>().map(|t| Arc::clone(&t));
+    let moved = relocate::move_data(
+        &state.data,
+        &state.settings,
+        tracker.as_deref(),
+        Path::new(&path),
+    )
+    .await;
+    // The timer's tick skipped while the store was away.
+    timers::publish(&app).await;
+    moved
 }
 
 #[tauri::command]

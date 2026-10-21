@@ -273,6 +273,15 @@ Notes carry their weekdays when the range is longer than a day (dates beyond a w
 Grouped by tag, `Tags overlap: a recording with several tags counts in each.` follows the total when it
 applies. No recordings: the header, then `No recordings.`
 
+## Data folder
+
+Settings → Data → Move… opens the macOS folder panel (it can create a folder), then a sheet: the database is
+copied there and used from then on, tracking pauses while it copies, and the old files stay where they were
+(both paths shown, mono, selectable). Move is the default button; while the copy runs it reads `Moving…`,
+both buttons are disabled and Escape does nothing. Success is a toast naming the new and the old folder. A
+folder TimeTracker refuses (inside the current folder, already holding data, not writable) is explained in red
+under the Location row instead of a toast.
+
 ## Keys
 
 Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`). Bare keys never fire

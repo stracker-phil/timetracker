@@ -25,11 +25,40 @@ query. Nothing is migrated or seeded: a missing file is `not_found` "TimeTracker
 found)", a file whose newest applied migration is older than this build's is refused with "Open TimeTracker
 once to update its data", and a newer one is read as it is.
 
-`AppState.data` is a `DataStore`: the file path plus the open `Db` or the reason it could not be opened, behind
-an `RwLock` so the folder can move later. `AppState::open` opens it before Tauri starts
+`AppState.data` is a `DataStore`: the file path plus the open `Db` or the reason it could not be opened, each
+behind an `RwLock` so the folder can move (below). `AppState::open` opens it before Tauri starts
 (`tauri::async_runtime::block_on`). When opening fails, the app logs it and runs without a database:
 `DataStore::db()` returns `db` "The data store is not available", and Settings → Data shows the error. On
 `RunEvent::Exit` the pool closes.
+
+A `dataDir` that is not a folder at startup (an unmounted volume) is left in the settings; `AppState::open`
+(`data_dir_at_startup`) logs an error, uses `db::default_data_dir` for this run and queues a launch error,
+which the page toasts on load: "Data folder … not found; using the default".
+
+### Moving the data folder
+
+`db::relocate::move_data(data, settings, tracker, target)`, behind the `data_move` command (Settings → Data →
+Move…). `DataStore`'s own mutex makes moves run one at a time. In order:
+
+1. `prepare_target` refuses (`invalid_input`) a relative path, a path inside the current data folder (checked
+   before and after resolving symlinks), something that is not a folder, a folder that already holds
+   `timetracker.sqlite`, and one it cannot write to (a probe file). A missing folder is created, mode 0700; an
+   existing one keeps its mode.
+2. `Tracker::suspend` takes the tracker's state lock, so ticks, events, pause and resume wait; no away span is
+   written and the open activity span stays open. `DataStore::take` makes the store unavailable ("The data
+   folder is moving"): commands fail with `db`, and the timer tick reads nothing (it writes nothing anyway;
+   `data_move` publishes the timer when done).
+3. `PRAGMA wal_checkpoint(TRUNCATE)`, then the pool closes.
+4. `timetracker.sqlite`, and `-wal`/`-shm` when present, are copied; each copy must match its source's size.
+   `Db::open_read_only` on the copy (which also checks the schema) and `PRAGMA integrity_check` must say `ok`.
+5. `SettingsStore::set_data_dir` writes the resolved folder to `dataDir`.
+6. `Db::open` on the copy goes into the store and into the tracker (`Suspended::resume`), which records on
+   from where it stopped: the copy holds the same rows and ids.
+
+A failure in steps 3–6 deletes the copies, reopens the old file, resumes the tracker on it and returns the
+error; when the copy fails to open after step 5, `dataDir` goes back to its previous value first. The old files
+always stay; the user deletes them in Finder. `update_settings` keeps the stored `dataDir` whatever the page
+sends, so a page holding settings from before a move never moves the data back.
 
 A backup is the JSON export below, or a copy of the folder while the app is not running.
 

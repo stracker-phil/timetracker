@@ -22,7 +22,8 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
    `forward_to_starting_instance` retries the socket 25 × 200 ms while that process starts up.
 4. **`AppState`.** `AppState::open(&config_dir)` opens every JSON store and the data store
    (`DataStore::open`, blocking on Tauri's async runtime; a failure is logged and the app runs without a
-   database, see [data.md](data.md#the-data-folder)); the CLI `--log-level` is kept in
+   database, see [data.md](data.md#the-data-folder); a `dataDir` that is gone falls back to the default folder
+   with a launch error toast); the CLI `--log-level` is kept in
    `AppState::log_override`. The effective level (override, else the stored `logLevel`) is computed here, so
    logging never starts at `Trace`.
 5. **`start_app`** builds Tauri with `.manage(state)` first, then `remote::Bridge`:
@@ -88,7 +89,9 @@ itself. Panics unwind ([ADR 0014](adr/0014-panic-unwind.md)), so code takes `std
 The tracker is managed beside `AppState` as `Arc<Tracker>` (`tracker/mod.rs`), and only when the data store
 opened. Its commands look it up with `try_state` and fail with `db` "The data store is not available"
 otherwise. `update_settings` hands the new `tracker` and `capture` settings to `Tracker::set_settings` and
-`Tracker::set_capture`.
+`Tracker::set_capture`, and keeps the stored `dataDir` (only `data_move` changes it, through
+`SettingsStore::set_data_dir`). The tracker's `Db` sits behind an `RwLock`: a data folder move holds the
+tracker with `Tracker::suspend` and hands it the new database with `Suspended::resume`.
 
 ## Tauri commands
 
@@ -108,8 +111,10 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `hide_window` | – | – | – |
 | `quit_app` | – | never returns | – |
 | `choose_save_path` | `fileName, extension` | `string \| null` (the save panel; `null` when cancelled) | `io` |
+| `choose_folder` | – | `string \| null` (the folder panel, which can create a folder; `null` when cancelled) | `io` |
 | `reveal_path` | `path: String` | – (Finder shows the enclosing folder with `path` selected) | `io` |
 | `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, available, error, binaryPath }` (`binaryPath`: `~/.local/bin/timetracker` when that link exists, else this executable; for the `claude mcp add` line) | – (errors are reported inside) |
+| `data_move` (`db/commands.rs`) | `path: String` | `DataInfo` of the new folder ([data.md](data.md#moving-the-data-folder)) | `invalid_input` (a refused folder), `io`, `db` |
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes, recordings, activities }` | `db`, `io`, `invalid_input` |
 | `report_run` (`reports/commands.rs`) | `filter: ReportFilter` | `ReportResult` (see [Reports](#reports)) | `invalid_input` (a range that ends before it starts), `db` |
 | `report_text` | `filter: ReportFilter` | the report as text (`reports::text`) | the same |
@@ -583,7 +588,7 @@ save leaves memory unchanged. `JsonStore::open_with` normalizes the loaded value
 | `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets unknown accents (`ACCENTS`) and schemes (`SCHEMES`) to `orange`, `ayu-light`, `ayu-mirage`; turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline` or `apps` emits `data_changed { kind: settings, day: null }`, so every open day reloads. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed. A trailing `++` is the `+` key |
 | `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay`, `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id) |
-| `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere |
+| `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere (written only by `data_move`) |
 | `timetracker.sock`, `timetracker.lock` | single instance |
 
 `src/api/types.ts` mirrors the constants the page needs (`ACCENTS`, `SCHEMES`, `SETTINGS_LIMITS`,

@@ -6,7 +6,7 @@ pub mod commands;
 pub mod filter;
 mod status;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -24,7 +24,7 @@ use crate::db::away::{self, AwayReason, AwayRow, NewAway};
 use crate::db::time::{Day, Ms, now_ms};
 use crate::error::AppResult;
 use crate::events::TRACKER_STATUS_EVENT;
-use crate::lock::MutexExt;
+use crate::lock::{MutexExt, RwLockExt};
 use crate::store::settings::{CaptureSettings, TrackerSettings};
 use crate::tray;
 
@@ -110,7 +110,8 @@ impl Inner {
 }
 
 pub struct Tracker {
-    db: Db,
+    /// Replaced when the data folder moves.
+    db: RwLock<Db>,
     source: Arc<dyn Source>,
     settings: Mutex<TrackerSettings>,
     capture: Mutex<CaptureSettings>,
@@ -139,7 +140,7 @@ impl Tracker {
         };
         Arc::new(Tracker {
             latest: Mutex::new(inner.status(now)),
-            db,
+            db: RwLock::new(db),
             source,
             settings: Mutex::new(settings),
             capture: Mutex::new(CaptureSettings::default()),
@@ -171,6 +172,19 @@ impl Tracker {
         *self.capture.lock_unpoisoned() = capture;
     }
 
+    fn db(&self) -> Db {
+        self.db.read_unpoisoned().clone()
+    }
+
+    /// Stops the tracker where it is, without an away span, until `Suspended::resume`: a tick, an
+    /// event, pause or resume waits meanwhile. The open activity span stays open.
+    pub async fn suspend(&self) -> Suspended<'_> {
+        Suspended {
+            tracker: self,
+            _inner: self.inner.lock().await,
+        }
+    }
+
     fn settings(&self) -> TrackerSettings {
         self.settings.lock_unpoisoned().clone()
     }
@@ -179,8 +193,8 @@ impl Tracker {
     /// (it is written on change only), so it ends one poll after its start; an away span ends now.
     pub async fn recover(&self, now: Ms) -> AppResult<()> {
         let poll = Ms::from(self.settings().poll_seconds) * 1_000;
-        activities::close_stale(&self.db, TRACKER_SOURCE, poll).await?;
-        away::close_open(&self.db, now).await?;
+        activities::close_stale(&self.db(), TRACKER_SOURCE, poll).await?;
+        away::close_open(&self.db(), now).await?;
         Ok(())
     }
 
@@ -277,7 +291,7 @@ impl Tracker {
         if inner.permission != PermissionStatus::Granted {
             if inner.state != TrackerState::NeedsPermission {
                 self.close_activity(inner, now).await?;
-                away::close_open(&self.db, now).await?;
+                away::close_open(&self.db(), now).await?;
                 inner.state = TrackerState::NeedsPermission;
             }
             return Ok(true);
@@ -337,21 +351,21 @@ impl Tracker {
             }
             if now - current.start < MIN_SPAN {
                 let (id, start) = (current.id, current.start);
-                if activities::replace_open(&self.db, id, new_activity(&snapshot, start)).await? {
+                if activities::replace_open(&self.db(), id, new_activity(&snapshot, start)).await? {
                     inner.current = Some(row(id, start, snapshot));
                     return Ok(());
                 }
             }
         }
         self.close_activity(inner, now).await?;
-        let id = activities::insert(&self.db, new_activity(&snapshot, now)).await?;
+        let id = activities::insert(&self.db(), new_activity(&snapshot, now)).await?;
         inner.current = Some(row(id, now, snapshot));
         Ok(())
     }
 
     async fn close_activity(&self, inner: &mut Inner, end: Ms) -> AppResult<()> {
         if inner.current.take().is_some() {
-            activities::close_open(&self.db, TRACKER_SOURCE, end).await?;
+            activities::close_open(&self.db(), TRACKER_SOURCE, end).await?;
         }
         Ok(())
     }
@@ -359,8 +373,8 @@ impl Tracker {
     /// Spans never overlap, so everything open ends where the away span starts.
     async fn enter_away(&self, inner: &mut Inner, start: Ms, reason: AwayReason) -> AppResult<()> {
         self.close_activity(inner, start).await?;
-        away::close_open(&self.db, start).await?;
-        away::insert(&self.db, NewAway { start, reason }).await?;
+        away::close_open(&self.db(), start).await?;
+        away::insert(&self.db(), NewAway { start, reason }).await?;
         inner.state = TrackerState::Away {
             since: start,
             reason,
@@ -369,8 +383,8 @@ impl Tracker {
     }
 
     async fn leave_away(&self, inner: &mut Inner, now: Ms) -> AppResult<()> {
-        let open = away::open(&self.db).await?;
-        away::close_open(&self.db, now).await?;
+        let open = away::open(&self.db()).await?;
+        away::close_open(&self.db(), now).await?;
         if let Some(span) = open {
             let end = now.max(span.start);
             let _ = self.away_ended.send(AwayRow {
@@ -401,6 +415,18 @@ impl Tracker {
         } else {
             PERMISSION_POLL
         }
+    }
+}
+
+pub struct Suspended<'a> {
+    tracker: &'a Tracker,
+    _inner: tokio::sync::MutexGuard<'a, Inner>,
+}
+
+impl Suspended<'_> {
+    /// Goes on recording into `db`, which holds the same rows as the one it suspended with.
+    pub fn resume(self, db: Db) {
+        *self.tracker.db.write_unpoisoned() = db;
     }
 }
 
