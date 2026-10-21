@@ -1,0 +1,61 @@
+/* Scheme-independent design tokens (docs/ux.md). Colors come from the active scheme
+   (`schemes/<id>.css`, chosen by `data-scheme` on <html>); this file only derives from them, so it holds
+   no color literal. lib/theme.ts sets `data-scheme`, `data-accent`, the font sizes and the
+   chosen font families. Sizing: chrome is in rem of `--ui-font-size` (html font-size), so ⌘= and ⌘- scale it;
+   `--data-font-size` drives times, durations and data values; the row anatomy (line,
+   padding, insets) and the window's own chrome (traffic lights) are in px. */
+:root {
+  --font-ui-bundled: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono-bundled: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --font-ui: var(--font-ui-bundled);
+  --font-mono: var(--font-mono-bundled);
+  --ui-font-size: 13px;
+  --data-font-size: 12px;
+  /* 11.5px, 13px and 17px at the default UI size; rem so ⌘= and ⌘- scale them */
+  --fs-small: 0.885rem;
+  --fs-base: 1rem;
+  --fs-large: 1.308rem;
+
+  --accent: var(--a-orange);
+  --o2: color-mix(in srgb, var(--text) 62%, transparent);
+  --o3: color-mix(in srgb, var(--text) 40%, transparent);
+
+  /* One scrollbar everywhere (app.css, scrollbars): an 8px track, a 6px thumb. */
+  --scrollbar-size: 8px;
+  --scrollbar-thumb: color-mix(in srgb, var(--o3) 55%, transparent);
+  --scrollbar-thumb-hover: var(--o3);
+  --scrollbar-thumb-active: var(--o2);
+
+  /* The line grows past 20px only for large data font sizes, so rows never clip their text. */
+  --pad: 3px;
+  --row-h: calc(max(20px, var(--data-font-size) * 1.6) + 2 * var(--pad));
+  /* A key cap's height (.keycap); a field or tab ending in one keeps the same gap beside it as above and below. */
+  --keycap-h: calc(1.231rem + 2px);
+
+  --radius-sm: 0.462rem;
+  --radius: 0.692rem;
+  --radius-lg: 0.923rem;
+  --sidebar-width: 14rem;
+  --toolbar-height: 3.385rem;
+  /* The window's buttons (trafficLightPosition in tauri.conf.json) don't scale with the UI size: the toolbar's
+     left inset keeps clear of them. */
+  --traffic-lights: 88px;
+}
+
+/* Derived from the accent wherever it is set: an element with `data-accent` sets its own. */
+:root, [data-accent] {
+  --cell: color-mix(in srgb, var(--accent) 24%, transparent);
+  --sel: color-mix(in srgb, var(--accent) 20%, transparent);
+  /* The accent as text: no lighter than the scheme allows, so it stays readable on light surfaces. */
+  --accent-text: oklch(from var(--accent) min(l, var(--accent-text-max-l)) c h);
+}
+
+[data-accent="orange"] { --accent: var(--a-orange); }
+[data-accent="gold"] { --accent: var(--a-gold); }
+[data-accent="blue"] { --accent: var(--a-blue); }
+[data-accent="purple"] { --accent: var(--a-purple); }
+[data-accent="red"] { --accent: var(--a-red); }
+[data-accent="magenta"] { --accent: var(--a-magenta); }
+[data-accent="indigo"] { --accent: var(--a-indigo); }
+[data-accent="teal"] { --accent: var(--a-teal); }
+[data-accent="graphite"] { --accent: var(--a-graphite); }

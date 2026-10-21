@@ -1,0 +1,66 @@
+import { useSyncExternalStore } from "react";
+import { SCHEMES, type SchemeId, type Settings } from "../api";
+
+// One query for the whole app; matchMedia is missing in some test environments.
+const darkQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+function subscribeToSystemTheme(onChange: () => void) {
+  darkQuery?.addEventListener("change", onChange);
+  return () => darkQuery?.removeEventListener("change", onChange);
+}
+
+const systemIsDark = () => darkQuery?.matches ?? false;
+
+export function useSystemDark(): boolean {
+  return useSyncExternalStore(subscribeToSystemTheme, systemIsDark);
+}
+
+type SchemeSettings = Pick<Settings, "theme" | "lightScheme" | "darkScheme">;
+
+const DEFAULT_SCHEMES: SchemeSettings = { theme: "system", lightScheme: "ayu-light", darkScheme: "ayu-mirage" };
+
+interface ResolvedScheme {
+  id: SchemeId;
+  dark: boolean;
+}
+
+/** The scheme that applies: the dark one when the theme (or, for `system`, the OS) is dark. */
+function resolveScheme(settings: SchemeSettings, systemDark: boolean): ResolvedScheme {
+  const dark = settings.theme === "system" ? systemDark : settings.theme === "dark";
+  const wanted = dark ? settings.darkScheme : settings.lightScheme;
+  const scheme = SCHEMES.find((s) => s.id === wanted) ?? SCHEMES.find((s) => s.dark === dark) ?? SCHEMES[0];
+  return { id: scheme.id, dark: scheme.dark };
+}
+
+/** The applied scheme, for code that can't read CSS tokens. */
+export function useResolvedScheme(settings: SchemeSettings | null): ResolvedScheme {
+  const systemDark = useSystemDark();
+  return resolveScheme(settings ?? DEFAULT_SCHEMES, systemDark);
+}
+
+/** A family name the user typed, quoted for CSS and put in front of the bundled stack. */
+function fontStack(family: string | null, bundled: string): string | null {
+  if (!family) return null;
+  return `"${family.replace(/["\\]/g, "\\$&")}", var(${bundled})`;
+}
+
+function setOrRemove(style: CSSStyleDeclaration, name: string, value: string | null) {
+  if (value) style.setProperty(name, value);
+  else style.removeProperty(name);
+}
+
+/** Applies appearance settings to <html> so CSS tokens pick them up. */
+export function applyAppearance(settings: Settings, systemDark = systemIsDark()) {
+  const root = document.documentElement;
+  root.dataset.scheme = resolveScheme(settings, systemDark).id;
+  root.dataset.accent = settings.accent;
+  root.style.setProperty("--ui-font-size", `${settings.uiFontSize}px`);
+  root.style.setProperty("--data-font-size", `${settings.dataFontSize}px`);
+  setOrRemove(root.style, "--font-ui", fontStack(settings.fontUi, "--font-ui-bundled"));
+  setOrRemove(root.style, "--font-mono", fontStack(settings.fontMono, "--font-mono-bundled"));
+}
+
+/** Applies the default scheme for the OS appearance before settings load, so the first paint has colors. */
+export function applyInitialScheme() {
+  document.documentElement.dataset.scheme = resolveScheme(DEFAULT_SCHEMES, systemIsDark()).id;
+}
