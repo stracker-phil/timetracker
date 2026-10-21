@@ -3,6 +3,25 @@ export function formatCount(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+/** `512 B`, `1.5 KB`, `12.3 MB` (binary units). */
+export function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
+}
+
+/** The local calendar date of a UTC millisecond timestamp, `2026-10-21`. */
+export function formatDay(ms: number): string {
+  const date = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
 
 const MINUTE_MS = 60_000;

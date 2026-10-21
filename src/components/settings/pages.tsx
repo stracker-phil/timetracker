@@ -1,8 +1,12 @@
 /** The core settings pages. Modules register their own pages from their install function. */
-import { FolderOpen, Keyboard, Palette, Power, ScrollText } from "lucide-react";
+import { Database, Download, FolderOpen, Keyboard, Palette, Power, ScrollText } from "lucide-react";
 import { useId } from "react";
 import { api, BUNDLED_FONTS, LOG_LEVELS, SCHEMES, TEXT_SIZES, type LogLevel, type SchemeId } from "../../api";
+import { formatBytes, formatCount, formatDay } from "../../lib/format";
+import { useApiResult } from "../../lib/useApiResult";
 import { registerSettingsPage, type SettingsPageProps } from "../../registry/settingsPages";
+import { fail } from "../../state/requests";
+import { useStore } from "../../state/store";
 import { AccentSwatches } from "../Accent";
 import { capitalize, Group, NumberField, Row, Segmented, Switch, TextField } from "./controls";
 import { ShortcutsPage } from "./ShortcutsPage";
@@ -89,9 +93,75 @@ function LoggingPage({ s, set }: SettingsPageProps) {
   );
 }
 
+async function exportBackup() {
+  try {
+    const path = await api.chooseSavePath(`timetracker-backup-${formatDay(Date.now())}`, "json");
+    if (!path) return;
+    await api.backupExport(path);
+    useStore.getState().toast("success", "Backup written");
+  } catch (e) {
+    fail(e, "Backup failed");
+  }
+}
+
+async function revealFolder(file: string) {
+  try {
+    await api.revealPath(file);
+  } catch (e) {
+    fail(e, "Couldn't reveal the folder");
+  }
+}
+
+function CountRow({ label, value }: { label: string; value: string }) {
+  return (
+    <Row label={label}>
+      <span className="mono selectable">{value}</span>
+    </Row>
+  );
+}
+
+function DataPage() {
+  const dataVersion = useStore((s) => s.dataVersion);
+  const { data: info } = useApiResult(`data-info:${dataVersion}`, api.dataInfo);
+  if (!info) return null;
+  return (
+    <>
+      {!info.available && (
+        <div className="settings-alert selectable" role="alert">
+          The data store could not be opened, so nothing is recorded: {info.error}
+        </div>
+      )}
+      <Group title="Folder">
+        <Row label="Location" description={<span className="mono selectable">{info.dir}</span>}>
+          <button type="button" className="btn" onClick={() => void revealFolder(info.file)}>
+            <FolderOpen size="1.077rem" /> Reveal in Finder
+          </button>
+        </Row>
+      </Group>
+      {info.available && (
+        <Group title="Contents">
+          <CountRow label="Activity spans" value={formatCount(info.activities)} />
+          <CountRow label="Recordings" value={formatCount(info.recordings)} />
+          <CountRow label="Projects" value={formatCount(info.projects)} />
+          <CountRow label="First activity" value={info.firstActivity === null ? "None yet" : formatDay(info.firstActivity)} />
+          <CountRow label="Size on disk" value={formatBytes(info.sizeBytes)} />
+        </Group>
+      )}
+      <Group title="Backup">
+        <Row label="JSON backup" description="Every client, project, tag, activity span and recording in one file.">
+          <button type="button" className="btn" disabled={!info.available} onClick={() => void exportBackup()}>
+            <Download size="1.077rem" /> Export backup…
+          </button>
+        </Row>
+      </Group>
+    </>
+  );
+}
+
 export function registerCoreSettingsPages() {
   registerSettingsPage({ id: "appearance", group: "Interface", label: "Appearance", icon: Palette, order: 10, intro: "How TimeTracker looks. Changes apply right away.", Body: AppearancePage });
   registerSettingsPage({ id: "shortcuts", group: "Interface", label: "Shortcuts", icon: Keyboard, order: 20, intro: "Click a shortcut and press the new keys. Backspace unbinds, Escape cancels.", Body: ShortcutsPage });
   registerSettingsPage({ id: "general", group: "System", label: "General", icon: Power, order: 10, intro: "How TimeTracker starts.", Body: GeneralPage });
+  registerSettingsPage({ id: "data", group: "System", label: "Data", icon: Database, order: 15, intro: "Where TimeTracker keeps your activity and recordings. Everything stays on this Mac.", Body: DataPage });
   registerSettingsPage({ id: "logging", group: "System", label: "Logging", icon: ScrollText, order: 20, intro: "What TimeTracker writes to its log file.", Body: LoggingPage });
 }

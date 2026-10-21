@@ -101,6 +101,7 @@ Shell components in `components/`: `Toolbar` (Day/Week/Month switch), `Sidebar` 
 | Appearance | theme, light and dark scheme swatches, accent row, UI and data sizes, fonts |
 | Shortcuts | `ShortcutsPage`: every command with its binding; record, reset or unbind |
 | System → General | Launch at login |
+| System → Data | the data folder (Reveal in Finder), counts, first activity, size on disk, Export backup… (save panel → `backupExport`, toast "Backup written"); an alert when the store could not be opened |
 | System → Logging | log level, Open log folder |
 
 A change saves through `saveSettings` (`api.updateSettings`) and applies at once.

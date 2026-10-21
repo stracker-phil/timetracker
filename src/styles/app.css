@@ -254,6 +254,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .settings-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.154rem; }
 .settings-row-text label, .settings-row-label { color: var(--text); }
 .settings-row-desc { font-size: var(--fs-small); color: var(--o2); line-height: 1.4; }
+.settings-alert { margin: 0 0 1rem; color: var(--style-red); line-height: 1.4; }
 .settings-row-control { flex: none; display: flex; align-items: center; gap: 0.462rem; }
 .settings-row-control select.input { width: 9rem; }
 .settings-input { display: flex; align-items: center; gap: 0.462rem; }

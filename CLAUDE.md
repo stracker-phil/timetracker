@@ -12,8 +12,8 @@ built for copying. See README.md for the product and CLI.
   lint must be green.
 - Tests pin behavior, not internals: public interfaces only, no log assertions, no call counts.
 - The implementation plan lives in `docs/plan/` (gitignored): `README.md` plus one file per step. Work one
-  step per session, in its order; when a step is done, tick it in `docs/plan/README.md` (the only change a
-  step makes there).
+  step per session, in its order; when a step is done, set its status from PENDING to DONE in
+  `docs/plan/README.md` (the only change a step makes there).
 
 ## Docs
 Technical docs live in `docs/` (index: `docs/README.md`). Read `docs/architecture.md` and the page of the

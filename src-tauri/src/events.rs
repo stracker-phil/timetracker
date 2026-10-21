@@ -4,6 +4,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use ts_rs::TS;
 
+use crate::db::time::Day;
+
 /// No payload; the page then calls `take_launch_events`.
 pub const LAUNCH_EVENT: &str = "launch";
 /// Payload: a command id.
@@ -12,11 +14,6 @@ pub const COMMAND_EVENT: &str = "command";
 pub const REMOTE_EVENT: &str = "remote";
 /// Payload: a `DataChanged`; views that show the day reload.
 pub const DATA_CHANGED_EVENT: &str = "data_changed";
-
-/// A local calendar day, `YYYY-MM-DD`.
-#[derive(Serialize, Debug, Clone, PartialEq, Eq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct Day(pub String);
 
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -52,7 +49,7 @@ mod tests {
     fn data_changed_serializes_kind_and_day() {
         let event = DataChanged {
             kind: DataKind::Recordings,
-            day: Some(Day("2026-10-21".into())),
+            day: Some(Day::parse("2026-10-21").unwrap()),
         };
         assert_eq!(
             serde_json::to_value(&event).unwrap(),

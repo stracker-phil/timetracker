@@ -34,9 +34,13 @@ launch and commit at the end of every step.
 
 - **Unit tests** sit next to the code in `#[cfg(test)] mod tests`. Stores and sockets use `tempfile`
   directories; nothing touches the real config dir, the user's data or the network.
+- **Database tests.** Repository tests run on `Db::open_memory()`; tests of opening, WAL and the data folder
+  use `temp_db` or a `DataStore` on a temp dir. Calendar tests pass a fixed zone (`chrono-tz`) to
+  `Day::bounds_in` / `Day::of_in`, never the machine's.
 - **Integration tests** live in `src-tauri/tests/` and use the public `timetracker_lib` API on a temp SQLite
-  file; slow ones are `#[ignore]` and run with `test:db`.
-- **Helpers** are in `src/test_support.rs` (`temp_config_dir`; later `temp_db` and the fake capture source),
+  file; slow ones are `#[ignore]` and run with `test:db` (none yet).
+- **Helpers** are in `src/test_support.rs`: `temp_config_dir`, `temp_db` (a migrated SQLite file in a temp
+  dir) and the fixtures `activity`, `project` and `recording` ([data.md](data.md#tests)); later the fake capture source,
   compiled with `cfg(test)` or the `test-util` feature ([ADR 0015](adr/0015-test-doubles-behind-test-util.md)).
   The crate lists itself as a dev-dependency with `test-util`, so `tests/` sees them.
 - **Generated types:** each `#[ts(export)]` type gets an `export_bindings_*` test that writes

@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::error::{AppError, AppResult};
@@ -147,6 +148,39 @@ pub fn open_url(app: AppHandle, url: String) -> AppResult<()> {
     }
     app.opener()
         .open_url(url, None::<&str>)
+        .map_err(|e| AppError::Io(e.to_string()))
+}
+
+/// The native save panel; `None` when the user cancels.
+#[tauri::command]
+pub async fn choose_save_path(
+    app: AppHandle,
+    file_name: String,
+    extension: String,
+) -> AppResult<Option<String>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(&file_name)
+        .add_filter(&extension, &[extension.as_str()])
+        .save_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let chosen = rx
+        .await
+        .map_err(|_| AppError::Io("The save panel closed without an answer".into()))?;
+    let Some(path) = chosen else { return Ok(None) };
+    let path = path
+        .into_path()
+        .map_err(|e| AppError::Io(format!("The chosen path is not a file path: {e}")))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// Opens the folder containing `path` in Finder, with `path` selected.
+#[tauri::command]
+pub fn reveal_path(app: AppHandle, path: String) -> AppResult<()> {
+    app.opener()
+        .reveal_item_in_dir(path)
         .map_err(|e| AppError::Io(e.to_string()))
 }
 

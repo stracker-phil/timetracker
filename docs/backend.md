@@ -18,7 +18,9 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
 3. **Single-instance handoff.** `forward` sends the message with `ipc::try_forward`. `Delivered` exits;
    `NoInstance` continues. Then `lock_instance` takes `timetracker.lock`; if another process holds it,
    `forward_to_starting_instance` retries the socket 25 × 200 ms while that process starts up.
-4. **`AppState`.** `AppState::open(&config_dir)` opens every JSON store; the CLI `--log-level` is kept in
+4. **`AppState`.** `AppState::open(&config_dir)` opens every JSON store and the data store
+   (`DataStore::open`, blocking on Tauri's async runtime; a failure is logged and the app runs without a
+   database, see [data.md](data.md#the-data-folder)); the CLI `--log-level` is kept in
    `AppState::log_override`. The effective level (override, else the stored `logLevel`) is computed here, so
    logging never starts at `Trace`.
 5. **`start_app`** builds Tauri with `.manage(state)` first, then `remote::Bridge`:
@@ -36,7 +38,8 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
    `deep_link::listen`, and hides the window when started with `--hidden`.
 
    The run loop prevents `RunEvent::ExitRequested { code: None }`, which macOS sends when the last window
-   closes; an explicit `app.exit(0)` carries a code and passes.
+   closes; an explicit `app.exit(0)` carries a code and passes. On `RunEvent::Exit` it closes the database
+   pool.
 
 ### Settings side effects
 
@@ -75,6 +78,7 @@ itself. Panics unwind ([ADR 0014](adr/0014-panic-unwind.md)), so code takes `std
 | `keybindings` | `KeybindingsStore` | `keybindings.json`; also feeds the menu |
 | `ui_state` | `UiStateStore` | `ui_state.json` |
 | `launches` | `LaunchQueue` | launch events the page has not taken yet |
+| `data` | `DataStore` | the database file and the open `Db`, or why it could not be opened ([data.md](data.md)) |
 | `config_dir` | `PathBuf` | the config dir |
 | `log_override` | `Option<LogLevel>` | the CLI `--log-level` |
 
@@ -95,6 +99,10 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `remote_reply` | `id, result, error` | – | – |
 | `hide_window` | – | – | – |
 | `quit_app` | – | never returns | – |
+| `choose_save_path` | `fileName, extension` | `string \| null` (the save panel; `null` when cancelled) | `io` |
+| `reveal_path` | `path: String` | – (Finder shows the enclosing folder with `path` selected) | `io` |
+| `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, available, error }` | – (errors are reported inside) |
+| `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes }` | `db`, `io`, `invalid_input` |
 
 To add a command: write it in its module (or `commands.rs` for app-wide ones), register it in
 `generate_handler!`, export its types with ts-rs, add the wrapper to `src/api/index.ts` and a default to
@@ -186,7 +194,7 @@ save leaves memory unchanged. `JsonStore::open_with` normalizes the loaded value
 | `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports` each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets unknown accents (`ACCENTS`) and schemes (`SCHEMES`) to `orange`, `ayu-light`, `ayu-mirage`; turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed. A trailing `++` is the `+` key |
 | `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay`, `zoom` (default 1), `paneSizes` (px by pane id) |
-| `data/timetracker.sqlite` | activity, recordings, projects, rules, saved reports (from the data store step); `dataDir` in `settings.json` moves it |
+| `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere |
 | `timetracker.sock`, `timetracker.lock` | single instance |
 
 `src/api/types.ts` mirrors the constants the page needs (`ACCENTS`, `SCHEMES`, `SETTINGS_LIMITS`,
@@ -212,13 +220,13 @@ cannot flood or forge log lines. Window titles, URLs and paths are user data: lo
 `error.rs`: `AppError` serializes through `ErrorJson` as `{ kind, message, code, field?, details? }`:
 
 - `message`: the `Display` text.
-- `code`: the SQLite error code of `AppError::Db` (`null` otherwise).
+- `code`: SQLite's extended result code of `AppError::Db`, e.g. `2067` for a unique constraint (`null` otherwise).
 - `field`: `{ path, message }` for `AppError::InvalidField` (kind `invalid_input`).
 - `details`: what an `overlap` error collides with (`AppError::Overlap`).
 
 | kind | Raised for |
 |---|---|
-| `db` | database errors |
+| `db` | database errors (`From<sqlx::Error>`, `From<MigrateError>`); the data store is not available |
 | `io` | file errors (`From<std::io::Error>`, message `File error: …`) |
 | `invalid_input` | bad arguments (`From<serde_json::Error>` too); a form field (`InvalidField`) |
 | `not_found` | an id that names nothing |
@@ -272,13 +280,15 @@ To add a menu item: add the TypeScript command, add the id, label and default to
 | `tauri-plugin-deep-link` | `timetracker://` links |
 | `tauri-plugin-autostart` | launch at login (LaunchAgent) |
 | `tokio` | runtime, IPC socket |
+| `sqlx` (`sqlite` with bundled libsqlite3, `runtime-tokio`, `migrate`, `macros` for `migrate!` and `FromRow`) | the data store |
 | `serde`, `serde_json` (`preserve_order`) | IPC, stores |
 | `clap` | CLI |
 | `thiserror` | `AppError` |
 | `chrono`, `uuid`, `url` | time stamps, ids, `is_web_url` |
 | `ts-rs` | TypeScript types for IPC |
 | `libc` | `getuid` for the IPC peer check |
-| `tempfile` (dev, and optional behind `test-util`) | store and socket tests |
+| `tempfile` (dev, and optional behind `test-util`) | store, socket and database tests |
+| `chrono-tz` (dev) | fixed time zones in the calendar tests |
 
 No HTTP client or network crate ([ADR 0013](adr/0013-no-network.md)); a test checks the macOS dependency
 graph. The library builds as `rlib`. The release profile uses LTO, `codegen-units = 1` and strip, and keeps

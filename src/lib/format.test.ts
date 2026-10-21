@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NOW } from "../test/now";
-import { formatClock, formatDuration, relativeTime } from "./format";
+import { formatBytes, formatClock, formatDay, formatDuration, relativeTime } from "./format";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -23,6 +23,25 @@ describe("formatClock", () => {
   it("shows local wall-clock time with zero padding", () => {
     expect(formatClock(new Date(2026, 9, 21, 9, 30).getTime())).toBe("09:30");
     expect(formatClock(new Date(2026, 9, 21, 17, 5).getTime())).toBe("17:05");
+  });
+});
+
+describe("formatBytes", () => {
+  it.each([
+    [0, "0 B"],
+    [512, "512 B"],
+    [1024, "1.0 KB"],
+    [1536, "1.5 KB"],
+    [5 * 1024 * 1024, "5.0 MB"],
+  ])("formats %d bytes as %s", (bytes, expected) => {
+    expect(formatBytes(bytes)).toBe(expected);
+  });
+});
+
+describe("formatDay", () => {
+  it("shows the local date with zero-padded month and day", () => {
+    expect(formatDay(new Date(2026, 0, 5, 12).getTime())).toBe("2026-01-05");
+    expect(formatDay(new Date(2026, 11, 31, 23, 59).getTime())).toBe("2026-12-31");
   });
 });
 

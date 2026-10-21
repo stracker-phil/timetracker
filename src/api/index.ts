@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AppError, DataChanged, ErrorKind, Keybindings, LaunchEvent, RemoteEvent, Settings, UiState } from "./types";
+import type { AppError, BackupWritten, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, RemoteEvent, Settings, UiState } from "./types";
 
 export * from "./types";
 
@@ -23,6 +23,13 @@ export const api = {
   /** Hides the window; the app keeps running in the menu bar. */
   hideWindow: () => invoke<void>("hide_window"),
   quitApp: () => invoke<void>("quit_app"),
+  /** The native save panel; `null` when the user cancels. */
+  chooseSavePath: (fileName: string, extension: string) => invoke<string | null>("choose_save_path", { fileName, extension }),
+  /** Opens the enclosing folder in Finder with `path` selected. */
+  revealPath: (path: string) => invoke<void>("reveal_path", { path }),
+  /** Where the data lives and what it holds; never rejects, a broken store reports `available: false`. */
+  dataInfo: () => invoke<DataInfo>("data_info"),
+  backupExport: (path: string) => invoke<BackupWritten>("backup_export", { path }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   /** Native menu and tray items emit the id of the command they run. */

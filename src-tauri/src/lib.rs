@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod commands;
+pub mod db;
 mod deep_link;
 #[cfg(debug_assertions)]
 mod dev;
@@ -244,17 +245,22 @@ fn start_app(
             commands::take_launch_events,
             commands::hide_window,
             commands::quit_app,
+            commands::choose_save_path,
+            commands::reveal_path,
+            db::commands::data_info,
+            db::commands::backup_export,
             remote::remote_reply,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app, event| {
-            if let RunEvent::ExitRequested {
+        .run(|app, event| match event {
+            RunEvent::ExitRequested {
                 code: None, api, ..
-            } = event
-            {
-                api.prevent_exit();
+            } => api.prevent_exit(),
+            RunEvent::Exit => {
+                tauri::async_runtime::block_on(app.state::<AppState>().data.close());
             }
+            _ => {}
         });
 }
 

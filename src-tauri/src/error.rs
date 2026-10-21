@@ -142,6 +142,32 @@ impl From<serde_json::Error> for AppError {
     }
 }
 
+/// A database error keeps SQLite's extended result code (`2067` for a unique constraint).
+impl From<sqlx::Error> for AppError {
+    fn from(e: sqlx::Error) -> Self {
+        match e {
+            sqlx::Error::Database(db) => AppError::Db {
+                message: db.message().to_string(),
+                code: db.code().map(|c| c.into_owned()),
+            },
+            sqlx::Error::RowNotFound => AppError::NotFound("The row does not exist".into()),
+            other => AppError::Db {
+                message: other.to_string(),
+                code: None,
+            },
+        }
+    }
+}
+
+impl From<sqlx::migrate::MigrateError> for AppError {
+    fn from(e: sqlx::migrate::MigrateError) -> Self {
+        AppError::Db {
+            message: format!("Migration failed: {e}"),
+            code: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,6 +293,42 @@ mod tests {
         ));
         assert_eq!(err, AppError::Io("denied".into()));
         assert_eq!(err.to_string(), "File error: denied");
+    }
+
+    #[tokio::test]
+    async fn sqlite_constraint_errors_keep_the_extended_code() {
+        let db = crate::db::Db::open_memory().await.unwrap();
+        let insert = |name: &'static str| {
+            sqlx::query("INSERT INTO tags (id, name, created_at) VALUES ('same', ?1, 0)")
+                .bind(name)
+                .execute(db.pool())
+        };
+        insert("a").await.unwrap();
+        let err = AppError::from(insert("b").await.unwrap_err());
+        assert_eq!(err.kind(), ErrorKind::Db);
+        assert_eq!(err.code(), Some("1555"));
+
+        let err = AppError::from(
+            sqlx::query("INSERT INTO tags (id, name, created_at) VALUES ('other', 'a', 0)")
+                .execute(db.pool())
+                .await
+                .unwrap_err(),
+        );
+        assert_eq!(err.kind(), ErrorKind::Db);
+        assert_eq!(err.code(), Some("2067"));
+    }
+
+    #[test]
+    fn a_missing_row_converts_to_not_found() {
+        let err = AppError::from(sqlx::Error::RowNotFound);
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn other_sqlx_errors_convert_to_db_without_a_code() {
+        let err = AppError::from(sqlx::Error::PoolClosed);
+        assert_eq!(err.kind(), ErrorKind::Db);
+        assert_eq!(err.code(), None);
     }
 
     #[test]
