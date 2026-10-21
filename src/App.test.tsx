@@ -63,6 +63,29 @@ describe("App", () => {
     });
   });
 
+  describe("welcome", () => {
+    it("shows the welcome sheet on the first run", async () => {
+      mocked.getUiState.mockResolvedValueOnce({ ...EMPTY_UI_STATE, onboardingDone: false });
+      await renderApp();
+      expect(await screen.findByRole("dialog", { name: "Welcome to TimeTracker" })).toBeInTheDocument();
+    });
+
+    it("does not show the welcome sheet once the onboarding is done", async () => {
+      await renderApp();
+      expect(screen.queryByRole("dialog", { name: "Welcome to TimeTracker" })).not.toBeInTheDocument();
+    });
+
+    it("holds back the permission dialog until the welcome is finished", async () => {
+      mocked.getUiState.mockResolvedValueOnce({ ...EMPTY_UI_STATE, onboardingDone: false });
+      await renderApp();
+      await screen.findByRole("dialog", { name: "Welcome to TimeTracker" });
+      act(() => mocked.onTrackerStatus.mock.calls[0][0](trackerStatus({ state: { kind: "needsPermission" }, permission: "denied", text: "Needs permission" })));
+      expect(screen.queryByRole("dialog", { name: "Allow TimeTracker to read window titles" })).not.toBeInTheDocument();
+      await userEvent.keyboard("{Escape}");
+      expect(await screen.findByRole("dialog", { name: "Allow TimeTracker to read window titles" })).toBeInTheDocument();
+    });
+  });
+
   describe("backend events", () => {
     it("shows the day of a showDay launch event in the Day view", async () => {
       mocked.takeLaunchEvents.mockResolvedValueOnce([{ type: "showDay", day: "2026-10-20" }]);

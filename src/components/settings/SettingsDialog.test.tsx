@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api } from "../../api";
+import { api, EMPTY_UI_STATE } from "../../api";
 import { installCommands } from "../../commands";
-import { resetStore } from "../../state/store";
+import { resetStore, useStore } from "../../state/store";
 import { settings } from "../../test/settings";
 import { SettingsDialog } from "./SettingsDialog";
 
@@ -102,11 +102,35 @@ describe("SettingsDialog", () => {
   });
 
   describe("System", () => {
-    it("saves launch at login when the switch is turned on", async () => {
+    it("lists General first among the System pages", () => {
+      renderDialog();
+      const pages = within(screen.getByRole("navigation", { name: "Settings pages" })).getAllByRole("button");
+      const names = pages.map((p) => p.textContent?.trim());
+      expect(names.indexOf("General")).toBeLessThan(names.indexOf("Data"));
+      expect(names.indexOf("Data")).toBeLessThan(names.indexOf("Logging"));
+    });
+
+    it("installs launch at login when the switch is turned on", async () => {
       renderDialog();
       await openPage("General");
       await userEvent.click(screen.getByRole("switch", { name: "Launch at login" }));
-      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ launchAtLogin: true }));
+      expect(mocked.autostartSet).toHaveBeenLastCalledWith(true);
+      await vi.waitFor(() => expect(screen.getByRole("switch", { name: "Launch at login" })).toBeChecked());
+    });
+
+    it("shows the launch at login switch on when the LaunchAgent is installed", async () => {
+      mocked.autostartStatus.mockResolvedValueOnce(true);
+      renderDialog();
+      await openPage("General");
+      await vi.waitFor(() => expect(screen.getByRole("switch", { name: "Launch at login" })).toBeChecked());
+    });
+
+    it("closes Settings and shows the welcome sheet again", async () => {
+      renderDialog({ uiState: { ...EMPTY_UI_STATE, onboardingDone: true } });
+      await openPage("General");
+      await userEvent.click(screen.getByRole("button", { name: "Show welcome again" }));
+      expect(useStore.getState().dialog).toBeNull();
+      expect(useStore.getState().uiState.onboardingDone).toBe(false);
     });
 
     it("saves the log level chosen in the select", async () => {

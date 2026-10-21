@@ -1,8 +1,8 @@
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
+use crate::autostart;
 use crate::error::{AppError, AppResult};
 use crate::events::{self, DataKind};
 use crate::launch::LaunchEvent;
@@ -65,26 +65,11 @@ pub fn apply_settings(app: &AppHandle, previous: Option<&Settings>, saved: &Sett
     if let Some(level) = effects.log_level {
         log::set_max_level(level);
     }
-    if let Some(enabled) = effects.launch_at_login {
-        set_launch_at_login(app, enabled);
-    }
-}
-
-fn set_launch_at_login(app: &AppHandle, enabled: bool) {
-    let autolaunch = app.autolaunch();
-    if autolaunch.is_enabled().unwrap_or(false) == enabled {
-        return;
-    }
-    let result = if enabled {
-        autolaunch.enable()
-    } else {
-        autolaunch.disable()
-    };
-    if let Err(e) = result {
-        log::warn!(
-            "Couldn't turn launch at login {}: {e}",
-            if enabled { "on" } else { "off" }
-        );
+    // At startup this reconciles a LaunchAgent that went missing (a moved or reinstalled bundle).
+    if let Some(enabled) = effects.launch_at_login
+        && let Err(e) = autostart::apply(app, enabled)
+    {
+        log::warn!("{e}");
     }
 }
 
@@ -115,7 +100,7 @@ pub async fn app_settings_set(
     Ok(saved)
 }
 
-async fn save_settings(
+pub(crate) async fn save_settings(
     app: &AppHandle,
     state: &AppState,
     settings: Settings,
@@ -162,6 +147,12 @@ pub fn get_ui_state(state: State<'_, AppState>) -> UiState {
 #[tauri::command]
 pub async fn set_ui_state(state: State<'_, AppState>, ui: UiState) -> AppResult<UiState> {
     state.ui_state.set(ui).await
+}
+
+/// The welcome sheet was finished; it shows again only after "Show welcome again".
+#[tauri::command]
+pub async fn onboarding_done(state: State<'_, AppState>) -> AppResult<()> {
+    state.ui_state.finish_onboarding().await
 }
 
 #[tauri::command]

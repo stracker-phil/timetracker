@@ -12,6 +12,7 @@ import { AccentSwatches } from "../Accent";
 import { Modal } from "../Modal";
 import { capitalize, Group, NumberField, Row, Segmented, Switch, TextField } from "./controls";
 import { CapturePage, TrackerPage } from "./CapturePage";
+import { LaunchAtLoginSwitch } from "./LaunchAtLoginSwitch";
 import { ShortcutsPage } from "./ShortcutsPage";
 import { TimelinePage } from "./TimelinePage";
 
@@ -70,11 +71,26 @@ function AppearancePage({ s, set }: SettingsPageProps) {
   );
 }
 
-function GeneralPage({ s, set }: SettingsPageProps) {
+function showWelcomeAgain() {
+  const { closeDialog, showWelcome } = useStore.getState();
+  closeDialog();
+  showWelcome();
+}
+
+function GeneralPage() {
   return (
-    <Group>
-      <Switch label="Launch at login" description="Starts TimeTracker in the menu bar when you log in, without opening the window." checked={s.launchAtLogin} onChange={(launchAtLogin) => set({ launchAtLogin })} />
-    </Group>
+    <>
+      <Group>
+        <LaunchAtLoginSwitch />
+      </Group>
+      <Group title="Welcome">
+        <Row label="Welcome sheet" description="What TimeTracker records, the Accessibility permission and how it starts.">
+          <button type="button" className="link-btn" onClick={showWelcomeAgain}>
+            Show welcome again
+          </button>
+        </Row>
+      </Group>
+    </>
   );
 }
 
@@ -282,7 +298,7 @@ export function registerCoreSettingsPages() {
   });
   registerSettingsPage({ id: "tracker", group: "Tracking", label: "Tracker", icon: Activity, order: 20, intro: "When time counts as away, and how often the tracker looks.", Body: TrackerPage });
   registerSettingsPage({ id: "timeline", group: "Tracking", label: "Timeline", icon: GanttChart, order: 30, intro: "How the Day view shows your activity.", Body: TimelinePage });
-  registerSettingsPage({ id: "general", group: "System", label: "General", icon: Power, order: 10, intro: "How TimeTracker starts.", Body: GeneralPage });
+  registerSettingsPage({ id: "general", group: "System", label: "General", icon: Power, order: 0, intro: "How TimeTracker starts.", Body: GeneralPage });
   registerSettingsPage({ id: "data", group: "System", label: "Data", icon: Database, order: 15, intro: "Where TimeTracker keeps your activity and recordings. Everything stays on this Mac.", Body: DataPage });
   registerSettingsPage({ id: "logging", group: "System", label: "Logging", icon: ScrollText, order: 20, intro: "What TimeTracker writes to its log file.", Body: LoggingPage });
 }

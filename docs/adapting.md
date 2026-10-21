@@ -38,7 +38,7 @@ The app's name and ids live in a few places. Change them together.
 | **Permissions**: Accessibility (window titles, document paths) and Automation per browser (addresses; the prompt shows `NSAppleEventsUsageDescription` from `src-tauri/Info.plist`) | `capture/macos.rs`, `Info.plist` | No prompts; reading other windows needs X11 or compositor support | No prompts; browser addresses need UI Automation |
 | **Capture**: frontmost app, window titles (Accessibility), idle time, sleep and lock notifications, the permission prompt | `capture/macos.rs` behind the `Source` trait; `tracker/commands.rs` `PRIVACY_SETTINGS` | A new `Source`: X11/Wayland for the active window, `org.freedesktop.ScreenSaver` for idle and lock, logind for sleep | A new `Source`: `GetForegroundWindow` + `GetWindowText`, `GetLastInputInfo`, `WM_POWERBROADCAST` / `WTS_SESSION_LOCK` |
 | **Tray**: template image, menu on left click | `tray.rs` | Works with an `AppIndicator`; template tinting does not apply | Works; use a colored icon |
-| **Launch at login**: `MacosLauncher::LaunchAgent` | `lib.rs` (autostart plugin) | the plugin writes an XDG autostart entry | the plugin writes a registry key |
+| **Launch at login**: `MacosLauncher::LaunchAgent` | `lib.rs` (autostart plugin), `autostart.rs` | the plugin writes an XDG autostart entry | the plugin writes a registry key |
 | **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs | `src/commands/registry.ts`, `keybindings.rs` `key_label` | Map `Mod` to Ctrl | Same |
 | **Fonts**: bundled Geist and JetBrains Mono with `-apple-system` and `Menlo` fallbacks | `fonts.css`, `theme.css` | Works | Works |
 | **Bundle targets**: only `app` | `tauri.conf.json` `bundle.targets`; `package.json` scripts | `deb`, `appimage` | `nsis`, `msi` |

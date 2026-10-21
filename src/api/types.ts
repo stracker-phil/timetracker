@@ -47,4 +47,5 @@ export const BUNDLED_FONTS = { ui: "Geist", mono: "JetBrains Mono" } as const;
 /** Shortcut overrides by command id; `null` unbinds. Rust: the `Keybindings` alias (a map, so ts-rs can't export it). */
 export type Keybindings = Record<string, string | null>;
 
-export const EMPTY_UI_STATE: UiState = { sidebarHidden: false, sidebarWidth: 200, lastDay: null, timelineZoom: 2.5, paneSizes: {}, dayMode: "timeline" };
+/** Until Rust's state loads; `onboardingDone` is true so the welcome sheet never flashes before it. */
+export const EMPTY_UI_STATE: UiState = { sidebarHidden: false, sidebarWidth: 200, lastDay: null, timelineZoom: 2.5, paneSizes: {}, dayMode: "timeline", onboardingDone: true };

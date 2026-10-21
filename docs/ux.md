@@ -196,6 +196,16 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   or deletes them.
 - Every change ends in a toast with Undo.
 
+## Welcome
+
+- A fresh config dir opens a sheet over the Day view with three short panels, "1 of 3" left of Back and
+  Next: what is recorded (app, window title, URL or document, away time), what never is, and the data
+  folder's path; Accessibility, with Grant access, a live status line and Skip for now (Next waits for one
+  of the two); Launch at login and the global timer shortcut as a key cap, then Done.
+- Done or Escape closes it for good; Settings → General → "Show welcome again" brings it back. The
+  permission dialog waits until the welcome is closed.
+- Launch at login starts the app hidden: only the tray icon shows.
+
 ## Away prompt
 
 - After an away span of at least the set minutes (Settings → Tracker; not after a pause), a small sheet on

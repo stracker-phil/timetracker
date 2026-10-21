@@ -14,6 +14,8 @@ export interface SettingsSlice {
   saveTimerShortcut: (binding: string) => Promise<string | null>;
   /** One app's timeline override; resolves whether it was saved (a failure is toasted). */
   setAppSetting: (bundleId: string, patch: AppSettingPatch) => Promise<boolean>;
+  /** Turns launch at login on or off; resolves whether it is on now, or `null` when it failed (toasted). */
+  setLaunchAtLogin: (enabled: boolean) => Promise<boolean | null>;
 }
 
 export const settingsSlice: Slice<SettingsSlice> = {
@@ -57,6 +59,19 @@ export const settingsSlice: Slice<SettingsSlice> = {
       } catch (e) {
         fail(e, "Could not change the app's timeline setting");
         return false;
+      }
+    },
+
+    async setLaunchAtLogin(enabled) {
+      try {
+        const launchAtLogin = await api.autostartSet(enabled);
+        // Rust stored the choice; the copy here must match, or the next settings save would undo it.
+        const settings = get().settings;
+        if (settings) set({ settings: { ...settings, launchAtLogin } });
+        return launchAtLogin;
+      } catch (e) {
+        fail(e, "Could not change launch at login");
+        return null;
       }
     },
 

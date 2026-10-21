@@ -1,5 +1,5 @@
 //! Window layout that survives a restart (`ui_state.json`): sidebar, pane sizes, the last viewed day
-//! the timeline zoom and the Day view's mode.
+//! the timeline zoom, the Day view's mode and whether the welcome sheet was finished.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -24,6 +24,8 @@ pub struct UiState {
     /// Splitter positions by pane id, in px.
     pub pane_sizes: HashMap<String, f32>,
     pub day_mode: DayMode,
+    /// The welcome sheet was finished; it shows while this is false.
+    pub onboarding_done: bool,
 }
 
 /// How the Day view shows the day.
@@ -45,6 +47,7 @@ impl Default for UiState {
             timeline_zoom: 2.5,
             pane_sizes: HashMap::new(),
             day_mode: DayMode::Timeline,
+            onboarding_done: false,
         }
     }
 }
@@ -72,6 +75,12 @@ impl UiStateStore {
             })
             .await
     }
+
+    pub async fn finish_onboarding(&self) -> AppResult<()> {
+        self.store
+            .update_async(|current| current.onboarding_done = true)
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -92,6 +101,7 @@ mod tests {
                 timeline_zoom: 2.5,
                 pane_sizes: HashMap::new(),
                 day_mode: DayMode::Timeline,
+                onboarding_done: false,
             }
         );
     }
@@ -131,6 +141,7 @@ mod tests {
             timeline_zoom: 1.5,
             pane_sizes: HashMap::from([("timeline".to_string(), 320.0)]),
             day_mode: DayMode::List,
+            onboarding_done: true,
         };
         let saved = UiStateStore::open(dir.path())
             .set(ui.clone())
@@ -167,9 +178,54 @@ mod tests {
                 "lastDay": "2026-10-21",
                 "timelineZoom": 2.5,
                 "paneSizes": {},
-                "dayMode": "timeline"
+                "dayMode": "timeline",
+                "onboardingDone": false
             })
         );
+    }
+
+    #[test]
+    fn a_file_without_onboarding_done_shows_the_welcome_sheet() {
+        let dir = temp_config_dir();
+        std::fs::write(dir.path().join("ui_state.json"), r#"{"sidebarWidth": 320}"#).unwrap();
+        assert!(!UiStateStore::open(dir.path()).get().onboarding_done);
+    }
+
+    #[test]
+    fn onboarding_done_is_read_from_its_camel_case_key() {
+        let ui = serde_json::from_str::<UiState>(r#"{"onboardingDone": true}"#).unwrap();
+        assert!(ui.onboarding_done);
+    }
+
+    #[tokio::test]
+    async fn finishing_onboarding_persists_and_keeps_the_other_fields() {
+        let dir = temp_config_dir();
+        let store = UiStateStore::open(dir.path());
+        let ui = UiState {
+            sidebar_width: 260,
+            last_day: Some("2026-10-21".into()),
+            day_mode: DayMode::List,
+            ..UiState::default()
+        };
+        store.set(ui.clone()).await.unwrap();
+
+        store.finish_onboarding().await.unwrap();
+
+        let expected = UiState {
+            onboarding_done: true,
+            ..ui
+        };
+        assert_eq!(store.get(), expected);
+        assert_eq!(UiStateStore::open(dir.path()).get(), expected);
+    }
+
+    #[tokio::test]
+    async fn finishing_onboarding_twice_stays_done() {
+        let dir = temp_config_dir();
+        let store = UiStateStore::open(dir.path());
+        store.finish_onboarding().await.unwrap();
+        store.finish_onboarding().await.unwrap();
+        assert!(UiStateStore::open(dir.path()).get().onboarding_done);
     }
 
     #[test]

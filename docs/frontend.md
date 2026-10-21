@@ -35,7 +35,7 @@ App
    ├─ Sidebar        Day, Week, Month, Reports, Projects; a tracker status line at the bottom
    ├─ main           DayPage for Day, ProjectsPage for Projects, else EmptyView: the active view's name
    └─ StatusBar      left: status text; right: zoom
-Dialogs (settings, shortcuts, confirm) · PermissionDialog · CommandPalette · Toasts
+Dialogs (settings, shortcuts, confirm) · PermissionDialog · Welcome · CommandPalette · Toasts
 ```
 
 ## Store
@@ -46,7 +46,7 @@ error's message, returning the `AppError`.
 
 | Slice | Holds |
 |---|---|
-| `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings`, `saveKeybindings` |
+| `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings`, `saveKeybindings`, `setLaunchAtLogin(enabled)` (resolves whether it is on now, `null` on a toasted failure) |
 | `ui` | `toasts` (an optional `action`, e.g. Undo, with an optional `ttlMs`; an action toast stays 10 s by default), `dialog` (`settings { page? }`, `shortcuts`, `confirm`, `project { id?, clientId? }`, `client { id? }`, `rule { id?, draft? }`, `deleteActivity { day, bounds, range }`), `paletteOpen`, `paletteSeed` |
 | `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`, `rules`), `setView`, `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `goToday` (keeps the view), `step(±1)` (a day, a week or a month by the view; `addDays`, `addMonths` in `lib/day.ts`); each remembers the day as `uiState.lastDay`, and `restoreDay` shows it again at boot when it is at most 30 days old |
 | `day` | `dayView` (the shown day's `DayView`; the previous one stays while the next day loads), `dayError`, `loadDay` (drops answers for a day no longer shown), `focusedBlock`/`focusBlock`, `detailsBlock`/`toggleDetails` (the card opened by keyboard), `blockMenuRequest`/`requestBlockMenu`, `setAppSetting(appKey, patch)` (stores the returned settings; the Day view reloads on the `data_changed` it causes) |
@@ -56,7 +56,7 @@ error's message, returning the `AppError`.
 | `projects` | `projects` (`ProjectListItem[]`, archived included), `clients`, `tags` (`TagListItem[]`), `recent`, `projectsLoaded`; `loadProjects` (boot, and every `data_changed` of `projects` or `tags`); `saveProject(id, input)`, `archiveProject`, `saveClient`, `archiveClient`, `saveTag`, `deleteTag` reload after the write and reject on failure (toasted, unless the error has a `field` for the form). Helpers: `groupProjects(projects, clients, archived)`, `projectLabel` |
 | `tracker` | `tracker` (`TrackerStatus`, or `null` while the tracker is off), `setTracker`, `loadTracker`, `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then reloads the status), `permissionDialogHidden` |
 | `recordings` | `selection` (`{ start, end, blockIds }`, unsnapped; Rust snaps on save), `selectionSnap` (as Rust will store it), `setSelection`, `extendSelection(blockId)`, `focusedRecording`/`focusRecording`, `editor` (`create { start, end }` or `edit { id }`)/`openEditor`/`closeEditor`, `undoStatus`/`loadUndoStatus`, `createRecording(input)`, `updateRecording(id, patch)`, `deleteRecording(id)`, `undo`, `redo`. A write runs with `overlap: cancel`; on `overlap` it opens the overlap dialog and runs again with `replace`. One write at a time; each ends with a toast offering Undo. A field error rejects for the editor, others are toasted |
-| `viewState` | `uiState` (`UiState` from Rust), `setPaneSize`, `toggleSidebar`, `rememberDay`, `setTimelineZoom` (px per minute, `TIMELINE_ZOOM` 1–8, default 2.5); a debounced writer saves it, `flushUiState` writes at once |
+| `viewState` | `uiState` (`UiState` from Rust), `setPaneSize`, `toggleSidebar`, `rememberDay`, `setTimelineZoom` (px per minute, `TIMELINE_ZOOM` 1–8, default 2.5), `finishOnboarding`, `showWelcome`; a debounced writer saves it, `flushUiState` writes at once |
 
 Components select narrowly (`useStore((s) => s.view)`), never the whole store. `lib/useApiResult` loads a
 value from `api` keyed on its inputs (and on `selectDayVersion(day)` or `dataVersion`), so a `data_changed` event
@@ -130,6 +130,14 @@ Tracker components:
   and what is never captured; "Open System Settings" (`openPrivacySettings`) and "Check again"
   (`requestPermission`). It disappears once the status is no longer `needsPermission`. Escape hides it
   (`permissionDialogHidden` in the `tracker` slice) until "Allow…" or until the permission is lost again.
+  It stays hidden while the welcome sheet shows, which asks for the same permission.
+- `onboarding/Welcome.tsx`: the first-run `Modal` sheet, shown while `uiState.onboardingDone` is false
+  (`EMPTY_UI_STATE` says true, so it never flashes before the state loads). Three panels with Back and Next
+  ("1 of 3"): what is recorded and never recorded, with the data folder (`dataInfo().dir`); Accessibility,
+  with "Grant access" (`requestPermission`), a live status line from `tracker.permission` and "Skip for now"
+  (Next is enabled once granted or skipped); `LaunchAtLoginSwitch` and the global timer shortcut
+  (`settings.timerShortcut`). Done, and also Escape, call `finishOnboarding` (`viewState` slice: patches
+  `onboardingDone` and calls `api.onboardingDone`). Each showing mounts afresh on the first panel.
 
 ### Day view
 
@@ -280,7 +288,7 @@ Enter picks, Esc closes the list without closing the sheet around it; the list c
 | Tracking → Capture | `CapturePage` (`CapturePage.tsx`): address and document switches, excluded apps (an "Add app…" picker listing `appsSeen(30)`), excluded websites (a field; Enter adds) |
 | Tracking → Tracker | `TrackerPage`: away after (idle minutes), check every (poll seconds) |
 | Tracking → Timeline | `TimelinePage` (`TimelinePage.tsx`): `TimelineControls` (summary lane and its interval slider, show all activity, compact, group by app, continuity, noise, titles, time snapping; each saved quietly), then Apps from `appsList()`: per app Group by app and Titles (Default or a value), Hidden, Own lane |
-| System → General | Launch at login |
+| System → General (order 0) | `LaunchAtLoginSwitch` (`LaunchAtLoginSwitch.tsx`, also on the welcome sheet): checked from `autostartStatus()` (the LaunchAgent, not the stored setting), changed through `setLaunchAtLogin` (`settings` slice: `api.autostartSet`, then the store's `settings.launchAtLogin` is updated so a later save keeps it); "Show welcome again" closes Settings and calls `showWelcome` |
 | System → Data | the data folder (Reveal in Finder; Move…: `chooseFolder` → a `Modal` sheet that says the database is copied, tracking pauses meanwhile and the old files stay → `dataMove` with the Move button busy (`Moving…`, Escape ignored) → toast "Data moved to …", settings and the page's `DataInfo` reload; an `invalid_input` refusal shows under the row, other errors toast), counts, first activity, size on disk, Export backup… (save panel → `backupExport`, toast "Backup written"); an alert when the store could not be opened |
 | System → Logging | log level, Open log folder |
 

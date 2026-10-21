@@ -625,7 +625,11 @@ timelineZoom: number,
 /**
  * Splitter positions by pane id, in px.
  */
-paneSizes: { [key in string]: number }, dayMode: DayMode, };
+paneSizes: { [key in string]: number }, dayMode: DayMode, 
+/**
+ * The welcome sheet was finished; it shows while this is false.
+ */
+onboardingDone: boolean, };
 
 export type UndoStatus = { undoLabel: string | null, redoLabel: string | null, };
 

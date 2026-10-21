@@ -13,6 +13,12 @@ export const api = {
   setKeybindings: (bindings: Keybindings) => invoke<Keybindings>("set_keybindings", { bindings }),
   getUiState: () => invoke<UiState>("get_ui_state"),
   setUiState: (ui: UiState) => invoke<UiState>("set_ui_state", { ui }),
+  /** Marks the welcome sheet finished in `ui_state.json`. */
+  onboardingDone: () => invoke<void>("onboarding_done"),
+  /** Installs or removes the launch-at-login LaunchAgent and stores the choice; resolves whether it is on now. */
+  autostartSet: (enabled: boolean) => invoke<boolean>("autostart_set", { enabled }),
+  /** Whether the LaunchAgent is installed (the truth; `settings.launchAtLogin` mirrors it). */
+  autostartStatus: () => invoke<boolean>("autostart_status"),
   openLogFolder: () => invoke<void>("open_log_folder"),
   /** http(s) links only; Rust refuses anything else. */
   openUrl: (url: string) => invoke<void>("open_url", { url }),

@@ -2,14 +2,16 @@ import { api } from "../api";
 import { fail, useStore } from "../state/store";
 import { Modal } from "./Modal";
 
-/** Shown while the tracker needs the Accessibility permission; closes itself once it is granted. */
+/** Shown while the tracker needs the Accessibility permission; closes itself once it is granted. The welcome
+ * sheet asks for it too, so this waits until the welcome is finished. */
 export function PermissionDialog() {
   const needsPermission = useStore((s) => s.tracker?.state.kind === "needsPermission");
+  const welcomeShown = useStore((s) => !s.uiState.onboardingDone);
   const requestPermission = useStore((s) => s.requestPermission);
   const hidden = useStore((s) => s.permissionDialogHidden);
   const setHidden = useStore((s) => s.setPermissionDialogHidden);
 
-  if (!needsPermission || hidden) return null;
+  if (!needsPermission || hidden || welcomeShown) return null;
   const openSettings = () => void api.openPrivacySettings().catch((e: unknown) => fail(e, "Could not open System Settings"));
   return (
     <Modal onClose={() => setHidden(true)} labelledBy="permission-title" className="permission-dialog">

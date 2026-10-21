@@ -16,6 +16,10 @@ export interface ViewStateSlice {
   stepTimelineZoom: (by: 1 | -1) => void;
   /** The Day view shows the timeline or the list of activity. */
   setDayMode: (dayMode: DayMode) => void;
+  /** The welcome sheet's Done. */
+  finishOnboarding: () => Promise<void>;
+  /** Shows the welcome sheet again ("Show welcome again" in Settings → General). */
+  showWelcome: () => void;
 }
 
 export const TIMELINE_ZOOM = { min: 1, max: 8, default: 2.5 };
@@ -66,6 +70,20 @@ export const viewStateSlice: Slice<ViewStateSlice> = {
 
       setDayMode(dayMode) {
         if (get().uiState.dayMode !== dayMode) patchUiState(() => ({ dayMode }));
+      },
+
+      async finishOnboarding() {
+        // Patched too, so a layout write still pending can't bring the sheet back.
+        patchUiState(() => ({ onboardingDone: true }));
+        try {
+          await api.onboardingDone();
+        } catch (e) {
+          fail(e, "Could not save that the welcome was finished");
+        }
+      },
+
+      showWelcome() {
+        patchUiState(() => ({ onboardingDone: false }));
       },
     };
   },

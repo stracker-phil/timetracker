@@ -39,7 +39,8 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
    (`tray::install`), starts the tracker (`start_tracker`: only with an open data store; see
    [capture.md](capture.md)), applies `TIMETRACKER_WINDOW_FRAME` in debug builds (`apply_dev_frame`), binds and
    serves the socket (`start_ipc`; a bind error is logged and the app runs without handoff), registers
-   `deep_link::listen`, and hides the window when started with `--hidden`.
+   `deep_link::listen`, and shows the window (`window::show_main_in_background`) unless started with
+   `--hidden`. The window is declared `"visible": false`, so a hidden start never flashes it.
 
    The run loop prevents `RunEvent::ExitRequested { code: None }`, which macOS sends when the last window
    closes; an explicit `app.exit(0)` carries a code and passes. On `RunEvent::Exit` it closes the database
@@ -50,10 +51,28 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
 `update_settings` and startup both call `commands::apply_settings(app, previous, saved)`. The decision is the
 pure `settings_effects(previous, saved, log_override) -> SettingsEffects { theme, log_level, launch_at_login }`:
 without `previous` everything applies; otherwise only what changed. A CLI `--log-level` wins for the app's
-lifetime, so a settings change never resets it. `launch_at_login` enables or disables the autostart
-LaunchAgent (`~/Library/LaunchAgents`) only when its state differs.
+lifetime, so a settings change never resets it. `launch_at_login` goes to `autostart::apply` (below), which
+changes the LaunchAgent only when its state differs; at startup this reconciles a LaunchAgent that went
+missing while the setting says on. A failure is logged.
 
-The window is declared in `tauri.conf.json`: label `main`, 1200 × 800 (minimum 900 × 560), overlay title
+### Launch at login
+
+`autostart.rs` wraps `tauri-plugin-autostart` (`MacosLauncher::LaunchAgent`, started with `--hidden`; the
+agent lives in `~/Library/LaunchAgents`). The LaunchAgent is the truth and `settings.launchAtLogin` mirrors it:
+`status(app)` asks the plugin, `apply(app, enabled)` installs or removes the agent (`io` on failure), and
+`set(app, state, enabled)` applies, then saves the setting through `commands::save_settings` and returns
+`status`. The agent records the bundle path at enable time: after moving the app, turn it off and on again.
+
+A login launch runs `timetracker --hidden`: the window stays invisible and the tray icon is the only sign the
+app runs; a later launch or the tray shows it.
+
+### Onboarding
+
+`UiState.onboardingDone` (`ui_state.json`, default `false`) says the welcome sheet was finished.
+`onboarding_done` sets it (`UiStateStore::finish_onboarding`); the page clears it with `set_ui_state` for
+"Show welcome again".
+
+The window is declared in `tauri.conf.json`: label `main`, 1200 × 800 (minimum 900 × 560), invisible until setup shows it, overlay title
 bar with hidden title, traffic lights at 16/20, transparent background with the `sidebar` vibrancy effect.
 No Rust code creates windows yet.
 
@@ -64,7 +83,7 @@ No Rust code creates windows yet.
 | close button / ⌘W (`window.hide`, `hide_window`) | the window hides; the app, the tray and the Dock icon stay |
 | last window closed (`ExitRequested { code: None }`) | prevented |
 | tray "Open TimeTracker", a second `timetracker` launch | `window::show_main`: show, unminimize, focus |
-| `timetracker --hidden` (launch at login) | first instance: the window hides right after setup; running instance: nothing |
+| `timetracker --hidden` (launch at login) | first instance: the window is never shown; running instance: nothing |
 | ⌘Q (`app.quit`), tray "Quit TimeTracker", `quit_app` | `app.exit(0)` |
 
 `window.rs` also has `apply_window_theme` (the window's appearance follows the theme setting, so the
@@ -104,6 +123,9 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `update_settings` | `settings: Settings` | `Settings` (sanitized) | `io` |
 | `get_keybindings` / `set_keybindings` | – / `bindings: Keybindings` | `Keybindings` (sanitized; the menu is rebuilt) | `io` |
 | `get_ui_state` / `set_ui_state` | – / `ui: UiState` | `UiState` | `io` |
+| `onboarding_done` | – | – (sets `UiState.onboardingDone`) | `io` |
+| `autostart_set` (`autostart.rs`) | `enabled: bool` | `bool`: whether the LaunchAgent is installed now; also saves `settings.launchAtLogin` | `io` |
+| `autostart_status` (`autostart.rs`) | – | `bool`: whether the LaunchAgent is installed | – |
 | `open_log_folder` | – | – | `io` |
 | `open_url` | `url: String` | – | `invalid_input` unless `http(s)` without credentials (`is_web_url`) |
 | `log_frontend_error` | `message: String` | – | – |
@@ -617,7 +639,7 @@ save leaves memory unchanged. `JsonStore::open_with` normalizes the loaded value
 |---|---|
 | `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets unknown accents (`ACCENTS`) and schemes (`SCHEMES`) to `orange`, `ayu-light`, `ayu-mirage`; turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline` or `apps` emits `data_changed { kind: settings, day: null }`, so every open day reloads. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed. A trailing `++` is the `+` key |
-| `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay`, `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id) |
+| `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay`, `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id), `dayMode`, `onboardingDone` (default `false`: the welcome sheet shows) |
 | `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere (written only by `data_move`) |
 | `timetracker.sock`, `timetracker.lock` | single instance |
 

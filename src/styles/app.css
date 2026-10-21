@@ -388,6 +388,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .form-field-error { color: var(--style-red); font-size: var(--fs-small); }
 .form-row { display: flex; align-items: center; justify-content: space-between; }
 .dialog .actions .actions-start { margin-right: auto; }
+.dialog.welcome p { margin: 0; }
 
 /* ---------- pickers ---------- */
 .picker { position: relative; }

@@ -1,11 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api } from "../api";
-import { resetStore } from "../state/store";
+import { api, EMPTY_UI_STATE } from "../api";
+import { resetStore, useStore } from "../state/store";
 import { trackerStatus } from "../test/data";
 import { PermissionDialog } from "./PermissionDialog";
 import { Toasts } from "./Toasts";
@@ -33,6 +33,14 @@ describe("PermissionDialog", () => {
     resetStore({ tracker });
     renderDialog();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("waits while the welcome sheet is shown, then appears", () => {
+    resetStore({ tracker: needsPermission, uiState: { ...EMPTY_UI_STATE, onboardingDone: false } });
+    renderDialog();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    act(() => useStore.setState({ uiState: { ...EMPTY_UI_STATE, onboardingDone: true } }));
+    expect(screen.getByRole("dialog", { name: "Allow TimeTracker to read window titles" })).toBeInTheDocument();
   });
 
   it("explains the permission when it is needed", () => {

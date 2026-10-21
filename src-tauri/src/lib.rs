@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod autostart;
 pub mod away_prompt;
 pub mod calendar;
 pub mod capture;
@@ -358,8 +359,9 @@ fn start_app(
             apply_dev_frame(app);
             start_ipc(app.handle().clone(), &socket);
             deep_link::listen(app.handle());
-            if hidden {
-                window::hide_main(app.handle());
+            // The window starts invisible (tauri.conf.json), so a hidden start never flashes it.
+            if !hidden {
+                window::show_main_in_background(app.handle());
             }
             Ok(())
         })
@@ -371,6 +373,9 @@ fn start_app(
             commands::set_keybindings,
             commands::get_ui_state,
             commands::set_ui_state,
+            commands::onboarding_done,
+            autostart::autostart_set,
+            autostart::autostart_status,
             commands::open_log_folder,
             commands::open_url,
             commands::log_frontend_error,
