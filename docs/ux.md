@@ -403,3 +403,16 @@ From any view, with the documented default keys only:
    the month (by month; Tab to a day and ↵ opens it).
 10. ⌘4 shows Reports: Tab to the range (This week, Last week, …) and ↵, on to the client, project and tag
     pickers, Group by and Rounding; ⌘⇧C copies the report as text, ⌘K `> save` saves it under a name.
+
+## Scheme audit
+
+Every scheme is checked on the Day view, List view, Week, Reports and Settings (`docs/screens/<scheme>-<view>.png`,
+captured with `scripts/dev/js.sh` and `scripts/dev/screenshot.sh`; only the default light and dark Day view are
+committed). Fixes live in `src/styles/schemes/<id>.css` only. Targets: `--line` at least 1.3:1 against `--bg`
+(block borders, away dashes, grids, separators); accent text at least 3:1.
+
+Known limits shared by all schemes, set in `theme.css` and the view stylesheets rather than per scheme:
+- `--o3` (40% of `--text`) stays below 2:1 in the light schemes and solarized-dark (hour labels, lane heads,
+  away labels).
+- One `--on-accent` per scheme: text on the yellow and orange accents is low contrast in the light schemes.
+- The List view's `.covered-bar` fill (`--sel`) is faint.
