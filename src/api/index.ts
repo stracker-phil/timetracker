@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityRow, AppError, AwayRow, BackupWritten, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityRow, AppError, AppSeen, AwayRow, BackupWritten, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -41,6 +41,8 @@ export const api = {
   /** The day's rows cut to the day; open rows end now. */
   activityList: (day: string) => invoke<ActivityRow[]>("activity_list", { day }),
   awayList: (day: string) => invoke<AwayRow[]>("away_list", { day }),
+  /** Apps the tracker recorded in the last `days` days, most time first. */
+  appsSeen: (days: number) => invoke<AppSeen[]>("apps_seen", { days }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   /** Native menu and tray items emit the id of the command they run. */

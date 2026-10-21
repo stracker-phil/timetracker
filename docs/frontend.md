@@ -106,7 +106,7 @@ Tracker components:
   (`requestPermission`). It disappears once the status is no longer `needsPermission`. Escape hides it
   (`permissionDialogHidden` in the `tracker` slice) until "Allow…" or until the permission is lost again.
 - `ActivityDebug`: temporary, until step 06's Day view. A date field with previous/next day buttons and
-  two plain tables from `activityList(day)` and `awayList(day)`, reloaded on `data_changed` and on tracker
+  two plain tables from `activityList(day)` (with the URL or path; private rows dimmed) and `awayList(day)`, reloaded on `data_changed` and on tracker
   statuses at most every 10 s (a status inside the 10 s reloads when they end). Its previous/next day buttons
   step the date in the page; the Day view moves that to Rust.
 
@@ -119,6 +119,8 @@ Tracker components:
 |---|---|
 | Appearance | theme, light and dark scheme swatches, accent row, UI and data sizes, fonts |
 | Shortcuts | `ShortcutsPage`: every command with its binding; record, reset or unbind |
+| Tracking → Capture | `CapturePage` (`CapturePage.tsx`): address and document switches, excluded apps (an "Add app…" picker listing `appsSeen(30)`), excluded websites (a field; Enter adds) |
+| Tracking → Tracker | `TrackerPage`: away after (idle minutes), check every (poll seconds) |
 | System → General | Launch at login |
 | System → Data | the data folder (Reveal in Finder), counts, first activity, size on disk, Export backup… (save panel → `backupExport`, toast "Backup written"); an alert when the store could not be opened |
 | System → Logging | log level, Open log folder |

@@ -50,7 +50,7 @@ function Rows<T extends ActivityRow | AwayRow>({ label, rows, columns }: { label
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={row.id}>
+          <tr key={row.id} className={"private" in row && row.private ? "o3" : undefined}>
             <td className="mono">{formatClock(row.start)}</td>
             <td className="mono">{row.end === null ? "" : formatClock(row.end)}</td>
             <td className="mono">{formatDuration((row.end ?? row.start) - row.start)}</td>
@@ -95,6 +95,7 @@ export function ActivityDebug() {
         columns={[
           { title: "App", value: (r) => r.app },
           { title: "Title", value: (r) => r.title },
+          { title: "URL or path", value: (r) => r.url ?? r.path ?? "" },
         ]}
       />
       <h2>Away</h2>

@@ -1,5 +1,5 @@
 /** The core settings pages. Modules register their own pages from their install function. */
-import { Database, Download, FolderOpen, Keyboard, Palette, Power, ScrollText } from "lucide-react";
+import { Activity, Database, Download, EyeOff, FolderOpen, Keyboard, Palette, Power, ScrollText } from "lucide-react";
 import { useId } from "react";
 import { api, BUNDLED_FONTS, LOG_LEVELS, SCHEMES, TEXT_SIZES, type LogLevel, type SchemeId } from "../../api";
 import { formatBytes, formatCount, formatDay } from "../../lib/format";
@@ -9,6 +9,7 @@ import { fail } from "../../state/requests";
 import { useStore } from "../../state/store";
 import { AccentSwatches } from "../Accent";
 import { capitalize, Group, NumberField, Row, Segmented, Switch, TextField } from "./controls";
+import { CapturePage, TrackerPage } from "./CapturePage";
 import { ShortcutsPage } from "./ShortcutsPage";
 
 /** A stored scheme id narrowed to a known one; unknown ids (hand-edited settings) show the first scheme. */
@@ -161,6 +162,16 @@ function DataPage() {
 export function registerCoreSettingsPages() {
   registerSettingsPage({ id: "appearance", group: "Interface", label: "Appearance", icon: Palette, order: 10, intro: "How TimeTracker looks. Changes apply right away.", Body: AppearancePage });
   registerSettingsPage({ id: "shortcuts", group: "Interface", label: "Shortcuts", icon: Keyboard, order: 20, intro: "Click a shortcut and press the new keys. Backspace unbinds, Escape cancels.", Body: ShortcutsPage });
+  registerSettingsPage({
+    id: "capture",
+    group: "Tracking",
+    label: "Capture",
+    icon: EyeOff,
+    order: 10,
+    intro: "What the tracker records. It never records keystrokes, screenshots, audio, your clipboard or page content, and nothing leaves this Mac.",
+    Body: CapturePage,
+  });
+  registerSettingsPage({ id: "tracker", group: "Tracking", label: "Tracker", icon: Activity, order: 20, intro: "When time counts as away, and how often the tracker looks.", Body: TrackerPage });
   registerSettingsPage({ id: "general", group: "System", label: "General", icon: Power, order: 10, intro: "How TimeTracker starts.", Body: GeneralPage });
   registerSettingsPage({ id: "data", group: "System", label: "Data", icon: Database, order: 15, intro: "Where TimeTracker keeps your activity and recordings. Everything stays on this Mac.", Body: DataPage });
   registerSettingsPage({ id: "logging", group: "System", label: "Logging", icon: ScrollText, order: 20, intro: "What TimeTracker writes to its log file.", Body: LoggingPage });

@@ -34,6 +34,7 @@ export function createApiMock(): typeof realApi {
     openPrivacySettings: vi.fn().mockResolvedValue(undefined),
     activityList: vi.fn().mockResolvedValue([]),
     awayList: vi.fn().mockResolvedValue([]),
+    appsSeen: vi.fn().mockResolvedValue([]),
     onLaunch: vi.fn(noUnlisten),
     onCommand: vi.fn(noUnlisten),
     onRemote: vi.fn(noUnlisten),

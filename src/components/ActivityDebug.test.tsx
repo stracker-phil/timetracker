@@ -35,6 +35,21 @@ describe("ActivityDebug", () => {
     expect(within(table).getByRole("cell", { name: "main.rs" })).toBeInTheDocument();
   });
 
+  it("shows the URL of a row, or its path when there is no URL", async () => {
+    mocked.activityList.mockResolvedValue([
+      activityRow({ id: 1, app: "Safari", url: "https://example.com/a" }),
+      activityRow({ id: 2, app: "TextEdit", path: "/Users/me/notes.txt" }),
+      activityRow({ id: 3, app: "Both", url: "https://example.com/b", path: "/ignored" }),
+    ]);
+    render(<ActivityDebug />);
+    const table = await screen.findByRole("table", { name: "Activity" });
+    expect(within(table).getByRole("columnheader", { name: "URL or path" })).toBeInTheDocument();
+    expect(await within(table).findByRole("cell", { name: "https://example.com/a" })).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "/Users/me/notes.txt" })).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "https://example.com/b" })).toBeInTheDocument();
+    expect(within(table).queryByRole("cell", { name: "/ignored" })).not.toBeInTheDocument();
+  });
+
   it("lists the reason of each away span", async () => {
     mocked.awayList.mockResolvedValue([
       { id: 1, start: 0, end: 60_000, reason: "sleep" },
