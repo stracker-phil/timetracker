@@ -196,6 +196,20 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   or deletes them.
 - Every change ends in a toast with Undo.
 
+## Rules and suggestions
+
+- **Suggestions** sit in the recordings column under the recordings: a dashed outline in the project's shade
+  on a 7% tint, a "+" top right, the project (sans 500) and the rule's name (`--o2`), the duration bottom
+  right. The cursor is `copy`. A click records it; ⌥-click records every suggestion of that rule on the
+  day. Each is a button, so Tab reaches it and ↵ accepts. The tooltip names the rule, project, span and note.
+- **Drop strip**: ⌥-dragging an activity block shows the recent projects on `--pop` over the top of the
+  recordings column; the one under the pointer gets a dashed accent outline. Dropping opens the rule sheet,
+  filled in; nothing is saved before Save.
+- **Rules screen**: rows with a grip, the enable switch, the name, the project's dot and name and the
+  conditions in mono `--o2`; a disabled rule is dimmed. The order is the priority.
+- **Rule sheet**: the form on the left, "Last 7 days" on the right with the matching time and the hits
+  (day and time in mono `--o2`, the app, the title). Below 720px the preview moves under the form.
+
 ## Timer
 
 - A running recording grows to now in the Day view, with a pulsing accent dot at its top right (still with
@@ -252,7 +266,8 @@ in inputs or dialogs. `Tab` is never bound: it moves the keyboard focus.
 | ⌘K | global | command palette (`palette.toggle`); `>` lists commands, `p:` projects |
 | `?` | global | shortcut overview (`shortcuts.show`) |
 | ⌘⌃S | global | toggle the sidebar (`sidebar.toggle`) |
-| ⌘1 … ⌘5 | global | Day, Week, Month, Reports, Projects (`view.*`) |
+| ⌘1 … ⌘6 | global | Day, Week, Month, Reports, Projects, Rules (`view.*`) |
+| ⌘N | projects, rules | new project (`projects.new`), new rule (`rules.new`) |
 | ⌘= / ⌘- / ⌘0 | global | zoom in / out / reset (`zoom.*`): the timeline in the Day view, the text elsewhere |
 | ⌘← / ⌘→ / T | calendar | previous / next day, week or month by the view, today (`nav.*`) |
 | J / K | day | next / previous block in time (`day.nextBlock`, `day.prevBlock`) |
@@ -269,5 +284,5 @@ in inputs or dialogs. `Tab` is never bound: it moves the keyboard focus.
 | ⌘Q | menu | quit (`app.quit`) |
 
 Scopes are the registry's (`src/commands/scopes.ts`): `global`, and under it one scope per view (`day`,
-`week`, `month`, `reports`, `projects`), active while that view shows; `calendar` sits between `global` and
+`week`, `month`, `reports`, `projects`, `rules`), active while that view shows; `calendar` sits between `global` and
 the Day, Week and Month scopes, active in any of them.

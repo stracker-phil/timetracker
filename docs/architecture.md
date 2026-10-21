@@ -89,6 +89,15 @@ Recording an hour of activity:
 3. `reports::text` renders the plain text the screen copies and the CLI prints; the screen draws the same
    `ReportResult` itself. A `data_changed` event runs the report again.
 
+## A suggestion, end to end
+
+1. `day::commands::load` builds the day's view, then `rules::day_suggestions` runs the active rules over its
+   blocks: first matching rule per block, runs across short gaps, recorded time cut away.
+2. The Day view draws each `Suggestion` dashed in the recordings column. A click sends `suggestion_accept`
+   with its id; Rust rebuilds the suggestions, finds the id and creates the recording through the recordings
+   service (undoable). ⌥-click sends `suggestions_accept_rule` for all of the rule's on that day, one undo.
+3. `data_changed` reloads the day; the accepted time is now recorded, so its suggestion is gone.
+
 ## Process model
 
 ```
@@ -153,7 +162,7 @@ src-tauri/
   src/capture/               Source trait, Snapshot types, macos.rs (objc2), fake.rs (test-util)
   src/tracker/               state machine: spans, away, pause, status; the tokio task
   src/activity/              external activity (rules, commands)
-  src/day/ week.rs month.rs projects/ tags.rs recordings/ rules/ reports/ timers.rs away_prompt.rs mcp/
+  src/day/ calendar/ projects/ recordings/ rules/ reports/ timers/ away_prompt.rs mcp/
   tests/                     integration tests on a temp SQLite file
 src/
   main.tsx modules.ts App.tsx

@@ -17,7 +17,7 @@ pub(super) struct Piece {
     pub block: ActivityBlock,
 }
 
-pub(super) fn continuity_ms(continuity: Continuity) -> Ms {
+pub(crate) fn continuity_ms(continuity: Continuity) -> Ms {
     match continuity {
         Continuity::Off => 0,
         Continuity::Short => 2 * MIN,
@@ -36,7 +36,7 @@ pub(super) fn noise_ms(noise: Noise) -> Ms {
 }
 
 /// Idle time is bridged like a gap; sleep, a locked screen or a pause end a block.
-pub(super) fn breaks_continuity(reason: AwayReason) -> bool {
+pub(crate) fn breaks_continuity(reason: AwayReason) -> bool {
     !matches!(reason, AwayReason::Idle)
 }
 

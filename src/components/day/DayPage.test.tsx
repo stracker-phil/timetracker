@@ -12,6 +12,7 @@ import { trackerStatus } from "../../test/data";
 import { appLane, at, away, block, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane } from "../../test/dayFixtures";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
+import { suggestion } from "../../test/ruleFixtures";
 import { settings } from "../../test/settings";
 import { Dialogs } from "../Dialogs";
 import { PermissionDialog } from "../PermissionDialog";
@@ -830,6 +831,147 @@ describe("DayPage", () => {
         await userEvent.keyboard("{Escape}{Backspace}");
         expect(mocked.recordingDelete).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe("suggestions", () => {
+    const proposed = suggestion({ ruleId: "rule-slack", ruleName: "Slack", projectName: "Website", start: at("09:00"), end: at("09:45") });
+    const suggestionEl = () => screen.findByRole("button", { name: "Record Website 09:00–09:45, suggested by Slack" });
+
+    it("draws a suggestion as a button in the recordings column", async () => {
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
+      const el = await suggestionEl();
+      expect(screen.getByLabelText("Recordings")).toContainElement(el);
+      expect(within(el).getByText("Website")).toBeInTheDocument();
+      expect(within(el).getByText("Slack")).toBeInTheDocument();
+      expect(within(el).getByText("0:45")).toBeInTheDocument();
+    });
+
+    it("draws no suggestion when the day has none", async () => {
+      renderDay(busyDay());
+      await blockEl("Safari: Docs");
+      expect(screen.queryByRole("button", { name: /suggested by/ })).not.toBeInTheDocument();
+    });
+
+    it("records the suggestion on the shown day with a click and offers Undo", async () => {
+      mocked.suggestionAccept.mockResolvedValue(recording({ start: at("09:00"), end: at("09:45") }));
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
+      await userEvent.click(await suggestionEl());
+      expect(mocked.suggestionAccept).toHaveBeenCalledWith(DAY, proposed.id);
+      expect(mocked.suggestionsAcceptRule).not.toHaveBeenCalled();
+      expect(await screen.findByText("Recorded 45 min for Website")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+    });
+
+    it("records every suggestion of the rule with an ⌥-click", async () => {
+      mocked.suggestionsAcceptRule.mockResolvedValue([recording({ id: "r1" }), recording({ id: "r2" })]);
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
+      fireEvent.click(await suggestionEl(), { altKey: true });
+      await vi.waitFor(() => expect(mocked.suggestionsAcceptRule).toHaveBeenCalledWith(DAY, "rule-slack"));
+      expect(mocked.suggestionAccept).not.toHaveBeenCalled();
+      expect(await screen.findByText("Recorded 2 suggestions")).toBeInTheDocument();
+    });
+
+    it("shows the error when the suggestion is gone", async () => {
+      mocked.suggestionAccept.mockRejectedValueOnce({ kind: "not_found", message: "Suggestion not found", code: null });
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
+      await userEvent.click(await suggestionEl());
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not accept the suggestion: Suggestion not found");
+    });
+  });
+
+  describe("making a rule by dragging", () => {
+    let over: Element | null;
+
+    beforeEach(() => {
+      over = null;
+      document.elementFromPoint = vi.fn(() => over);
+    });
+
+    afterEach(() => {
+      delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+    });
+
+    const strip = () => screen.findByRole("list", { name: "Drop on a project to make a rule" });
+
+    /** ⌥-presses `label` and moves the pointer; the strip of projects is up afterwards. */
+    async function altDrag(label: string) {
+      const el = await blockEl(label);
+      const lanes = lanesEl();
+      fireEvent.pointerDown(el, { button: 0, altKey: true, clientX: 300, clientY: 200 });
+      fireEvent.pointerMove(lanes, { clientX: 300, clientY: 230 });
+      const projects = within(await strip());
+      return { lanes, target: projects.getAllByRole("listitem")[0] };
+    }
+
+    const sheet = () => within(screen.getByRole("dialog", { name: "New rule" }));
+
+    it("shows the recent projects as drop targets while an activity block is dragged with ⌥", async () => {
+      renderDay(busyDay(), withProject);
+      await altDrag("Safari: Docs");
+      expect(within(await strip()).getAllByRole("listitem").map((i) => i.textContent)).toEqual(["Website"]);
+    });
+
+    it("opens the rule sheet for the app and the domain when a URL block is dropped on a project", async () => {
+      renderDay(busyDay(), withProject);
+      const { lanes, target } = await altDrag("Safari: Docs");
+      over = target;
+      fireEvent.pointerUp(lanes, { clientX: 300, clientY: 230 });
+      expect(await screen.findByRole("dialog", { name: "New rule" })).toBeInTheDocument();
+      expect(sheet().getByLabelText("Name")).toHaveValue("Safari → Website");
+      expect(sheet().getByRole("combobox", { name: "Project" })).toHaveValue("Website");
+      expect(sheet().getByLabelText("Condition 1 value")).toHaveValue("Safari");
+      expect(sheet().getByLabelText("Condition 2 field")).toHaveValue("domain");
+      expect(sheet().getByLabelText("Condition 2 value")).toHaveValue("example.com");
+      expect(screen.queryByRole("list", { name: "Drop on a project to make a rule" })).not.toBeInTheDocument();
+    });
+
+    it("opens the rule sheet for the app and the title when a block without a URL is dropped on a project", async () => {
+      renderDay(busyDay(), withProject);
+      const { lanes, target } = await altDrag("Notes: Todo");
+      over = target;
+      fireEvent.pointerUp(lanes, { clientX: 300, clientY: 230 });
+      expect(await screen.findByRole("dialog", { name: "New rule" })).toBeInTheDocument();
+      expect(sheet().getByLabelText("Name")).toHaveValue("Notes → Website");
+      expect(sheet().getByLabelText("Condition 2 field")).toHaveValue("title");
+      expect(sheet().getByLabelText("Condition 2 comparison")).toHaveValue("contains");
+      expect(sheet().getByLabelText("Condition 2 value")).toHaveValue("Todo");
+    });
+
+    it("saves nothing until the sheet's Save", async () => {
+      renderDay(busyDay(), withProject);
+      const { lanes, target } = await altDrag("Notes: Todo");
+      over = target;
+      fireEvent.pointerUp(lanes, { clientX: 300, clientY: 230 });
+      await screen.findByRole("dialog", { name: "New rule" });
+      expect(mocked.ruleSave).not.toHaveBeenCalled();
+      await userEvent.click(sheet().getByRole("button", { name: "Save" }));
+      expect(mocked.ruleSave).toHaveBeenCalledWith(null, expect.objectContaining({ name: "Notes → Website", projectId: "p-site" }));
+    });
+
+    it("opens no sheet when released away from the projects", async () => {
+      renderDay(busyDay(), withProject);
+      const { lanes } = await altDrag("Safari: Docs");
+      fireEvent.pointerUp(lanes, { clientX: 300, clientY: 230 });
+      await vi.waitFor(() => expect(screen.queryByRole("list", { name: "Drop on a project to make a rule" })).not.toBeInTheDocument());
+      expect(screen.queryByRole("dialog", { name: "New rule" })).not.toBeInTheDocument();
+    });
+
+    it("opens no sheet for a press that was not moved", async () => {
+      renderDay(busyDay(), withProject);
+      const el = await blockEl("Safari: Docs");
+      const lanes = lanesEl();
+      fireEvent.pointerDown(el, { button: 0, altKey: true, clientX: 300, clientY: 200 });
+      fireEvent.pointerUp(lanes, { clientX: 300, clientY: 200 });
+      expect(screen.queryByRole("dialog", { name: "New rule" })).not.toBeInTheDocument();
+    });
+
+    it("shows no drop strip when the block is dragged without ⌥", async () => {
+      renderDay(busyDay(), withProject);
+      const el = await blockEl("Safari: Docs");
+      fireEvent.pointerDown(el, { button: 0, clientX: 300, clientY: 200 });
+      fireEvent.pointerMove(lanesEl(), { clientX: 300, clientY: 230 });
+      expect(screen.queryByRole("list", { name: "Drop on a project to make a rule" })).not.toBeInTheDocument();
     });
   });
 });

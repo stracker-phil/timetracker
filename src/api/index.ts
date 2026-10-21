@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, Rule, RuleInput, RulePreview, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -105,6 +105,21 @@ export const api = {
   tagsSave: (id: string | null, name: string) => invoke<Tag>("tags_save", { id, name }),
   /** Also removes the tag from every recording. */
   tagsDelete: (id: string) => invoke<void>("tags_delete", { id }),
+
+  /** In position order: the first matching rule wins. */
+  rulesList: () => invoke<Rule[]>("rules_list"),
+  /** `id: null` creates; validation errors name the field (`name`, `projectId`, `note`, `tagIds`, `conditions`, `conditions.<i>.value`). */
+  ruleSave: (id: string | null, input: RuleInput) => invoke<Rule>("rule_save", { id, input }),
+  ruleDelete: (id: string) => invoke<void>("rule_delete", { id }),
+  /** `ids`: every rule, in the new order. */
+  rulesReorder: (ids: string[]) => invoke<Rule[]>("rules_reorder", { ids }),
+  ruleSetEnabled: (id: string, enabled: boolean) => invoke<Rule>("rule_set_enabled", { id, enabled }),
+  /** What the input's conditions match over the last `days` days, today included. */
+  rulePreview: (input: RuleInput, days: number) => invoke<RulePreview>("rule_preview", { input, days }),
+  /** Records a suggestion of the day's view; `not_found` once it is gone, `overlap` when a recording took its time. */
+  suggestionAccept: (day: string, id: string) => invoke<Recording>("suggestion_accept", { day, id }),
+  /** Records every suggestion of the rule on the day as one undoable change. */
+  suggestionsAcceptRule: (day: string, ruleId: string) => invoke<Recording[]>("suggestions_accept_rule", { day, ruleId }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   /** Native menu and tray items emit the id of the command they run. */

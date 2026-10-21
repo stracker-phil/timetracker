@@ -6,7 +6,7 @@ pub mod commands;
 mod lanes;
 #[cfg(test)]
 mod testing;
-mod transform;
+pub(crate) mod transform;
 
 use std::collections::HashMap;
 
@@ -17,6 +17,7 @@ use crate::db::activities::ActivityRow;
 use crate::db::away::{AwayReason, AwayRow};
 use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms, clip};
+use crate::rules::types::Suggestion;
 use crate::store::settings::{AppOverride, Settings, TimelineSettings};
 
 /// Time without activity or away shorter than this is no gap.
@@ -102,6 +103,8 @@ pub struct DayView {
     pub compact: bool,
     /// Every app the settings hide, by name.
     pub hidden_apps: Vec<HiddenApp>,
+    /// What the rules suggest recording, by start; filled by `commands::load`.
+    pub suggestions: Vec<Suggestion>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -271,6 +274,7 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
         sources,
         compact: timeline.compact,
         hidden_apps,
+        suggestions: Vec::new(),
     }
 }
 
@@ -1013,7 +1017,8 @@ mod tests {
                 "firstActivity": mins(10),
                 "sources": ["tracker"],
                 "compact": false,
-                "hiddenApps": []
+                "hiddenApps": [],
+                "suggestions": []
             })
         );
     }

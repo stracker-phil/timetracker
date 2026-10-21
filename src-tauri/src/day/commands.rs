@@ -8,11 +8,32 @@ use super::{DayInput, DayView, Names, ProjectRef, ViewSettings, view};
 use crate::db::time::{Day, Ms, now_ms};
 use crate::db::{Db, activities, away, clients, projects, recordings, tags};
 use crate::error::AppResult;
+use crate::rules::{self, matching::compile};
 use crate::state::AppState;
 use crate::store::settings::Settings;
 
-/// Reads the rows that share time with the day (spans from the day before included) and builds its view.
+/// The day's view with the saved rules' suggestions.
 pub async fn load(db: &Db, day: Day, settings: &Settings, now: Ms) -> AppResult<DayView> {
+    let names = names(db).await?;
+    let mut view = build(db, day, settings, now, names.clone()).await?;
+    let rules = rules::store::active(db).await?;
+    view.suggestions = rules::day_suggestions(&view, &compile(&rules), &names, settings);
+    Ok(view)
+}
+
+/// The day's view without suggestions.
+pub async fn view_of(db: &Db, day: Day, settings: &Settings, now: Ms) -> AppResult<DayView> {
+    build(db, day, settings, now, names(db).await?).await
+}
+
+/// Reads the rows that share time with the day (spans from the day before included) and builds its view.
+async fn build(
+    db: &Db,
+    day: Day,
+    settings: &Settings,
+    now: Ms,
+    names: Names,
+) -> AppResult<DayView> {
     let bounds = day.bounds();
     let input = DayInput {
         day,
@@ -21,7 +42,7 @@ pub async fn load(db: &Db, day: Day, settings: &Settings, now: Ms) -> AppResult<
         activities: activities::list_for_range(db, bounds.0, bounds.1).await?,
         away: away::list_for_range(db, bounds.0, bounds.1).await?,
         recordings: recordings::list_for_range(db, bounds.0, bounds.1).await?,
-        names: names(db).await?,
+        names,
     };
     Ok(view(&input, &ViewSettings::from(settings)))
 }
@@ -371,5 +392,174 @@ mod tests {
         println!("load of {ROWS} activities took {elapsed:?}");
         assert_eq!(blocks, ROWS as usize);
         assert!(elapsed.as_millis() < 500, "took {elapsed:?}");
+    }
+
+    mod suggestions {
+        use super::*;
+        use crate::rules::store;
+        use crate::rules::testing::{on, plain_settings, save_rule};
+        use crate::rules::types::RuleField::App;
+        use crate::rules::types::RuleOp;
+
+        fn spans(view: &DayView) -> Vec<(Ms, Ms)> {
+            view.suggestions.iter().map(|s| (s.start, s.end)).collect()
+        }
+
+        async fn slack_rule(db: &Db) -> crate::rules::types::Rule {
+            let p = project(db, "Portal").await;
+            save_rule(db, "Slack", &p.id, &[(App, RuleOp::Is, "Slack")]).await
+        }
+
+        #[tokio::test]
+        async fn load_suggests_the_unrecorded_time_of_the_saved_rules() {
+            let db = Db::open_memory().await.unwrap();
+            let today = day("2026-01-05");
+            let rule = slack_rule(&db).await;
+            activity(&db, on(today, 9, 0), Some(on(today, 10, 0)), "Slack", "").await;
+            activity(&db, on(today, 10, 0), Some(on(today, 11, 0)), "Code", "").await;
+            let settings = plain_settings(Continuity::Off);
+
+            let view = load(&db, today, &settings, on(today, 20, 0)).await.unwrap();
+
+            assert_eq!(view.suggestions.len(), 1);
+            let suggestion = &view.suggestions[0];
+            assert_eq!(
+                (
+                    suggestion.rule_id.as_str(),
+                    suggestion.project_name.as_str(),
+                    suggestion.start,
+                    suggestion.end
+                ),
+                (
+                    rule.id.as_str(),
+                    "Portal",
+                    on(today, 9, 0),
+                    on(today, 10, 0)
+                )
+            );
+        }
+
+        #[tokio::test]
+        async fn view_of_and_a_day_without_rules_have_no_suggestions() {
+            let db = Db::open_memory().await.unwrap();
+            let today = day("2026-01-05");
+            activity(&db, on(today, 9, 0), Some(on(today, 10, 0)), "Slack", "").await;
+            let settings = plain_settings(Continuity::Off);
+            let before = load(&db, today, &settings, on(today, 20, 0)).await.unwrap();
+            slack_rule(&db).await;
+
+            let view = view_of(&db, today, &settings, on(today, 20, 0))
+                .await
+                .unwrap();
+
+            assert!(before.suggestions.is_empty());
+            assert!(view.suggestions.is_empty());
+        }
+
+        #[tokio::test]
+        async fn disabled_rules_and_rules_of_archived_projects_suggest_nothing() {
+            let db = Db::open_memory().await.unwrap();
+            let today = day("2026-01-05");
+            activity(&db, on(today, 9, 0), Some(on(today, 10, 0)), "Slack", "").await;
+            let settings = plain_settings(Continuity::Off);
+            let disabled = slack_rule(&db).await;
+            store::set_enabled(&db, &disabled.id, false).await.unwrap();
+            let archived = project(&db, "Old").await;
+            save_rule(
+                &db,
+                "Slack too",
+                &archived.id,
+                &[(App, RuleOp::Is, "Slack")],
+            )
+            .await;
+            projects::set_archived(&db, &archived.id, true)
+                .await
+                .unwrap();
+
+            let view = load(&db, today, &settings, on(today, 20, 0)).await.unwrap();
+
+            assert!(view.suggestions.is_empty());
+        }
+
+        #[tokio::test]
+        async fn recordings_cut_their_time_out_of_the_suggestions() {
+            let db = Db::open_memory().await.unwrap();
+            let today = day("2026-01-05");
+            let rule = slack_rule(&db).await;
+            activity(&db, on(today, 9, 0), Some(on(today, 10, 0)), "Slack", "").await;
+            recording(
+                &db,
+                &rule.project_id,
+                on(today, 9, 20),
+                Some(on(today, 9, 40)),
+            )
+            .await;
+            let settings = plain_settings(Continuity::Off);
+
+            let view = load(&db, today, &settings, on(today, 20, 0)).await.unwrap();
+
+            assert_eq!(
+                spans(&view),
+                [
+                    (on(today, 9, 0), on(today, 9, 20)),
+                    (on(today, 9, 40), on(today, 10, 0)),
+                ]
+            );
+        }
+
+        #[tokio::test]
+        async fn the_continuity_setting_bridges_gaps_unless_the_user_was_asleep_or_locked_out() {
+            let (first, second) = (
+                |d| (on(d, 9, 0), on(d, 9, 10)),
+                |d| (on(d, 9, 15), on(d, 9, 30)),
+            );
+            let cases = [
+                ("continuity off", Continuity::Off, None, false),
+                ("a short gap", Continuity::Regular, None, true),
+                (
+                    "an idle gap",
+                    Continuity::Regular,
+                    Some(AwayReason::Idle),
+                    true,
+                ),
+                (
+                    "a sleep",
+                    Continuity::Regular,
+                    Some(AwayReason::Sleep),
+                    false,
+                ),
+                ("a lock", Continuity::Regular, Some(AwayReason::Lock), false),
+                (
+                    "a pause",
+                    Continuity::Regular,
+                    Some(AwayReason::Paused),
+                    false,
+                ),
+            ];
+            for (name, continuity, away_reason, joined) in cases {
+                let db = Db::open_memory().await.unwrap();
+                let today = day("2026-01-05");
+                slack_rule(&db).await;
+                for (start, end) in [first(today), second(today)] {
+                    activity(&db, start, Some(end), "Slack", "").await;
+                }
+                if let Some(reason) = away_reason {
+                    let start = on(today, 9, 11);
+                    away::insert(&db, NewAway { start, reason }).await.unwrap();
+                    away::close_open(&db, on(today, 9, 14)).await.unwrap();
+                }
+
+                let view = load(&db, today, &plain_settings(continuity), on(today, 20, 0))
+                    .await
+                    .unwrap();
+
+                let expected = if joined {
+                    vec![(on(today, 9, 0), on(today, 9, 30))]
+                } else {
+                    vec![first(today), second(today)]
+                };
+                assert_eq!(spans(&view), expected, "{name}");
+            }
+        }
     }
 }

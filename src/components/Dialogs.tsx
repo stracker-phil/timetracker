@@ -5,6 +5,7 @@ import { Modal } from "./Modal";
 import { PromptDialog } from "./PromptDialog";
 import { ClientSheet } from "./projects/ClientSheet";
 import { ProjectSheet } from "./projects/ProjectSheet";
+import { RuleSheet } from "./rules/RuleSheet";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 
@@ -48,6 +49,8 @@ export function Dialogs() {
       return <PromptDialog {...dialog} />;
     case "timelineSettings":
       return <TimelineSettingsPopover />;
+    case "rule":
+      return <RuleSheet key={dialog.id ?? ""} id={dialog.id} draft={dialog.draft} onClose={useStore.getState().closeDialog} />;
     case "client":
       return <ClientSheet key={dialog.id ?? ""} id={dialog.id} onClose={useStore.getState().closeDialog} />;
     default:

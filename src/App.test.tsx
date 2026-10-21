@@ -12,6 +12,7 @@ import { activityRow, trackerStatus } from "./test/data";
 import { dayView } from "./test/dayFixtures";
 import { projectItem, tag } from "./test/projectFixtures";
 import { savedReport } from "./test/reportFixtures";
+import { rule } from "./test/ruleFixtures";
 import { runningStatus } from "./test/timerFixtures";
 
 const mocked = vi.mocked(api, true);
@@ -23,7 +24,7 @@ async function renderApp(patch: Parameters<typeof resetStore>[0] = {}) {
   await screen.findByRole("button", { name: "13 px" });
 }
 
-/** The Day, Week, Month and Reports views are regions, the Projects page has a level-1 heading. */
+/** The Day, Week, Month and Reports views are regions, the Projects and Rules pages have a level-1 heading. */
 const mainHeading = (name: string) => (["Day", "Week", "Month", "Reports"].includes(name) ? screen.getByRole("region", { name }) : screen.getByRole("heading", { level: 1, name }));
 const sidebarEntry = (name: string) => within(screen.getByRole("navigation", { name: "Views" })).getByRole("button", { name: new RegExp(`^${name}`) });
 
@@ -38,7 +39,7 @@ describe("App", () => {
       expect(mainHeading("Day")).toBeInTheDocument();
     });
 
-    it.each(["Day", "Week", "Month", "Reports", "Projects"])("lists %s in the sidebar", async (name) => {
+    it.each(["Day", "Week", "Month", "Reports", "Projects", "Rules"])("lists %s in the sidebar", async (name) => {
       await renderApp();
       expect(sidebarEntry(name)).toBeInTheDocument();
     });
@@ -160,6 +161,35 @@ describe("App", () => {
     });
   });
 
+  describe("rules", () => {
+    it("lists the rules of the backend in the Rules view", async () => {
+      mocked.rulesList.mockResolvedValueOnce([rule({ name: "Chat" })]);
+      await renderApp({ view: "rules" });
+      expect(await within(screen.getByRole("list", { name: "Rules in order" })).findByText("Chat")).toBeInTheDocument();
+    });
+
+    it("reloads the rules when rules changed", async () => {
+      await renderApp({ view: "rules" });
+      await screen.findByText("No rules yet.");
+      mocked.rulesList.mockResolvedValueOnce([rule({ name: "Chat" })]);
+      act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "rules", day: null }));
+      expect(await screen.findByText("Chat")).toBeInTheDocument();
+    });
+
+    it("opens the new rule sheet with ⌘N in the Rules view", async () => {
+      await renderApp({ view: "rules" });
+      await userEvent.keyboard("{Meta>}n{/Meta}");
+      expect(await screen.findByRole("dialog", { name: "New rule" })).toBeInTheDocument();
+    });
+
+    it("opens the new project sheet, not a rule, with ⌘N in the Projects view", async () => {
+      await renderApp({ view: "projects" });
+      await userEvent.keyboard("{Meta>}n{/Meta}");
+      expect(await screen.findByRole("dialog", { name: "New project" })).toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "New rule" })).not.toBeInTheDocument();
+    });
+  });
+
   describe("navigation", () => {
     it("switches the view when a sidebar entry is clicked", async () => {
       await renderApp();
@@ -179,6 +209,7 @@ describe("App", () => {
       ["{Meta>}3{/Meta}", "Month", "day"],
       ["{Meta>}4{/Meta}", "Reports", "day"],
       ["{Meta>}5{/Meta}", "Projects", "day"],
+      ["{Meta>}6{/Meta}", "Rules", "day"],
     ])("shows the view for %s", async (keys, heading, from) => {
       await renderApp({ view: from });
       await userEvent.keyboard(keys);

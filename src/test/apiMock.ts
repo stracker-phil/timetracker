@@ -1,13 +1,14 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type ProjectInput, type RecordingInput, type RecordingPatch, type ReportFilter, type Settings, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type ProjectInput, type RecordingInput, type RecordingPatch, type ReportFilter, type RuleInput, type Settings, type UiState } from "../api/types";
 import { mondayOf, monthView, weekView } from "./calendarFixtures";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
 import { client, DEFAULT_TAGS, project } from "./projectFixtures";
 import { recording } from "./recordingFixtures";
 import { reportResult, savedReport } from "./reportFixtures";
+import { rule, rulePreview } from "./ruleFixtures";
 import { settings } from "./settings";
 
 const noUnlisten = () => Promise.resolve(() => {});
@@ -81,6 +82,14 @@ export function createApiMock(): typeof realApi {
     timersRecent: vi.fn().mockResolvedValue([]),
     timerPickerOpen: vi.fn().mockResolvedValue(null),
     timerPickerClose: vi.fn().mockResolvedValue(null),
+    rulesList: vi.fn().mockResolvedValue([]),
+    ruleSave: vi.fn(async (id: string | null, input: RuleInput) => rule({ ...input, id: id ?? "rule-new", conditions: input.conditions.map((c, i) => ({ ...c, id: `c${i}` })) })),
+    ruleDelete: vi.fn().mockResolvedValue(undefined),
+    rulesReorder: vi.fn().mockResolvedValue([]),
+    ruleSetEnabled: vi.fn(async (id: string, enabled: boolean) => rule({ id, enabled })),
+    rulePreview: vi.fn().mockResolvedValue(rulePreview()),
+    suggestionAccept: vi.fn(async () => recording({ id: "recording-suggested" })),
+    suggestionsAcceptRule: vi.fn().mockResolvedValue([]),
     onLaunch: vi.fn(noUnlisten),
     onCommand: vi.fn(noUnlisten),
     onRemote: vi.fn(noUnlisten),

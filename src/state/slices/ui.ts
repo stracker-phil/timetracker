@@ -1,4 +1,4 @@
-import { api, type Recording } from "../../api";
+import { api, type Recording, type RuleInput } from "../../api";
 import type { Slice } from "../store";
 
 export interface Toast {
@@ -24,6 +24,8 @@ export type Dialog =
   | { type: "shortcuts"; scopes: string[] }
   /** Edit a project (`id`) or create one, for `clientId` when given. */
   | { type: "project"; id?: string; clientId?: string }
+  /** Edit a rule (`id`) or create one, starting from `draft` when given. */
+  | { type: "rule"; id?: string; draft?: RuleInput }
   /** Edit a client (`id`) or create one. */
   | { type: "client"; id?: string }
   /** One line of text, e.g. a name; `onSubmit` gets it trimmed and never blank. */

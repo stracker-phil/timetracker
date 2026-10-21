@@ -1,7 +1,7 @@
 import { addDays, addMonths, daysBetween, today } from "../../lib/day";
 import type { Slice } from "../store";
 
-export type View = "day" | "week" | "month" | "reports" | "projects";
+export type View = "day" | "week" | "month" | "reports" | "projects" | "rules";
 
 /** A remembered day older than this opens today instead. */
 const RESTORE_DAYS = 30;

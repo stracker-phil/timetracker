@@ -89,11 +89,7 @@ export type AwayRow = { id: number, start: number,
  */
 end: number | null, reason: AwayReason, };
 
-export type Backup = { version: number, exportedAt: number, clients: Array<Client>, projects: Array<Project>, tags: Array<Tag>, activities: Array<ActivityRow>, awaySpans: Array<AwayRow>, recordings: Array<Recording>, 
-/**
- * Filled once rules exist.
- */
-rules: unknown[], savedReports: Array<SavedReport>, };
+export type Backup = { version: number, exportedAt: number, clients: Array<Client>, projects: Array<Project>, tags: Array<Tag>, activities: Array<ActivityRow>, awaySpans: Array<AwayRow>, recordings: Array<Recording>, rules: Array<Rule>, savedReports: Array<SavedReport>, };
 
 export type BackupWritten = { bytes: number, recordings: number, activities: number, };
 
@@ -114,6 +110,10 @@ export type ClientInput = { name: string,
  * Blank: a new client takes the first accent no active client has; an existing one keeps its color.
  */
 color: string, };
+
+export type Condition = { id: string, field: RuleField, op: RuleOp, value: string, };
+
+export type ConditionInput = { field: RuleField, op: RuleOp, value: string, };
 
 /**
  * How long a gap may be before two activity blocks of the same kind stop merging.
@@ -179,7 +179,11 @@ compact: boolean,
 /**
  * Every app the settings hide, by name.
  */
-hiddenApps: Array<HiddenApp>, };
+hiddenApps: Array<HiddenApp>, 
+/**
+ * What the rules suggest recording, by start; filled by `commands::load`.
+ */
+suggestions: Array<Suggestion>, };
 
 export type ErrorKind = "db" | "io" | "invalid_input" | "not_found" | "overlap" | "permission_required" | "tracker_paused" | "session_not_found" | "cancelled";
 
@@ -262,6 +266,8 @@ export type PauseUntil = { "minutes": number } | "tomorrow" | "resumed";
  * The Accessibility permission, which window titles need.
  */
 export type PermissionStatus = "granted" | "denied" | "unknown";
+
+export type PreviewHit = { block: ActivityBlock, day: Day, };
 
 export type Project = { id: string, clientId: string | null, name: string, 
 /**
@@ -403,6 +409,38 @@ export type ReportSettings = { rounding: Rounding, defaultGroup: Group, };
 
 export type Rounding = "none" | "nearest5" | "nearest6" | "nearest10" | "nearest15" | "nearest30" | "up5" | "up6" | "up10" | "up15" | "up30";
 
+/**
+ * Activity a rule's conditions all match belongs to its project.
+ */
+export type Rule = { id: string, name: string, projectId: string, 
+/**
+ * The first matching rule by position wins.
+ */
+position: number, enabled: boolean, note: string, tagIds: Array<string>, conditions: Array<Condition>, };
+
+/**
+ * What part of an activity block a condition reads.
+ */
+export type RuleField = "app" | "title" | "url" | "domain" | "path" | "source";
+
+export type RuleInput = { name: string, projectId: string, enabled: boolean, note: string, tagIds: Array<string>, conditions: Array<ConditionInput>, };
+
+export type RuleOp = "contains" | "is" | "begins_with" | "pattern";
+
+export type RulePreview = { 
+/**
+ * Most recent first, at most `PREVIEW_HITS`.
+ */
+hits: Array<PreviewHit>, 
+/**
+ * Every matching block's time, also those beyond the listed hits.
+ */
+totalMs: number, 
+/**
+ * The days with at least one hit.
+ */
+days: number, };
+
 export type RunningTimer = { recording: Recording, projectName: string, color: string, shade: number, elapsedMs: number, };
 
 export type SavedReport = { id: string, name: string, filter: ReportFilter, position: number, };
@@ -439,6 +477,15 @@ export type Span = { start: number, end: number, };
  * The reply to `status`. `tracker` is `None` while the data store is unavailable.
  */
 export type StatusReport = { version: string, tracker: TrackerStatus | null, timer: RunningTimer | null, windowVisible: boolean, };
+
+/**
+ * A recording a rule proposes for time no recording covers yet.
+ */
+export type Suggestion = { 
+/**
+ * `<rule id>:<start>:<end>`: the same after a reload.
+ */
+id: string, ruleId: string, ruleName: string, projectId: string, projectName: string, color: string, shade: number, start: number, end: number, note: string, tagIds: Array<string>, };
 
 export type Tag = { id: string, 
 /**

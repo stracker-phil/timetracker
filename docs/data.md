@@ -40,6 +40,9 @@ A backup is the JSON export below, or a copy of the folder while the app is not 
 | `away_spans` | no input, sleep, lock or pause: `id` (AUTOINCREMENT), `start`, `end`, `reason` (`idle`, `sleep`, `lock`, `paused`); indexed on `start` |
 | `recordings` | time confirmed for a project: `id` (UUID), `project_id`, `start`, `end` (NULL only for the running timer), `note`, `created_at`, `updated_at`; indexed on `start` |
 | `recording_tags` | `(recording_id, tag_id)`; deleting either side deletes the link |
+| `saved_reports` | `id`, `name`, `filter` (a `ReportFilter` as JSON), `position` |
+| `rules` | `id`, `name`, `project_id`, `position` (the lowest wins), `enabled`, `note`, `tag_ids` (a JSON array) |
+| `rule_conditions` | `id`, `rule_id` (deleting the rule deletes them), `position`, `field`, `op`, `value` (the serde names of `RuleField` and `RuleOp`) |
 
 `end` is a SQL keyword, so queries quote it (`"end"`). `activities` and `away_spans` use AUTOINCREMENT so a
 deleted id is never reused and an undo can restore rows by id.
@@ -165,12 +168,12 @@ the field:
   "clients": [], "projects": [], "tags": [],
   "activities": [], "awaySpans": [],
   "recordings": [{ "id": "…", "projectId": "…", "start": 0, "end": 0, "note": "", "tagIds": [], "createdAt": 0, "updatedAt": 0 }],
-  "rules": [], "savedReports": [{ "id": "…", "name": "This month", "filter": { "range": { "kind": "thisMonth" }, "…": "…" }, "position": 0 }]
+  "rules": [{ "id": "…", "name": "Slack → Acme", "projectId": "…", "position": 0, "enabled": true, "note": "", "tagIds": [], "conditions": [{ "id": "…", "field": "app", "op": "is", "value": "Slack" }] }], "savedReports": [{ "id": "…", "name": "This month", "filter": { "range": { "kind": "thisMonth" }, "…": "…" }, "position": 0 }]
 }
 ```
 
-Rows have the shape of their IPC types (`Client`, `Project`, `Tag`, `ActivityRow`, `AwayRow`, `Recording`).
-`rules` stays empty until rules exist. There is no import yet.
+Rows have the shape of their IPC types (`Client`, `Project`, `Tag`, `ActivityRow`, `AwayRow`, `Recording`,
+`Rule`, `SavedReport`). There is no import yet.
 
 ## Migrations
 
@@ -179,7 +182,8 @@ the crate when the folder changes. Migrations are forward-only: add `NNNN_<name>
 never edit a file that has shipped. A downgrade restores a backup. `0002_drop_billing.sql` removed the billing
 columns (`projects.billable`, `projects.hourly_rate`, `recordings.billable`): TimeTracker tracks time only.
 `0003_client_colors.sql` gave clients the color most of their projects had and spread shades over each
-client's projects. `0004_saved_reports.sql` adds `saved_reports (id, name, filter, position)`.
+client's projects. `0004_saved_reports.sql` adds `saved_reports (id, name, filter, position)`; `0005_rules.sql` adds `rules` and
+`rule_conditions`.
 
 ## Tests
 

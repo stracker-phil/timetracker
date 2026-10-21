@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
 import type { DayView } from "../../api";
 import { findBlock } from "../../lib/blockFocus";
 import { isToday } from "../../lib/day";
@@ -14,6 +14,7 @@ import { RecordingsColumn } from "./RecordingsColumn";
 import { HALF_HOURS_FROM_PX, TimeAxis } from "./TimeAxis";
 import { selectionPress } from "./selectionPress";
 import { useSnappedSpan } from "./useSnappedSpan";
+import { useRuleDrag } from "./useRuleDrag";
 import { useTimelineScroll } from "./useTimelineScroll";
 import { useVisibleRange } from "./useVisibleRange";
 
@@ -80,6 +81,13 @@ export function Timeline({ view }: { view: DayView }) {
   useTimelineScroll(scrollRef, view, focusedBlock, y, live ? now : null);
   const columnRef = useRef<HTMLDivElement>(null);
   const press = selectionPress({ origin, pxPerMinute, scrollRef, columnRef });
+  const ruleDrag = useRuleDrag(columnRef, scrollRef);
+  const pressLanes = (e: PointerEvent<HTMLDivElement>) => {
+    if (gearAt(e.target) !== null) return;
+    const found = e.altKey && e.button === 0 ? findBlock(view, blockIdAt(e.target)) : null;
+    if (found) ruleDrag.start(e, found.block);
+    else press(e);
+  };
   const selection = useSnappedSpan(useStore((s) => s.selection));
   const selectionStart = selection?.start;
   const selectionEnd = selection?.end;
@@ -108,13 +116,13 @@ export function Timeline({ view }: { view: DayView }) {
     <div className={view.compact ? "timeline timeline--compact" : "timeline"} ref={scrollRef} onMouseLeave={hover.leave}>
       <LaneHeader lanes={view.lanes} />
       <div className="timeline-body" style={{ height: y(end) }}>
-        <RecordingsColumn ref={columnRef} recordings={view.recordings} y={y} pxPerMinute={pxPerMinute} selection={selection} />
+        <RecordingsColumn ref={columnRef} recordings={view.recordings} suggestions={view.suggestions} y={y} pxPerMinute={pxPerMinute} selection={selection} />
         <TimeAxis bounds={view.bounds} pxPerMinute={pxPerMinute} onPointerDown={press} />
         <div
           className={pxPerMinute >= HALF_HOURS_FROM_PX ? "lanes half-hours" : "lanes"}
           style={{ "--hour-px": `${60 * pxPerMinute}px` } as CSSProperties}
           onMouseOver={(e) => hover.over(blockIdAt(e.target))}
-          onPointerDown={(e) => gearAt(e.target) === null && press(e)}
+          onPointerDown={pressLanes}
           onClick={(e) => {
             const gear = gearAt(e.target);
             const id = blockIdAt(e.target);
@@ -143,6 +151,7 @@ export function Timeline({ view }: { view: DayView }) {
       </div>
       {card && <HoverCard block={card.block} anchor={element(card.block.id)} onPointerEnter={hover.keep} onPointerLeave={hover.leave} />}
       {menu.element}
+      {ruleDrag.strip}
     </div>
   );
 }

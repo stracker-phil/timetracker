@@ -19,6 +19,7 @@ pub mod projects;
 pub mod recordings;
 pub mod remote;
 pub mod reports;
+pub mod rules;
 pub mod state;
 pub mod store;
 #[cfg(any(test, feature = "test-util"))]
@@ -417,6 +418,15 @@ fn start_app(
             timers::commands::timer_picker_close,
             calendar::commands::week_view,
             calendar::commands::month_view,
+            rules::commands::rules_list,
+            rules::commands::rule_save,
+            rules::commands::rule_delete,
+            rules::commands::rules_reorder,
+            rules::commands::rule_set_enabled,
+            rules::commands::rule_preview,
+            rules::commands::suggestions,
+            rules::commands::suggestion_accept,
+            rules::commands::suggestions_accept_rule,
             reports::commands::report_run,
             reports::commands::report_text,
             reports::commands::saved_reports_list,

@@ -15,6 +15,7 @@ use super::time::{Ms, now_ms};
 use super::{Db, activities, away, clients, projects, recordings, tags};
 use crate::error::{AppError, AppResult};
 use crate::reports::saved::{self, SavedReport};
+use crate::rules::{self, types::Rule};
 
 pub const BACKUP_VERSION: u32 = 1;
 
@@ -30,9 +31,7 @@ pub struct Backup {
     pub activities: Vec<ActivityRow>,
     pub away_spans: Vec<AwayRow>,
     pub recordings: Vec<Recording>,
-    /// Filled once rules exist.
-    #[ts(type = "unknown[]")]
-    pub rules: Vec<serde_json::Value>,
+    pub rules: Vec<Rule>,
     pub saved_reports: Vec<SavedReport>,
 }
 
@@ -47,7 +46,7 @@ pub async fn export(db: &Db) -> AppResult<Backup> {
         activities: activities::all(&mut tx).await?,
         away_spans: away::all(&mut tx).await?,
         recordings: recordings::all(&mut tx).await?,
-        rules: Vec::new(),
+        rules: rules::store::all(&mut tx).await?,
         saved_reports: saved::all(&mut tx).await?,
     };
     tx.commit().await?;
@@ -215,6 +214,64 @@ mod tests {
         let json: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(json["version"], 1);
         assert!(!dir.path().join("backup.json.tmp").exists());
+    }
+
+    #[tokio::test]
+    async fn export_contains_the_rules_in_order_with_their_conditions() {
+        use crate::rules::testing::save_rule;
+        use crate::rules::types::{RuleField, RuleOp};
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "Website").await;
+        let first = save_rule(
+            &db,
+            "Slack",
+            &p.id,
+            &[
+                (RuleField::App, RuleOp::Is, "Slack"),
+                (RuleField::Title, RuleOp::Contains, "standup"),
+            ],
+        )
+        .await;
+        let second = save_rule(
+            &db,
+            "Docs",
+            &p.id,
+            &[(RuleField::Domain, RuleOp::Is, "docs.rs")],
+        )
+        .await;
+
+        let backup = serde_json::to_value(export(&db).await.unwrap()).unwrap();
+
+        assert_eq!(
+            backup["rules"],
+            json!([
+                {
+                    "id": first.id,
+                    "name": "Slack",
+                    "projectId": p.id,
+                    "position": 0,
+                    "enabled": true,
+                    "note": "",
+                    "tagIds": [],
+                    "conditions": [
+                        { "id": first.conditions[0].id, "field": "app", "op": "is", "value": "Slack" },
+                        { "id": first.conditions[1].id, "field": "title", "op": "contains", "value": "standup" },
+                    ],
+                },
+                {
+                    "id": second.id,
+                    "name": "Docs",
+                    "projectId": p.id,
+                    "position": 1,
+                    "enabled": true,
+                    "note": "",
+                    "tagIds": [],
+                    "conditions": [
+                        { "id": second.conditions[0].id, "field": "domain", "op": "is", "value": "docs.rs" },
+                    ],
+                },
+            ])
+        );
     }
 
     #[tokio::test]

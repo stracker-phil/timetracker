@@ -139,6 +139,7 @@ const APP_COMMANDS: Command[] = [
   { id: "reports.save", title: "Save report…", scope: "reports", run: promptSaveReport },
   { id: "projects.new", title: "New project…", scope: "projects", defaultBinding: "Mod+N", run: () => useStore.getState().openDialog({ type: "project" }) },
   { id: "clients.new", title: "New client…", scope: "projects", run: () => useStore.getState().openDialog({ type: "client" }) },
+  { id: "rules.new", title: "New rule…", scope: "rules", defaultBinding: "Mod+N", run: () => useStore.getState().openDialog({ type: "rule" }) },
   { id: "logs.open", title: "Open log folder", scope: "global", menu: true, run: () => void api.openLogFolder() },
   { id: "app.quit", title: "Quit TimeTracker", scope: "global", defaultBinding: "Mod+Q", menu: true, run: () => void api.quitApp() },
 ];

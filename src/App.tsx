@@ -7,6 +7,7 @@ import { EmptyView } from "./components/EmptyView";
 import { PermissionDialog } from "./components/PermissionDialog";
 import { ProjectsPage } from "./components/projects/ProjectsPage";
 import { ReportsView } from "./components/reports/ReportsView";
+import { RulesView } from "./components/rules/RulesView";
 import { MonthView } from "./components/calendar/MonthView";
 import { WeekView } from "./components/calendar/WeekView";
 import { Sidebar } from "./components/Sidebar";
@@ -72,6 +73,8 @@ function ViewContent({ view }: { view: View }) {
       return <ProjectsPage />;
     case "reports":
       return <ReportsView />;
+    case "rules":
+      return <RulesView />;
     case "week":
       return <WeekView />;
     case "month":

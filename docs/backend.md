@@ -115,7 +115,16 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `saved_report_save` | `name, filter` | `SavedReport` (appended) | `invalid_input` (`field: name`), `db` |
 | `saved_report_rename` | `id, name` | `SavedReport` | `not_found`, `invalid_input` |
 | `saved_report_delete` | `id` | – | `not_found` |
-| `day_view` (`day/commands.rs`) | `day: String` | `DayView` (see [Day view](#day-view)); logs the time it took at debug level | `invalid_input`, `db` |
+| `day_view` (`day/commands.rs`) | `day: String` | `DayView` (see [Day view](#day-view)) with the saved rules' `suggestions`; logs the time it took at debug level | `invalid_input`, `db` |
+| `rules_list` (`rules/commands.rs`) | – | `Rule[] { id, name, projectId, position, enabled, note, tagIds, conditions }`, by position | `db` |
+| `rule_save` | `id: string \| null, input: RuleInput` | `Rule`; `null` appends a new rule; an existing one keeps its position and gets the new conditions | `invalid_input` (`field`: `name`, `projectId`, `note`, `tagIds`, `conditions`, `conditions.<i>.value`), `not_found`, `db` |
+| `rule_delete` | `id` | – (its conditions go with it) | `not_found` |
+| `rules_reorder` | `ids: string[]` (every rule once) | `Rule[]` in the new order | `invalid_input` |
+| `rule_set_enabled` | `id, enabled: bool` | `Rule` | `not_found` |
+| `rule_preview` | `input: RuleInput, days: u32` | `RulePreview { hits: PreviewHit[] { block, day }, totalMs, days }`: what the conditions alone match over the last `days` days, today included (see [Rules and suggestions](#rules-and-suggestions)) | `invalid_input` (`field: conditions`), `db` |
+| `suggestions` | `day: Day` | `Suggestion[]` (the same as in `DayView`) | `db` |
+| `suggestion_accept` | `day: Day, id` | `Recording`, created like `recording_create` with `overlap: cancel` (undoable) | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
+| `suggestions_accept_rule` | `day: Day, ruleId` | `Recording[]`: every suggestion of the rule on the day, one undo entry (`Recordings::create_all`; one that would overlap is left out) | `not_found` (no suggestions), `db` |
 | `app_settings_set` (`commands.rs`) | `bundleId: String` (the app key: bundle id, else the app name), `patch: AppSettingPatch { groupByApp?, titles?, ownLane?, hidden? }` (`null` returns `groupByApp`/`titles` to the timeline's setting) | `Settings`; applied under the settings store's lock (`SettingsStore::update_app`), so concurrent changes never undo each other; an override that ends up default is removed (`Settings::with_app`) | `invalid_input` (blank key), `io` |
 | `apps_list` (`day/commands.rs`) | – | `KnownApp[] { appKey, app, totalMs, lastSeen }` (`day::apps::known_apps`): every tracker app and every app with an override, by name | `db` |
 | `recording_create` (`recordings/commands.rs`) | `input: RecordingInput { projectId, start, end, note, tagIds }, overlap: Overlap` | `Recording` (snapped) | `invalid_input` (`field`), `overlap` (`details`: the recordings in the way), `not_found`, `db` |
@@ -249,6 +258,33 @@ starts from `settings.reports`.
 - `reports/text.rs` renders the text the screen copies and the CLI prints (format in [ux.md](ux.md#reports)).
 - `reports/saved.rs`: saved reports in `saved_reports` (the filter as JSON; a filter this version can't read
   opens as the default). Presets stay relative, so a saved "this month" follows the calendar.
+
+## Rules and suggestions
+
+`rules/`: a rule says "activity like this belongs to project X"; it never writes a recording. Its suggestions
+fill `DayView.suggestions`, and accepting one is an ordinary undoable create.
+
+- `store.rs`: `rules` and `rule_conditions` (migration `0005_rules.sql`), in position order. `validated`
+  checks the name, note, project (existing, not archived), tags and conditions (at least one; a value
+  unless the op is `is`). `active` is what the Day view uses: enabled rules whose project isn't archived.
+- `matching.rs`: `compile` turns enabled rules into `Compiled` matchers once per view; `matches` holds when
+  every condition does (case-insensitive; `contains`, `is`, `begins_with`, or `pattern`: a glob with `*` and
+  `?` anchored at both ends, no regex). Fields read the block's app, title, URL, domain (the URL's host
+  without `www.`), path or source; an empty value only matches `is ""`; a private block matches no rule.
+  `first_match` takes the first rule by position.
+- `suggest.rs`: every block of the activity, app and source lanes (after hiding, grouping, continuity and
+  noise; not the summary lane) goes to its first matching rule. A rule's blocks join into runs while the gap
+  to the next is shorter than the continuity threshold and no sleep, lock or pause lies in it. Matched time
+  belongs to its rule first; a run's bridged gaps only take time no rule matched (earlier rules first), so
+  suggestions never overlap. Recorded time is cut away; pieces under `MIN_SUGGESTION_MS` (5 min) are
+  dropped. Ids are `<rule id>:<start>:<end>`, so a suggestion keeps its id across reloads; `accept` and
+  `accept_rule` (`rules/mod.rs`) rebuild the day's suggestions and find it again. Tags deleted since the
+  rule was saved are left out.
+- `preview` builds the views of the last days (`day::commands::view_of`, without suggestions) and lists the
+  blocks the input's conditions match on their own, most recent first (`PREVIEW_HITS`, 200), with the time
+  of every hit and the number of days with one.
+- Every rule write emits `data_changed { kind: rules, day: null }`, so open views rebuild their
+  suggestions. Backups include the rules.
 
 ## Events to the page
 

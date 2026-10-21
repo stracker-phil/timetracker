@@ -105,6 +105,7 @@ export function dayView(patch: Partial<DayView> = {}): DayView {
     away: [],
     gaps: [],
     recordings: [],
+    suggestions: [],
     totals,
     firstActivity: starts.length > 0 ? Math.min(...starts) : null,
     sources: lanes.filter((l) => l.kind === "source").map((l) => l.label),

@@ -355,6 +355,72 @@ impl Recordings<'_> {
         overlap: Overlap,
     ) -> AppResult<Change<Recording>> {
         let mut undo = self.undo.lock().await;
+        let (recording, project) = self.new_recording(input).await?;
+        let label = format!(
+            "Record {} for {}",
+            duration_text(recording.end.unwrap_or(recording.start) - recording.start),
+            project.name
+        );
+        let base = Op::Create {
+            recording: recording.clone(),
+        };
+        let op = clearing(self.db, base, &recording, overlap, &label).await?;
+        self.commit(&mut undo, label, op, &recording.id).await
+    }
+
+    /// New recordings as one undoable change; one that would overlap a recording, or one created before it,
+    /// is left out.
+    pub async fn create_all(
+        &self,
+        inputs: Vec<RecordingInput>,
+        label: String,
+    ) -> AppResult<Change<Vec<Recording>>> {
+        let mut undo = self.undo.lock().await;
+        let created = self.without_overlaps(inputs).await?;
+        let days = if created.is_empty() {
+            Vec::new()
+        } else {
+            let ops = created
+                .iter()
+                .map(|recording| Op::Create {
+                    recording: recording.clone(),
+                })
+                .collect();
+            let op = Op::Batch {
+                label: label.clone(),
+                ops,
+            };
+            self.apply_and_push(&mut undo, label, op).await?
+        };
+        Ok(Change {
+            value: created,
+            days,
+        })
+    }
+
+    /// The inputs as new recordings, leaving out those that overlap a stored one or an earlier input.
+    async fn without_overlaps(&self, inputs: Vec<RecordingInput>) -> AppResult<Vec<Recording>> {
+        let mut kept: Vec<Recording> = Vec::new();
+        for input in inputs {
+            let (recording, _) = self.new_recording(input).await?;
+            let (start, end) = (recording.start, recording.end.unwrap_or(recording.start));
+            let overlaps_kept = kept
+                .iter()
+                .any(|r| r.start < end && r.end.is_some_and(|e| e > start));
+            if overlaps_kept
+                || !recordings::overlapping(self.db, start, end, None)
+                    .await?
+                    .is_empty()
+            {
+                continue;
+            }
+            kept.push(recording);
+        }
+        Ok(kept)
+    }
+
+    /// `input` validated and snapped, with its project; not stored yet.
+    async fn new_recording(&self, input: RecordingInput) -> AppResult<(Recording, Project)> {
         if input.end <= input.start {
             return Err(invalid("end", "must be after the start"));
         }
@@ -374,16 +440,7 @@ impl Recordings<'_> {
             created_at: now,
             updated_at: now,
         };
-        let label = format!(
-            "Record {} for {}",
-            duration_text(span.end - span.start),
-            project.name
-        );
-        let base = Op::Create {
-            recording: recording.clone(),
-        };
-        let op = clearing(self.db, base, &recording, overlap, &label).await?;
-        self.commit(&mut undo, label, op, &recording.id).await
+        Ok((recording, project))
     }
 
     pub async fn update(
@@ -1927,6 +1984,124 @@ mod tests {
 
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(w.rows().await, [timer]);
+        assert_eq!(w.status().await, no_status());
+    }
+
+    #[tokio::test]
+    async fn create_all_saves_snapped_recordings_as_one_undo_step() {
+        let w = World::new().await;
+        let inputs = vec![
+            RecordingInput {
+                note: " standup ".into(),
+                tag_ids: vec![w.alpha.id.clone()],
+                ..w.input(at(10, 2), at(10, 58))
+            },
+            w.input(at(12, 0), at(13, 0)),
+        ];
+
+        let change = w
+            .service()
+            .create_all(inputs, "Accept suggestions of Slack".into())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            spans(&change.value),
+            [(at(10, 0), at(11, 0)), (at(12, 0), at(13, 0))]
+        );
+        assert_eq!(
+            (change.value[0].note.as_str(), &change.value[0].tag_ids),
+            ("standup", &vec![w.alpha.id.clone()])
+        );
+        assert!(change.days.contains(&Day::of(at(12, 0))));
+        assert_eq!(w.rows().await, change.value);
+        assert_eq!(w.status().await, undo_label("Accept suggestions of Slack"));
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Accept suggestions of Slack"));
+        assert!(w.rows().await.is_empty());
+        assert_eq!(w.status().await.undo_label, None);
+
+        w.service().redo().await.unwrap();
+        assert_eq!(w.rows().await, change.value);
+    }
+
+    #[tokio::test]
+    async fn create_all_skips_inputs_that_overlap_a_recording_or_an_earlier_input() {
+        let w = World::new().await;
+        let existing = w.create(at(10, 0), at(11, 0)).await;
+        let inputs = vec![
+            w.input(at(9, 30), at(10, 30)),
+            w.input(at(11, 0), at(12, 0)),
+            w.input(at(11, 30), at(12, 30)),
+            w.input(at(12, 0), at(13, 0)),
+        ];
+
+        let change = w
+            .service()
+            .create_all(inputs, "Accept".into())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            spans(&change.value),
+            [(at(11, 0), at(12, 0)), (at(12, 0), at(13, 0))]
+        );
+        let rows = w.rows().await;
+        assert_eq!(rows[0], existing);
+        assert_eq!(rows.len(), 3);
+        assert!(no_two_overlap(&rows));
+
+        w.service().undo().await.unwrap();
+
+        assert_eq!(w.rows().await, [existing]);
+    }
+
+    #[tokio::test]
+    async fn create_all_without_anything_to_create_leaves_no_undo_entry_and_no_days() {
+        let w = World::new().await;
+        w.create(at(10, 0), at(11, 0)).await;
+        let before = w.status().await;
+
+        let empty = w
+            .service()
+            .create_all(Vec::new(), "Accept".into())
+            .await
+            .unwrap();
+        let all_skipped = w
+            .service()
+            .create_all(vec![w.input(at(10, 30), at(11, 30))], "Accept".into())
+            .await
+            .unwrap();
+
+        for change in [empty, all_skipped] {
+            assert!(change.value.is_empty());
+            assert!(change.days.is_empty());
+        }
+        assert_eq!(w.status().await, before);
+        assert_eq!(w.rows().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn create_all_with_an_invalid_input_saves_nothing() {
+        let w = World::new().await;
+        let inputs = vec![
+            w.input(at(10, 0), at(11, 0)),
+            RecordingInput {
+                note: "a\nb".into(),
+                ..w.input(at(12, 0), at(13, 0))
+            },
+        ];
+
+        let err = w
+            .service()
+            .create_all(inputs, "Accept".into())
+            .await
+            .unwrap_err();
+
+        assert_eq!(field_of(&err).as_deref(), Some("note"));
+        assert!(w.rows().await.is_empty());
         assert_eq!(w.status().await, no_status());
     }
 }

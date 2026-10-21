@@ -10,3 +10,4 @@ import "./schemes/github-light.css";
 import "./schemes/solarized-light.css";
 import "./theme.css";
 import "./app.css";
+import "./rules.css";

@@ -47,10 +47,11 @@ error's message, returning the `AppError`.
 | Slice | Holds |
 |---|---|
 | `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings`, `saveKeybindings` |
-| `ui` | `toasts` (an optional `action`, e.g. Undo), `dialog` (`settings { page? }`, `shortcuts`, `confirm`, `project { id?, clientId? }`, `client { id? }`), `paletteOpen`, `paletteSeed` |
-| `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`), `setView`, `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `goToday` (keeps the view), `step(±1)` (a day, a week or a month by the view; `addDays`, `addMonths` in `lib/day.ts`); each remembers the day as `uiState.lastDay`, and `restoreDay` shows it again at boot when it is at most 30 days old |
+| `ui` | `toasts` (an optional `action`, e.g. Undo), `dialog` (`settings { page? }`, `shortcuts`, `confirm`, `project { id?, clientId? }`, `client { id? }`, `rule { id?, draft? }`), `paletteOpen`, `paletteSeed` |
+| `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`, `rules`), `setView`, `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `goToday` (keeps the view), `step(±1)` (a day, a week or a month by the view; `addDays`, `addMonths` in `lib/day.ts`); each remembers the day as `uiState.lastDay`, and `restoreDay` shows it again at boot when it is at most 30 days old |
 | `day` | `dayView` (the shown day's `DayView`; the previous one stays while the next day loads), `dayError`, `loadDay` (drops answers for a day no longer shown), `focusedBlock`/`focusBlock`, `detailsBlock`/`toggleDetails` (the card opened by keyboard), `blockMenuRequest`/`requestBlockMenu`, `setAppSetting(appKey, patch)` (stores the returned settings; the Day view reloads on the `data_changed` it causes) |
 | `reports` | `reportFilter` (`null` follows `settings.reports` through `defaultFilter`), `setReportFilter(patch)`, `savedReports`/`loadSavedReports` (boot), `saveReport(name)` (the shown filter), `renameSavedReport`, `deleteSavedReport`, `openSavedReport` (its filter, and the Reports view) |
+| `rules` | `rules` (by position), `loadRules` (the Rules view, and every `data_changed` of `rules`), `saveRule(id, input)` (rejects; toasted unless the error has a `field`), `deleteRule`, `reorderRules(ids)`, `setRuleEnabled`, `acceptSuggestion(suggestion)` and `acceptRuleSuggestions(ruleId)` on the shown day, each with a toast offering Undo |
 | `data` | `dataVersion` (every day changed), `dayVersions` (per day), `changeCount` (every event, for views over many days), `dataChanged(event)` (called on every `data_changed` event); `selectDayVersion(day)` changes when that day's data may have changed |
 | `projects` | `projects` (`ProjectListItem[]`, archived included), `clients`, `tags` (`TagListItem[]`), `recent`, `projectsLoaded`; `loadProjects` (boot, and every `data_changed` of `projects` or `tags`); `saveProject(id, input)`, `archiveProject`, `saveClient`, `archiveClient`, `saveTag`, `deleteTag` reload after the write and reject on failure (toasted, unless the error has a `field` for the form). Helpers: `groupProjects(projects, clients, archived)`, `projectLabel` |
 | `tracker` | `tracker` (`TrackerStatus`, or `null` while the tracker is off), `setTracker`, `loadTracker`, `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then reloads the status), `permissionDialogHidden` |
@@ -143,7 +144,9 @@ Tracker components:
 | `Lane` | its blocks, absolutely placed: `top`/`height` from the times and the zoom, `left`/`width` from `col`/`cols`; only blocks within the visible part ± one screen (`useVisibleRange`, which moves in half-screen steps) |
 | `ActivityBlock` | app and `label` (no label line when it is the app; one line when short or compact, no text when tiny), a gear on hover; `private`, `dimmed` (covered) and `focused` classes |
 | `HoverCard` | app, title, URL (http(s) opens through `api.openUrl`) or path, time and duration, the source when external; beside the block, else below or above it |
-| `RecordingsColumn` | the day's `RecordingBlock`s and, while a span is selected, a dashed outline where its recording would go |
+| `RecordingsColumn` | the day's `SuggestionBlock`s under its `RecordingBlock`s and, while a span is selected, a dashed outline where its recording would go |
+| `SuggestionBlock` | a rule's suggestion: a button, dashed in the project's shade, with the project, the rule and the duration; click sends `acceptSuggestion`, ⌥-click `acceptRuleSuggestions` (the `rules` slice; Rust's `data_changed` reloads the day) |
+| `useRuleDrag` | ⌥-pressing an activity block (in `Timeline`) shows the recent projects over the top of the recordings column; releasing over one opens the `rule` dialog with `draftFromBlock`: `<app> → <project>`, `app is <app>` and `domain is <host>` for a URL block, else `title contains <title>` |
 | `RecordingBlock` | the project's shade as a 3px bar and a 22% tint, project, note, tags and duration; dashed top or bottom edge when clipped to the day. Click focuses, double-click edits; dragging the body moves it and an edge resizes it (`pointerDrag`, pointer capture), with the ghost from `useSnappedSpan`; release sends `updateRecording` |
 | `RecordingEditor` | project (`ProjectPicker`), From and To (`HH:MM`, ↑↓ step by the snap interval; an end before the start is on the next day), duration, note (one line; pasted line breaks become spaces), tags (`TagPicker`); Save (↵ or ⌘↵), Cancel, Delete (⌘⌫) when editing. It edits the whole recording, also when the day shows a part of it |
 | `OverlapDialog` | the recordings in the way, "Replace overlapped part" or Cancel |
@@ -165,6 +168,21 @@ Secondary windows are pages of their own in `src/windows/<name>/` (`index.html`,
 `build.rollupOptions.input` entry in `vite.config.ts`; they import `src/styles/index.ts` and use the same
 store and `api`. `windows/timer/TimerPicker.tsx` reloads settings, projects, the timer and the recent timers
 whenever the window gains focus (it is hidden, not closed, between uses), and reports its errors to the log.
+
+### Rules screen
+
+`components/rules/`, the `rules` view (sidebar entry Rules, ⌘6). The `rules` slice holds `rules` (by
+position) and their writes; a `data_changed` of kind `rules` reloads them.
+
+- `RulesView` lists `RuleRow`s in order: a grip (a pointer drag by whole rows; on release `reorderRules`
+  sends every id in the new order, shown at once and restored when the write fails), the enable switch
+  (`setRuleEnabled`), the name, the project and `conditionSummary` (`app is "Slack" · title contains "x"`).
+  A row click, New rule or ⌘N (`rules.new`) opens the `rule` dialog.
+- `RuleSheet` (dialog `rule` with `id` or a `draft`): name, `ProjectPicker`, note, `TagPicker`, the
+  `ConditionRow`s (field, comparison, value, remove; Add condition) and the enable switch. Save sends
+  `saveRule`; a field error shows under its field, and `conditions.<i>.value` marks that row. Beside the
+  form, `RulePreviewPanel` asks `rulePreview(input, 7)` through `useApiResult` (300 ms debounce, keeps the
+  last result) once every condition has a value, and lists the hits with the total.
 
 ### Week and Month
 

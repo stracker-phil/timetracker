@@ -8,7 +8,7 @@ export interface DataSlice {
   dayVersions: Record<string, number>;
   /** Bumped on every change, for views over many days such as reports. */
   changeCount: number;
-  /** A `null` day bumps every day; projects and tags reload their lists. */
+  /** A `null` day bumps every day; projects, tags and rules reload their lists. */
   dataChanged: (event: DataChanged) => void;
 }
 
@@ -19,6 +19,7 @@ export const dataSlice: Slice<DataSlice> = {
     changeCount: 0,
     dataChanged({ kind, day }) {
       if (kind === "projects" || kind === "tags") void get().loadProjects();
+      if (kind === "rules") void get().loadRules();
       set((s) => ({ changeCount: s.changeCount + 1 }));
       if (day === null) set((s) => ({ dataVersion: s.dataVersion + 1 }));
       else set((s) => ({ dayVersions: { ...s.dayVersions, [day]: (s.dayVersions[day] ?? 0) + 1 } }));
