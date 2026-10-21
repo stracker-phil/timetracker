@@ -152,6 +152,12 @@ binaryPath: string, };
 
 export type DataKind = "activity" | "recordings" | "projects" | "tags" | "rules" | "settings";
 
+export type DateJump = { 
+/**
+ * The date word (`Yesterday`, `Last week`, `Monday`, `October`); none for a typed date.
+ */
+name: string | null, unit: PeriodUnit, from: Day, to: Day, };
+
 /**
  * A local calendar day, `YYYY-MM-DD` on the wire. Deserializing validates it.
  */

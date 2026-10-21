@@ -176,12 +176,12 @@ describe("App", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    it("finds a project through the palette and opens its sheet", async () => {
+    it("finds a project through the palette and opens its report", async () => {
       mocked.projectsList.mockResolvedValueOnce([website]);
       await renderApp();
       await userEvent.keyboard("{Meta>}k{/Meta}");
-      await userEvent.type(await screen.findByLabelText("Search commands"), "p:web{Enter}");
-      expect(await screen.findByRole("dialog", { name: "Edit project" })).toBeInTheDocument();
+      await userEvent.type(await screen.findByLabelText("Search"), "p:web{Enter}");
+      expect(await screen.findByRole("region", { name: "Reports" })).toBeInTheDocument();
     });
   });
 
@@ -370,7 +370,7 @@ describe("App", () => {
     it("filters the commands by the typed text", async () => {
       await renderApp();
       await userEvent.keyboard("{Meta>}k{/Meta}");
-      await userEvent.type(await screen.findByLabelText("Search commands"), "zoom");
+      await userEvent.type(await screen.findByLabelText("Search"), "zoom");
       const options = screen.getAllByRole("option").map((o) => o.textContent);
       expect(options).toHaveLength(3);
       expect(options.join(" ")).toMatch(/Zoom in.*Zoom out.*Reset zoom/);
@@ -379,22 +379,22 @@ describe("App", () => {
     it("says so when no command matches", async () => {
       await renderApp();
       await userEvent.keyboard("{Meta>}k{/Meta}");
-      await userEvent.type(await screen.findByLabelText("Search commands"), "qqq");
+      await userEvent.type(await screen.findByLabelText("Search"), "qqq");
       expect(screen.getByText("No matches.")).toBeInTheDocument();
     });
 
     it("runs the chosen command on Enter and closes", async () => {
       await renderApp();
       await userEvent.keyboard("{Meta>}k{/Meta}");
-      await userEvent.type(await screen.findByLabelText("Search commands"), "show week{Enter}");
+      await userEvent.type(await screen.findByLabelText("Search"), ">show week{Enter}");
       expect(mainHeading("Week")).toBeInTheDocument();
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    it("runs a command that is clicked", async () => {
+    it("switches to a view that is clicked", async () => {
       await renderApp();
       await userEvent.keyboard("{Meta>}k{/Meta}");
-      await userEvent.click(await screen.findByRole("option", { name: /Show Projects/ }));
+      await userEvent.click(await screen.findByRole("option", { name: /^Projects/ }));
       expect(mainHeading("Projects")).toBeInTheDocument();
     });
 

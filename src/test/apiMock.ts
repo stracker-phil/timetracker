@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingInput, type RecordingPatch, type ReportFilter, type RuleInput, type Settings, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ClientInput, type DateJump, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingInput, type RecordingPatch, type ReportFilter, type RuleInput, type Settings, type UiState } from "../api/types";
 import { mondayOf, monthView, weekView } from "./calendarFixtures";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
@@ -54,6 +54,7 @@ export function createApiMock(): typeof realApi {
     monthView: vi.fn(async (day: string) => monthView({ monthStart: `${day.slice(0, 7)}-01` })),
     calendarPeriod: vi.fn(async (_unit: PeriodUnit, day: string) => ({ from: day, to: day, holdsToday: false })),
     calendarPicker: vi.fn(async (month: string) => ({ monthStart: `${month.slice(0, 7)}-01`, weeks: [] })),
+    calendarJumps: vi.fn(async (): Promise<DateJump[]> => []),
     recordingMove: vi.fn(async (id: string) => recording({ id })),
     recordingCopy: vi.fn(async () => recording({ id: "recording-copy" })),
     recordingCreate: vi.fn(async (input: RecordingInput) => recording({ ...input, id: "recording-new" })),

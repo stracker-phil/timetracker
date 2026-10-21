@@ -99,10 +99,17 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   menu commands that can run now and the checked ones, through `api.menuSync` on every store change and
   every focus change (Accept Suggestion and the text-field Undo follow the keyboard focus); `syncMenu` sends
   only a changed state, so Rust greys out and checks the items.
-- **Palette.** `CommandPalette` lists the commands of the active scopes with their key caps, filtered by the
-  typed text; once something is typed, active projects follow as `Project: Client / Name` with their color
-  dot (fuzzy, `lib/fuzzy.ts`), and Enter opens the project's sheet. `>` limits the list to commands, `p:` to
-  projects.
+- **Palette.** `CommandPalette` (the sheet, ↑ ↓ ↵ ⌘↵) with `components/palette/`: `parse.ts` (`parsePrefix`:
+  `>` commands, `p:` projects, `c:` clients, `@` dates; `score`: 5 equal, 4 prefix, 3 a word start, 2 inside a
+  word; `fuzzyScore` adds 1 for the characters in order, for project and client names), `usePaletteItems.ts`
+  (one provider per kind: views, dates, settings pages, projects, clients, saved reports, commands; each section's
+  matches best first, the sections by their best match, ties in that order) and `PaletteList.tsx` (section labels,
+  rows, `PaletteFooter`). Dates come from Rust (`useDateJumps.ts`: `api.calendarJumps`, `calendar::jump`), so the page parses no
+  dates; a date opens the Day, Week or Month view at it (`setView`, `showDate`). A project opens Reports filtered
+  to it for the report's period (`setReportFilter`), ⌘↵ starts a timer on it (`startTimer`); a client opens
+  Reports filtered to it; a saved report `openSavedReport`; a settings page `openDialog({ type: "settings", page })`.
+  Commands are those of the active scopes whose `when` holds, with their key caps; without `>` the `view.*`
+  commands are left to the views.
 - **Day, Week, Month and Reports** (scope `dated`, the parent of the four views' scopes). `nav.prev` (P),
   `nav.next` (N) step by the view's unit (in Reports the report's period); `nav.today` (O). The registry
   holds one binding per command, so ⌘← ⌘→ are gone.
@@ -148,7 +155,7 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 
 Shell components in `components/`: `Toolbar` (title and Settings; a drag strip), `Sidebar` (`DateNavigator`, then
 the entries of `views.ts`), `StatusBar`, `EmptyView`, `Modal`, `ContextMenu`,
-`Toasts`, `Field` (`InsetField`, `KeyCap`), `Splitter`, `ErrorBoundary`, `CommandPalette`,
+`Toasts`, `Field` (`InsetField`, `KeyCap`), `Splitter`, `ErrorBoundary`, `CommandPalette` (`palette/`),
 `ShortcutsDialog`, `Dialogs`.
 
 Dates are changed in one place, the sidebar:

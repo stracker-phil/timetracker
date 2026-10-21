@@ -441,6 +441,7 @@ fn start_app(
             calendar::commands::month_view,
             calendar::commands::calendar_period,
             calendar::commands::calendar_picker,
+            calendar::commands::calendar_jumps,
             away_prompt::commands::away_prompt_current,
             away_prompt::commands::away_prompt_answer,
             away_prompt::commands::away_prompt_skip,

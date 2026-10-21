@@ -161,6 +161,27 @@ context menu is suppressed outside text fields (`lib/nativeMenu.ts`).
 Pickers (project, tags) are a field with a list below it on `--pop`, using the palette's row anatomy and
 small `--o3` section labels; the last option creates what was typed (`New project "x"…`).
 
+## Palette
+
+⌘K is the fastest way anywhere. Empty, it lists Go to (the views with their keys, then Today, Yesterday,
+This week, This month), Recent projects and Saved reports, and the footer names the prefixes. Typing
+searches everything, ranked by match quality (whole name, then its start, then the start of a word, then
+anywhere) and grouped in sections, the best section first:
+
+- **Go to:** views, and dates: `today`, `yesterday`, `this week`, `last week`, `this month`, `last month`,
+  weekday names (the latest such day, today included), month names (the latest such month), `12.10.`,
+  `12.10.2026`, `2026-10-12`, `oct 12`, `12 october 2026` (without a year the latest such date). A day opens
+  the Day view, a week the Week view, a month the Month view. The row shows the word and the date it means.
+- **Settings:** `Settings: Capture` and every other page.
+- **Projects:** ↵ opens Reports filtered to the project for the report's period; ⌘↵ starts a timer on it.
+- **Clients:** ↵ opens Reports filtered to the client.
+- **Saved reports:** ↵ opens one.
+- **Commands:** the commands of the active scopes, with their keys.
+
+Prefixes limit the list: `>` commands, `p:` projects, `c:` clients, `@` dates. ↑ ↓ move, ↵ opens, ⌘↵ runs
+the row's second action where it has one (the footer names it), Esc closes. Section labels are small `--o3`
+text; a row's date or detail follows its title in `--o2`.
+
 ## Timeline
 
 The Day view is a vertical day: a fixed recordings column (`--recordings-col-w`, empty until recordings
@@ -319,7 +340,7 @@ under the Location row instead of a toast.
 
 Every action is a command (`APP_COMMANDS` in `src/commands/index.ts`) with a rebindable key (Settings →
 Shortcuts, `keybindings.json`) or, without a default key, an item in the [menu bar](#menu-bar); every
-command is in the palette too (⌘K, `>` lists the commands of the active scopes). `?` lists the bound commands of the scopes active when it opens, most specific first.
+command is in the palette too (⌘K, `>` lists the commands of the active scopes; see [Palette](#palette)). `?` lists the bound commands of the scopes active when it opens, most specific first.
 
 Rules of the keys (`handleKeydown`):
 

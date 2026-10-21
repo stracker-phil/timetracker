@@ -378,6 +378,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .palette-list { list-style: none; margin: 0; padding: 0.462rem 0; max-height: 50vh; overflow: auto; }
 .palette-list > li:not(.palette-section) { display: flex; align-items: center; gap: 0.769rem; padding: var(--pad) 1.231rem; line-height: 20px; }
 .palette-list li.active { background: var(--sel); box-shadow: inset 2px 0 0 var(--accent); }
+.palette-subtitle { margin-left: 0.615rem; }
 .palette-foot { display: flex; flex-wrap: wrap; gap: 0.462rem 1.385rem; padding: 0.769rem 1.231rem 0.462rem; border-top: 1px solid var(--line); font-size: var(--fs-small); }
 
 /* ---------- shortcuts settings ---------- */

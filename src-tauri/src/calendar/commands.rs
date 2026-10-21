@@ -1,5 +1,6 @@
 use tauri::State;
 
+use super::jump::{DateJump, jumps};
 use super::period::{Period, PeriodUnit, PickerMonth, period, picker_month};
 use super::{CalendarInput, MonthView, WeekView, month, month_days, week, week_days};
 use crate::day::commands::names;
@@ -53,4 +54,9 @@ pub fn calendar_period(unit: PeriodUnit, day: Day) -> Period {
 #[tauri::command]
 pub fn calendar_picker(month: Day, selected: Option<(Day, Day)>) -> PickerMonth {
     picker_month(month, selected, Day::today())
+}
+
+#[tauri::command]
+pub fn calendar_jumps(text: String) -> Vec<DateJump> {
+    jumps(&text, Day::today())
 }

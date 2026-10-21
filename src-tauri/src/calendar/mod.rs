@@ -1,6 +1,7 @@
 //! The Week and Month views: recordings over several days, cut per day like the Day view.
 
 pub mod commands;
+pub mod jump;
 pub mod period;
 
 use std::collections::HashMap;

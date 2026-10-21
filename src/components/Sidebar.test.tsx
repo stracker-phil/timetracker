@@ -33,7 +33,7 @@ function renderSidebar(patch: Parameters<typeof resetStore>[0] = {}) {
 
 const saved = () => screen.getByRole("group", { name: "Saved reports" });
 
-const openPalette = () => act(() => useStore.getState().setPaletteOpen(true));
+const openPalette = () => act(() => useStore.getState().setPaletteOpen(true, ">saved report"));
 const savedReportCommand = (name: RegExp) => screen.queryByRole("option", { name });
 const RENAME = /Rename saved report…/;
 const DELETE = /Delete saved report…/;
