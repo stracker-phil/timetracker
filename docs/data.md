@@ -18,6 +18,13 @@ Settings, keybindings and UI state stay in JSON files ([backend.md](backend.md#p
 `synchronous = NORMAL`, a 5 s busy timeout and foreign keys on, through a pool of 4 connections (SQLite has one
 writer; readers run beside it in WAL). Then it runs the migrations and seeds the default tags.
 
+`Db::open_read_only(path)` is for `timetracker mcp` ([backend.md](backend.md#mcp-server)), a second process
+beside the app: `read_only(true)`, `create_if_missing(false)`, a 2 s busy timeout, 2 connections, and the
+journal mode left as the app set it. WAL readers never block the writer and see each commit on their next
+query. Nothing is migrated or seeded: a missing file is `not_found` "TimeTracker has no data yet (… not
+found)", a file whose newest applied migration is older than this build's is refused with "Open TimeTracker
+once to update its data", and a newer one is read as it is.
+
 `AppState.data` is a `DataStore`: the file path plus the open `Db` or the reason it could not be opened, behind
 an `RwLock` so the folder can move later. `AppState::open` opens it before Tauri starts
 (`tauri::async_runtime::block_on`). When opening fails, the app logs it and runs without a database:

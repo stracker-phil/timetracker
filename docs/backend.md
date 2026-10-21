@@ -13,6 +13,8 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
 2. **CLI.** `cli::parse(std::env::args_os())` returns:
    - `Exit { message }`: `--help` or `--version`; printed, exit 0.
    - `Run { hidden, log_level }`: becomes `IpcMessage::Activate { hidden }`.
+   - `Mcp`: `timetracker mcp` exits with `mcp::run(&config_dir, socket)` right here, before the handoff, the
+     instance lock and Tauri, so it runs beside the app ([MCP server](#mcp-server)).
    - an error: printed to stderr and turned into `IpcMessage::Error`; the exit code after forwarding is 2,
      and a newly started app shows it.
 3. **Single-instance handoff.** `forward` sends the message with `ipc::try_forward`. `Delivered` exits;
@@ -107,7 +109,7 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `quit_app` | – | never returns | – |
 | `choose_save_path` | `fileName, extension` | `string \| null` (the save panel; `null` when cancelled) | `io` |
 | `reveal_path` | `path: String` | – (Finder shows the enclosing folder with `path` selected) | `io` |
-| `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, available, error }` | – (errors are reported inside) |
+| `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, available, error, binaryPath }` (`binaryPath`: `~/.local/bin/timetracker` when that link exists, else this executable; for the `claude mcp add` line) | – (errors are reported inside) |
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes, recordings, activities }` | `db`, `io`, `invalid_input` |
 | `report_run` (`reports/commands.rs`) | `filter: ReportFilter` | `ReportResult` (see [Reports](#reports)) | `invalid_input` (a range that ends before it starts), `db` |
 | `report_text` | `filter: ReportFilter` | the report as text (`reports::text`) | the same |
@@ -340,7 +342,8 @@ that day's version (or every day's for `null`), so views showing the day reload
 
 The `timetracker` command is the app binary. Without a subcommand it starts the app, or activates the
 running one; every subcommand is a second process that sends one request over the socket, prints the reply
-and exits ([ADR 0017](adr/0017-cli-asks-the-running-app.md)). It never opens the database itself.
+and exits ([ADR 0017](adr/0017-cli-asks-the-running-app.md)). It never opens the database itself; only
+`timetracker mcp` does, read-only ([MCP server](#mcp-server)).
 
 ### Command tree
 
@@ -363,10 +366,11 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `report [today\|yesterday\|week\|last-week\|month\|last-month\|DAY\|FROM TO] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30] [--up]` | `report { request: ReportRequest }` (`cli/report.rs` parses the range and flags); the app resolves names (`reports::cli`: an id, an exact name ignoring case, or a unique start; several matches list them) and runs the report | the report text; `--json`: the `ReportResult` plus `text` |
 | `start PROJECT [--note N] [--tag T]…` | `timerStart { request: TimerStartRequest }`; the app resolves the project and tags like `record` | `started Acme at 09:15`; `--json`: the `Recording` plus `projectName` |
 | `stop` | `timerStop` | `stopped 09:15–10:40 (1:25)` or `no timer running` (exit 0) |
+| `mcp` | none: serves MCP on stdin/stdout (`CliOutcome::Mcp`) | only JSON-RPC on stdout |
 | `record --project P --from ISO --to ISO [--note N] [--tag T]… [--replace]` | `record { request: RecordRequest }` (`overlap: replace` with `--replace`, else `cancel`); the app resolves the project (`projects::resolve`) and tags by name (`tags::resolve_names`, unknown → `not_found`) | `recorded 09:00–10:30 (1:30) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: the `Recording` plus `projectName` |
 
 `parse(args, now, tz, stdin) -> Result<CliOutcome, CliError>` is pure: `CliOutcome` is `Run { hidden,
-log_level }`, `Exit { message }` (help, version) or `Remote { message, json, starts_app }`. The CLI checks
+log_level }`, `Exit { message }` (help, version), `Mcp` or `Remote { message, json, starts_app }`. The CLI checks
 what it can before sending (times, `activity::external::validate`); the app checks again. `CliError.in_app`
 is true for a plain launch with bad arguments, which also shows the error in the app (it may have been opened
 from Finder); a subcommand's error only prints.
@@ -474,6 +478,44 @@ Query values are percent-decoded and `+` reads as a space, so an offset like `+0
 Activity links run through `remote::handle` at once and do not show the window. A link that does not parse
 or fails becomes `IpcMessage::Error`: the window shows a toast, nothing is written.
 
+## MCP server
+
+`timetracker mcp` (`mcp/`) is a read-only [MCP](https://modelcontextprotocol.io) server on stdio, built on
+`rmcp`, so Claude and other MCP clients can query recordings and reports. It is the one subcommand that opens
+the database itself, so it works while the app is closed; stdout carries only JSON-RPC, errors go to stderr,
+nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) holds).
+
+- `mcp/mod.rs`: `TimeTrackerServer` (`#[tool_router]`, `#[tool_handler]`, args as `Parameters<…Args>`
+  deriving `JsonSchema`), `INSTRUCTIONS`, and `run(config_dir, socket) -> i32`, which builds its own
+  current-thread tokio runtime. Exit codes: 0 when the client disconnects, 1 on a handshake or transport
+  error, 2 when the runtime cannot start.
+- `mcp/data.rs`: `Core`, the headless data access. The database opens on first use with
+  `Db::open_read_only` (path from `Settings::peek` and `db::data_dir`), so the handshake succeeds on a Mac
+  that never ran the app, and a failed open is tried again on the next call. Settings are read on every call.
+- `mcp/ui.rs`: `ask(socket, message)` sends an `IpcMessage` like the CLI; no listener answers
+  `NOT_RUNNING` (`TimeTracker is not running`).
+
+| Tool | Args | Returns |
+|---|---|---|
+| `report` | `range` (`today` default, `yesterday`, `week`, `last-week`, `month`, `last-month`, a day) or `from`/`to`; `group_by` (`project` default, `tag`, `day`, `week`, `month`); `client`, `project`, `tag`; `format` (`text` default, `json`) | `reports::text`, or `{ from, to, group_by, rounding, total_min, total_rounded_min, tag_overlap, groups: [{ label, minutes, rounded_min, notes }] }`; rounding from `settings.reports.rounding` |
+| `recordings` | `from`, `to` (days, inclusive), `project`, `tag`, `limit` (default 500, at most 5000) | `[{ id, day, start_iso, end_iso, duration_min, project, client?, note, tags }]` by start, one row per recording and day, archived projects included |
+| `projects` | – | `[{ id, name, color, client?, archived }]` |
+| `tags` | – | `[{ id, name }]` |
+| `day_summary` | `day` | `{ day, recorded_min, tracked_min, away_min, by_project, by_tag }`; totals from `day::commands::view_of`, the groups `[{ name, minutes, notes }]` from `reports::run` for that day |
+| `activity` | `day` | `{ activity: [{ start_iso, end_iso, app, title, url?, path?, source }], away: [{ start_iso, end_iso, reason }] }`; private rows keep only the app. Refused (`Activity is not exposed to MCP. Enable it in Settings → Data.`) unless `settings.mcp.exposeActivity` |
+| `status` | – | `IpcMessage::Status` to the app: `{ version, tracker: { state, text, current: { app, title?, url?, since_iso } }, timer: { project, note, start_iso, elapsed_min }, window_visible }`; the current title and URL only when activity is exposed |
+| `open_day` | `day` | `IpcMessage::Show { day, focus: true }` to the app |
+
+Days are `YYYY-MM-DD`, `today` or `yesterday` (`cli::time::day`); ranges parse with `cli::report::range`, the
+CLI's parser. `client`, `project` and `tag` resolve like `timetracker report` (`reports::cli::filter_of`: an
+id, an exact name ignoring case, or a unique start; several matches are an error naming them). Times are
+local ISO 8601 with offset (`db::time::to_local_iso`), durations minutes to one decimal. Results are pretty
+JSON; an `AppError` becomes a tool error with its message.
+
+**Adding a tool:** a `#[tool]` method on `TimeTrackerServer` with a description, its args struct, a `Core`
+method returning an MCP-only output struct (no `TS`), and a test over the JSON-RPC duplex
+([testing.md](testing.md#rust)).
+
 ## Tray
 
 `tray.rs`: `tray::install(app)` builds the menu bar item `main` as a template image (macOS tints it for the
@@ -538,7 +580,7 @@ save leaves memory unchanged. `JsonStore::open_with` normalizes the loaded value
 
 | File | Contents |
 |---|---|
-| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports` each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets unknown accents (`ACCENTS`) and schemes (`SCHEMES`) to `orange`, `ayu-light`, `ayu-mirage`; turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline` or `apps` emits `data_changed { kind: settings, day: null }`, so every open day reloads. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
+| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets unknown accents (`ACCENTS`) and schemes (`SCHEMES`) to `orange`, `ayu-light`, `ayu-mirage`; turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline` or `apps` emits `data_changed { kind: settings, day: null }`, so every open day reloads. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed. A trailing `++` is the `+` key |
 | `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay`, `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id) |
 | `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere |
@@ -629,6 +671,7 @@ To add a menu item: add the TypeScript command, add the id, label and default to
 | `tauri-plugin-global-shortcut` | the system-wide timer shortcut |
 | `tauri-plugin-positioner` | the timer picker under the tray icon |
 | `tokio` | runtime, IPC socket, the tracker loop |
+| `rmcp` (`server`, `transport-io`, `macros`, `schemars`) | `timetracker mcp` |
 | `objc2`, `block2`, `objc2-foundation`, `objc2-app-kit`, `objc2-core-foundation`, `objc2-core-graphics`, `objc2-application-services` (macOS only) | the capture source ([capture.md](capture.md#macos-apis)) |
 | `sqlx` (`sqlite` with bundled libsqlite3, `runtime-tokio`, `migrate`, `macros` for `migrate!` and `FromRow`) | the data store |
 | `serde`, `serde_json` (`preserve_order`) | IPC, stores |

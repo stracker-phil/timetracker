@@ -36,8 +36,9 @@ bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/Tim
 | `timetracker report [RANGE] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round N [--up]]` | prints the hours and notes of today (or yesterday, week, last-week, month, last-month, a day, or two days), ready to paste into a timesheet; `--json` for the data |
 | `timetracker start PROJECT [--note N] [--tag T]…` / `timetracker stop` | starts a timer now (a running one stops) / stops it |
 | `timetracker record --project P --from T --to T [--note N] [--tag T]… [--replace]` | records time for a project (by id, name or a unique start of its name; tags by name); refuses to overlap another recording unless `--replace` |
+| `timetracker mcp` | serves the read-only MCP server on stdin/stdout, see [MCP](#mcp) |
 
-Every command except `show` and `focus` needs TimeTracker running and exits 2 with "TimeTracker is not
+Every command except `show`, `focus` and `mcp` needs TimeTracker running and exits 2 with "TimeTracker is not
 running" otherwise. Exit codes: 0 ok, 1 TimeTracker refused the request (the error is printed), 2 bad
 arguments or not running. `--json` prints replies as JSON.
 
@@ -64,6 +65,22 @@ timetracker status --json | jq .tracker.state
 with times in UTC milliseconds. Links also take `timetracker://show?day=…`, `timetracker://activity/start?…`
 and `timetracker://activity/stop?source=…`; encode a `+` in a time offset as `%2B`. The protocol behind the CLI is in
 [docs/backend.md](docs/backend.md#cli-and-single-instance-handoff).
+
+## MCP
+
+`timetracker mcp` lets Claude (or any MCP client) read your recordings, projects, tags and reports, also while
+the app is closed. It only reads; nothing leaves the Mac except what the client sends to its model. Add it to
+Claude Code (Settings → Data shows this line with the path of your binary, ready to copy; add `--scope user`
+to use it in every project):
+
+```sh
+claude mcp add timetracker -- ~/.local/bin/timetracker mcp
+```
+
+Then ask "what did I record yesterday by project?" or "how many hours of development this month?". The tools:
+`report` (the report text, or JSON), `recordings`, `projects`, `tags`, `day_summary`, `status` and `open_day`
+(these two need the app running), and `activity` (window titles and URLs), which stays off until you enable
+"Expose activity to the MCP server" in Settings → Data.
 
 ## Docs
 

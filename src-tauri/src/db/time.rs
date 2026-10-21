@@ -16,6 +16,21 @@ pub fn now_ms() -> Ms {
     chrono::Utc::now().timestamp_millis()
 }
 
+/// `2026-10-21T09:15:00+02:00`: the instant in local time with its offset.
+pub fn to_local_iso(ms: Ms) -> String {
+    to_iso_in(ms, &Local)
+}
+
+pub fn to_iso_in<Tz: TimeZone>(ms: Ms, tz: &Tz) -> String
+where
+    Tz::Offset: fmt::Display,
+{
+    chrono::DateTime::from_timestamp_millis(ms)
+        .unwrap_or_default()
+        .with_timezone(tz)
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
+}
+
 /// A local calendar day, `YYYY-MM-DD` on the wire. Deserializing validates it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(try_from = "String", into = "String")]
@@ -171,6 +186,42 @@ mod tests {
             .with_ymd_and_hms(y, m, d, h, 0, 0)
             .unwrap()
             .timestamp_millis()
+    }
+
+    #[test]
+    fn iso_times_carry_the_offset_of_the_zone() {
+        let quarter = 15 * 60_000;
+        for (ms, expected) in [
+            (
+                utc_ms(2026, 10, 21, 7) + quarter,
+                "2026-10-21T09:15:00+02:00",
+            ),
+            (
+                utc_ms(2026, 12, 21, 7) + quarter,
+                "2026-12-21T08:15:00+01:00",
+            ),
+        ] {
+            assert_eq!(to_iso_in(ms, &Vienna), expected, "{ms}");
+        }
+        assert_eq!(
+            to_iso_in(utc_ms(2026, 10, 21, 7) + quarter, &UTC),
+            "2026-10-21T07:15:00+00:00"
+        );
+    }
+
+    #[test]
+    fn iso_times_drop_fractions_of_a_second() {
+        assert_eq!(
+            to_iso_in(utc_ms(2026, 10, 21, 7) + 999, &Vienna),
+            "2026-10-21T09:00:00+02:00"
+        );
+    }
+
+    #[test]
+    fn local_iso_names_the_same_instant() {
+        let ms = utc_ms(2026, 10, 21, 7);
+        let parsed = chrono::DateTime::parse_from_rfc3339(&to_local_iso(ms)).unwrap();
+        assert_eq!(parsed.timestamp_millis(), ms);
     }
 
     #[test]

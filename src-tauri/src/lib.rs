@@ -14,6 +14,7 @@ pub mod events;
 pub mod ipc;
 pub mod launch;
 pub mod lock;
+pub mod mcp;
 pub mod menu;
 pub mod pending;
 pub mod projects;
@@ -255,6 +256,7 @@ pub fn run() {
             print!("{message}");
             std::process::exit(0);
         }
+        Ok(CliOutcome::Mcp) => std::process::exit(mcp::run(&config_dir, socket)),
         Ok(CliOutcome::Run { hidden, log_level }) => {
             (IpcMessage::Activate { hidden }, log_level, hidden)
         }

@@ -47,7 +47,8 @@ impl ReportArgs {
     }
 }
 
-fn range<Tz: TimeZone>(words: &[String], now: Ms, tz: &Tz) -> Result<Range, String> {
+/// No words, one range word or day, or two days `FROM TO`; at most two words.
+pub fn range<Tz: TimeZone>(words: &[String], now: Ms, tz: &Tz) -> Result<Range, String> {
     Ok(match words {
         [] => Range::Today,
         [word] => match word.as_str() {

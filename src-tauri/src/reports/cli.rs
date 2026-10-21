@@ -41,7 +41,8 @@ pub async fn report(app: &AppHandle, request: ReportRequest) -> AppResult<Report
     })
 }
 
-async fn filter_of(db: &Db, request: ReportRequest) -> AppResult<ReportFilter> {
+/// The request with its names resolved to ids.
+pub async fn filter_of(db: &Db, request: ReportRequest) -> AppResult<ReportFilter> {
     let mut project_ids = Vec::new();
     for name in &request.projects {
         project_ids.push(projects::resolve(db, name).await?.id);

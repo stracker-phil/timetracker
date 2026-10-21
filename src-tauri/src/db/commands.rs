@@ -27,6 +27,8 @@ pub struct DataInfo {
     pub first_activity: Option<Ms>,
     pub available: bool,
     pub error: Option<String>,
+    /// The `timetracker` command for `claude mcp add`: the installed link, else this executable.
+    pub binary_path: String,
 }
 
 #[derive(Default)]
@@ -44,6 +46,17 @@ async fn read_counts(db: &Db) -> AppResult<Counts> {
         projects: projects::count(db).await?,
         first_activity: activities::first_start(db).await?,
     })
+}
+
+const INSTALLED_CLI: &str = ".local/bin/timetracker";
+
+fn binary_path() -> String {
+    std::env::home_dir()
+        .map(|home| home.join(INSTALLED_CLI))
+        .filter(|link| link.exists())
+        .or_else(|| std::env::current_exe().ok())
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "timetracker".into())
 }
 
 fn size_on_disk(file: &Path) -> u64 {
@@ -85,6 +98,7 @@ pub async fn info(store: &DataStore) -> DataInfo {
         first_activity: counts.first_activity,
         available,
         error,
+        binary_path: binary_path(),
     }
 }
 
@@ -159,6 +173,26 @@ mod tests {
 
         assert_eq!((info.activities, info.recordings, info.projects), (2, 1, 1));
         assert_eq!(info.first_activity, Some(1000));
+        store.close().await;
+    }
+
+    #[tokio::test]
+    async fn info_names_the_command_to_register_with_mcp_clients() {
+        let tmp = temp_config_dir();
+        let store = DataStore::open(tmp.path().join("data").join(DB_FILE)).await;
+        let installed = std::env::home_dir().map(|home| home.join(INSTALLED_CLI));
+        let expected = match installed.filter(|link| link.exists()) {
+            Some(link) => link,
+            None => std::env::current_exe().unwrap(),
+        };
+
+        let info = info(&store).await;
+
+        assert_eq!(info.binary_path, expected.display().to_string());
+        assert_eq!(
+            serde_json::to_value(&info).unwrap()["binaryPath"],
+            serde_json::Value::String(info.binary_path.clone())
+        );
         store.close().await;
     }
 

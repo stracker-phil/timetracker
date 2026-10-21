@@ -43,6 +43,11 @@ launch and commit at the end of every step.
   dir) and the fixtures `activity`, `project` and `recording` ([data.md](data.md#tests)); later the fake capture source,
   compiled with `cfg(test)` or the `test-util` feature ([ADR 0015](adr/0015-test-doubles-behind-test-util.md)).
   The crate lists itself as a dev-dependency with `test-util`, so `tests/` sees them.
+- **MCP server:** tests drive `TimeTrackerServer` over JSON-RPC in process: `tokio::io::duplex` split into
+  halves, `server.serve((read, write))` spawned, a small client that writes one JSON line per request
+  (`initialize`, `notifications/initialized`, `tools/list`, `tools/call`) and reads one reply line with a
+  timeout. The config dir is a temp dir with a written `settings.json` and a seeded database file; the socket
+  path points nowhere, so `status` and `open_day` answer `TimeTracker is not running`.
 - **Generated types:** each `#[ts(export)]` type gets an `export_bindings_*` test that writes
   `src/api/types.gen.ts` (`bun run types`).
 - **Contracts:** `identifier_matches_the_tauri_config` (`lib.rs`); the ADR 0013 test checks the macOS

@@ -284,6 +284,15 @@ pub struct ReportSettings {
     pub default_group: Group,
 }
 
+/// What `timetracker mcp` may read besides recordings, projects, tags and reports.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(default, rename_all = "camelCase")]
+pub struct McpSettings {
+    /// Window titles, URLs and documents of the captured activity.
+    pub expose_activity: bool,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(default, rename_all = "camelCase")]
@@ -323,6 +332,8 @@ pub struct Settings {
     #[serde(deserialize_with = "lenient")]
     pub reports: ReportSettings,
     pub timer_shortcut: String,
+    #[serde(deserialize_with = "lenient")]
+    pub mcp: McpSettings,
 }
 
 impl Default for Settings {
@@ -345,6 +356,7 @@ impl Default for Settings {
             apps: HashMap::new(),
             reports: ReportSettings::default(),
             timer_shortcut: "Mod+Shift+T".into(),
+            mcp: McpSettings::default(),
         }
     }
 }
@@ -1116,6 +1128,32 @@ mod tests {
         );
     }
 
+    #[test]
+    fn mcp_does_not_expose_activity_by_default() {
+        assert!(!Settings::default().mcp.expose_activity);
+        assert!(!McpSettings::default().expose_activity);
+    }
+
+    #[test]
+    fn mcp_settings_are_read_in_camel_case() {
+        let dir = temp_config_dir();
+        write_settings(dir.path(), r#"{"mcp": {"exposeActivity": true}}"#);
+
+        assert!(Settings::peek(dir.path()).mcp.expose_activity);
+        assert_eq!(
+            serde_json::to_value(Settings::peek(dir.path()).mcp).unwrap(),
+            serde_json::json!({"exposeActivity": true})
+        );
+    }
+
+    #[test]
+    fn a_wrongly_typed_mcp_block_falls_back_to_hidden_activity() {
+        let dir = temp_config_dir();
+        write_settings(dir.path(), r#"{"mcp": {"exposeActivity": "yes"}}"#);
+
+        assert!(!Settings::peek(dir.path()).mcp.expose_activity);
+    }
+
     #[tokio::test]
     async fn update_returns_previous_and_sanitized_saved_and_persists_across_reopen() {
         let dir = temp_config_dir();
@@ -1274,7 +1312,8 @@ mod tests {
                 },
                 "apps": {},
                 "reports": { "rounding": "none", "defaultGroup": "project" },
-                "timerShortcut": "Mod+Shift+T"
+                "timerShortcut": "Mod+Shift+T",
+                "mcp": { "exposeActivity": false }
             })
         );
     }

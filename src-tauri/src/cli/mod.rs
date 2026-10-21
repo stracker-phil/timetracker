@@ -35,7 +35,8 @@ const EXAMPLES: &str = "Examples:
   timetracker record --project acme --from 09:00 --to 09:30 --note standup --tag \"internal meeting\"
   timetracker report last-week --by tag --round 15
   timetracker start acme --note \"weekly call\" --tag \"external meeting\"
-  timetracker stop";
+  timetracker stop
+  claude mcp add timetracker -- ~/.local/bin/timetracker mcp";
 
 /// Items per request of a batch; the line limit may split it further.
 const MAX_BATCH_ITEMS: usize = 200;
@@ -124,6 +125,9 @@ enum Command {
     },
     /// Stop the running timer
     Stop,
+    /// Serve a read-only MCP server on stdin/stdout for Claude and other MCP clients; it reads the data
+    /// itself, so it works while the app is closed (`claude mcp add timetracker -- ~/.local/bin/timetracker mcp`)
+    Mcp,
 }
 
 #[derive(Subcommand, Debug)]
@@ -219,6 +223,8 @@ pub enum CliOutcome {
     },
     /// `--help` / `--version`: print and exit without starting the app.
     Exit { message: String },
+    /// `timetracker mcp`: serve MCP on stdio instead of starting or asking the app.
+    Mcp,
     /// A subcommand for the running app. `starts_app`: with no app running, start it with the message.
     Remote {
         message: IpcMessage,
@@ -270,6 +276,9 @@ where
             log_level: cli.log_level,
         });
     };
+    if matches!(command, Command::Mcp) {
+        return Ok(CliOutcome::Mcp);
+    }
     let starts_app = matches!(command, Command::Show { .. } | Command::Focus);
     let message = message(command, cli.json, now, tz, stdin).map_err(error)?;
     Ok(CliOutcome::Remote {
@@ -346,6 +355,7 @@ fn message<Tz: TimeZone>(
             },
         },
         Command::Stop => IpcMessage::TimerStop,
+        Command::Mcp => unreachable!("`parse` serves `mcp` before it builds a message"),
         Command::Report(args) => IpcMessage::Report {
             request: args.request(now, tz)?,
         },
@@ -492,6 +502,11 @@ mod tests {
                 log_level: None
             })
         );
+    }
+
+    #[test]
+    fn the_mcp_subcommand_serves_without_starting_the_app() {
+        assert_eq!(run(&["mcp"]), Ok(CliOutcome::Mcp));
     }
 
     #[test]

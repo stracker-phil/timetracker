@@ -31,6 +31,7 @@ export function settings(patch: Partial<Settings> = {}): Settings {
     apps: {},
     reports: { rounding: "none", defaultGroup: "project" },
     timerShortcut: "Mod+Shift+T",
+    mcp: { exposeActivity: false },
     ...patch,
   };
 }

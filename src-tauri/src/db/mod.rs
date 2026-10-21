@@ -28,6 +28,9 @@ pub const DB_FILE: &str = "timetracker.sqlite";
 /// SQLite has one writer; WAL lets readers run next to it.
 const MAX_CONNECTIONS: u32 = 4;
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+/// A reader beside the running app (`timetracker mcp`) waits less for its write lock.
+const READ_ONLY_BUSY_TIMEOUT: Duration = Duration::from_secs(2);
+const READ_ONLY_CONNECTIONS: u32 = 2;
 
 /// A cheap handle to the pool; clones share it.
 #[derive(Clone, Debug)]
@@ -53,6 +56,48 @@ impl Db {
             .connect_with(options)
             .await?;
         Db::init(pool).await
+    }
+
+    /// An existing file for reading only, beside the app that writes it: the journal mode stays as
+    /// the app set it (WAL readers never block the writer), nothing is created, migrated or seeded. A
+    /// file older than this build's migrations is refused; a newer one is read as it is.
+    pub async fn open_read_only(path: &Path) -> AppResult<Db> {
+        if !path.is_file() {
+            return Err(AppError::NotFound(format!(
+                "TimeTracker has no data yet ({} not found)",
+                path.display()
+            )));
+        }
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .read_only(true)
+            .create_if_missing(false)
+            .busy_timeout(READ_ONLY_BUSY_TIMEOUT);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(READ_ONLY_CONNECTIONS)
+            .connect_with(options)
+            .await?;
+        let db = Db { pool };
+        db.check_schema().await?;
+        Ok(db)
+    }
+
+    async fn check_schema(&self) -> AppResult<()> {
+        let latest = sqlx::migrate!("./migrations")
+            .iter()
+            .map(|m| m.version)
+            .max()
+            .unwrap_or(0);
+        let applied: Option<i64> = sqlx::query_scalar("SELECT MAX(version) FROM _sqlx_migrations")
+            .fetch_one(self.pool())
+            .await
+            .unwrap_or(None);
+        if applied.unwrap_or(0) < latest {
+            return Err(AppError::InvalidInput(
+                "Open TimeTracker once to update its data".into(),
+            ));
+        }
+        Ok(())
     }
 
     /// One connection that is never closed, since an in-memory database lives only as long as it.
@@ -375,6 +420,59 @@ mod tests {
         std::fs::create_dir(&file).unwrap();
         let err = Db::open(&file).await.unwrap_err();
         assert_eq!(err.kind(), ErrorKind::Db);
+    }
+
+    #[tokio::test]
+    async fn read_only_open_of_a_missing_file_says_there_is_no_data_yet() {
+        let tmp = temp_config_dir();
+        let file = tmp.path().join(DB_FILE);
+
+        let err = Db::open_read_only(&file).await.unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+        assert_eq!(
+            err.to_string(),
+            format!("TimeTracker has no data yet ({} not found)", file.display())
+        );
+        assert!(!file.exists());
+    }
+
+    #[tokio::test]
+    async fn read_only_open_reads_what_the_app_wrote_and_refuses_writes() {
+        let tmp = temp_config_dir();
+        let file = tmp.path().join(DB_FILE);
+        let writer = Db::open(&file).await.unwrap();
+        tags::insert(&writer, "billing review").await.unwrap();
+
+        let reader = Db::open_read_only(&file).await.unwrap();
+
+        let names: Vec<String> = tags::list(&reader)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert!(names.contains(&"billing review".to_string()), "{names:?}");
+        let err = tags::insert(&reader, "another").await.unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Db);
+        assert_eq!(tags::list(&writer).await.unwrap().len(), names.len());
+    }
+
+    #[tokio::test]
+    async fn read_only_open_refuses_a_file_older_than_the_migrations() {
+        let tmp = temp_config_dir();
+        let file = tmp.path().join(DB_FILE);
+        let writer = Db::open(&file).await.unwrap();
+        sqlx::query("DELETE FROM _sqlx_migrations")
+            .execute(writer.pool())
+            .await
+            .unwrap();
+        writer.close().await;
+
+        let err = Db::open_read_only(&file).await.unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(err.to_string(), "Open TimeTracker once to update its data");
     }
 
     #[test]

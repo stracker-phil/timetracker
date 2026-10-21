@@ -1,7 +1,8 @@
 /** The core settings pages. Modules register their own pages from their install function. */
-import { Activity, Database, Download, EyeOff, FolderOpen, GanttChart, Keyboard, Palette, Power, ScrollText } from "lucide-react";
+import { Activity, Copy, Database, Download, EyeOff, FolderOpen, GanttChart, Keyboard, Palette, Power, ScrollText } from "lucide-react";
 import { useId } from "react";
 import { api, BUNDLED_FONTS, LOG_LEVELS, SCHEMES, TEXT_SIZES, type LogLevel, type SchemeId } from "../../api";
+import { copyText } from "../../lib/clipboard";
 import { formatBytes, formatCount, formatDay } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
 import { registerSettingsPage, type SettingsPageProps } from "../../registry/settingsPages";
@@ -123,7 +124,13 @@ function CountRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function DataPage() {
+/** `claude mcp add` with the binary quoted when its path has spaces (the app bundle's does). */
+function mcpAddCommand(binaryPath: string): string {
+  const binary = /\s/.test(binaryPath) ? `"${binaryPath}"` : binaryPath;
+  return `claude mcp add timetracker -- ${binary} mcp`;
+}
+
+function DataPage({ s, set }: SettingsPageProps) {
   const dataVersion = useStore((s) => s.dataVersion);
   const { data: info } = useApiResult(`data-info:${dataVersion}`, api.dataInfo);
   if (!info) return null;
@@ -154,6 +161,19 @@ function DataPage() {
         <Row label="JSON backup" description="Every client, project, tag, activity span and recording in one file.">
           <button type="button" className="btn" disabled={!info.available} onClick={() => void exportBackup()}>
             <Download size="1.077rem" /> Export backup…
+          </button>
+        </Row>
+      </Group>
+      <Group title="MCP server">
+        <Switch
+          label="Expose activity to the MCP server"
+          description="Window titles and URLs become readable by MCP clients such as Claude. Recordings and reports are always available."
+          checked={s.mcp.exposeActivity}
+          onChange={(exposeActivity) => set({ mcp: { ...s.mcp, exposeActivity } })}
+        />
+        <Row label="Claude" description={<span className="mono selectable">{mcpAddCommand(info.binaryPath)}</span>}>
+          <button type="button" className="btn" onClick={() => void copyText(mcpAddCommand(info.binaryPath), "the command")}>
+            <Copy size="1.077rem" /> Copy
           </button>
         </Row>
       </Group>

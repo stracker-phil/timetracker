@@ -36,6 +36,8 @@ sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio",
 tempfile = { version = "3", optional = true }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
+# `timetracker mcp`: the read-only MCP server on stdio.
+rmcp = { version = "3.5.0", features = ["server", "transport-io", "macros", "schemars"] }
 
 [features]
 # Exposes test helpers to integration tests in tests/.

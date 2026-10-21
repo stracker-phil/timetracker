@@ -139,7 +139,11 @@ export type DataInfo = { dir: string, file: string,
 /**
  * The database file plus its WAL side files.
  */
-sizeBytes: number, activities: number, recordings: number, projects: number, firstActivity: number | null, available: boolean, error: string | null, };
+sizeBytes: number, activities: number, recordings: number, projects: number, firstActivity: number | null, available: boolean, error: string | null, 
+/**
+ * The `timetracker` command for `claude mcp add`: the installed link, else this executable.
+ */
+binaryPath: string, };
 
 export type DataKind = "activity" | "recordings" | "projects" | "tags" | "rules" | "settings";
 
@@ -268,6 +272,15 @@ export type ListView = { day: Day,
 rows: Array<ListRow>, totalMs: number, };
 
 export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
+
+/**
+ * What `timetracker mcp` may read besides recordings, projects, tags and reports.
+ */
+export type McpSettings = { 
+/**
+ * Window titles, URLs and documents of the captured activity.
+ */
+exposeActivity: boolean, };
 
 export type MonthDay = { day: Day, inMonth: boolean, isToday: boolean, recordedMs: number, 
 /**
@@ -508,7 +521,7 @@ fontMono: string | null, logLevel: LogLevel, launchAtLogin: boolean,
 /**
  * The data folder when moved away from the config dir.
  */
-dataDir: string | null, tracker: TrackerSettings, capture: CaptureSettings, timeline: TimelineSettings, apps: { [key in string]: AppOverride }, reports: ReportSettings, timerShortcut: string, };
+dataDir: string | null, tracker: TrackerSettings, capture: CaptureSettings, timeline: TimelineSettings, apps: { [key in string]: AppOverride }, reports: ReportSettings, timerShortcut: string, mcp: McpSettings, };
 
 export type Span = { start: number, end: number, };
 

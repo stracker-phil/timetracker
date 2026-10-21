@@ -14,9 +14,9 @@ import { SettingsDialog } from "./SettingsDialog";
 
 const mocked = vi.mocked(api, true);
 
-async function renderDataPage(patch: Parameters<typeof dataInfo>[0] = {}) {
+async function renderDataPage(patch: Parameters<typeof dataInfo>[0] = {}, settingsPatch: Parameters<typeof settings>[0] = {}) {
   mocked.dataInfo.mockResolvedValue(dataInfo(patch));
-  resetStore({ settings: settings(), dialog: { type: "settings", page: "data" } });
+  resetStore({ settings: settings(settingsPatch), dialog: { type: "settings", page: "data" } });
   installCommands();
   render(
     <>
@@ -83,6 +83,48 @@ describe("Settings Data page", () => {
 
     it("disables the backup export", () => {
       expect(screen.getByRole("button", { name: /Export backup/ })).toBeDisabled();
+    });
+  });
+
+  describe("MCP server", () => {
+    const exposeSwitch = () => screen.getByRole("switch", { name: "Expose activity to the MCP server" });
+
+    it("keeps activity hidden from MCP clients by default", async () => {
+      await renderDataPage();
+      expect(exposeSwitch()).not.toBeChecked();
+    });
+
+    it("saves exposeActivity when the switch is turned on", async () => {
+      await renderDataPage();
+      await userEvent.click(exposeSwitch());
+      expect(mocked.updateSettings).toHaveBeenCalledWith(settings({ mcp: { exposeActivity: true } }));
+    });
+
+    it("saves exposeActivity false when the switch is turned off", async () => {
+      await renderDataPage({}, { mcp: { exposeActivity: true } });
+      expect(exposeSwitch()).toBeChecked();
+      await userEvent.click(exposeSwitch());
+      expect(mocked.updateSettings).toHaveBeenCalledWith(settings({ mcp: { exposeActivity: false } }));
+    });
+
+    it.each([
+      ["/Users/test/.local/bin/timetracker", "claude mcp add timetracker -- /Users/test/.local/bin/timetracker mcp"],
+      [
+        "/Applications/Time Tracker.app/Contents/MacOS/timetracker",
+        'claude mcp add timetracker -- "/Applications/Time Tracker.app/Contents/MacOS/timetracker" mcp',
+      ],
+    ])("shows the add command for %s", async (binaryPath, command) => {
+      await renderDataPage({ binaryPath });
+      expect(screen.getByText(command)).toBeInTheDocument();
+    });
+
+    it("copies the add command and confirms with a toast", async () => {
+      await renderDataPage({ binaryPath: "/Applications/Time Tracker.app/Contents/MacOS/timetracker" });
+      await userEvent.click(screen.getByRole("button", { name: /Copy/ }));
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        'claude mcp add timetracker -- "/Applications/Time Tracker.app/Contents/MacOS/timetracker" mcp',
+      );
+      expect(await screen.findByText("Copied the command")).toBeInTheDocument();
     });
   });
 
