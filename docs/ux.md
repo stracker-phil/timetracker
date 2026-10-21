@@ -318,8 +318,8 @@ under the Location row instead of a toast.
 ## Keys
 
 Every action is a command (`APP_COMMANDS` in `src/commands/index.ts`) with a rebindable key (Settings →
-Shortcuts, `keybindings.json`) or, without a default key, an entry in the palette (⌘K, `>` lists the commands
-of the active scopes). `?` lists the bound commands of the scopes active when it opens, most specific first.
+Shortcuts, `keybindings.json`) or, without a default key, an item in the [menu bar](#menu-bar); every
+command is in the palette too (⌘K, `>` lists the commands of the active scopes). `?` lists the bound commands of the scopes active when it opens, most specific first.
 
 Rules of the keys (`handleKeydown`):
 
@@ -341,6 +341,8 @@ under `global`), active while that view shows.
 | Command | Label | Default key | Scope |
 |---|---|---|---|
 | `settings.toggle` | Settings… | ⌘, | global |
+| `app.launchAtLogin` | Launch at login (a check item) | menu | global |
+| `welcome.show` | Show welcome again | menu | global |
 | `shortcuts.show` | Keyboard shortcuts | ? | global |
 | `palette.toggle` | Command palette | ⌘K | global |
 | `sidebar.toggle` | Toggle sidebar | ⌘⌃S | global |
@@ -352,11 +354,16 @@ under `global`), active while that view shows.
 | `timer.start` | Start timer… | ⌘T (⌘⇧T from any app) | global |
 | `timer.stop` | Stop timer | ⌘⇧. | global |
 | `timer.toggle` | Start or stop timer | palette | global |
-| `edit.undo` / `edit.redo` | Undo / Redo recording change (outside text fields) | ⌘Z / ⌘⇧Z | global |
-| `logs.open` | Open log folder | palette | global |
+| `edit.undo` / `edit.redo` | Undo / Redo: the text field's typing, else the last recording change (not while an overlay is open) | ⌘Z / ⌘⇧Z | global |
+| `logs.open` | Open log folder | menu | global |
+| `data.reveal` | Show data folder (the database file in Finder) | menu | global |
+| `data.exportBackup` | Export backup… | menu | global |
+| `help.readme` | Open README | menu | global |
+| `recording.new` | New recording… (the Day view's selection, else the half hour up to now on today) | menu | global |
 | `app.quit` | Quit TimeTracker | ⌘Q | global |
 | `nav.prev` / `nav.next` | Previous / Next day, week, month or report period | P / N | dated |
 | `nav.today` | Go to today (this week, this month, the report's period that holds today) | O | dated |
+| `nav.goToDate` | Go to date… (the date picker) | menu | dated |
 | `day.nextBlock` / `day.prevBlock` | Next / Previous block in time | J / K | day |
 | `day.prevLane` / `day.nextLane` | Block in the lane to the left / right | H / L | day |
 | `day.details` | Block details | Space | day |
@@ -364,14 +371,14 @@ under `global`), active while that view shows.
 | `day.selectBlock` | Select block (the focused one, as a click does) | V | day |
 | `day.extendNext` / `day.extendPrev` | Extend selection to the next / previous block (as a ⇧-click does) | ⇧J / ⇧K | day |
 | `day.toggleList` | Toggle timeline and list | ⌘⇧L | day |
-| `activity.deleteDay` | Delete activity for this day… | – | day |
-| `activity.deleteRange` | Delete activity in a range… | – | day |
-| `day.settings` | Timeline settings | palette | day |
+| `activity.deleteDay` | Delete activity for this day… | menu | day |
+| `activity.deleteRange` | Delete activity in a range… | menu | day |
+| `day.settings` | Timeline settings | menu | day |
 | `day.clearFocus` | Clear selection (and the block and recording focus) | Escape | day |
 | `recording.next` / `recording.prev` | Next / Previous recording | ] / [ | day |
 | `recording.open` | Record selection or edit recording | ↵ | day |
-| `recording.create` | New recording from selection | palette, menu | day |
-| `recording.edit` | Edit recording | palette, menu | day |
+| `recording.create` | Record selection | menu (shows ↵) | day |
+| `recording.edit` | Edit recording | menu | day |
 | `recording.delete` | Delete recording (Undo in the toast) | ⌫ | day |
 | `recording.nudgeEarlier` / `recording.nudgeLater` | Move recording earlier / later by one snap step | ⌥↑ / ⌥↓ | day |
 | `recording.extend` / `recording.shrink` | Extend / Shorten recording by one snap step | ⌥⇧↓ / ⌥⇧↑ | day |
@@ -381,9 +388,10 @@ under `global`), active while that view shows.
 | `reports.save` | Save report… | palette | reports |
 | `reports.rename` / `reports.delete` | Rename / Delete saved report… (the one opened from the sidebar, until the filter changes) | palette | reports |
 | `projects.new` | New project… | ⌘N | projects |
-| `clients.new` | New client… | palette | projects |
+| `clients.new` | New client… | menu | projects |
 | `rules.new` | New rule… | ⌘N | rules |
 | `rules.moveUp` / `rules.moveDown` | Move rule up / down (the rule whose row has the focus) | ⌥↑ / ⌥↓ | rules |
+| `suggestion.accept` / `suggestion.acceptRule` | Accept suggestion / all suggestions of its rule (the suggestion with the focus) | menu | day |
 
 Keys of controls, not commands (they act on the focused control and are not rebindable):
 
@@ -427,6 +435,45 @@ From any view, with the documented default keys only:
    the month (by month; Tab to a day and ↵ opens it).
 10. ⌘4 shows Reports (P N step its period, O goes back to the current one): Tab to the range (This week, Last week, …) and ↵, on to the client, project and tag
     pickers, Group by and Rounding; ⌘⇧C copies the report as text, ⌘K `> save` saves it under a name.
+
+## Menu bar
+
+Every view and nearly every command has a menu item, with its key shown (`src-tauri/src/menu/`, synced as
+in [backend.md](backend.md#native-menu)). An item whose command cannot run now is greyed out: outside its
+view's scope, when its `when` is false (no selection, no focused recording, no running timer, no focused
+suggestion), and while a dialog, the palette or the editor is open (except Settings, Keyboard Shortcuts,
+Command Palette, zoom, Close Window, Undo, Redo and Quit). Rebinding a key in Settings → Shortcuts updates
+the menu.
+
+Keys with ⌘ or ⌃ are real menu accelerators. Single keys and ⌥ keys (P, N, O, J, K, ], [, ⌫, ↵, ⇧?, ⌥←) are
+shown in the item's title, `Previous (P)`, and are never accelerators: an accelerator would take the key
+from every text field. The page's key handler runs them, with the rules above.
+
+| Menu | Items (command; key) |
+|---|---|
+| TimeTracker | About; Settings… (`settings.toggle`; ⌘,); Launch at Login (`app.launchAtLogin`, a check item); Show Welcome Again (`welcome.show`); Services; Hide, Hide Others, Show All; Quit TimeTracker (`app.quit`; ⌘Q) |
+| File | New Recording… (`recording.new`); Start Timer… (`timer.start`; ⌘T), Stop Timer (`timer.stop`; ⌘⇧.); New Project… (`projects.new`; ⌘N), New Client… (`clients.new`), New Rule… (`rules.new`; ⌘N); Export Backup… (`data.exportBackup`); Close Window (`window.hide`; ⌘W) |
+| Edit | Undo (`edit.undo`; ⌘Z), Redo (`edit.redo`; ⌘⇧Z); Cut, Copy, Paste, Select All (native); Delete Recording (`recording.delete`; ⌫); Copy Report as Text (`reports.copyText`; ⌘⇧C) |
+| View | Day … Rules (`view.day` … `view.rules`; ⌘1 … ⌘6, the active view checked); Show as List (`day.toggleList`; ⌘⇧L, checked in List mode); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); Timeline Settings… (`day.settings`); Enter Full Screen (native) |
+| Go | Previous (`nav.prev`; P), Next (`nav.next`; N), Today (`nav.today`; O), Go to Date… (`nav.goToDate`); Next Block (`day.nextBlock`; J), Previous Block (`day.prevBlock`; K); Next Recording (`recording.next`; ]), Previous Recording (`recording.prev`; [) |
+| Day | Record Selection (`recording.create`; ↵, the key of `recording.open`), Edit Recording… (`recording.edit`); Move Recording to Previous / Next Day (⌥← / ⌥→), Copy Recording to Previous / Next Day (⌥⇧← / ⌥⇧→); Accept Suggestion, Accept All Suggestions of Rule (`suggestion.*`); Delete Activity for This Day…, Delete Activity in a Range… (`activity.*`) |
+| Window | Minimize, Zoom, Bring All to Front (native) |
+| Help | Keyboard Shortcuts (`shortcuts.show`; ⇧?), Command Palette… (`palette.toggle`; ⌘K); Open Log Folder (`logs.open`), Show Data Folder (`data.reveal`), README (`help.readme`) |
+
+New Project and New Rule share ⌘N: only one of them is enabled at a time (Projects or Rules). Copy Notes
+joins the Edit menu with the Reports rework (plan step 12).
+
+Commands left out of the menu, with keys and the palette only:
+
+| Commands | Why |
+|---|---|
+| `day.prevLane` / `day.nextLane`, `day.details`, `day.blockMenu`, `day.selectBlock`, `day.extendNext` / `day.extendPrev`, `day.clearFocus` | step-by-step keyboard work on the focused block; the Go menu has the block steps J and K |
+| `recording.open` | the Day menu has its two halves, Record Selection and Edit Recording… |
+| `recording.nudgeEarlier` / `nudgeLater` / `extend` / `shrink` | one snap step per press, held to repeat; a menu click per 5 minutes helps no one |
+| `reports.save`, `reports.rename`, `reports.delete` | saved reports live in the sidebar, whose right-click menu renames and deletes them |
+| `rules.moveUp` / `rules.moveDown` | act on the focused rule row, next to its drag grip |
+| `tracker.pause`, `tracker.resume` | the menu bar item (tray) has Pause Tracking with its durations and Resume |
+| `timer.toggle` | File has Start Timer… and Stop Timer |
 
 ## Scheme audit
 

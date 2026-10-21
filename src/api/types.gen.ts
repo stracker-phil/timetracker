@@ -296,6 +296,11 @@ export type McpSettings = {
  */
 exposeActivity: boolean, };
 
+/**
+ * What the page reports: the items whose commands can run now and the checked ones.
+ */
+export type MenuState = { enabled: Array<string>, checked: Array<string>, };
+
 export type MonthDay = { day: Day, inMonth: boolean, isToday: boolean, recordedMs: number, 
 /**
  * The projects with the most time that day, most first.

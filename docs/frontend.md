@@ -79,7 +79,7 @@ The IPC types are generated from Rust with ts-rs ([ADR 0004](adr/0004-generated-
 ## Commands
 
 Every user action that has a shortcut or appears in the palette is a `Command` (`commands/registry.ts`):
-`{ id, title, scope, defaultBinding?, when?, run, menu? }`. The core commands are `APP_COMMANDS`
+`{ id, title, scope, defaultBinding?, when?, run, menu?, checked? }`. The core commands are `APP_COMMANDS`
 (`commands/index.ts`); their default bindings are in [ux.md](ux.md#keys).
 
 - **Bindings** are strings like `Mod+Shift+K` (`Mod` is ⌘), normalized to `Mod, Ctrl, Alt, Shift` and shown
@@ -92,8 +92,13 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   (`activatesControl`); the timeline's focus commands blur such a button first (`releaseControlFocus`), so
   the keys return to the timeline. Auto-repeat is swallowed unless the command is in `REPEATABLE` (zoom,
   nudging).
-- **Menu.** Native menu and tray items emit `command`; `runMenuCommand` runs the id under the same rules.
-  A command shown in the menu has the same id and default as its `MENU_ITEMS` entry in `menu.rs`.
+- **Menu.** Native menu and tray items emit `command`; `runMenuCommand` runs the id when `canRunFromMenu`
+  says so (an active scope, `when` not false, not held back by an overlay). A command with `menu: true` has
+  the same id and default as its `MENU_ITEMS` entry in `src-tauri/src/menu/items.rs`; `checked` gives a
+  check item its mark. `installMenuSync` (`commands/menu.ts`, started in `App`) reports `menuState()`, the
+  menu commands that can run now and the checked ones, through `api.menuSync` on every store change and
+  every focus change (Accept Suggestion and the text-field Undo follow the keyboard focus); `syncMenu` sends
+  only a changed state, so Rust greys out and checks the items.
 - **Palette.** `CommandPalette` lists the commands of the active scopes with their key caps, filtered by the
   typed text; once something is typed, active projects follow as `Project: Client / Name` with their color
   dot (fuzzy, `lib/fuzzy.ts`), and Enter opens the project's sheet. `>` limits the list to commands, `p:` to
@@ -107,14 +112,23 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   selection); `day.extendNext`/`extendPrev` (⇧J ⇧K) move the focus and grow the selection over the block;
   `day.clearFocus` (Escape) clears the block focus, the selection and the focused recording.
   `activity.deleteDay` and `activity.deleteRange` (no default keys; also in the Day header's ⋯ menu) open
-  `DeleteActivityDialog` once the shown day's view has loaded.
+  `DeleteActivityDialog` once the shown day's view has loaded. `suggestion.accept` and
+  `suggestion.acceptRule` (Day menu, palette) record the suggestion whose button has the focus, or all of its
+  rule's suggestions on the day, as ↵ and ⌥↵ on it do. `nav.goToDate` opens the date picker
+  (`DatePickerPopover`).
 - **Recordings.** `recording.next`/`prev` (] [) focus the shown day's recordings by start;
   `recording.open` (Enter) edits the focused recording or records the selection;
-  `recording.create` and `recording.edit` (menu and palette) do one of the two; `recording.delete` (⌫);
+  `recording.create` (Record Selection) and `recording.edit` (menu and palette) do one of the two;
+  `recording.new` (File → New Recording…, from any view) opens the editor on the Day view's selection, else
+  for the span `recording_default_span` proposes (the half hour up to now) on today's Day view (or this week's Week view);
+  `recording.delete` (⌫);
   `recording.nudgeEarlier`/`nudgeLater` (⌥↑ ⌥↓) move the focused recording and `recording.extend`/`shrink`
   (⌥⇧↓ ⌥⇧↑) change its end, by one snap step; `recording.moveToPrevDay`/`moveToNextDay` (⌥← ⌥→) and
-  `recording.copyToPrevDay`/`copyToNextDay` (⌥⇧← ⌥⇧→) take it to the adjacent day at the same time. `edit.undo` (⌘Z) and `edit.redo` (⌘⇧Z) are global and leave
-  text fields to their own undo. While the editor is open, only `MODAL_ALLOWED` commands run. `zoom.in`/`zoom.out`/`zoom.reset` (⌘= ⌘- ⌘0)
+  `recording.copyToPrevDay`/`copyToNextDay` (⌥⇧← ⌥⇧→) take it to the adjacent day at the same time. `edit.undo` (⌘Z) and `edit.redo` (⌘⇧Z) are global
+  and replace the native Edit items: in a text field they undo its typing (`document.execCommand`), also in
+  dialogs and the editor; elsewhere the last recording change, but not while an overlay is open. The
+  palette's search field is left out, so the palette never lists them for it. While the editor is open, only
+  `MODAL_ALLOWED` commands run. `zoom.in`/`zoom.out`/`zoom.reset` (⌘= ⌘- ⌘0)
   zoom the timeline (`TIMELINE_STEPS`) while the Day view shows and the text everywhere else.
 - **Projects.** `projects.new` (⌘N) and `clients.new` (no default) open the sheets while the Projects view
   shows; `view.projects` (⌘5) shows it.
@@ -125,6 +139,10 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 - **Tracker.** `tracker.pause` (until resumed; while tracking) and `tracker.resume` (while paused), no default
   bindings.
 - **Window.** `window.hide` calls `api.hideWindow`; `app.quit` is handled by Rust when it comes from the menu.
+- **App and help.** `app.launchAtLogin` switches the LaunchAgent (`setLaunchAtLogin`, checked by
+  `settings.launchAtLogin`); `welcome.show` shows the welcome sheet again; `data.exportBackup` and
+  `data.reveal` run the Settings → Data actions (`components/settings/actions.ts`); `help.readme` calls
+  `api.openReadme`.
 
 ## Components
 

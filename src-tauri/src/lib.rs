@@ -12,6 +12,7 @@ pub mod deep_link;
 mod dev;
 pub mod error;
 pub mod events;
+pub mod help;
 pub mod ipc;
 pub mod launch;
 pub mod lock;
@@ -320,6 +321,7 @@ fn start_app(
     tauri::Builder::default()
         .manage(state)
         .manage(remote::Bridge::default())
+        .manage(menu::MenuSync::default())
         .manage(away_prompt::AwayPromptState::default())
         .plugin(log_plugin())
         .plugin(init_logging(log_level))
@@ -385,6 +387,8 @@ fn start_app(
             commands::choose_save_path,
             commands::choose_folder,
             commands::reveal_path,
+            help::open_readme,
+            menu::sync::menu_sync,
             db::commands::data_info,
             db::commands::data_move,
             db::commands::backup_export,
@@ -421,6 +425,7 @@ fn start_app(
             recordings::commands::recording_delete,
             recordings::commands::recordings_list,
             recordings::commands::recording_snap,
+            recordings::commands::recording_default_span,
             recordings::commands::undo,
             recordings::commands::redo,
             recordings::commands::undo_status,

@@ -134,7 +134,8 @@ Recording an hour of activity:
 - **Launch requests are pulled, not pushed.** Rust queues launch events and emits a bare `launch` event;
   the page calls `take_launch_events`, so it can't miss the request that started the app.
 - **The native menu and the tray emit `command` events** carrying a command id. The page runs that id
-  through the same registry that handles shortcuts and the palette.
+  through the same registry that handles shortcuts and the palette. The page reports back which menu items
+  can run and which are checked (`menu_sync`), so Rust greys them out.
 - **Data changes** are announced with `data_changed { kind, day }`; views showing that day reload.
 
 ## Repository map
@@ -155,7 +156,9 @@ src-tauri/
   src/error.rs lock.rs       AppError (+ ErrorKind), poison-tolerant lock helpers
   src/store/                 JsonFile, JsonStore, settings.rs, keybindings.rs, ui_state.rs
   src/commands.rs            settings, keybindings, ui state, misc; feature commands sit in their module
-  src/tray.rs menu.rs window.rs deep_link.rs   tray, native menu, window helpers, timetracker:// links
+  src/tray.rs window.rs deep_link.rs   tray, window helpers, timetracker:// links
+  src/menu/                  native menu: items.rs (MENU_ITEMS), mod.rs (build, forward), sync.rs (enabled and checked items)
+  src/help.rs                Help menu targets outside the app (the README)
   src/dev.rs                 debug builds only: window frame, background launch, eval, dev seed
   src/test_support/          test helpers behind cfg(test) / feature test-util; seed.rs also in debug builds
   src/db/                    Db (sqlx pool), migrations, time helpers, repositories, backup, relocate.rs (moving the data folder)

@@ -10,6 +10,7 @@ import { fail } from "../../state/requests";
 import { useStore } from "../../state/store";
 import { AccentSwatches } from "../Accent";
 import { Modal } from "../Modal";
+import { exportBackup, revealFolder, showWelcomeAgain } from "./actions";
 import { capitalize, Group, NumberField, Row, Segmented, Switch, TextField } from "./controls";
 import { CapturePage, TrackerPage } from "./CapturePage";
 import { LaunchAtLoginSwitch } from "./LaunchAtLoginSwitch";
@@ -71,12 +72,6 @@ function AppearancePage({ s, set }: SettingsPageProps) {
   );
 }
 
-function showWelcomeAgain() {
-  const { closeDialog, showWelcome } = useStore.getState();
-  closeDialog();
-  showWelcome();
-}
-
 function GeneralPage() {
   return (
     <>
@@ -111,26 +106,6 @@ function LoggingPage({ s, set }: SettingsPageProps) {
       </Row>
     </Group>
   );
-}
-
-async function exportBackup() {
-  try {
-    const path = await api.chooseSavePath(`timetracker-backup-${formatDay(Date.now())}`, "json");
-    if (!path) return;
-    const written = await api.backupExport(path);
-    const count = (n: number) => n.toLocaleString("en-US");
-    useStore.getState().toast("success", `Backup written: ${count(written.recordings)} recordings, ${count(written.activities)} activity spans`);
-  } catch (e) {
-    fail(e, "Backup failed");
-  }
-}
-
-async function revealFolder(file: string) {
-  try {
-    await api.revealPath(file);
-  } catch (e) {
-    fail(e, "Couldn't reveal the folder");
-  }
 }
 
 /** Asks before copying the data into `target`; stays open, busy, while the copy runs. */

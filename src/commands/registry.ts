@@ -10,8 +10,10 @@ export interface Command {
   /** Enabled-state check; disabled commands neither fire nor show in the palette. */
   when?: () => boolean;
   run: () => void | Promise<void>;
-  /** Native menu item in `MENU_ITEMS` (`menu.rs`); rebinding rebuilds the menu. */
+  /** Native menu item in `MENU_ITEMS` (`menu/items.rs`); rebinding rebuilds the menu. */
   menu?: true;
+  /** The checkmark of a menu checkbox item. */
+  checked?: () => boolean;
 }
 
 export type Overrides = Record<string, string | null>;

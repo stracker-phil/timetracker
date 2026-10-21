@@ -138,6 +138,8 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `choose_save_path` | `fileName, extension` | `string \| null` (the save panel; `null` when cancelled) | `io` |
 | `choose_folder` | – | `string \| null` (the folder panel, which can create a folder; `null` when cancelled) | `io` |
 | `reveal_path` | `path: String` | – (Finder shows the enclosing folder with `path` selected) | `io` |
+| `open_readme` (`help.rs`) | – | – (opens the README, see [Native menu](#native-menu)) | `not_found` (none in this build), `io` |
+| `menu_sync` (`menu/sync.rs`) | `state: MenuState { enabled, checked }` | – (greys out and checks the menu items) | – |
 | `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, available, error, binaryPath }` (`binaryPath`: `~/.local/bin/timetracker` when that link exists, else this executable; for the `claude mcp add` line) | – (errors are reported inside) |
 | `data_move` (`db/commands.rs`) | `path: String` | `DataInfo` of the new folder ([data.md](data.md#moving-the-data-folder)) | `invalid_input` (a refused folder), `io`, `db` |
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes, recordings, activities }` | `db`, `io`, `invalid_input` |
@@ -175,6 +177,7 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `calendar_picker` | `month: Day` (any day of it), `selected: [Day, Day] \| null` | `PickerMonth { monthStart, weeks: PickerDay[][] }` (whole weeks Monday to Sunday); `PickerDay { day, outside, isToday, selected }` (`calendar::period::picker_month`); the date picker | `invalid_input` |
 | `recordings_list` | `from: Ms, to: Ms` | `Recording[]` sharing time with the range | `db` |
 | `recording_snap` | `start: Ms, end: Ms` | `Span` as a write would snap it (the drag ghost) | – |
+| `recording_default_span` | – | `Span`: the half hour up to now (`NEW_RECORDING_MINUTES`), snapped (`recordings::default_span`); File → New Recording… without a selection | – |
 | `undo` / `redo` | – | the label undone or redone, `null` when there was none | `overlap`, `db` |
 | `undo_status` | – | `UndoStatus { undoLabel, redoLabel }` | – |
 | `activity_list` / `away_list` (`db/commands.rs`) | `day: Day` | `ActivityRow[]` / `AwayRow[]` of the day, cut to its bounds; open rows end now | `db`, `invalid_input` |
@@ -698,34 +701,38 @@ ts-rs generates `AppError`, `AppErrorField` and `ErrorKind` into `src/api/types.
 
 ## Native menu
 
-`menu.rs` builds TimeTracker (About, Settings…, Services, Hide, Hide Others, Show All, Quit TimeTracker),
-Edit (the native text items), View, Window and Help. Items that map to app commands are listed once in
-`MENU_ITEMS` (id, label, default binding); `build()` places them (`submenu` takes groups of ids). Their
-bindings come from `KeybindingsStore::menu_binding`: the user override, else the default, which mirrors the
-`defaultBinding` of the TypeScript command.
+`menu/` builds the menu bar: TimeTracker (About, Settings…, Launch at Login, Show Welcome Again, Services,
+Hide, Hide Others, Show All, Quit TimeTracker), File, Edit (Undo and Redo are app items; Cut, Copy, Paste and
+Select All are native), View (ends with the native Enter Full Screen), Go, Day, Window (native Minimize, Zoom,
+Bring All to Front) and Help. [ux.md](ux.md#menu-bar) lists every item.
 
-| Id | Label | Default |
-|---|---|---|
-| `settings.toggle` | Settings… | ⌘, |
-| `app.quit` | Quit TimeTracker | ⌘Q |
-| `palette.toggle` | Command Palette… | ⌘K |
-| `sidebar.toggle` | Toggle Sidebar | ⌘⌃S |
-| `view.day` … `view.projects` | Day, Week, Month, Reports, Projects | ⌘1 … ⌘5 |
-| `zoom.in` / `zoom.out` / `zoom.reset` | Zoom In / Out / Reset Zoom | ⌘= / ⌘- / ⌘0 |
-| `window.hide` | Close Window | ⌘W |
-| `shortcuts.show` | Keyboard Shortcuts | ⇧? |
-| `logs.open` | Open Log Folder | – |
+- **Items.** `menu/items.rs` lists every item that runs an app command once in `MENU_ITEMS`
+  (`MenuItemDef`: id, label, default binding, `binding_of`, `check`). `build()` in `menu/mod.rs` places them
+  in groups of ids (`groups`). The TypeScript command with the same id has `menu: true` and the same default.
+- **Bindings.** An item shows `KeybindingsStore::menu_binding` of its command: the user override, else the
+  default (`menu::default_binding`). `binding_of` lets an item show another command's key: Record Selection
+  shows ↵ of `recording.open`, which records the selection (or edits the focused recording).
+  `label_and_accelerator` turns a binding with ⌘ or ⌃ (`keybindings::is_chord`) into an accelerator; any other
+  binding goes into the label (`Previous (P)`, `Delete Recording (⌫)`, `Move Recording to Previous Day (⌥←)`)
+  and is never an accelerator, because a bare-key or ⌥ accelerator would take its key from text fields; the
+  page's `handleKeydown` runs those keys. `keybindings::accelerator` converts to Tauri's form (`Mod` →
+  `CmdOrCtrl`, `-` → `Minus`, `=` → `Equal`, `+` → `Shift+Equal`). `set_keybindings` rebuilds the menu
+  (`menu::rebuild`). Two items may share an accelerator only when listed in `SHARED_ACCELERATORS` (New Project
+  and New Rule, both ⌘N): their scopes exclude each other, so at most one is enabled and macOS gives it the key.
+- **Enabled and checked.** The page reports `MenuState { enabled, checked }` (ids) through `menu_sync`
+  whenever it changes; `menu/sync.rs` keeps it in the managed `MenuSync` and applies it to every listed item
+  (`item_state`): items missing from `enabled` are greyed out, check items show `checked` (the active view,
+  Show as List, Launch at Login). Before the first report every item is enabled; `app.quit` always is.
+  `rebuild` builds with the last report.
+- **Clicks.** `menu::forward`: `app.quit` exits right there, so quitting works even when the page is broken;
+  every other listed id is emitted as `command` (`is_menu_command` filters out the native items). A click on
+  a check item re-applies the last report first, since macOS toggles the mark itself; the page's next report
+  sets it.
+- **README.** Help → README calls `open_readme` (`help.rs`): the `README.md` bundled as a resource
+  (`bundle.resources` in `tauri.conf.json`), else in debug builds the repository's, opened in the default app.
 
-A click calls `menu::forward`: `app.quit` exits right there, so quitting works even when the page is broken;
-every other listed id is emitted as `command` (`is_menu_command` filters out the native items).
-
-`label_and_accelerator` turns a binding with ⌘ or ⌃ (`keybindings::is_chord`) into an accelerator; any other
-binding is appended to the label (`Keyboard Shortcuts (⇧?)`), because a bare-key accelerator would take its
-key from text fields. `keybindings::accelerator` converts to Tauri's form (`Mod` → `CmdOrCtrl`, `-` →
-`Minus`, `=` → `Equal`, `+` → `Shift+Equal`). `set_keybindings` rebuilds the menu (`menu::rebuild`).
-
-To add a menu item: add the TypeScript command, add the id, label and default to `MENU_ITEMS`, place it in
-`build()`.
+To add a menu item: add the TypeScript command with `menu: true` (and `checked` for a check item), add the id,
+label and default to `MENU_ITEMS`, place it in `build()`, and list it in [ux.md](ux.md#menu-bar).
 
 ## Dependencies
 

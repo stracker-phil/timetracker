@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleInput, RulePreview, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleInput, RulePreview, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -20,6 +20,10 @@ export const api = {
   /** Whether the LaunchAgent is installed (the truth; `settings.launchAtLogin` mirrors it). */
   autostartStatus: () => invoke<boolean>("autostart_status"),
   openLogFolder: () => invoke<void>("open_log_folder"),
+  /** Opens the bundled README (in debug builds the repository's) in the default Markdown app. */
+  openReadme: () => invoke<void>("open_readme"),
+  /** Reports which native menu items can run now and which are checked. */
+  menuSync: (state: MenuState) => invoke<void>("menu_sync", { state }),
   /** http(s) links only; Rust refuses anything else. */
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   logError: (message: string) => invoke<void>("log_frontend_error", { message }),
@@ -61,6 +65,8 @@ export const api = {
   recordingsList: (from: number, to: number) => invoke<Recording[]>("recordings_list", { from, to }),
   /** The span as a write would store it, for a drag ghost. */
   recordingSnap: (start: number, end: number) => invoke<Span>("recording_snap", { start, end }),
+  /** The span New Recording opens on without a selection: the half hour up to now, snapped. */
+  recordingDefaultSpan: () => invoke<Span>("recording_default_span"),
   /** Undoes the last recording change; its label, or null when there was none. */
   undo: () => invoke<string | null>("undo"),
   redo: () => invoke<string | null>("redo"),

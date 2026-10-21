@@ -116,6 +116,14 @@ pub fn snap_span(start: Ms, end: Ms, minutes: u32) -> Span {
     }
 }
 
+/// How long a recording made with New Recording lasts by default.
+pub const NEW_RECORDING_MINUTES: i64 = 30;
+
+/// The span a new recording without a selection proposes: the half hour up to `now`, snapped.
+pub fn default_span(now: Ms, minutes: u32) -> Span {
+    snap_span(now - NEW_RECORDING_MINUTES * MINUTE_MS, now, minutes)
+}
+
 /// An end that snapped onto or before the start lands one step after it.
 fn past_start(start: Ms, end: Ms, minutes: u32) -> Ms {
     let step = i64::from(minutes.max(1)) * MINUTE_MS;
@@ -748,6 +756,28 @@ mod tests {
                 "{name}"
             );
         }
+    }
+
+    #[test]
+    fn default_span_is_the_half_hour_up_to_now_snapped_to_the_grid() {
+        assert_eq!(
+            default_span(at(13, 12), 5),
+            Span {
+                start: at(12, 40),
+                end: at(13, 10)
+            }
+        );
+    }
+
+    #[test]
+    fn default_span_ending_on_the_grid_is_exactly_the_half_hour_before() {
+        assert_eq!(
+            default_span(at(13, 15), 5),
+            Span {
+                start: at(12, 45),
+                end: at(13, 15)
+            }
+        );
     }
 
     #[test]

@@ -144,10 +144,19 @@ describe("recording commands", () => {
       expect(runMenuCommand("edit.undo")).toBe(true);
     });
 
-    it.each(["edit.undo", "edit.redo"])("%s leaves ⌘Z to a focused text field", (id) => {
-      const input = document.body.appendChild(document.createElement("input"));
-      input.focus();
-      expect(runCommand(id)).toBe(false);
+    it.each([
+      ["edit.undo", "undo"],
+      ["edit.redo", "redo"],
+    ])("%s undoes the typing of a focused text field instead of a recording change", (id, native) => {
+      const execCommand = vi.fn<(command: string) => boolean>(() => true);
+      document.execCommand = execCommand;
+      try {
+        document.body.appendChild(document.createElement("input")).focus();
+        expect(runCommand(id)).toBe(true);
+        expect(execCommand).toHaveBeenCalledWith(native);
+      } finally {
+        Reflect.deleteProperty(document, "execCommand");
+      }
       expect(mocked.undo).not.toHaveBeenCalled();
       expect(mocked.redo).not.toHaveBeenCalled();
     });

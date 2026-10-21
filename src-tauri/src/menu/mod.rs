@@ -1,59 +1,22 @@
-use tauri::menu::{AboutMetadata, Menu, MenuItem, MenuItemBuilder, Submenu, SubmenuBuilder};
+mod items;
+pub mod sync;
+
+use tauri::menu::{
+    AboutMetadata, CheckMenuItemBuilder, Menu, MenuItemBuilder, MenuItemKind, SubmenuBuilder,
+};
 use tauri::{AppHandle, Emitter, Manager, Wry};
 
 use crate::events::COMMAND_EVENT;
 use crate::state::AppState;
 use crate::store::keybindings::{KeybindingsStore, accelerator, is_chord, key_label};
 
-pub struct MenuItemDef {
-    pub id: &'static str,
-    pub label: &'static str,
-    /// Mirrors the command's `defaultBinding` in `src/commands`; empty means none.
-    pub default_binding: &'static str,
-}
-
-const fn item(id: &'static str, label: &'static str, default_binding: &'static str) -> MenuItemDef {
-    MenuItemDef {
-        id,
-        label,
-        default_binding,
-    }
-}
-
-pub const MENU_ITEMS: &[MenuItemDef] = &[
-    item("settings.toggle", "Settings…", "Mod+,"),
-    item("app.quit", "Quit TimeTracker", "Mod+Q"),
-    item("palette.toggle", "Command Palette…", "Mod+K"),
-    item("sidebar.toggle", "Toggle Sidebar", "Mod+Ctrl+S"),
-    item("view.day", "Day", "Mod+1"),
-    item("view.week", "Week", "Mod+2"),
-    item("view.month", "Month", "Mod+3"),
-    item("view.reports", "Reports", "Mod+4"),
-    item("view.projects", "Projects", "Mod+5"),
-    item("view.rules", "Rules", "Mod+6"),
-    item("zoom.in", "Zoom In", "Mod+="),
-    item("zoom.out", "Zoom Out", "Mod+-"),
-    item("zoom.reset", "Reset Zoom", "Mod+0"),
-    item("window.hide", "Close Window", "Mod+W"),
-    item("shortcuts.show", "Keyboard Shortcuts", "Shift+?"),
-    item("logs.open", "Open Log Folder", ""),
-    item("recording.create", "New Recording from Selection", ""),
-    item("recording.edit", "Edit Recording", ""),
-    item("recording.delete", "Delete Recording", "Backspace"),
-    item("timer.start", "Start Timer…", "Mod+T"),
-    item("timer.stop", "Stop Timer", "Mod+Shift+."),
-];
-
-fn menu_item(id: &str) -> Option<&'static MenuItemDef> {
-    MENU_ITEMS.iter().find(|def| def.id == id)
-}
-
-pub fn is_menu_command(id: &str) -> bool {
-    menu_item(id).is_some()
-}
+pub use items::default_binding;
+use items::{binding_owner, menu_item};
+pub use sync::MenuSync;
+use sync::{MenuState, apply, current_state, item_state};
 
 /// A binding without ⌘ or ⌃ would take its key from text fields as a menu accelerator, so its keys go
-/// into the label instead: `Copy Value (Y)`.
+/// into the label instead: `Previous (P)`.
 fn label_and_accelerator(label: &str, binding: Option<String>) -> (String, Option<String>) {
     let Some(binding) = binding else {
         return (label.to_string(), None);
@@ -74,46 +37,65 @@ fn label_and_accelerator(label: &str, binding: Option<String>) -> (String, Optio
 fn build_item<M: Manager<Wry>>(
     app: &M,
     bindings: &KeybindingsStore,
+    state: Option<&MenuState>,
     id: &str,
-) -> tauri::Result<MenuItem<Wry>> {
-    let label = menu_item(id).map_or_else(
-        || {
-            log::warn!("Menu item {id} is missing from MENU_ITEMS");
-            id
-        },
-        |def| def.label,
-    );
-    let (label, accel) = label_and_accelerator(label, bindings.menu_binding(id));
-    let mut builder = MenuItemBuilder::with_id(id, label);
+) -> tauri::Result<MenuItemKind<Wry>> {
+    let Some(def) = menu_item(id) else {
+        log::warn!("Menu item {id} is missing from MENU_ITEMS");
+        return Ok(MenuItemKind::MenuItem(
+            MenuItemBuilder::with_id(id, id).build(app)?,
+        ));
+    };
+    let (label, accel) = label_and_accelerator(def.label, bindings.menu_binding(binding_owner(id)));
+    let shown = item_state(state, id);
+    if def.check {
+        let mut builder = CheckMenuItemBuilder::with_id(id, label)
+            .enabled(shown.enabled)
+            .checked(shown.checked);
+        if let Some(accel) = accel {
+            builder = builder.accelerator(accel);
+        }
+        return Ok(MenuItemKind::Check(builder.build(app)?));
+    }
+    let mut builder = MenuItemBuilder::with_id(id, label).enabled(shown.enabled);
     if let Some(accel) = accel {
         builder = builder.accelerator(accel);
     }
-    builder.build(app)
+    Ok(MenuItemKind::MenuItem(builder.build(app)?))
 }
 
-fn submenu<M: Manager<Wry>>(
-    app: &M,
+/// Adds groups of items, with a separator before each group but the first.
+fn groups<'m, M: Manager<Wry>>(
+    app: &'m M,
+    mut builder: SubmenuBuilder<'m, Wry, M>,
     bindings: &KeybindingsStore,
-    title: &str,
+    state: Option<&MenuState>,
     groups: &[&[&str]],
-) -> tauri::Result<Submenu<Wry>> {
-    let mut builder = SubmenuBuilder::new(app, title);
+) -> tauri::Result<SubmenuBuilder<'m, Wry, M>> {
     for (i, group) in groups.iter().enumerate() {
         if i > 0 {
             builder = builder.separator();
         }
         for id in *group {
-            builder = builder.item(&build_item(app, bindings, id)?);
+            builder = builder.item(&build_item(app, bindings, state, id)?);
         }
     }
-    builder.build()
+    Ok(builder)
 }
 
 pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Result<Menu<Wry>> {
+    let state = current_state(app);
+    let state = state.as_ref();
+    let sub = |title: &str, ids: &[&[&str]]| {
+        groups(app, SubmenuBuilder::new(app, title), bindings, state, ids)
+    };
     let app_menu = SubmenuBuilder::new(app, "TimeTracker")
         .about(Some(AboutMetadata::default()))
         .separator()
-        .item(&build_item(app, bindings, "settings.toggle")?)
+        .item(&build_item(app, bindings, state, "settings.toggle")?)
+        .separator()
+        .item(&build_item(app, bindings, state, "app.launchAtLogin")?)
+        .item(&build_item(app, bindings, state, "welcome.show")?)
         .separator()
         .services()
         .separator()
@@ -121,23 +103,33 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
         .hide_others()
         .show_all()
         .separator()
-        .item(&build_item(app, bindings, "app.quit")?)
+        .item(&build_item(app, bindings, state, "app.quit")?)
         .build()?;
-    let edit = SubmenuBuilder::new(app, "Edit")
-        .undo()
-        .redo()
+    let file = sub(
+        "File",
+        &[
+            &["recording.new"],
+            &["timer.start", "timer.stop"],
+            &["projects.new", "clients.new", "rules.new"],
+            &["data.exportBackup"],
+            &["window.hide"],
+        ],
+    )?
+    .build()?;
+    let edit = sub("Edit", &[&["edit.undo", "edit.redo"]])?
         .separator()
         .cut()
         .copy()
         .paste()
         .select_all()
+        .separator()
+        .item(&build_item(app, bindings, state, "recording.delete")?)
+        .separator()
+        .item(&build_item(app, bindings, state, "reports.copyText")?)
         .build()?;
-    let view = submenu(
-        app,
-        bindings,
+    let view = sub(
         "View",
         &[
-            &["sidebar.toggle", "palette.toggle"],
             &[
                 "view.day",
                 "view.week",
@@ -146,33 +138,57 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
                 "view.projects",
                 "view.rules",
             ],
+            &["day.toggleList"],
+            &["sidebar.toggle"],
             &["zoom.in", "zoom.out", "zoom.reset"],
+            &["day.settings"],
         ],
-    )?;
-    let recording = submenu(
-        app,
-        bindings,
-        "Recording",
+    )?
+    .separator()
+    .fullscreen()
+    .build()?;
+    let go = sub(
+        "Go",
         &[
-            &["recording.create", "recording.edit", "recording.delete"],
-            &["timer.start", "timer.stop"],
+            &["nav.prev", "nav.next", "nav.today", "nav.goToDate"],
+            &["day.nextBlock", "day.prevBlock"],
+            &["recording.next", "recording.prev"],
         ],
-    )?;
+    )?
+    .build()?;
+    let day = sub(
+        "Day",
+        &[
+            &["recording.create", "recording.edit"],
+            &[
+                "recording.moveToPrevDay",
+                "recording.moveToNextDay",
+                "recording.copyToPrevDay",
+                "recording.copyToNextDay",
+            ],
+            &["suggestion.accept", "suggestion.acceptRule"],
+            &["activity.deleteDay", "activity.deleteRange"],
+        ],
+    )?
+    .build()?;
     let window = SubmenuBuilder::new(app, "Window")
-        .item(&build_item(app, bindings, "window.hide")?)
         .minimize()
         .maximize()
-        .fullscreen()
         .separator()
         .bring_all_to_front()
         .build()?;
-    let help = submenu(
-        app,
-        bindings,
+    let help = sub(
         "Help",
-        &[&["shortcuts.show"], &["logs.open"]],
-    )?;
-    Menu::with_items(app, &[&app_menu, &edit, &view, &recording, &window, &help])
+        &[
+            &["shortcuts.show", "palette.toggle"],
+            &["logs.open", "data.reveal", "help.readme"],
+        ],
+    )?
+    .build()?;
+    Menu::with_items(
+        app,
+        &[&app_menu, &file, &edit, &view, &go, &day, &window, &help],
+    )
 }
 
 /// Rebuilds the menu so changed key bindings show as accelerators.
@@ -187,12 +203,16 @@ pub fn rebuild(app: &AppHandle) {
 /// Quitting is handled here, so it works even when the page is broken; every other item runs
 /// its command in the page.
 pub fn forward(app: &AppHandle, id: &str) {
-    if !is_menu_command(id) {
+    let Some(def) = menu_item(id) else {
         return;
-    }
+    };
     if id == "app.quit" {
         app.exit(0);
         return;
+    }
+    // macOS toggled the checkmark on click; the page's next report decides it.
+    if def.check {
+        apply(app);
     }
     if let Err(e) = app.emit(COMMAND_EVENT, id) {
         log::warn!("Couldn't forward menu command {id}: {e}");
@@ -201,38 +221,13 @@ pub fn forward(app: &AppHandle, id: &str) {
 
 #[cfg(test)]
 mod tests {
+    use super::items::MENU_ITEMS;
     use super::*;
 
     #[test]
-    fn menu_item_ids_are_unique_and_labelled() {
-        for (i, item) in MENU_ITEMS.iter().enumerate() {
-            assert!(!item.label.is_empty(), "{} has no label", item.id);
-            assert!(
-                MENU_ITEMS[..i].iter().all(|other| other.id != item.id),
-                "duplicate id {}",
-                item.id
-            );
-        }
-    }
-
-    #[test]
-    fn only_listed_ids_are_menu_commands() {
+    fn every_menu_item_has_a_label() {
         for item in MENU_ITEMS {
-            assert!(is_menu_command(item.id), "{}", item.id);
-        }
-        assert!(!is_menu_command("nope.unknown"));
-        assert!(!is_menu_command(""));
-    }
-
-    #[test]
-    fn default_chord_bindings_convert_to_accelerators() {
-        for item in MENU_ITEMS.iter().filter(|i| is_chord(i.default_binding)) {
-            assert!(
-                accelerator(item.default_binding).is_some(),
-                "{}: {}",
-                item.id,
-                item.default_binding
-            );
+            assert!(!item.label.is_empty(), "{} has no label", item.id);
         }
     }
 
@@ -270,6 +265,32 @@ mod tests {
                 label_and_accelerator(label, Some(binding.into())),
                 (expected.to_string(), None),
                 "{binding}"
+            );
+        }
+    }
+
+    #[test]
+    fn single_letter_alt_and_enter_defaults_go_into_the_titles() {
+        for (id, expected) in [
+            ("nav.prev", "Previous (P)"),
+            ("nav.next", "Next (N)"),
+            ("recording.create", "Record Selection (↵)"),
+            ("recording.delete", "Delete Recording (⌫)"),
+            (
+                "recording.moveToPrevDay",
+                "Move Recording to Previous Day (⌥←)",
+            ),
+            (
+                "recording.copyToNextDay",
+                "Copy Recording to Next Day (⌥⇧→)",
+            ),
+        ] {
+            let def = menu_item(id).unwrap();
+            let binding = default_binding(binding_owner(id)).map(str::to_string);
+            assert_eq!(
+                label_and_accelerator(def.label, binding),
+                (expected.to_string(), None),
+                "{id}"
             );
         }
     }

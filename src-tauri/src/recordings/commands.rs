@@ -1,9 +1,9 @@
 use tauri::{AppHandle, Manager, State};
 
 use super::undo::UndoStatus;
-use super::{Change, Overlap, RecordingInput, Recordings, Span, snap_span};
+use super::{Change, Overlap, RecordingInput, Recordings, Span, default_span, snap_span};
 use crate::db::recordings::{self, Recording, RecordingPatch};
-use crate::db::time::{Day, Ms};
+use crate::db::time::{Day, Ms, now_ms};
 use crate::error::AppResult;
 use crate::events::{self, DataKind};
 use crate::state::AppState;
@@ -102,6 +102,12 @@ pub async fn recordings_list(
 #[tauri::command]
 pub fn recording_snap(state: State<'_, AppState>, start: Ms, end: Ms) -> Span {
     snap_span(start, end, snap_minutes(&state))
+}
+
+/// The span File → New Recording opens the editor on when nothing is selected.
+#[tauri::command]
+pub fn recording_default_span(state: State<'_, AppState>) -> Span {
+    default_span(now_ms(), snap_minutes(&state))
 }
 
 fn snap_minutes(state: &AppState) -> u32 {

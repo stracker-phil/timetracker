@@ -1,8 +1,10 @@
-import { api, TEXT_SIZES, type Settings } from "../api";
+import { api, TEXT_SIZES, type Settings, type Suggestion } from "../api";
+import { exportBackup, revealDataFolder, showWelcomeAgain } from "../components/settings/actions";
 import { copyReport, promptDeleteSavedReport, promptRenameSavedReport, promptSaveReport } from "../components/reports/actions";
 import { VIEWS } from "../components/views";
 import { stepBlock, stepLane } from "../lib/blockFocus";
 import { addDays } from "../lib/day";
+import { fail } from "../state/requests";
 import { TIMELINE_ZOOM, useStore, type View } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, isTextInput, registerCommands, resolveKeydown, setOverrides, type Command } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
@@ -113,6 +115,36 @@ function toggleList() {
   s.setDayMode(s.uiState.dayMode === "list" ? "timeline" : "list");
 }
 
+/** Opens the editor on the Day view's selection, else on Rust's default span (the half hour up to now) on today's Day or Week view. */
+async function newRecording() {
+  const s = useStore.getState();
+  const span = s.view === "day" && hasSelection() ? (s.selectionSnap ?? s.selection) : null;
+  if (span) return s.openEditor({ mode: "create", start: span.start, end: span.end });
+  if (s.view !== "week") s.setView("day");
+  s.goToday();
+  try {
+    const { start, end } = await api.recordingDefaultSpan();
+    useStore.getState().openEditor({ mode: "create", start, end });
+  } catch (e) {
+    fail(e, "Could not open a new recording");
+  }
+}
+
+/** The suggestion whose button has the keyboard focus. */
+function focusedSuggestion(): Suggestion | null {
+  const el = document.activeElement;
+  const id = el instanceof HTMLElement ? el.closest<HTMLElement>("[data-suggestion-id]")?.dataset.suggestionId : undefined;
+  if (!id) return null;
+  return shownDayView()?.suggestions.find((s) => s.id === id) ?? null;
+}
+
+function acceptFocusedSuggestion(allOfRule: boolean) {
+  const suggestion = focusedSuggestion();
+  if (!suggestion) return;
+  const s = useStore.getState();
+  void (allOfRule ? s.acceptRuleSuggestions(suggestion.ruleId) : s.acceptSuggestion(suggestion));
+}
+
 /** Edits the focused recording, else opens the editor for the selection. */
 function openRecording() {
   const s = useStore.getState();
@@ -160,8 +192,23 @@ function moveFocusedRule(by: 1 | -1) {
     .then(() => el instanceof HTMLElement && el.isConnected && document.activeElement !== el && el.focus());
 }
 
-/** ⌘Z in a text field undoes typing, not a recording change. */
-const outsideTextField = () => !isTextInput(document.activeElement);
+function overlayOpen(): boolean {
+  const s = useStore.getState();
+  return s.dialog !== null || s.paletteOpen || s.editor !== null;
+}
+
+/** ⌘Z in a text field undoes its typing (the menu's Undo replaces the native one); elsewhere the last recording change. */
+function undoOrRedo(redo: boolean) {
+  if (isTextInput(document.activeElement)) {
+    document.execCommand(redo ? "redo" : "undo");
+    return;
+  }
+  const s = useStore.getState();
+  void (redo ? s.redo() : s.undo());
+}
+
+/** The palette would list Undo for its own search field; there it only searches. */
+const undoRedoAvailable = () => (isTextInput(document.activeElement) && !useStore.getState().paletteOpen) || !overlayOpen();
 
 function togglePalette() {
   const s = useStore.getState();
@@ -173,6 +220,11 @@ function toggleShortcuts() {
   const s = useStore.getState();
   if (s.dialog?.type === "shortcuts") return s.closeDialog();
   if (!s.dialog) s.openDialog({ type: "shortcuts", scopes: activeScopes() });
+}
+
+function toggleLaunchAtLogin() {
+  const s = useStore.getState();
+  if (s.settings) void s.setLaunchAtLogin(!s.settings.launchAtLogin);
 }
 
 function toggleSettings() {
@@ -189,21 +241,24 @@ function isTracking() {
 
 const APP_COMMANDS: Command[] = [
   { id: "settings.toggle", title: "Settings…", scope: "global", defaultBinding: "Mod+,", menu: true, run: toggleSettings },
+  { id: "app.launchAtLogin", title: "Launch at login", scope: "global", menu: true, when: () => useStore.getState().settings !== null, checked: () => !!useStore.getState().settings?.launchAtLogin, run: toggleLaunchAtLogin },
+  { id: "welcome.show", title: "Show welcome again", scope: "global", menu: true, run: showWelcomeAgain },
   { id: "shortcuts.show", title: "Keyboard shortcuts", scope: "global", defaultBinding: "Shift+?", menu: true, run: toggleShortcuts },
   { id: "palette.toggle", title: "Command palette", scope: "global", defaultBinding: "Mod+K", menu: true, run: togglePalette },
   { id: "sidebar.toggle", title: "Toggle sidebar", scope: "global", defaultBinding: "Mod+Ctrl+S", menu: true, run: () => useStore.getState().toggleSidebar() },
-  ...VIEWS.map(({ id, label }, i): Command => ({ id: `view.${id}`, title: `Show ${label}`, scope: "global", defaultBinding: `Mod+${i + 1}`, menu: true, run: () => useStore.getState().setView(id) })),
+  ...VIEWS.map(({ id, label }, i): Command => ({ id: `view.${id}`, title: `Show ${label}`, scope: "global", defaultBinding: `Mod+${i + 1}`, menu: true, checked: () => useStore.getState().view === id, run: () => useStore.getState().setView(id) })),
   { id: "zoom.in", title: "Zoom in", scope: "global", defaultBinding: "Mod+=", menu: true, run: zoomIn },
   { id: "zoom.out", title: "Zoom out", scope: "global", defaultBinding: "Mod+-", menu: true, run: zoomOut },
   { id: "zoom.reset", title: "Reset zoom", scope: "global", defaultBinding: "Mod+0", menu: true, run: resetZoom },
   { id: "window.hide", title: "Close window", scope: "global", defaultBinding: "Mod+W", menu: true, run: () => void api.hideWindow() },
   { id: "tracker.pause", title: "Pause tracking", scope: "global", when: () => isTracking(), run: () => void useStore.getState().pauseTracker("resumed") },
   { id: "tracker.resume", title: "Resume tracking", scope: "global", when: () => useStore.getState().tracker?.state.kind === "paused", run: () => void useStore.getState().resumeTracker() },
-  { id: "nav.prev", title: "Previous day, week, month or period", scope: "dated", defaultBinding: "P", run: () => useStore.getState().step(-1) },
-  { id: "nav.next", title: "Next day, week, month or period", scope: "dated", defaultBinding: "N", run: () => useStore.getState().step(1) },
-  { id: "nav.today", title: "Go to today", scope: "dated", defaultBinding: "O", run: () => useStore.getState().goToday() },
-  { id: "day.nextBlock", title: "Next block", scope: "day", defaultBinding: "J", when: timelineShown, run: () => moveFocus(stepBlock, 1) },
-  { id: "day.prevBlock", title: "Previous block", scope: "day", defaultBinding: "K", when: timelineShown, run: () => moveFocus(stepBlock, -1) },
+  { id: "nav.prev", title: "Previous day, week, month or period", scope: "dated", defaultBinding: "P", menu: true, run: () => useStore.getState().step(-1) },
+  { id: "nav.next", title: "Next day, week, month or period", scope: "dated", defaultBinding: "N", menu: true, run: () => useStore.getState().step(1) },
+  { id: "nav.today", title: "Go to today", scope: "dated", defaultBinding: "O", menu: true, run: () => useStore.getState().goToday() },
+  { id: "nav.goToDate", title: "Go to date…", scope: "dated", menu: true, run: () => useStore.getState().openDialog({ type: "datePicker" }) },
+  { id: "day.nextBlock", title: "Next block", scope: "day", defaultBinding: "J", menu: true, when: timelineShown, run: () => moveFocus(stepBlock, 1) },
+  { id: "day.prevBlock", title: "Previous block", scope: "day", defaultBinding: "K", menu: true, when: timelineShown, run: () => moveFocus(stepBlock, -1) },
   { id: "day.prevLane", title: "Block in the lane to the left", scope: "day", defaultBinding: "H", when: timelineShown, run: () => moveFocus(stepLane, -1) },
   { id: "day.nextLane", title: "Block in the lane to the right", scope: "day", defaultBinding: "L", when: timelineShown, run: () => moveFocus(stepLane, 1) },
   { id: "day.details", title: "Block details", scope: "day", defaultBinding: "Space", when: hasFocusedBlock, run: () => useStore.getState().toggleDetails() },
@@ -211,40 +266,46 @@ const APP_COMMANDS: Command[] = [
   { id: "day.selectBlock", title: "Select block", scope: "day", defaultBinding: "V", when: hasFocusedBlock, run: selectFocusedBlock },
   { id: "day.extendNext", title: "Extend selection to the next block", scope: "day", defaultBinding: "Shift+J", when: timelineShown, run: () => extendToBlock(1) },
   { id: "day.extendPrev", title: "Extend selection to the previous block", scope: "day", defaultBinding: "Shift+K", when: timelineShown, run: () => extendToBlock(-1) },
-  { id: "day.toggleList", title: "Toggle timeline and list", scope: "day", defaultBinding: "Mod+Shift+L", run: toggleList },
-  { id: "day.settings", title: "Timeline settings", scope: "day", run: () => useStore.getState().openDialog({ type: "timelineSettings" }) },
-  { id: "activity.deleteDay", title: "Delete activity for this day…", scope: "day", when: () => !!shownDayView(), run: () => openDeleteActivity(false) },
-  { id: "activity.deleteRange", title: "Delete activity in a range…", scope: "day", when: () => !!shownDayView(), run: () => openDeleteActivity(true) },
+  { id: "day.toggleList", title: "Toggle timeline and list", scope: "day", defaultBinding: "Mod+Shift+L", menu: true, checked: () => !timelineShown(), run: toggleList },
+  { id: "day.settings", title: "Timeline settings", scope: "day", menu: true, run: () => useStore.getState().openDialog({ type: "timelineSettings" }) },
+  { id: "activity.deleteDay", title: "Delete activity for this day…", scope: "day", menu: true, when: () => !!shownDayView(), run: () => openDeleteActivity(false) },
+  { id: "activity.deleteRange", title: "Delete activity in a range…", scope: "day", menu: true, when: () => !!shownDayView(), run: () => openDeleteActivity(true) },
   { id: "day.clearFocus", title: "Clear selection", scope: "day", defaultBinding: "Escape", when: () => hasFocusedBlock() || hasSelection() || hasFocusedRecording(), run: clearDayFocus },
-  { id: "recording.next", title: "Next recording", scope: "day", defaultBinding: "]", when: timelineShown, run: () => stepRecording(1) },
-  { id: "recording.prev", title: "Previous recording", scope: "day", defaultBinding: "[", when: timelineShown, run: () => stepRecording(-1) },
+  { id: "recording.next", title: "Next recording", scope: "day", defaultBinding: "]", menu: true, when: timelineShown, run: () => stepRecording(1) },
+  { id: "recording.prev", title: "Previous recording", scope: "day", defaultBinding: "[", menu: true, when: timelineShown, run: () => stepRecording(-1) },
   { id: "recording.open", title: "Record selection or edit recording", scope: "day", defaultBinding: "Enter", when: () => hasSelection() || hasFocusedRecording(), run: openRecording },
-  { id: "recording.create", title: "New recording from selection", scope: "day", menu: true, when: hasSelection, run: () => (useStore.getState().focusRecording(null), openRecording()) },
+  { id: "recording.new", title: "New recording…", scope: "global", menu: true, run: newRecording },
+  { id: "recording.create", title: "Record selection", scope: "day", menu: true, when: hasSelection, run: () => (useStore.getState().focusRecording(null), openRecording()) },
   { id: "recording.edit", title: "Edit recording", scope: "day", menu: true, when: hasFocusedRecording, run: openRecording },
   { id: "recording.delete", title: "Delete recording", scope: "day", defaultBinding: "Backspace", menu: true, when: hasFocusedRecording, run: () => void useStore.getState().deleteRecording(useStore.getState().focusedRecording ?? "") },
   { id: "recording.nudgeEarlier", title: "Move recording earlier", scope: "day", defaultBinding: "Alt+ArrowUp", when: hasFocusedRecording, run: () => shiftRecording(-1, -1) },
   { id: "recording.nudgeLater", title: "Move recording later", scope: "day", defaultBinding: "Alt+ArrowDown", when: hasFocusedRecording, run: () => shiftRecording(1, 1) },
   { id: "recording.extend", title: "Extend recording", scope: "day", defaultBinding: "Alt+Shift+ArrowDown", when: hasFocusedRecording, run: () => shiftRecording(0, 1) },
   { id: "recording.shrink", title: "Shorten recording", scope: "day", defaultBinding: "Alt+Shift+ArrowUp", when: hasFocusedRecording, run: () => shiftRecording(0, -1) },
-  { id: "recording.moveToPrevDay", title: "Move recording to the previous day", scope: "day", defaultBinding: "Alt+ArrowLeft", when: hasFocusedRecording, run: () => recordingToDay(-1, false) },
-  { id: "recording.moveToNextDay", title: "Move recording to the next day", scope: "day", defaultBinding: "Alt+ArrowRight", when: hasFocusedRecording, run: () => recordingToDay(1, false) },
-  { id: "recording.copyToPrevDay", title: "Copy recording to the previous day", scope: "day", defaultBinding: "Alt+Shift+ArrowLeft", when: hasFocusedRecording, run: () => recordingToDay(-1, true) },
-  { id: "recording.copyToNextDay", title: "Copy recording to the next day", scope: "day", defaultBinding: "Alt+Shift+ArrowRight", when: hasFocusedRecording, run: () => recordingToDay(1, true) },
+  { id: "recording.moveToPrevDay", title: "Move recording to the previous day", scope: "day", defaultBinding: "Alt+ArrowLeft", menu: true, when: hasFocusedRecording, run: () => recordingToDay(-1, false) },
+  { id: "recording.moveToNextDay", title: "Move recording to the next day", scope: "day", defaultBinding: "Alt+ArrowRight", menu: true, when: hasFocusedRecording, run: () => recordingToDay(1, false) },
+  { id: "recording.copyToPrevDay", title: "Copy recording to the previous day", scope: "day", defaultBinding: "Alt+Shift+ArrowLeft", menu: true, when: hasFocusedRecording, run: () => recordingToDay(-1, true) },
+  { id: "recording.copyToNextDay", title: "Copy recording to the next day", scope: "day", defaultBinding: "Alt+Shift+ArrowRight", menu: true, when: hasFocusedRecording, run: () => recordingToDay(1, true) },
   { id: "timer.start", title: "Start timer…", scope: "global", defaultBinding: "Mod+T", menu: true, run: () => void api.timerPickerOpen() },
   { id: "timer.stop", title: "Stop timer", scope: "global", defaultBinding: "Mod+Shift+.", menu: true, when: timerRuns, run: () => void useStore.getState().stopTimer() },
+  { id: "suggestion.accept", title: "Accept suggestion", scope: "day", menu: true, when: () => focusedSuggestion() !== null, run: () => acceptFocusedSuggestion(false) },
+  { id: "suggestion.acceptRule", title: "Accept all suggestions of the rule", scope: "day", menu: true, when: () => focusedSuggestion() !== null, run: () => acceptFocusedSuggestion(true) },
   { id: "timer.toggle", title: "Start or stop timer", scope: "global", run: () => (timerRuns() ? void useStore.getState().stopTimer() : void api.timerPickerOpen()) },
-  { id: "edit.undo", title: "Undo recording change", scope: "global", defaultBinding: "Mod+Z", when: outsideTextField, run: () => void useStore.getState().undo() },
-  { id: "edit.redo", title: "Redo recording change", scope: "global", defaultBinding: "Mod+Shift+Z", when: outsideTextField, run: () => void useStore.getState().redo() },
-  { id: "reports.copyText", title: "Copy report as text", scope: "reports", defaultBinding: "Mod+Shift+C", run: () => void copyReport() },
+  { id: "edit.undo", title: "Undo recording change", scope: "global", defaultBinding: "Mod+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(false) },
+  { id: "edit.redo", title: "Redo recording change", scope: "global", defaultBinding: "Mod+Shift+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(true) },
+  { id: "reports.copyText", title: "Copy report as text", scope: "reports", defaultBinding: "Mod+Shift+C", menu: true, run: () => void copyReport() },
   { id: "reports.save", title: "Save report…", scope: "reports", run: promptSaveReport },
   { id: "reports.rename", title: "Rename saved report…", scope: "reports", when: () => useStore.getState().openedReport !== null, run: promptRenameSavedReport },
   { id: "reports.delete", title: "Delete saved report…", scope: "reports", when: () => useStore.getState().openedReport !== null, run: promptDeleteSavedReport },
-  { id: "projects.new", title: "New project…", scope: "projects", defaultBinding: "Mod+N", run: () => useStore.getState().openDialog({ type: "project" }) },
-  { id: "clients.new", title: "New client…", scope: "projects", run: () => useStore.getState().openDialog({ type: "client" }) },
-  { id: "rules.new", title: "New rule…", scope: "rules", defaultBinding: "Mod+N", run: () => useStore.getState().openDialog({ type: "rule" }) },
+  { id: "projects.new", title: "New project…", scope: "projects", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "project" }) },
+  { id: "clients.new", title: "New client…", scope: "projects", menu: true, run: () => useStore.getState().openDialog({ type: "client" }) },
+  { id: "rules.new", title: "New rule…", scope: "rules", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "rule" }) },
   { id: "rules.moveUp", title: "Move rule up", scope: "rules", defaultBinding: "Alt+ArrowUp", when: () => focusedRule() !== null, run: () => moveFocusedRule(-1) },
   { id: "rules.moveDown", title: "Move rule down", scope: "rules", defaultBinding: "Alt+ArrowDown", when: () => focusedRule() !== null, run: () => moveFocusedRule(1) },
   { id: "logs.open", title: "Open log folder", scope: "global", menu: true, run: () => void api.openLogFolder() },
+  { id: "data.reveal", title: "Show data folder", scope: "global", menu: true, run: revealDataFolder },
+  { id: "data.exportBackup", title: "Export backup…", scope: "global", menu: true, run: exportBackup },
+  { id: "help.readme", title: "Open README", scope: "global", menu: true, run: () => void api.openReadme().catch((e) => fail(e, "Couldn't open the README")) },
   { id: "app.quit", title: "Quit TimeTracker", scope: "global", defaultBinding: "Mod+Q", menu: true, run: () => void api.quitApp() },
 ];
 
@@ -273,20 +334,22 @@ export function runCommand(id: string): boolean {
 }
 
 /** While a dialog or the palette is open, only these run; other keys belong to the overlay. */
-const MODAL_ALLOWED = new Set(["settings.toggle", "shortcuts.show", "palette.toggle", "zoom.in", "zoom.out", "zoom.reset", "window.hide", "app.quit"]);
+const MODAL_ALLOWED = new Set(["settings.toggle", "shortcuts.show", "palette.toggle", "zoom.in", "zoom.out", "zoom.reset", "window.hide", "app.quit", "edit.undo", "edit.redo"]);
 
 /** Commands that keep firing while their key is held. */
 const REPEATABLE = new Set(["zoom.in", "zoom.out", "recording.nudgeEarlier", "recording.nudgeLater", "recording.extend", "recording.shrink"]);
 
-function blockedByOverlay(id: string): boolean {
-  const s = useStore.getState();
-  return (s.dialog !== null || s.paletteOpen || s.editor !== null) && !MODAL_ALLOWED.has(id);
+const blockedByOverlay = (id: string) => overlayOpen() && !MODAL_ALLOWED.has(id);
+
+/** Whether a native menu item runs its command now: in an active scope, enabled, not held back by an overlay. */
+export function canRunFromMenu(c: Command, scopes: string[] = activeScopes()): boolean {
+  return scopes.includes(c.scope) && c.when?.() !== false && !blockedByOverlay(c.id);
 }
 
 /** Runs a native menu or tray item's command in an active scope. */
 export function runMenuCommand(id: string): boolean {
   const target = getCommand(id);
-  if (!target || !activeScopes().includes(target.scope) || target.when?.() === false || blockedByOverlay(id)) return false;
+  if (!target || !canRunFromMenu(target)) return false;
   void target.run();
   return true;
 }

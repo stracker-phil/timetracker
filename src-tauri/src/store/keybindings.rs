@@ -4,7 +4,7 @@
 
 use super::json_store::JsonStore;
 use crate::error::AppResult;
-use crate::menu::MENU_ITEMS;
+use crate::menu;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -42,11 +42,7 @@ impl KeybindingsStore {
         if let Some(custom) = self.store.read(|current| current.get(id).cloned()) {
             return custom;
         }
-        MENU_ITEMS
-            .iter()
-            .find(|item| item.id == id)
-            .map(|item| item.default_binding.to_string())
-            .filter(|b| !b.is_empty())
+        menu::default_binding(id).map(str::to_string)
     }
 }
 
@@ -210,6 +206,30 @@ mod tests {
         assert_eq!(
             KeybindingsStore::open(dir.path()).menu_binding("window.hide"),
             None
+        );
+    }
+
+    #[test]
+    fn record_open_shows_enter_by_default() {
+        let dir = temp_config_dir();
+        let store = KeybindingsStore::open(dir.path());
+        assert_eq!(
+            store.menu_binding("recording.open").as_deref(),
+            Some("Enter")
+        );
+    }
+
+    #[tokio::test]
+    async fn override_of_record_open_wins_over_enter() {
+        let dir = temp_config_dir();
+        let store = KeybindingsStore::open(dir.path());
+        store
+            .update(overrides(&[("recording.open", Some("Shift+Enter"))]))
+            .await
+            .unwrap();
+        assert_eq!(
+            store.menu_binding("recording.open").as_deref(),
+            Some("Shift+Enter")
         );
     }
 

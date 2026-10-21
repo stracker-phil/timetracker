@@ -16,6 +16,7 @@ import { StatusBar } from "./components/StatusBar";
 import { Toasts } from "./components/Toasts";
 import { Toolbar } from "./components/Toolbar";
 import { handleKeydown, installCommands, runMenuCommand } from "./commands";
+import { installMenuSync } from "./commands/menu";
 import { answerRemote } from "./commands/remote";
 import { applyAppearance, useSystemDark } from "./lib/theme";
 import { flushUiState, useStore, type View } from "./state/store";
@@ -66,6 +67,10 @@ function useBackendEvents() {
   }, []);
 }
 
+function useMenuSync() {
+  useEffect(() => installMenuSync(), []);
+}
+
 function ViewContent({ view }: { view: View }) {
   switch (view) {
     case "day":
@@ -103,6 +108,7 @@ export default function App() {
   const settings = useStore((s) => s.settings);
   const systemDark = useSystemDark();
   useBackendEvents();
+  useMenuSync();
 
   useEffect(() => {
     if (settings) applyAppearance(settings, systemDark);
