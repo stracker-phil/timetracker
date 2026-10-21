@@ -23,6 +23,7 @@ pub mod state;
 pub mod store;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_support;
+pub mod timers;
 pub mod tracker;
 pub mod tray;
 pub mod window;
@@ -318,6 +319,8 @@ fn start_app(
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
@@ -338,6 +341,12 @@ fn start_app(
             state.launches.push(initial);
             commands::apply_settings(app.handle(), None, &state.settings.get());
             tray::install(app.handle())?;
+            if let Err(e) =
+                timers::shortcut::register(app.handle(), &state.settings.get().timer_shortcut)
+            {
+                log::warn!("{e}");
+            }
+            timers::start_ticking(app.handle());
             start_tracker(app.handle(), &state);
             #[cfg(debug_assertions)]
             apply_dev_frame(app);
@@ -400,6 +409,12 @@ fn start_app(
             recordings::commands::undo_status,
             recordings::commands::recording_move,
             recordings::commands::recording_copy,
+            timers::commands::timer_start,
+            timers::commands::timer_stop,
+            timers::commands::timer_status,
+            timers::commands::timers_recent,
+            timers::commands::timer_picker_open,
+            timers::commands::timer_picker_close,
             calendar::commands::week_view,
             calendar::commands::month_view,
             reports::commands::report_run,

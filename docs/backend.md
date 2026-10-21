@@ -293,6 +293,8 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `activity start --source S --title T [--start ISO] [--app A] [--url U] [--path P]` | `activityStart { input }`, start default now | `started planner at 10:00` |
 | `activity stop --source S [--end ISO]` | `activityStop { source, end }`, end default now | `stopped planner at 10:45 (45 min)` or `nothing to stop for planner` |
 | `report [today\|yesterday\|week\|last-week\|month\|last-month\|DAY\|FROM TO] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30] [--up]` | `report { request: ReportRequest }` (`cli/report.rs` parses the range and flags); the app resolves names (`reports::cli`: an id, an exact name ignoring case, or a unique start; several matches list them) and runs the report | the report text; `--json`: the `ReportResult` plus `text` |
+| `start PROJECT [--note N] [--tag T]…` | `timerStart { request: TimerStartRequest }`; the app resolves the project and tags like `record` | `started Acme at 09:15`; `--json`: the `Recording` plus `projectName` |
+| `stop` | `timerStop` | `stopped 09:15–10:40 (1:25)` or `no timer running` (exit 0) |
 | `record --project P --from ISO --to ISO [--note N] [--tag T]… [--replace]` | `record { request: RecordRequest }` (`overlap: replace` with `--replace`, else `cancel`); the app resolves the project (`projects::resolve`) and tags by name (`tags::resolve_names`, unknown → `not_found`) | `recorded 09:00–10:30 (1:30) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: the `Recording` plus `projectName` |
 
 `parse(args, now, tz, stdin) -> Result<CliOutcome, CliError>` is pure: `CliOutcome` is `Run { hidden,
@@ -414,6 +416,9 @@ menu bar), tooltip `TimeTracker`, menu on left click:
 | the tracker's status text (disabled) | `status` | relabelled on every status |
 | Pause Tracking ▸ For 15 Minutes, For 1 Hour, Until Tomorrow, Until Resumed | `pause-15`, `pause-60`, `pause-tomorrow`, `pause-resumed` | `Tracker::pause` (hidden while paused) |
 | Resume Tracking | `resume` | `Tracker::resume` (only while paused) |
+| Start Timer… | `timer.start` | `timers::picker::open` |
+| Stop Timer (Acme, 1:23) | `timer.stop` | `timers::commands::stop` (disabled without a timer) |
+| Recent Timers ▸ `Project · note` | `timer.recent.<n>` | starts that combination |
 | Open TimeTracker | `open` | `window::show_main` |
 | Quit TimeTracker | `quit` | `app.exit(0)` |
 
@@ -421,7 +426,32 @@ menu bar), tooltip `TimeTracker`, menu on left click:
 follows `TrayIcon::of(state)`: `icons/tray/tray@2x.png` (running or away), `paused@2x.png` (a pause sign in
 the clock) and `attention@2x.png` (an exclamation mark: the permission is missing). `sync` only relabels the
 status item while the icon stays the same, and rebuilds menu and icon when it changes, so an open menu is not
-replaced every few seconds.
+replaced every few seconds. `tray::set_timer` shows a running timer as the item's title, `⏱ 1:23 Acme` (the
+project cut to 24 characters), and rebuilds the timer items. The tray's click events go to
+`tauri_plugin_positioner::on_tray_event`, so the picker can open under the icon.
+
+## Timers
+
+A timer is a recording without an end, so the overlap rule, undo and reports need nothing new.
+
+- `recordings/timer.rs`: `Recordings::start_timer(TimerInput, now)` starts at `snap(now)`, moved forward past
+  any recording that ended since (`free_start`); a running timer stops at that same instant, in one batch
+  ("Start timer for Acme"). `stop_timer(now)` ends it at `stop_time(start, now, snap)`: on the grid, and at
+  least a minute long. Both go through `apply`'s overlap check and onto the undo stack; undoing a stop makes
+  the timer run again.
+- `timers/mod.rs`: `status(db, now) -> TimerStatus { running: Option<RunningTimer { recording, projectName,
+  color, shade, elapsedMs }> }`, `recent(db, 8) -> RecentTimer[]` (distinct project, note and tags of finished
+  recordings, newest first, archived projects left out), `publish(app)` (the `timer_status` event and the tray),
+  `start_ticking(app)` (publishes at startup and every minute while a timer runs).
+- `timers/commands.rs`: `timer_start(projectId, note, tagIds)`, `timer_stop` (`null` without a timer),
+  `timer_status`, `timers_recent`, `timer_picker_open`, `timer_picker_close`; `start_by_name` serves the CLI.
+- `timers/picker.rs`: the `timer` window (`src/windows/timer/index.html`, 380×320, no decorations, transparent,
+  always on top, hidden on blur), under the tray icon or centered; capability `capabilities/timer.json`.
+- `timers/shortcut.rs`: `register(app, binding)` makes `Settings.timerShortcut` (default `Mod+Shift+T`) open
+  or close the picker from any app (`tauri-plugin-global-shortcut`). Only a chord with a Tauri key name
+  (`keybindings::is_global`) qualifies; `sanitized` resets others. `update_settings` registers a changed
+  shortcut before saving it and returns `invalid_input` when the system refuses.
+- `status` (CLI, `StatusReport.timer`) prints `timer: Acme · standup · 0:25`.
 
 ## Persistence
 
@@ -528,6 +558,8 @@ To add a menu item: add the TypeScript command, add the id, label and default to
 | `tauri-plugin-dialog` | native panels |
 | `tauri-plugin-deep-link` | `timetracker://` links |
 | `tauri-plugin-autostart` | launch at login (LaunchAgent) |
+| `tauri-plugin-global-shortcut` | the system-wide timer shortcut |
+| `tauri-plugin-positioner` | the timer picker under the tray icon |
 | `tokio` | runtime, IPC socket, the tracker loop |
 | `objc2`, `block2`, `objc2-foundation`, `objc2-app-kit`, `objc2-core-foundation`, `objc2-core-graphics`, `objc2-application-services` (macOS only) | the capture source ([capture.md](capture.md#macos-apis)) |
 | `sqlx` (`sqlite` with bundled libsqlite3, `runtime-tokio`, `migrate`, `macros` for `migrate!` and `FromRow`) | the data store |

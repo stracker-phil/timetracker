@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "timer",
+  "description": "Capability for the timer picker window",
+  "windows": ["timer"],
+  "permissions": ["core:default", "core:window:allow-hide"]
+}

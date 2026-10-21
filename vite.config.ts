@@ -16,6 +16,12 @@ export default defineConfig(() => ({
     hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
     watch: { ignored: ["**/src-tauri/**"] },
   },
+  // Secondary windows are pages of their own (`src/windows/<name>/`).
+  build: {
+    rollupOptions: {
+      input: { main: "index.html", timer: "src/windows/timer/index.html" },
+    },
+  },
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],

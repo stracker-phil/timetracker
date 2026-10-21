@@ -113,6 +113,11 @@ pub fn accelerator(binding: &str) -> Option<String> {
     Some(parts.join("+"))
 }
 
+/// Whether `binding` can be a system-wide shortcut: a chord with a key Tauri can name.
+pub fn is_global(binding: &str) -> bool {
+    is_chord(binding) && accelerator(binding).is_some()
+}
+
 /// Holds ⌘ or ⌃, so it never types a character.
 pub fn is_chord(binding: &str) -> bool {
     split(binding)
@@ -235,6 +240,24 @@ mod tests {
             ("Mod+", false),
         ] {
             assert_eq!(is_chord(binding), expected, "{binding}");
+        }
+    }
+
+    #[test]
+    fn only_chords_with_a_tauri_key_can_be_global_shortcuts() {
+        for (binding, expected) in [
+            ("Mod+Shift+T", true),
+            ("Ctrl+Alt+K", true),
+            ("Mod+,", true),
+            ("Shift+T", false),
+            ("Alt+K", false),
+            ("T", false),
+            ("Mod+Ä", false),
+            ("Mod+", false),
+            ("Hyper+K", false),
+            ("", false),
+        ] {
+            assert_eq!(is_global(binding), expected, "{binding}");
         }
     }
 

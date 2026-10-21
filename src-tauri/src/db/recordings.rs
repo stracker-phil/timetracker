@@ -176,6 +176,16 @@ pub async fn running(db: &Db) -> AppResult<Option<Recording>> {
     .await?)
 }
 
+/// Finished recordings, the latest first.
+pub async fn latest(db: &Db, limit: u32) -> AppResult<Vec<Recording>> {
+    Ok(sqlx::query_as(select!(
+        r#"WHERE r."end" IS NOT NULL ORDER BY r.start DESC LIMIT ?1"#
+    ))
+    .bind(limit)
+    .fetch_all(db.pool())
+    .await?)
+}
+
 /// Recordings that share time with `[start, end)`, except the one with id `except`. Touching edges
 /// do not overlap; the running recording overlaps everything after its start.
 pub async fn overlapping(

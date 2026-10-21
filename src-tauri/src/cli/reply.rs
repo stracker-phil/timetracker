@@ -7,11 +7,14 @@ use serde_json::Value;
 
 use crate::activity::external::SOURCE_PREFIX;
 use crate::db::activities::ActivityRow;
+use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms};
 use crate::ipc::IpcMessage;
 use crate::recordings::cli::Recorded;
 use crate::remote::StatusReport;
 use crate::reports::cli::Reported;
+use crate::timers::RunningTimer;
+use crate::timers::commands::TimerStarted;
 use crate::tracker::{TrackerState, TrackerStatus};
 
 /// The text for `result`, the reply to `message`; `None` when the subcommand prints nothing.
@@ -76,6 +79,26 @@ pub fn render<Tz: TimeZone>(
                 recorded.project_name
             ))
         }
+        IpcMessage::TimerStart { .. } => {
+            let started = read::<TimerStarted>(result)?;
+            Some(format!(
+                "started {} at {}",
+                started.project_name,
+                clock(started.recording.start, tz)
+            ))
+        }
+        IpcMessage::TimerStop => Some(match read::<Option<Recording>>(result)? {
+            Some(r) => {
+                let end = r.end.unwrap_or(now);
+                format!(
+                    "stopped {}–{} ({})",
+                    clock(r.start, tz),
+                    clock(end, tz),
+                    hours(end - r.start)
+                )
+            }
+            None => "no timer running".into(),
+        }),
         IpcMessage::Report { .. } => Some(read::<Reported>(result)?.text.trim_end().to_string()),
         _ => None,
     })
@@ -100,7 +123,7 @@ fn status<Tz: TimeZone>(report: &StatusReport, now: Ms, tz: &Tz) -> String {
             tracker_state(report.tracker.as_ref(), now, tz)
         ),
         format!("current: {}", current(report.tracker.as_ref(), now)),
-        "timer: none".into(),
+        format!("timer: {}", timer(report.timer.as_ref(), now)),
         format!(
             "window: {}",
             if report.window_visible {
@@ -127,6 +150,19 @@ fn current(tracker: Option<&TrackerStatus>, now: Ms) -> String {
 }
 
 /// `None` is a tracker that is off (no data store).
+/// `Acme · standup · 0:25`, or `none`.
+fn timer(timer: Option<&RunningTimer>, now: Ms) -> String {
+    let Some(t) = timer else {
+        return "none".into();
+    };
+    let mut parts = vec![t.project_name.clone()];
+    if !t.recording.note.is_empty() {
+        parts.push(t.recording.note.clone());
+    }
+    parts.push(hours(now - t.recording.start));
+    parts.join(" · ")
+}
+
 fn tracker_state<Tz: TimeZone>(status: Option<&TrackerStatus>, now: Ms, tz: &Tz) -> String {
     let Some(status) = status else {
         return "off".into();
@@ -504,6 +540,108 @@ mod tests {
             render_at_now(&record_message(), &result),
             Ok(Some("recorded 09:00–11:05 (2:05) for Acme".into()))
         );
+    }
+
+    fn timer_recording(note: &str, start: &str, end: Option<&str>) -> Recording {
+        Recording {
+            id: "r1".into(),
+            project_id: "p1".into(),
+            start: ms(start),
+            end: end.map(ms),
+            note: note.into(),
+            tag_ids: vec![],
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    fn timer_message() -> IpcMessage {
+        IpcMessage::TimerStart {
+            request: crate::timers::commands::TimerStartRequest {
+                project: "ac".into(),
+                note: String::new(),
+                tags: vec![],
+            },
+        }
+    }
+
+    #[test]
+    fn timer_start_prints_the_project_and_the_start_time() {
+        let result = serde_json::to_value(TimerStarted {
+            recording: timer_recording("", "2026-10-21T09:15:00+02:00", None),
+            project_name: "Acme".into(),
+        })
+        .unwrap();
+
+        assert_eq!(
+            render_at_now(&timer_message(), &result),
+            Ok(Some("started Acme at 09:15".into()))
+        );
+    }
+
+    #[test]
+    fn timer_stop_prints_the_span_and_the_duration() {
+        let result = serde_json::to_value(timer_recording(
+            "",
+            "2026-10-21T09:15:00+02:00",
+            Some("2026-10-21T10:40:00+02:00"),
+        ))
+        .unwrap();
+
+        assert_eq!(
+            render_at_now(&IpcMessage::TimerStop, &result),
+            Ok(Some("stopped 09:15–10:40 (1:25)".into()))
+        );
+    }
+
+    #[test]
+    fn timer_stop_without_a_timer_says_none_runs() {
+        assert_eq!(
+            render_at_now(&IpcMessage::TimerStop, &Value::Null),
+            Ok(Some("no timer running".into()))
+        );
+    }
+
+    #[test]
+    fn timer_replies_of_the_wrong_shape_are_errors() {
+        for (message, result) in [
+            (timer_message(), json!({ "projectName": "Acme" })),
+            (IpcMessage::TimerStop, json!("stopped")),
+        ] {
+            let err = render_at_now(&message, &result).unwrap_err();
+            assert!(
+                err.starts_with("The running TimeTracker sent an unexpected reply"),
+                "{message:?}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn status_shows_the_running_timer_with_its_note_and_elapsed_time() {
+        let start = now() - 25 * MINUTE;
+        for (note, expected) in [
+            ("standup", "timer: Acme · standup · 0:25"),
+            ("", "timer: Acme · 0:25"),
+        ] {
+            let result = serde_json::to_value(StatusReport {
+                version: "1.2.3".into(),
+                tracker: None,
+                timer: Some(RunningTimer {
+                    recording: Recording {
+                        start,
+                        ..timer_recording(note, "2026-10-21T11:35:00+02:00", None)
+                    },
+                    project_name: "Acme".into(),
+                    color: "blue".into(),
+                    shade: 0,
+                    elapsed_ms: 25 * MINUTE,
+                }),
+                window_visible: true,
+            })
+            .unwrap();
+
+            assert_eq!(status_lines(&result)[3], expected, "{note:?}");
+        }
     }
 
     fn report_message() -> IpcMessage {

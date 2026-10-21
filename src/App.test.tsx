@@ -12,6 +12,7 @@ import { activityRow, trackerStatus } from "./test/data";
 import { dayView } from "./test/dayFixtures";
 import { projectItem, tag } from "./test/projectFixtures";
 import { savedReport } from "./test/reportFixtures";
+import { runningStatus } from "./test/timerFixtures";
 
 const mocked = vi.mocked(api, true);
 
@@ -228,6 +229,26 @@ describe("App", () => {
       const onStatus = mocked.onTrackerStatus.mock.calls[0][0];
       act(() => onStatus(trackerStatus({ state: { kind: "needsPermission" }, permission: "denied", text: "Needs permission" })));
       expect(await screen.findByRole("dialog", { name: "Allow TimeTracker to read window titles" })).toBeInTheDocument();
+    });
+  });
+
+  describe("timer", () => {
+    const statusBar = () => screen;
+
+    it("shows the timer loaded on boot in the status bar", async () => {
+      mocked.timerStatus.mockResolvedValueOnce(runningStatus({ projectName: "Docs" }));
+      await renderApp();
+      expect(await statusBar().findByRole("button", { name: "⏱ Docs 1:23" })).toBeInTheDocument();
+    });
+
+    it("follows the timer status events and stops the timer from the status bar", async () => {
+      await renderApp();
+      expect(statusBar().queryByTitle("Stop timer")).not.toBeInTheDocument();
+      act(() => mocked.onTimerStatus.mock.calls[0][0](runningStatus({ projectName: "Docs" })));
+      await userEvent.click(statusBar().getByRole("button", { name: "⏱ Docs 1:23" }));
+      expect(mocked.timerStop).toHaveBeenCalled();
+      act(() => mocked.onTimerStatus.mock.calls[0][0]({ running: null }));
+      expect(statusBar().queryByTitle("Stop timer")).not.toBeInTheDocument();
     });
   });
 

@@ -130,10 +130,50 @@ describe("SettingsDialog", () => {
       await userEvent.type(screen.getByRole("textbox", { name: "Search shortcuts" }), "Toggle sidebar");
     }
 
+    const fields = () => screen.getAllByRole("button", { name: /Record shortcut|Press the new shortcut/ });
+    /** The search narrows the commands to one; the global shortcut's field comes first. */
+    const commandField = () => fields().at(-1)!;
+    const globalField = () => fields()[0];
+
+    describe("global shortcut", () => {
+      it("shows the saved start-timer shortcut under its group", async () => {
+        renderDialog();
+        await openPage("Shortcuts");
+        expect(screen.getByText("Global shortcut")).toBeInTheDocument();
+        expect(screen.getByText("Start timer (system-wide)")).toBeInTheDocument();
+        expect(globalField()).toHaveTextContent("⌘⇧T");
+      });
+
+      it("saves the recorded keys as the timer shortcut", async () => {
+        renderDialog();
+        await openPage("Shortcuts");
+        await userEvent.click(globalField());
+        await userEvent.keyboard("{Meta>}{Shift>}y{/Shift}{/Meta}");
+        expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ timerShortcut: "Mod+Shift+Y" }));
+        await vi.waitFor(() => expect(globalField()).toHaveTextContent("⌘⇧Y"));
+      });
+
+      it("shows the refusal under the row and keeps the old shortcut", async () => {
+        renderDialog();
+        await openPage("Shortcuts");
+        mocked.updateSettings.mockRejectedValueOnce({ kind: "invalid_input", message: "macOS uses these keys", code: null });
+        await userEvent.click(globalField());
+        await userEvent.keyboard("{Meta>}{Shift>}y{/Shift}{/Meta}");
+        expect(await screen.findByRole("alert")).toHaveTextContent("macOS uses these keys");
+        expect(globalField()).toHaveTextContent("⌘⇧T");
+      });
+    });
+
+    it("groups the in-app commands under In TimeTracker", async () => {
+      renderDialog();
+      await openPage("Shortcuts");
+      expect(screen.getByText("In TimeTracker")).toBeInTheDocument();
+    });
+
     it("lists the commands with their bindings", async () => {
       renderDialog();
       await openShortcuts();
-      expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘⌃S");
+      expect(commandField()).toHaveTextContent("⌘⌃S");
     });
 
     it("says so when no command matches the search", async () => {
@@ -146,37 +186,37 @@ describe("SettingsDialog", () => {
     it("saves the keys pressed while recording as the command's binding", async () => {
       renderDialog();
       await openShortcuts();
-      await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+      await userEvent.click(commandField());
       await userEvent.keyboard("{Meta>}{Shift>}j{/Shift}{/Meta}");
       expect(mocked.setKeybindings).toHaveBeenLastCalledWith({ "sidebar.toggle": "Mod+Shift+J" });
-      expect(await screen.findByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘⇧J");
+      await vi.waitFor(() => expect(commandField()).toHaveTextContent("⌘⇧J"));
     });
 
     it("unbinds the command when Backspace is pressed while recording", async () => {
       renderDialog();
       await openShortcuts();
-      await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+      await userEvent.click(commandField());
       await userEvent.keyboard("{Backspace}");
       expect(mocked.setKeybindings).toHaveBeenLastCalledWith({ "sidebar.toggle": null });
-      expect(await screen.findByRole("button", { name: "Record shortcut" })).toHaveTextContent("unbound");
+      await vi.waitFor(() => expect(commandField()).toHaveTextContent("unbound"));
     });
 
     it("keeps the binding when Escape cancels the recording", async () => {
       renderDialog();
       await openShortcuts();
-      await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+      await userEvent.click(commandField());
       await userEvent.keyboard("{Escape}");
       expect(mocked.setKeybindings).not.toHaveBeenCalled();
-      expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘⌃S");
+      expect(commandField()).toHaveTextContent("⌘⌃S");
     });
 
     it("removes the override when the reset button is clicked", async () => {
       renderDialog({ keybindings: { "sidebar.toggle": "Mod+Shift+J" } });
       await openShortcuts();
-      expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘⇧J");
+      expect(commandField()).toHaveTextContent("⌘⇧J");
       await userEvent.click(screen.getByRole("button", { name: "Reset Toggle sidebar" }));
       expect(mocked.setKeybindings).toHaveBeenLastCalledWith({});
-      expect(await screen.findByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘⌃S");
+      await vi.waitFor(() => expect(commandField()).toHaveTextContent("⌘⌃S"));
     });
 
     it("warns when two commands share a binding", async () => {

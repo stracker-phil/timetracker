@@ -6,6 +6,7 @@ pub mod commands;
 pub mod ops;
 #[cfg(test)]
 mod testing;
+pub mod timer;
 pub mod undo;
 
 use chrono::{Duration, Local, LocalResult, NaiveTime, TimeZone, Timelike};
@@ -60,6 +61,15 @@ pub struct Span {
 pub struct Change<T> {
     pub value: T,
     pub days: Vec<Day>,
+}
+
+impl<T> Change<T> {
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Change<U> {
+        Change {
+            value: f(self.value),
+            days: self.days,
+        }
+    }
 }
 
 /// `ms` moved to the nearest multiple of `minutes` counted from its local midnight, so DST days still land

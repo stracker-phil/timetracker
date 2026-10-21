@@ -17,17 +17,7 @@ import { handleKeydown, installCommands, runMenuCommand } from "./commands";
 import { answerRemote } from "./commands/remote";
 import { applyAppearance, useSystemDark } from "./lib/theme";
 import { flushUiState, useStore, type View } from "./state/store";
-import "./styles/fonts.css";
-import "./styles/schemes/ayu-mirage.css";
-import "./styles/schemes/monokai.css";
-import "./styles/schemes/nord.css";
-import "./styles/schemes/solarized-dark.css";
-import "./styles/schemes/ayu-light.css";
-import "./styles/schemes/catppuccin-latte.css";
-import "./styles/schemes/github-light.css";
-import "./styles/schemes/solarized-light.css";
-import "./styles/theme.css";
-import "./styles/app.css";
+import "./styles";
 
 function handleLaunchEvents(events: LaunchEvent[]) {
   const { toast, goToDay } = useStore.getState();
@@ -48,7 +38,9 @@ function useBackendEvents() {
     void loadTracker();
     void loadProjects();
     void useStore.getState().loadSavedReports();
+    void useStore.getState().loadTimer();
     const unlisten = [
+      api.onTimerStatus(useStore.getState().setTimerStatus),
       api.onLaunch(() => void drainLaunches()),
       api.onCommand(runMenuCommand),
       api.onRemote((e) => void answerRemote(e)),

@@ -196,6 +196,15 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   or deletes them.
 - Every change ends in a toast with Undo.
 
+## Timer
+
+- A running recording grows to now in the Day view, with a pulsing accent dot at its top right (still with
+  reduced motion); it has no grips. The menu bar item's title reads `⏱ 1:23 Acme` while it runs, and the
+  status bar shows `⏱ Acme 1:23` (a click stops it).
+- The picker (⌘⇧T from any app, ⌘T in the window, Start Timer… in the tray) is a small floating panel on
+  `--pop` under the tray icon: project, note, tags, Start (↵), Cancel (Escape), and the recent timers below.
+  While a timer runs it shows the timer with Stop and "Start another…". It hides when it loses focus.
+
 ## Week and Month
 
 - **Week**: the time axis and seven day columns (`--lane-min-w` like lanes); each head shows `Mon 20` and the
@@ -253,6 +262,7 @@ in inputs or dialogs. `Tab` is never bound: it moves the keyboard focus.
 | ⌫ | day | delete the focused recording (Undo in the toast) |
 | ⌥↑ / ⌥↓, ⌥⇧↓ / ⌥⇧↑ | day | move the focused recording, extend or shorten it, by one snap step |
 | Escape | day | clear the selection and the focus |
+| ⌘T / ⌘⇧. | global | open the timer picker / stop the running timer (`timer.start`, `timer.stop`); ⌘⇧T opens the picker from any app |
 | ⌘⇧C | reports | copy the report as text (`reports.copyText`) |
 | ⌘Z / ⌘⇧Z | global | undo / redo the last recording change (outside text fields) |
 | ⌘W | global | close (hide) the window (`window.hide`) |

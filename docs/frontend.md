@@ -153,6 +153,19 @@ Tracker components:
 `lib/blockFocus.ts`: `stepBlock` (time order across lanes) and `stepLane` (the nearest block in the next
 lane with blocks) for J/K/H/L. The status bar shows the selection as `09:00–10:30 · 1:30`.
 
+### Timer
+
+The `timer` slice holds `timer` (`TimerStatus` from `timer_status` events and `loadTimer` at boot),
+`startTimer` (an `overlap` reads "A recording already covers now") and `stopTimer` (a toast with Undo).
+Commands `timer.start` (⌘T: `timerPickerOpen`), `timer.stop` (⌘⇧. while one runs), `timer.toggle`. The status
+bar shows the running timer. Settings → Shortcuts has a Global shortcut group above the in-app commands: the
+recorder saves `timerShortcut` through `saveTimerShortcut`, which shows Rust's refusal under the row.
+
+Secondary windows are pages of their own in `src/windows/<name>/` (`index.html`, `main.tsx`), each a
+`build.rollupOptions.input` entry in `vite.config.ts`; they import `src/styles/index.ts` and use the same
+store and `api`. `windows/timer/TimerPicker.tsx` reloads settings, projects, the timer and the recent timers
+whenever the window gains focus (it is hidden, not closed, between uses), and reports its errors to the log.
+
 ### Week and Month
 
 `components/calendar/`: `CalendarHeader` (‹ Today ›, the title, totals). `WeekView` runs `weekView(day)` keyed

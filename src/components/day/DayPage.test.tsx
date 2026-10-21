@@ -695,6 +695,18 @@ describe("DayPage", () => {
       expect(screen.getByLabelText("Safari: Docs")).not.toHaveClass("dimmed");
     });
 
+    it("marks a running recording and gives it no grips", async () => {
+      renderDay(dayView({ recordings: [{ ...meeting, running: true }] }));
+      const el = await recordingEl();
+      expect(el).toHaveClass("running");
+      expect(within(el).queryByLabelText(/^Drag to change/)).not.toBeInTheDocument();
+    });
+
+    it("does not mark a finished recording as running", async () => {
+      renderDay(recordedDay());
+      expect(await recordingEl()).not.toHaveClass("running");
+    });
+
     it("opens the editor on the recording with a double-click", async () => {
       mocked.recordingsList.mockResolvedValue([meetingRow]);
       renderDay(recordedDay(), withProject);

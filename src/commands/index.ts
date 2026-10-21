@@ -36,6 +36,8 @@ const zoomIn = () => (onTimeline() ? useStore.getState().stepTimelineZoom(1) : z
 const zoomOut = () => (onTimeline() ? useStore.getState().stepTimelineZoom(-1) : zoomText(-1));
 const resetZoom = () => (onTimeline() ? useStore.getState().setTimelineZoom(TIMELINE_ZOOM.default) : resetText());
 
+const timerRuns = () => !!useStore.getState().timer?.running;
+
 /** Moves the block focus within the shown day's view. */
 function moveFocus(step: typeof stepBlock, by: 1 | -1) {
   const s = useStore.getState();
@@ -128,6 +130,9 @@ const APP_COMMANDS: Command[] = [
   { id: "recording.nudgeLater", title: "Move recording later", scope: "day", defaultBinding: "Alt+ArrowDown", when: hasFocusedRecording, run: () => shiftRecording(1, 1) },
   { id: "recording.extend", title: "Extend recording", scope: "day", defaultBinding: "Alt+Shift+ArrowDown", when: hasFocusedRecording, run: () => shiftRecording(0, 1) },
   { id: "recording.shrink", title: "Shorten recording", scope: "day", defaultBinding: "Alt+Shift+ArrowUp", when: hasFocusedRecording, run: () => shiftRecording(0, -1) },
+  { id: "timer.start", title: "Start timer…", scope: "global", defaultBinding: "Mod+T", menu: true, run: () => void api.timerPickerOpen() },
+  { id: "timer.stop", title: "Stop timer", scope: "global", defaultBinding: "Mod+Shift+.", menu: true, when: timerRuns, run: () => void useStore.getState().stopTimer() },
+  { id: "timer.toggle", title: "Start or stop timer", scope: "global", run: () => (timerRuns() ? void useStore.getState().stopTimer() : void api.timerPickerOpen()) },
   { id: "edit.undo", title: "Undo recording change", scope: "global", defaultBinding: "Mod+Z", when: outsideTextField, run: () => void useStore.getState().undo() },
   { id: "edit.redo", title: "Redo recording change", scope: "global", defaultBinding: "Mod+Shift+Z", when: outsideTextField, run: () => void useStore.getState().redo() },
   { id: "reports.copyText", title: "Copy report as text", scope: "reports", defaultBinding: "Mod+Shift+C", run: () => void copyReport() },

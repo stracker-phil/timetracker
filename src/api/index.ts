@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -60,6 +60,14 @@ export const api = {
   /** Apps the tracker recorded in the last `days` days, most time first. */
   appsSeen: (days: number) => invoke<AppSeen[]>("apps_seen", { days }),
   appsList: () => invoke<KnownApp[]>("apps_list"),
+  /** A running timer stops where the new one starts. */
+  timerStart: (projectId: string, note: string, tagIds: string[]) => invoke<Recording>("timer_start", { projectId, note, tagIds }),
+  /** `null` when no timer ran. */
+  timerStop: () => invoke<Recording | null>("timer_stop"),
+  timerStatus: () => invoke<TimerStatus>("timer_status"),
+  timersRecent: () => invoke<RecentTimer[]>("timers_recent"),
+  timerPickerOpen: () => invoke<null>("timer_picker_open"),
+  timerPickerClose: () => invoke<null>("timer_picker_close"),
   weekView: (day: string) => invoke<WeekView>("week_view", { day }),
   monthView: (day: string) => invoke<MonthView>("month_view", { day }),
   /** To `day` at the same time of day; Rust keeps the length. */
@@ -107,6 +115,7 @@ export const api = {
   onTrackerStatus: (handler: (status: TrackerStatus) => void): Promise<UnlistenFn> => listen<TrackerStatus>("tracker_status", (e) => handler(e.payload)),
   /** Data of one day (or every day, `day: null`) changed in Rust; views showing it reload. */
   onDataChanged: (handler: (event: DataChanged) => void): Promise<UnlistenFn> => listen<DataChanged>("data_changed", (e) => handler(e.payload)),
+  onTimerStatus: (handler: (status: TimerStatus) => void): Promise<UnlistenFn> => listen<TimerStatus>("timer_status", (e) => handler(e.payload)),
 };
 
 /** Every `ErrorKind` Rust sends; the `Record` makes the compiler check the list is complete. */

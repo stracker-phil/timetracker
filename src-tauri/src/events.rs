@@ -16,6 +16,8 @@ pub const REMOTE_EVENT: &str = "remote";
 pub const TRACKER_STATUS_EVENT: &str = "tracker_status";
 /// Payload: a `DataChanged`; views that show the day reload.
 pub const DATA_CHANGED_EVENT: &str = "data_changed";
+/// Payload: a `TimerStatus`; at start, on every change and every minute while a timer runs.
+pub const TIMER_STATUS_EVENT: &str = "timer_status";
 
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]

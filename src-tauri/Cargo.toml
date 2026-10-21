@@ -34,6 +34,8 @@ libc = "0.2"
 # SQLite with bundled libsqlite3; `macros` brings `migrate!` and `FromRow` (no `query!`).
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 tempfile = { version = "3", optional = true }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
 
 [features]
 # Exposes test helpers to integration tests in tests/.

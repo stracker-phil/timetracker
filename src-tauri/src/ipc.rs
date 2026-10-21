@@ -21,6 +21,7 @@ use crate::db::time::{Day, Ms};
 use crate::error::{AppError, ErrorKind};
 use crate::recordings::cli::RecordRequest;
 use crate::reports::cli::ReportRequest;
+use crate::timers::commands::TimerStartRequest;
 use crate::tracker::PauseUntil;
 
 /// Every request another process can make. Each CLI subcommand is one message; `remote::handle`
@@ -66,6 +67,10 @@ pub enum IpcMessage {
     Report {
         request: ReportRequest,
     },
+    TimerStart {
+        request: TimerStartRequest,
+    },
+    TimerStop,
     /// Runs JavaScript in the window (used by scripts/dev to drive the UI).
     #[cfg(debug_assertions)]
     Eval {
@@ -90,6 +95,8 @@ impl IpcMessage {
             IpcMessage::ActivityStop { .. } => "ActivityStop",
             IpcMessage::Record { .. } => "Record",
             IpcMessage::Report { .. } => "Report",
+            IpcMessage::TimerStart { .. } => "TimerStart",
+            IpcMessage::TimerStop => "TimerStop",
             #[cfg(debug_assertions)]
             IpcMessage::Eval { .. } => "Eval",
         }
@@ -502,7 +509,25 @@ mod tests {
             },
             record_message(),
             report_message(),
+            timer_start_message(),
+            IpcMessage::TimerStop,
         ]
+    }
+
+    fn timer_start_message() -> IpcMessage {
+        IpcMessage::TimerStart {
+            request: TimerStartRequest {
+                project: "acme".into(),
+                note: "weekly call".into(),
+                tags: vec!["external meeting".into()],
+            },
+        }
+    }
+
+    #[test]
+    fn timer_messages_are_of_their_own_kinds() {
+        assert_eq!(timer_start_message().kind(), "TimerStart");
+        assert_eq!(IpcMessage::TimerStop.kind(), "TimerStop");
     }
 
     fn report_message() -> IpcMessage {
@@ -654,6 +679,19 @@ mod tests {
                         "clients": [], "projects": [], "tags": []
                     }
                 }),
+            ),
+            (
+                timer_start_message(),
+                serde_json::json!({
+                    "type": "timerStart",
+                    "request": {
+                        "project": "acme", "note": "weekly call", "tags": ["external meeting"]
+                    }
+                }),
+            ),
+            (
+                IpcMessage::TimerStop,
+                serde_json::json!({ "type": "timerStop" }),
             ),
             (
                 IpcMessage::ActivityStart {

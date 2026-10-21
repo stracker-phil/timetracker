@@ -34,6 +34,7 @@ bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/Tim
 | `timetracker pause <15m\|1h\|tomorrow\|off>`, `resume` | pauses tracking (`off`: until resumed), resumes it |
 | `timetracker activity add\|start\|stop …` | writes another app's activity, see [Scripting](#scripting) |
 | `timetracker report [RANGE] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round N [--up]]` | prints the hours and notes of today (or yesterday, week, last-week, month, last-month, a day, or two days), ready to paste into a timesheet; `--json` for the data |
+| `timetracker start PROJECT [--note N] [--tag T]…` / `timetracker stop` | starts a timer now (a running one stops) / stops it |
 | `timetracker record --project P --from T --to T [--note N] [--tag T]… [--replace]` | records time for a project (by id, name or a unique start of its name; tags by name); refuses to overlap another recording unless `--replace` |
 
 Every command except `show` and `focus` needs TimeTracker running and exits 2 with "TimeTracker is not

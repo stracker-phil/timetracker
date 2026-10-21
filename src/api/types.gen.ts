@@ -303,6 +303,11 @@ export type ProjectShare = { projectId: string, color: string, shade: number, ms
  */
 export type Range = { "kind": "today" } | { "kind": "yesterday" } | { "kind": "thisWeek" } | { "kind": "lastWeek" } | { "kind": "thisMonth" } | { "kind": "lastMonth" } | { "kind": "custom", from: Day, to: Day, };
 
+/**
+ * A project, note and tags recently recorded together, to time again in one click.
+ */
+export type RecentTimer = { projectId: string, projectName: string, color: string, shade: number, note: string, tagIds: Array<string>, lastUsed: number, };
+
 export type Recording = { id: string, projectId: string, start: number, 
 /**
  * `None` only for the running timer.
@@ -398,6 +403,8 @@ export type ReportSettings = { rounding: Rounding, defaultGroup: Group, };
 
 export type Rounding = "none" | "nearest5" | "nearest6" | "nearest10" | "nearest15" | "nearest30" | "up5" | "up6" | "up10" | "up15" | "up30";
 
+export type RunningTimer = { recording: Recording, projectName: string, color: string, shade: number, elapsedMs: number, };
+
 export type SavedReport = { id: string, name: string, filter: ReportFilter, position: number, };
 
 export type Settings = { 
@@ -431,11 +438,7 @@ export type Span = { start: number, end: number, };
 /**
  * The reply to `status`. `tracker` is `None` while the data store is unavailable.
  */
-export type StatusReport = { version: string, tracker: TrackerStatus | null, 
-/**
- * The running timer; always `None` until timers exist.
- */
-timer: unknown, windowVisible: boolean, };
+export type StatusReport = { version: string, tracker: TrackerStatus | null, timer: RunningTimer | null, windowVisible: boolean, };
 
 export type Tag = { id: string, 
 /**
@@ -463,6 +466,8 @@ summaryMinutes: number, showAllActivity: boolean, compact: boolean, groupByApp: 
  * One of `SNAP_MINUTES`.
  */
 snapMinutes: number, zoom: number, };
+
+export type TimerStatus = { running: RunningTimer | null, };
 
 /**
  * What an activity block is labeled with.

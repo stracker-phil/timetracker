@@ -39,6 +39,8 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("recording.create", "New Recording from Selection", ""),
     item("recording.edit", "Edit Recording", ""),
     item("recording.delete", "Delete Recording", "Backspace"),
+    item("timer.start", "Start Timer…", "Mod+T"),
+    item("timer.stop", "Stop Timer", "Mod+Shift+."),
 ];
 
 fn menu_item(id: &str) -> Option<&'static MenuItemDef> {
@@ -149,7 +151,10 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
         app,
         bindings,
         "Recording",
-        &[&["recording.create", "recording.edit", "recording.delete"]],
+        &[
+            &["recording.create", "recording.edit", "recording.delete"],
+            &["timer.start", "timer.stop"],
+        ],
     )?;
     let window = SubmenuBuilder::new(app, "Window")
         .item(&build_item(app, bindings, "window.hide")?)
@@ -225,6 +230,21 @@ mod tests {
                 "{}: {}",
                 item.id,
                 item.default_binding
+            );
+        }
+    }
+
+    #[test]
+    fn the_timer_commands_are_menu_items_with_their_default_chords() {
+        for (id, label, accelerator_text) in [
+            ("timer.start", "Start Timer…", "CmdOrCtrl+T"),
+            ("timer.stop", "Stop Timer", "CmdOrCtrl+Shift+."),
+        ] {
+            let def = menu_item(id).unwrap();
+            assert_eq!(
+                label_and_accelerator(def.label, Some(def.default_binding.into())),
+                (label.to_string(), Some(accelerator_text.to_string())),
+                "{id}"
             );
         }
     }

@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use ts_rs::TS;
 
 use super::json_store::JsonStore;
+use super::keybindings::is_global;
 use crate::capture::url::domain;
 use crate::error::{AppError, AppResult};
 
@@ -386,7 +387,7 @@ impl Settings {
             d.timeline.zoom
         };
 
-        if self.timer_shortcut.trim().is_empty() {
+        if !is_global(&self.timer_shortcut) {
             self.timer_shortcut = d.timer_shortcut;
         }
         self
@@ -981,11 +982,16 @@ mod tests {
     }
 
     #[test]
-    fn blank_timer_shortcut_resets_to_the_default() {
+    fn a_timer_shortcut_that_cannot_be_global_resets_to_the_default() {
         for (input, expected) in [
             ("", "Mod+Shift+T"),
             ("  ", "Mod+Shift+T"),
+            ("T", "Mod+Shift+T"),
+            ("Shift+T", "Mod+Shift+T"),
+            ("Alt+R", "Mod+Shift+T"),
+            ("Mod+", "Mod+Shift+T"),
             ("Mod+Alt+R", "Mod+Alt+R"),
+            ("Ctrl+Alt+K", "Ctrl+Alt+K"),
         ] {
             let sanitized = settings(|s| s.timer_shortcut = input.into()).sanitized();
             assert_eq!(sanitized.timer_shortcut, expected, "{input:?}");

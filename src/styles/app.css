@@ -537,3 +537,27 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .month-day--today { border-color: var(--accent); }
 .month-day-hours { font-size: var(--data-font-size); color: var(--o2); }
 .month-strip { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; display: flex; }
+
+/* ---------- timer ---------- */
+/* A running timer: a pulsing dot at its growing edge. */
+.recording.running::after {
+  content: ""; position: absolute; right: 0.462rem; top: 0.462rem; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .recording.running::after { animation: none; } }
+.status-timer { margin-right: 0.923rem; color: var(--accent-text); }
+
+/* The picker window: transparent, so the panel draws its own rounded surface. */
+html:has(.timer-picker), html:has(.timer-picker) body { background: transparent; }
+.timer-picker {
+  box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; gap: 0.615rem; padding: 0.923rem;
+  background: var(--pop); border: 1px solid var(--field-line); border-radius: 10px; overflow: hidden;
+}
+.timer-picker h1 { margin: 0; font-size: var(--fs-small); font-weight: 600; color: var(--o2); }
+.timer-picker .actions { margin-top: auto; }
+.timer-running { display: flex; align-items: center; gap: 0.615rem; }
+.timer-running .grow-text { font-weight: 600; }
+.timer-recent { margin: 0; padding: 0; list-style: none; overflow: auto; }
+.timer-recent button { display: flex; width: 100%; align-items: center; gap: 0.462rem; padding: var(--pad) 0.462rem; border: none; border-radius: 5px; background: none; color: var(--text); text-align: left; }
+.timer-recent button:hover { background: var(--row-hover); }

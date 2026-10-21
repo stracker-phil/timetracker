@@ -12,10 +12,15 @@ pub fn background() -> bool {
     std::env::var("TIMETRACKER_BACKGROUND").is_ok_and(|v| v == "1")
 }
 
-/// Runs JavaScript sent by `scripts/dev/js.sh` in the main window.
+/// Runs JavaScript sent by `scripts/dev/js.sh` in the main window, or in another one named by a first
+/// line `@<label>`.
 pub fn eval(app: &tauri::AppHandle, js: &str) {
     use tauri::Manager;
-    let Some(window) = app.get_webview_window("main") else {
+    let (label, js) = match js.strip_prefix('@').and_then(|rest| rest.split_once('\n')) {
+        Some((label, rest)) => (label.trim(), rest),
+        None => ("main", js),
+    };
+    let Some(window) = app.get_webview_window(label) else {
         return;
     };
     if let Err(e) = window.eval(js) {

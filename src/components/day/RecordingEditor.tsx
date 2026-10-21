@@ -1,4 +1,5 @@
 import { useId, useState, type KeyboardEvent } from "react";
+import { NoteInput } from "../NoteInput";
 import { toAppError } from "../../api";
 import { formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
@@ -14,7 +15,6 @@ const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 
 /** Without line breaks: a note is one line (ADR 0018); pasted ones turn into spaces. */
-const oneLine = (text: string) => text.replace(/[\r\n]+/g, " ");
 
 /** Create a recording for a span, or edit one: project, times, note and tags. Rust snaps the times on save. */
 export function RecordingEditor({ editor }: { editor: Editor }) {
@@ -85,22 +85,13 @@ export function RecordingEditor({ editor }: { editor: Editor }) {
           <span className="recording-length mono o2">{formatDuration(end - draft.start)}</span>
         </div>
         <FormField label="Note" htmlFor={ids.note} error={errors.note}>
-          <input
+          <NoteInput
             id={ids.note}
-            className="input"
             // Editing starts at the note; the open project list would hide the project.
             autoFocus={!!existing}
             maxLength={500}
             value={draft.note}
-            onChange={(e) => patch({ note: oneLine(e.target.value) })}
-            onPaste={(e) => {
-              // A text field drops pasted line breaks, joining the words; spaces keep them apart.
-              e.preventDefault();
-              const field = e.currentTarget;
-              const pasted = oneLine(e.clipboardData.getData("text"));
-              const [from, to] = [field.selectionStart ?? field.value.length, field.selectionEnd ?? field.value.length];
-              patch({ note: field.value.slice(0, from) + pasted + field.value.slice(to) });
-            }}
+            onChange={(note) => patch({ note })}
           />
         </FormField>
         <FormField label="Tags" error={errors.tagIds}>

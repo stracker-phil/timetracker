@@ -37,6 +37,22 @@ function ShortcutField({ value, onChange }: { value: string | null; onChange: (b
   );
 }
 
+/** The shortcut that opens the timer picker from any app; Rust registers it with the system. */
+function GlobalShortcut() {
+  const binding = useStore((s) => s.settings?.timerShortcut ?? null);
+  const [error, setError] = useState<string | null>(null);
+  const change = async (next: string | null) => {
+    if (next) setError(await useStore.getState().saveTimerShortcut(next));
+  };
+  return (
+    <Group title="Global shortcut">
+      <Row label="Start timer (system-wide)" description={error ? <span role="alert">{error}</span> : "Opens the timer picker from any app."}>
+        <ShortcutField value={binding} onChange={(b) => void change(b)} />
+      </Row>
+    </Group>
+  );
+}
+
 export function ShortcutsPage() {
   const bindings = useStore((s) => s.keybindings);
   const save = useStore((s) => s.saveKeybindings);
@@ -61,7 +77,8 @@ export function ShortcutsPage() {
           ))}
         </div>
       )}
-      <Group>
+      <GlobalShortcut />
+      <Group title="In TimeTracker">
         {list.length === 0 && <div className="settings-row muted">No matching commands.</div>}
         {list.map((c) => {
           const overridden = Object.hasOwn(bindings, c.id);

@@ -20,6 +20,7 @@ use crate::ipc::{IpcMessage, MAX_MESSAGE_BYTES};
 use crate::recordings::Overlap;
 use crate::recordings::cli::RecordRequest;
 use crate::store::settings::LogLevel;
+use crate::timers::commands::TimerStartRequest;
 use report::ReportArgs;
 
 const EXAMPLES: &str = "Examples:
@@ -32,7 +33,9 @@ const EXAMPLES: &str = "Examples:
   timetracker activity start --source planner --title Break
   timetracker activity stop --source planner
   timetracker record --project acme --from 09:00 --to 09:30 --note standup --tag \"internal meeting\"
-  timetracker report last-week --by tag --round 15";
+  timetracker report last-week --by tag --round 15
+  timetracker start acme --note \"weekly call\" --tag \"external meeting\"
+  timetracker stop";
 
 /// Items per request of a batch; the line limit may split it further.
 const MAX_BATCH_ITEMS: usize = 200;
@@ -108,6 +111,19 @@ enum Command {
     },
     /// Print the hours and notes of a day or range, ready to paste into a timesheet
     Report(ReportArgs),
+    /// Start a timer for a project now; a running timer stops
+    Start {
+        /// The project's id, name or a unique start of its name
+        project: String,
+        /// One line
+        #[arg(long, default_value = "")]
+        note: String,
+        /// A tag by name; repeat for several
+        #[arg(long = "tag")]
+        tags: Vec<String>,
+    },
+    /// Stop the running timer
+    Stop,
 }
 
 #[derive(Subcommand, Debug)]
@@ -318,6 +334,18 @@ fn message<Tz: TimeZone>(
                 },
             },
         },
+        Command::Start {
+            project,
+            note,
+            tags,
+        } => IpcMessage::TimerStart {
+            request: TimerStartRequest {
+                project,
+                note,
+                tags,
+            },
+        },
+        Command::Stop => IpcMessage::TimerStop,
         Command::Report(args) => IpcMessage::Report {
             request: args.request(now, tz)?,
         },
@@ -918,6 +946,66 @@ mod tests {
             record_request("", &[], "2026-10-21T12:00:00+02:00", Overlap::Cancel)
         );
         assert!(json);
+    }
+
+    #[test]
+    fn start_builds_a_timer_request_with_note_and_tags() {
+        let (message, json, starts_app) =
+            remote(&["start", "acme", "--note", "x", "--tag", "a", "--tag", "b"]);
+
+        assert_eq!(
+            message,
+            IpcMessage::TimerStart {
+                request: TimerStartRequest {
+                    project: "acme".into(),
+                    note: "x".into(),
+                    tags: vec!["a".into(), "b".into()],
+                }
+            }
+        );
+        assert!(!json);
+        assert!(!starts_app);
+    }
+
+    #[test]
+    fn start_without_note_and_tags_sends_them_empty() {
+        assert_eq!(
+            remote(&["start", "acme", "--json"]),
+            (
+                IpcMessage::TimerStart {
+                    request: TimerStartRequest {
+                        project: "acme".into(),
+                        note: String::new(),
+                        tags: Vec::new(),
+                    }
+                },
+                true,
+                false
+            )
+        );
+    }
+
+    #[test]
+    fn stop_becomes_a_timer_stop_message() {
+        assert_eq!(remote(&["stop"]), (IpcMessage::TimerStop, false, false));
+    }
+
+    #[test]
+    fn start_without_a_project_is_reported_in_the_terminal() {
+        let err = run(&["start"]).unwrap_err();
+
+        assert!(!err.in_app);
+        assert!(err.message.contains("<PROJECT>"), "{}", err.message);
+    }
+
+    #[test]
+    fn help_lists_the_timer_subcommands() {
+        let Ok(CliOutcome::Exit { message }) = run(&["--help"]) else {
+            panic!("--help should exit");
+        };
+        for name in ["start", "stop"] {
+            assert!(message.contains(&format!("  {name} ")), "{name}");
+        }
     }
 
     #[test]

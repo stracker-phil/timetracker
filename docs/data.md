@@ -52,7 +52,9 @@ deleted id is never reused and an undo can restore rows by id.
   explicit user action and deletes crossing rows whole.
 - Spans are stored unsplit. A reader clips them to the range it shows, so a span across midnight shows on
   both days.
-- Recordings never overlap each other; the running timer is the one recording without `end`. The recordings
+- Recordings never overlap each other; the running timer is the one recording without `end`, and it counts
+  as overlapping everything after its start. Stopping it sets `end` to `stop_time`: the snapped now, at least
+  a minute after the start. The recordings
   feature enforces this; the repository only offers the `overlapping` query.
 - A note is one line ([ADR 0018](adr/0018-one-line-notes-tags-copyable-reports.md)).
 

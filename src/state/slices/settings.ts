@@ -1,5 +1,5 @@
 import { setOverrides } from "../../commands/registry";
-import { api, type AppSettingPatch, type Keybindings, type Settings } from "../../api";
+import { api, toAppError, type AppSettingPatch, type Keybindings, type Settings } from "../../api";
 import { fail } from "../requests";
 import type { Slice } from "../store";
 
@@ -10,6 +10,8 @@ export interface SettingsSlice {
   /** `quiet` skips the toast, for settings that apply as they change. */
   saveSettings: (settings: Settings, opts?: { quiet?: boolean }) => Promise<void>;
   saveKeybindings: (bindings: Keybindings) => Promise<void>;
+  /** Resolves the reason when Rust refuses it (the system took the keys, or they are no chord). */
+  saveTimerShortcut: (binding: string) => Promise<string | null>;
   /** One app's timeline override; resolves whether it was saved (a failure is toasted). */
   setAppSetting: (bundleId: string, patch: AppSettingPatch) => Promise<boolean>;
 }
@@ -34,6 +36,17 @@ export const settingsSlice: Slice<SettingsSlice> = {
         if (!opts?.quiet) get().toast("success", "Settings saved");
       } catch (e) {
         fail(e, "Could not save settings");
+      }
+    },
+
+    async saveTimerShortcut(binding) {
+      const settings = get().settings;
+      if (!settings) return null;
+      try {
+        set({ settings: await api.updateSettings({ ...settings, timerShortcut: binding }) });
+        return null;
+      } catch (e) {
+        return toAppError(e).message;
       }
     },
 

@@ -18,6 +18,8 @@ use crate::launch;
 use crate::pending::{NoReply, PendingReplies};
 use crate::recordings;
 use crate::reports;
+use crate::state::AppState;
+use crate::timers::{self, RunningTimer};
 use crate::tracker::{Tracker, TrackerStatus};
 use crate::window;
 
@@ -48,9 +50,7 @@ pub struct RemoteEvent {
 pub struct StatusReport {
     pub version: String,
     pub tracker: Option<TrackerStatus>,
-    /// The running timer; always `None` until timers exist.
-    #[ts(type = "unknown")]
-    pub timer: Option<serde_json::Value>,
+    pub timer: Option<RunningTimer>,
     pub window_visible: bool,
 }
 
@@ -120,11 +120,18 @@ fn json(value: impl Serialize) -> HandlerResult {
     serde_json::to_value(value).map_err(|e| AppError::from(e).into())
 }
 
-pub fn status_report(app: &AppHandle) -> StatusReport {
+pub async fn status_report(app: &AppHandle) -> StatusReport {
+    let timer = match app.state::<AppState>().data.db() {
+        Ok(db) => timers::status(&db, now_ms())
+            .await
+            .ok()
+            .and_then(|s| s.running),
+        Err(_) => None,
+    };
     StatusReport {
         version: app.package_info().version.to_string(),
         tracker: tracker(app).ok().map(|t| t.status()),
-        timer: None,
+        timer,
         window_visible: window::main_visible(app),
     }
 }
@@ -162,7 +169,7 @@ pub async fn handle(app: AppHandle, message: IpcMessage) -> HandlerResult {
             quit_after_reply(app);
             Ok(serde_json::Value::Null)
         }
-        IpcMessage::Status => json(status_report(&app)),
+        IpcMessage::Status => json(status_report(&app).await),
         IpcMessage::Pause { until } => json(tracker(&app)?.pause(until, now_ms()).await?),
         IpcMessage::Resume => json(tracker(&app)?.resume(now_ms()).await?),
         IpcMessage::ActivityAdd { items } => {
@@ -173,6 +180,10 @@ pub async fn handle(app: AppHandle, message: IpcMessage) -> HandlerResult {
         IpcMessage::ActivityStop { source, end } => json(activity::stop(&app, &source, end).await?),
         IpcMessage::Record { request } => json(recordings::cli::record(&app, request).await?),
         IpcMessage::Report { request } => json(reports::cli::report(&app, request).await?),
+        IpcMessage::TimerStart { request } => {
+            json(timers::commands::start_by_name(&app, request).await?)
+        }
+        IpcMessage::TimerStop => json(timers::commands::stop(&app).await?),
         launch @ (IpcMessage::Activate { .. } | IpcMessage::Error { .. }) => {
             launch::queue(&app, launch);
             Ok(serde_json::Value::Null)
@@ -224,6 +235,50 @@ mod tests {
                 "timer": null,
                 "windowVisible": true
             })
+        );
+    }
+
+    #[test]
+    fn status_report_carries_the_running_timer() {
+        let timer = RunningTimer {
+            recording: crate::db::recordings::Recording {
+                id: "r1".into(),
+                project_id: "p1".into(),
+                start: 1_000,
+                end: None,
+                note: "standup".into(),
+                tag_ids: vec![],
+                created_at: 1_000,
+                updated_at: 1_000,
+            },
+            project_name: "Acme".into(),
+            color: "blue".into(),
+            shade: 2,
+            elapsed_ms: 60_000,
+        };
+        let original = StatusReport {
+            timer: Some(timer),
+            ..report(None)
+        };
+
+        let value = serde_json::to_value(&original).unwrap();
+
+        assert_eq!(
+            value["timer"],
+            serde_json::json!({
+                "recording": {
+                    "id": "r1", "projectId": "p1", "start": 1000, "end": null,
+                    "note": "standup", "tagIds": [], "createdAt": 1000, "updatedAt": 1000
+                },
+                "projectName": "Acme",
+                "color": "blue",
+                "shade": 2,
+                "elapsedMs": 60000
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<StatusReport>(value).unwrap(),
+            original
         );
     }
 

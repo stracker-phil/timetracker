@@ -11,6 +11,7 @@ use crate::state::AppState;
 use crate::store::keybindings::Keybindings;
 use crate::store::settings::{AppSettingPatch, LogLevel, Settings, Theme};
 use crate::store::ui_state::UiState;
+use crate::timers;
 use crate::tracker::Tracker;
 use crate::window;
 
@@ -93,6 +94,10 @@ pub async fn update_settings(
     state: State<'_, AppState>,
     settings: Settings,
 ) -> AppResult<Settings> {
+    // A shortcut the system refuses is reported on its row and not saved.
+    if settings.timer_shortcut != state.settings.get().timer_shortcut {
+        timers::shortcut::register(&app, &settings.timer_shortcut)?;
+    }
     save_settings(&app, &state, settings).await
 }
 
