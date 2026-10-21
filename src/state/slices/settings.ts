@@ -1,5 +1,5 @@
 import { setOverrides } from "../../commands/registry";
-import { api, type Keybindings, type Settings } from "../../api";
+import { api, type AppSettingPatch, type Keybindings, type Settings } from "../../api";
 import { fail } from "../requests";
 import type { Slice } from "../store";
 
@@ -10,6 +10,8 @@ export interface SettingsSlice {
   /** `quiet` skips the toast, for settings that apply as they change. */
   saveSettings: (settings: Settings, opts?: { quiet?: boolean }) => Promise<void>;
   saveKeybindings: (bindings: Keybindings) => Promise<void>;
+  /** One app's timeline override; resolves whether it was saved (a failure is toasted). */
+  setAppSetting: (bundleId: string, patch: AppSettingPatch) => Promise<boolean>;
 }
 
 export const settingsSlice: Slice<SettingsSlice> = {
@@ -32,6 +34,16 @@ export const settingsSlice: Slice<SettingsSlice> = {
         if (!opts?.quiet) get().toast("success", "Settings saved");
       } catch (e) {
         fail(e, "Could not save settings");
+      }
+    },
+
+    async setAppSetting(bundleId, patch) {
+      try {
+        set({ settings: await api.setAppSetting(bundleId, patch) });
+        return true;
+      } catch (e) {
+        fail(e, "Could not change the app's timeline setting");
+        return false;
       }
     },
 

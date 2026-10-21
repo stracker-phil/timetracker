@@ -2,6 +2,7 @@ pub mod activity;
 pub mod capture;
 pub mod cli;
 pub mod commands;
+pub mod day;
 pub mod db;
 pub mod deep_link;
 #[cfg(debug_assertions)]
@@ -347,6 +348,7 @@ fn start_app(
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::update_settings,
+            commands::app_settings_set,
             commands::get_keybindings,
             commands::set_keybindings,
             commands::get_ui_state,
@@ -364,6 +366,7 @@ fn start_app(
             db::commands::activity_list,
             db::commands::apps_seen,
             db::commands::away_list,
+            day::commands::day_view,
             tracker::commands::tracker_status,
             tracker::commands::tracker_pause,
             tracker::commands::tracker_resume,

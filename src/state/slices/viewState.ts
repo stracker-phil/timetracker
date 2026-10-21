@@ -3,13 +3,22 @@ import { fail } from "../requests";
 import type { Slice } from "../store";
 
 export interface ViewStateSlice {
-  /** Window layout that survives a restart (sidebar, pane sizes, last day, zoom). */
+  /** Window layout that survives a restart (sidebar, pane sizes, last day, timeline zoom). */
   uiState: UiState;
   loadUiState: () => Promise<void>;
   /** Stores a splitter position (px) under its pane id. */
   setPaneSize: (pane: string, px: number) => void;
   toggleSidebar: () => void;
+  rememberDay: (day: string) => void;
+  /** px per minute, clamped to the timeline's range. */
+  setTimelineZoom: (pxPerMinute: number) => void;
+  /** The next zoom step in (`by` 1) or out (-1). */
+  stepTimelineZoom: (by: 1 | -1) => void;
 }
+
+export const TIMELINE_ZOOM = { min: 1, max: 8, default: 2.5 };
+/** The zoom levels the zoom commands step through. */
+const TIMELINE_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8];
 
 export const viewStateSlice: Slice<ViewStateSlice> = {
   create: (set, get) => {
@@ -36,6 +45,21 @@ export const viewStateSlice: Slice<ViewStateSlice> = {
 
       toggleSidebar() {
         patchUiState((current) => ({ sidebarHidden: !current.sidebarHidden }));
+      },
+
+      rememberDay(day) {
+        if (get().uiState.lastDay !== day) patchUiState(() => ({ lastDay: day }));
+      },
+
+      setTimelineZoom(pxPerMinute) {
+        const timelineZoom = Math.min(TIMELINE_ZOOM.max, Math.max(TIMELINE_ZOOM.min, pxPerMinute));
+        if (get().uiState.timelineZoom !== timelineZoom) patchUiState(() => ({ timelineZoom }));
+      },
+
+      stepTimelineZoom(by) {
+        const current = get().uiState.timelineZoom;
+        const next = by === 1 ? TIMELINE_STEPS.find((z) => z > current) : [...TIMELINE_STEPS].reverse().find((z) => z < current);
+        get().setTimelineZoom(next ?? current);
       },
     };
   },

@@ -1,5 +1,5 @@
 /** The core settings pages. Modules register their own pages from their install function. */
-import { Activity, Database, Download, EyeOff, FolderOpen, Keyboard, Palette, Power, ScrollText } from "lucide-react";
+import { Activity, Database, Download, EyeOff, FolderOpen, GanttChart, Keyboard, Palette, Power, ScrollText } from "lucide-react";
 import { useId } from "react";
 import { api, BUNDLED_FONTS, LOG_LEVELS, SCHEMES, TEXT_SIZES, type LogLevel, type SchemeId } from "../../api";
 import { formatBytes, formatCount, formatDay } from "../../lib/format";
@@ -11,6 +11,7 @@ import { AccentSwatches } from "../Accent";
 import { capitalize, Group, NumberField, Row, Segmented, Switch, TextField } from "./controls";
 import { CapturePage, TrackerPage } from "./CapturePage";
 import { ShortcutsPage } from "./ShortcutsPage";
+import { TimelinePage } from "./TimelinePage";
 
 /** A stored scheme id narrowed to a known one; unknown ids (hand-edited settings) show the first scheme. */
 const toSchemeId = (id: string): SchemeId => SCHEMES.find((scheme) => scheme.id === id)?.id ?? SCHEMES[0].id;
@@ -172,6 +173,7 @@ export function registerCoreSettingsPages() {
     Body: CapturePage,
   });
   registerSettingsPage({ id: "tracker", group: "Tracking", label: "Tracker", icon: Activity, order: 20, intro: "When time counts as away, and how often the tracker looks.", Body: TrackerPage });
+  registerSettingsPage({ id: "timeline", group: "Tracking", label: "Timeline", icon: GanttChart, order: 30, intro: "How the Day view shows your activity.", Body: TimelinePage });
   registerSettingsPage({ id: "general", group: "System", label: "General", icon: Power, order: 10, intro: "How TimeTracker starts.", Body: GeneralPage });
   registerSettingsPage({ id: "data", group: "System", label: "Data", icon: Database, order: 15, intro: "Where TimeTracker keeps your activity and recordings. Everything stays on this Mac.", Body: DataPage });
   registerSettingsPage({ id: "logging", group: "System", label: "Logging", icon: ScrollText, order: 20, intro: "What TimeTracker writes to its log file.", Body: LoggingPage });

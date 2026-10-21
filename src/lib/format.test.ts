@@ -1,10 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { NOW } from "../test/now";
-import { formatBytes, formatClock, formatDay, formatDuration, relativeTime } from "./format";
+import { formatBytes, formatClock, formatDay, formatDuration, formatHm, relativeTime } from "./format";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
+
+describe("formatHm", () => {
+  it.each([
+    ["zero", 0, "0:00"],
+    ["seconds are dropped", 59_999, "0:00"],
+    ["minutes zero-padded", 5 * MIN, "0:05"],
+    ["hours and minutes", 6 * HOUR + 12 * MIN, "6:12"],
+    ["more than a day", 25 * HOUR, "25:00"],
+    ["negative counts as zero", -MIN, "0:00"],
+  ])("formats %s", (_name, ms, expected) => {
+    expect(formatHm(ms)).toBe(expected);
+  });
+});
 
 describe("formatDuration", () => {
   it.each([

@@ -17,7 +17,8 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
    (the debug bundle of `bun run build:app`), then renders `<ErrorBoundary><App/></ErrorBoundary>`.
 6. `App.tsx` imports the stylesheets (fonts, the scheme files, `theme.css`, `app.css`) and calls
    `useBackendEvents()` once:
-   1. `loadSettings()` loads settings and keybindings; `installCommands()` runs again to apply the user's
+   1. `loadUiState()` loads the window layout, then `restoreDay()` shows the last viewed day (within 30
+      days). `loadSettings()` loads settings and keybindings; `installCommands()` runs again to apply the user's
       bindings, then `drainLaunches()` pulls the queued launch events (`take_launch_events`): `error` shows a toast, `showDay`
       calls `goToDay`.
    2. It subscribes to `launch` (drain again), `command` (menu and tray → `runMenuCommand`), `remote`
@@ -32,7 +33,7 @@ App
 └─ .app grid
    ├─ Toolbar        traffic-light inset, app title, Day/Week/Month segmented control, Settings button
    ├─ Sidebar        Day, Week, Month, Reports, Projects; a tracker status line at the bottom
-   ├─ main           ActivityDebug for Day (until the Day view), else EmptyView: the active view's name
+   ├─ main           DayPage for Day, ProjectsPage for Projects, else EmptyView: the active view's name
    └─ StatusBar      left: status text; right: zoom
 Dialogs (settings, shortcuts, confirm) · PermissionDialog · CommandPalette · Toasts
 ```
@@ -46,11 +47,13 @@ error's message, returning the `AppError`.
 | Slice | Holds |
 |---|---|
 | `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings`, `saveKeybindings` |
-| `ui` | `toasts`, `dialog` (`settings { page? }`, `shortcuts`, `confirm`, `project { id? }`, `client { id? }`), `paletteOpen`, `paletteSeed`, `view` (`day`, `week`, `month`, `reports`, `projects`), `setView`, `day` (the Day view's `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it) |
+| `ui` | `toasts` (an optional `action`, e.g. Undo), `dialog` (`settings { page? }`, `shortcuts`, `confirm`, `project { id?, clientId? }`, `client { id? }`), `paletteOpen`, `paletteSeed` |
+| `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`), `setView`, `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `goToday`, `prevDay`, `nextDay` (calendar steps in `lib/day.ts`); each remembers the day as `uiState.lastDay`, and `restoreDay` shows it again at boot when it is at most 30 days old |
+| `day` | `dayView` (the shown day's `DayView`; the previous one stays while the next day loads), `dayError`, `loadDay` (drops answers for a day no longer shown), `focusedBlock`/`focusBlock`, `detailsBlock`/`toggleDetails` (the card opened by keyboard), `blockMenuRequest`/`requestBlockMenu`, `setAppSetting(bundleId, patch)` (stores the returned settings) |
 | `data` | `dataVersion` (every day changed), `dayVersions` (per day), `dataChanged(event)` (called on every `data_changed` event); `selectDayVersion(day)` changes when that day's data may have changed |
 | `projects` | `projects` (`ProjectListItem[]`, archived included), `clients`, `tags` (`TagListItem[]`), `recent`, `projectsLoaded`; `loadProjects` (boot, and every `data_changed` of `projects` or `tags`); `saveProject(id, input)`, `archiveProject`, `saveClient`, `archiveClient`, `saveTag`, `deleteTag` reload after the write and reject on failure (toasted, unless the error has a `field` for the form). Helpers: `groupProjects(projects, clients, archived)`, `projectLabel` |
 | `tracker` | `tracker` (`TrackerStatus`, or `null` while the tracker is off), `setTracker`, `loadTracker`, `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then reloads the status), `permissionDialogHidden` |
-| `viewState` | `uiState` (`UiState` from Rust), `setPaneSize`, `toggleSidebar`; a debounced writer saves it, `flushUiState` writes at once |
+| `viewState` | `uiState` (`UiState` from Rust), `setPaneSize`, `toggleSidebar`, `rememberDay`, `setTimelineZoom` (px per minute, `TIMELINE_ZOOM` 1–8, default 2.5); a debounced writer saves it, `flushUiState` writes at once |
 
 Components select narrowly (`useStore((s) => s.view)`), never the whole store. `lib/useApiResult` loads a
 value from `api` keyed on its inputs (and on `selectDayVersion(day)` or `dataVersion`), so a `data_changed` event
@@ -89,6 +92,10 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   typed text; once something is typed, active projects follow as `Project: Client / Name` with their color
   dot (fuzzy, `lib/fuzzy.ts`), and Enter opens the project's sheet. `>` limits the list to commands, `p:` to
   projects.
+- **Day view.** `nav.prevDay` (⌘←), `nav.nextDay` (⌘→), `nav.today` (T), `day.nextBlock` (J),
+  `day.prevBlock` (K), `day.prevLane` (H), `day.nextLane` (L), and with a focused block `day.details`
+  (Enter), `day.blockMenu` (⌃↵), `day.clearFocus` (Escape). `zoom.in`/`zoom.out`/`zoom.reset` (⌘= ⌘- ⌘0)
+  zoom the timeline (`TIMELINE_STEPS`) while the Day view shows and the text everywhere else.
 - **Projects.** `projects.new` (⌘N) and `clients.new` (no default) open the sheets while the Projects view
   shows; `view.projects` (⌘5) shows it.
 - **Tracker.** `tracker.pause` (until resumed; while tracking) and `tracker.resume` (while paused), no default
@@ -111,10 +118,20 @@ Tracker components:
   and what is never captured; "Open System Settings" (`openPrivacySettings`) and "Check again"
   (`requestPermission`). It disappears once the status is no longer `needsPermission`. Escape hides it
   (`permissionDialogHidden` in the `tracker` slice) until "Allow…" or until the permission is lost again.
-- `ActivityDebug`: temporary, until step 06's Day view. A date field with previous/next day buttons and
-  two plain tables from `activityList(day)` (with the URL or path; private rows dimmed) and `awayList(day)`, reloaded on `data_changed` and on tracker
-  statuses at most every 10 s (a status inside the 10 s reloads when they end). Its previous/next day buttons
-  step the date in the page; the Day view moves that to Rust.
+
+### Day view
+
+`components/day/` renders `DayView` from Rust; it groups, packs and sums nothing.
+
+| File | Renders |
+|---|---|
+| `DayPage` | `DayHeader` and `Timeline`; the empty state ("Nothing tracked on this day" with the tracker's status text on today, or "Tracking needs permission" with Allow…). Loads on a new day, on `selectDayVersion(day)`, and while today on `useLiveReload` (every 30 s, and on tracker statuses at most every 10 s, since the tracker sends no `data_changed`) |
+| `DayHeader` | ‹ Today ›, the date (`formatDayLabel`), totals `recorded 0:00 · tracked 6:12 · away 1:05` (`formatHm`) |
+| `Timeline` | the scroll box: `LaneHeader` (sticky), the recordings column (empty until recordings), `TimeAxis`, the lanes with `Spans` (away, gaps) behind them and the current-time line on today. Opens a day scrolled to 30 min before its first activity. Hover (one `mouseover` listener reading `data-block-id`) shows `HoverCard` after 300 ms; right-click or ⌃↵ opens the block menu: Own lane / Back to activity lane, Hide (a toast with Undo), Copy title, Copy URL |
+| `Lane` | its blocks, absolutely placed: `top`/`height` from the times and the zoom, `left`/`width` from `col`/`cols`; only blocks within the visible part ± one screen (`useVisibleRange`, which moves in half-screen steps) |
+| `ActivityBlock` | app and title (one line when short, no text when tiny); `private`, `dimmed` (covered) and `focused` classes |
+| `HoverCard` | app, title, URL (http(s) opens through `api.openUrl`) or path, time and duration, the source when external; beside the block, else below or above it |
+| `focus.ts` | `stepBlock` (time order across lanes) and `stepLane` (the nearest block in the next lane with blocks) for J/K/H/L |
 
 ### Projects screen
 
@@ -157,6 +174,7 @@ Enter picks, Esc closes the list without closing the sheet around it; the list c
 | Shortcuts | `ShortcutsPage`: every command with its binding; record, reset or unbind |
 | Tracking → Capture | `CapturePage` (`CapturePage.tsx`): address and document switches, excluded apps (an "Add app…" picker listing `appsSeen(30)`), excluded websites (a field; Enter adds) |
 | Tracking → Tracker | `TrackerPage`: away after (idle minutes), check every (poll seconds) |
+| Tracking → Timeline | `TimelinePage` (`TimelinePage.tsx`): hidden apps, each with Show (`setAppSetting(id, { hidden: false })`); names from `appsSeen(365)` |
 | System → General | Launch at login |
 | System → Data | the data folder (Reveal in Finder), counts, first activity, size on disk, Export backup… (save panel → `backupExport`, toast "Backup written"); an alert when the store could not be opened |
 | System → Logging | log level, Open log folder |

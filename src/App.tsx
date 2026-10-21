@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { api, toAppError, type LaunchEvent } from "./api";
-import { ActivityDebug } from "./components/ActivityDebug";
 import { CommandPalette } from "./components/CommandPalette";
+import { DayPage } from "./components/day/DayPage";
 import { Dialogs } from "./components/Dialogs";
 import { EmptyView } from "./components/EmptyView";
 import { PermissionDialog } from "./components/PermissionDialog";
@@ -36,12 +36,12 @@ function handleLaunchEvents(events: LaunchEvent[]) {
 
 function useBackendEvents() {
   useEffect(() => {
-    const { loadSettings, loadUiState, loadTracker, loadProjects, setTracker, toast, dataChanged } = useStore.getState();
+    const { loadSettings, loadUiState, restoreDay, loadTracker, loadProjects, setTracker, toast, dataChanged } = useStore.getState();
     const drainLaunches = () => api.takeLaunchEvents().then(handleLaunchEvents, (e) => toast("error", `Launch request failed: ${toAppError(e).message}`));
 
     // Re-installing applies the user's keybinding overrides, which arrive with the settings.
     void loadSettings().then(() => (installCommands(), drainLaunches()));
-    void loadUiState();
+    void loadUiState().then(restoreDay);
     void loadTracker();
     void loadProjects();
     const unlisten = [
@@ -71,7 +71,7 @@ function useBackendEvents() {
 function ViewContent({ view }: { view: View }) {
   switch (view) {
     case "day":
-      return <ActivityDebug />;
+      return <DayPage />;
     case "projects":
       return <ProjectsPage />;
     default:

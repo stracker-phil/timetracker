@@ -1,5 +1,4 @@
 import { api } from "../../api";
-import { formatDay } from "../../lib/format";
 import type { Slice } from "../store";
 
 export interface Toast {
@@ -8,6 +7,13 @@ export interface Toast {
   message: string;
   /** How many times the same message was reported while it was showing. */
   count: number;
+  /** A button in the toast, e.g. Undo; running it dismisses the toast. */
+  action?: ToastAction;
+}
+
+export interface ToastAction {
+  label: string;
+  run: () => void;
 }
 
 export type Dialog =
@@ -21,25 +27,17 @@ export type Dialog =
   /** Edit a client (`id`) or create one. */
   | { type: "client"; id?: string };
 
-export type View = "day" | "week" | "month" | "reports" | "projects";
-
 export interface UiSlice {
   toasts: Toast[];
   dialog: Dialog | null;
   paletteOpen: boolean;
   /** Text the palette opens with, e.g. `>` for commands. */
   paletteSeed: string;
-  view: View;
-  /** The day the Day view shows (`YYYY-MM-DD`). */
-  day: string;
-  toast: (kind: Toast["kind"], message: string) => void;
+  toast: (kind: Toast["kind"], message: string, action?: ToastAction) => void;
   dismissToast: (id: number) => void;
   openDialog: (dialog: Dialog) => void;
   closeDialog: () => void;
   setPaletteOpen: (open: boolean, seed?: string) => void;
-  setView: (view: View) => void;
-  /** Shows `day` in the Day view. */
-  goToDay: (day: string) => void;
 }
 
 let nextToastId = 1;
@@ -50,10 +48,8 @@ export const uiSlice: Slice<UiSlice> = {
     dialog: null,
     paletteOpen: false,
     paletteSeed: "",
-    view: "day",
-    day: formatDay(Date.now()),
 
-    toast(kind, message) {
+    toast(kind, message, action) {
       if (kind === "error") void api.logError(message).catch(() => {});
       const same = get().toasts.find((t) => t.kind === kind && t.message === message);
       if (same) {
@@ -61,7 +57,7 @@ export const uiSlice: Slice<UiSlice> = {
         return;
       }
       const id = nextToastId++;
-      set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, message, count: 1 }] }));
+      set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, message, count: 1, action }] }));
     },
 
     dismissToast(id) {
@@ -78,14 +74,6 @@ export const uiSlice: Slice<UiSlice> = {
 
     setPaletteOpen(paletteOpen, seed = "") {
       set({ paletteOpen, paletteSeed: seed });
-    },
-
-    setView(view) {
-      set({ view });
-    },
-
-    goToDay(day) {
-      set({ view: "day", day });
     },
   }),
 };

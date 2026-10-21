@@ -1,13 +1,15 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./api", async (orig) => ({ ...(await orig<object>()), api: (await import("./test/apiMock")).createApiMock() }));
 
 import App from "./App";
-import { api } from "./api";
+import { api, EMPTY_UI_STATE } from "./api";
+import { addDays, today } from "./lib/day";
 import { resetStore, type View } from "./state/store";
 import { activityRow, trackerStatus } from "./test/data";
+import { dayView } from "./test/dayFixtures";
 import { projectItem, tag } from "./test/projectFixtures";
 
 const mocked = vi.mocked(api, true);
@@ -19,8 +21,8 @@ async function renderApp(patch: Parameters<typeof resetStore>[0] = {}) {
   await screen.findByRole("button", { name: "13 px" });
 }
 
-/** The Day view is the activity list (a region), every other view a placeholder with a level-1 heading. */
-const mainHeading = (name: string) => (name === "Day" ? screen.getByRole("region", { name: "Activity" }) : screen.getByRole("heading", { level: 1, name }));
+/** The Day view is a region, every other view a placeholder or page with a level-1 heading. */
+const mainHeading = (name: string) => (name === "Day" ? screen.getByRole("region", { name: "Day" }) : screen.getByRole("heading", { level: 1, name }));
 const sidebarEntry = (name: string) => within(screen.getByRole("navigation", { name: "Views" })).getByRole("button", { name: new RegExp(`^${name}`) });
 
 describe("App", () => {
@@ -30,7 +32,7 @@ describe("App", () => {
     it("shows the toolbar title, the status bar and the Day view", async () => {
       await renderApp();
       expect(screen.getByText("TimeTracker")).toBeInTheDocument();
-      expect(screen.getByText("No activity recorded yet")).toBeInTheDocument();
+      expect(await screen.findByText("Nothing tracked on this day")).toBeInTheDocument();
       expect(mainHeading("Day")).toBeInTheDocument();
     });
 
@@ -59,12 +61,10 @@ describe("App", () => {
   });
 
   describe("backend events", () => {
-    afterEach(() => mocked.activityList.mockResolvedValue([]));
-
     it("shows the day of a showDay launch event in the Day view", async () => {
       mocked.takeLaunchEvents.mockResolvedValueOnce([{ type: "showDay", day: "2026-10-20" }]);
       await renderApp({ view: "month" });
-      expect(await screen.findByLabelText("Day")).toHaveValue("2026-10-20");
+      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenCalledWith("2026-10-20"));
       expect(mainHeading("Day")).toBeInTheDocument();
     });
 
@@ -72,18 +72,24 @@ describe("App", () => {
       await renderApp({ view: "reports" });
       const onRemote = mocked.onRemote.mock.calls[0][0];
       act(() => void onRemote({ id: "3", request: { type: "showDay", day: "2026-10-19" } }));
-      expect(await screen.findByLabelText("Day")).toHaveValue("2026-10-19");
+      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenCalledWith("2026-10-19"));
       await vi.waitFor(() => expect(mocked.remoteReply).toHaveBeenCalledWith("3", null, null));
     });
 
     it("reloads the shown day when its data changed", async () => {
-      mocked.activityList.mockResolvedValue([]);
+      const day = today();
       await renderApp();
-      mocked.activityList.mockResolvedValue([activityRow({ app: "Planner", title: "Weekly sync" })]);
-      const day = screen.getByLabelText<HTMLInputElement>("Day").value;
-      const onChanged = mocked.onDataChanged.mock.calls[0][0];
-      act(() => onChanged({ kind: "activity", day } as never));
-      expect(await screen.findByRole("cell", { name: "Weekly sync" })).toBeInTheDocument();
+      await screen.findByText("recorded 0:00 · tracked 0:00 · away 0:00");
+      mocked.dayView.mockResolvedValue(dayView({ day, totals: { recordedMs: 0, trackedMs: 1_800_000, awayMs: 0 } }));
+      act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "activity", day }));
+      expect(await screen.findByText("recorded 0:00 · tracked 0:30 · away 0:00")).toBeInTheDocument();
+    });
+
+    it("opens on the day shown last when it is recent", async () => {
+      const yesterday = addDays(today(), -1);
+      mocked.getUiState.mockResolvedValueOnce({ ...EMPTY_UI_STATE, lastDay: yesterday });
+      await renderApp();
+      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith(yesterday));
     });
   });
 

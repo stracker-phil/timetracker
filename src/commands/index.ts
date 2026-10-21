@@ -1,6 +1,7 @@
 import { api, TEXT_SIZES, type Settings } from "../api";
 import { VIEWS } from "../components/views";
-import { useStore } from "../state/store";
+import { stepBlock, stepLane } from "../lib/blockFocus";
+import { TIMELINE_ZOOM, useStore } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
 
@@ -21,8 +22,22 @@ function saveTextSizes(sizes: (current: Settings) => Pick<Settings, "uiFontSize"
 }
 
 /** Rust's `Settings::sanitized` clamps the sizes, so zooming past a bound is a no-op. */
-const zoomBy = (step: number) => saveTextSizes((c) => ({ uiFontSize: c.uiFontSize + step, dataFontSize: c.dataFontSize + step }));
-const resetZoom = () => saveTextSizes(() => ({ uiFontSize: TEXT_SIZES.ui.default, dataFontSize: TEXT_SIZES.data.default }));
+const zoomText = (step: number) => saveTextSizes((c) => ({ uiFontSize: c.uiFontSize + step, dataFontSize: c.dataFontSize + step }));
+const resetText = () => saveTextSizes(() => ({ uiFontSize: TEXT_SIZES.ui.default, dataFontSize: TEXT_SIZES.data.default }));
+
+const onTimeline = () => useStore.getState().view === "day";
+// The Day view zooms its timeline; every other view zooms the text.
+const zoomIn = () => (onTimeline() ? useStore.getState().stepTimelineZoom(1) : zoomText(1));
+const zoomOut = () => (onTimeline() ? useStore.getState().stepTimelineZoom(-1) : zoomText(-1));
+const resetZoom = () => (onTimeline() ? useStore.getState().setTimelineZoom(TIMELINE_ZOOM.default) : resetText());
+
+/** Moves the block focus within the shown day's view. */
+function moveFocus(step: typeof stepBlock, by: 1 | -1) {
+  const s = useStore.getState();
+  if (s.dayView?.day === s.day) s.focusBlock(step(s.dayView, s.focusedBlock, by));
+}
+
+const hasFocusedBlock = () => useStore.getState().focusedBlock !== null;
 
 function togglePalette() {
   const s = useStore.getState();
@@ -54,12 +69,22 @@ const APP_COMMANDS: Command[] = [
   { id: "palette.toggle", title: "Command palette", scope: "global", defaultBinding: "Mod+K", menu: true, run: togglePalette },
   { id: "sidebar.toggle", title: "Toggle sidebar", scope: "global", defaultBinding: "Mod+Ctrl+S", menu: true, run: () => useStore.getState().toggleSidebar() },
   ...VIEWS.map(({ id, label }, i): Command => ({ id: `view.${id}`, title: `Show ${label}`, scope: "global", defaultBinding: `Mod+${i + 1}`, menu: true, run: () => useStore.getState().setView(id) })),
-  { id: "zoom.in", title: "Zoom in", scope: "global", defaultBinding: "Mod+=", menu: true, run: () => zoomBy(1) },
-  { id: "zoom.out", title: "Zoom out", scope: "global", defaultBinding: "Mod+-", menu: true, run: () => zoomBy(-1) },
+  { id: "zoom.in", title: "Zoom in", scope: "global", defaultBinding: "Mod+=", menu: true, run: zoomIn },
+  { id: "zoom.out", title: "Zoom out", scope: "global", defaultBinding: "Mod+-", menu: true, run: zoomOut },
   { id: "zoom.reset", title: "Reset zoom", scope: "global", defaultBinding: "Mod+0", menu: true, run: resetZoom },
   { id: "window.hide", title: "Close window", scope: "global", defaultBinding: "Mod+W", menu: true, run: () => void api.hideWindow() },
   { id: "tracker.pause", title: "Pause tracking", scope: "global", when: () => isTracking(), run: () => void useStore.getState().pauseTracker("resumed") },
   { id: "tracker.resume", title: "Resume tracking", scope: "global", when: () => useStore.getState().tracker?.state.kind === "paused", run: () => void useStore.getState().resumeTracker() },
+  { id: "nav.prevDay", title: "Previous day", scope: "day", defaultBinding: "Mod+ArrowLeft", run: () => useStore.getState().prevDay() },
+  { id: "nav.nextDay", title: "Next day", scope: "day", defaultBinding: "Mod+ArrowRight", run: () => useStore.getState().nextDay() },
+  { id: "nav.today", title: "Go to today", scope: "day", defaultBinding: "T", run: () => useStore.getState().goToday() },
+  { id: "day.nextBlock", title: "Next block", scope: "day", defaultBinding: "J", run: () => moveFocus(stepBlock, 1) },
+  { id: "day.prevBlock", title: "Previous block", scope: "day", defaultBinding: "K", run: () => moveFocus(stepBlock, -1) },
+  { id: "day.prevLane", title: "Block in the lane to the left", scope: "day", defaultBinding: "H", run: () => moveFocus(stepLane, -1) },
+  { id: "day.nextLane", title: "Block in the lane to the right", scope: "day", defaultBinding: "L", run: () => moveFocus(stepLane, 1) },
+  { id: "day.details", title: "Block details", scope: "day", defaultBinding: "Enter", when: hasFocusedBlock, run: () => useStore.getState().toggleDetails() },
+  { id: "day.blockMenu", title: "Block actions…", scope: "day", defaultBinding: "Ctrl+Enter", when: hasFocusedBlock, run: () => useStore.getState().requestBlockMenu() },
+  { id: "day.clearFocus", title: "Clear block focus", scope: "day", defaultBinding: "Escape", when: hasFocusedBlock, run: () => useStore.getState().focusBlock(null) },
   { id: "projects.new", title: "New project…", scope: "projects", defaultBinding: "Mod+N", run: () => useStore.getState().openDialog({ type: "project" }) },
   { id: "clients.new", title: "New client…", scope: "projects", run: () => useStore.getState().openDialog({ type: "client" }) },
   { id: "logs.open", title: "Open log folder", scope: "global", menu: true, run: () => void api.openLogFolder() },

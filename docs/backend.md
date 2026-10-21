@@ -109,6 +109,8 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `reveal_path` | `path: String` | – (Finder shows the enclosing folder with `path` selected) | `io` |
 | `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, available, error }` | – (errors are reported inside) |
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes }` | `db`, `io`, `invalid_input` |
+| `day_view` (`day/commands.rs`) | `day: String` | `DayView` (see [Day view](#day-view)); logs the time it took at debug level | `invalid_input`, `db` |
+| `app_settings_set` (`commands.rs`) | `bundleId: String, patch: AppSettingPatch { ownLane?, hidden? }` | `Settings`; an override that ends up default is removed (`Settings::with_app`); emits `data_changed { kind: settings, day: null }` | `invalid_input` (blank bundle id), `io` |
 | `activity_list` / `away_list` (`db/commands.rs`) | `day: Day` | `ActivityRow[]` / `AwayRow[]` of the day, cut to its bounds; open rows end now | `db`, `invalid_input` |
 | `apps_seen` (`db/commands.rs`) | `days: u16` | `AppSeen[] { bundleId, app, lastSeen, totalMs }`: tracker apps of the last `days` days, one per bundle id, most time first | `db` |
 | `tracker_status` (`tracker/commands.rs`) | – | `TrackerStatus` (the last one sent) | `db` (tracker off) |
@@ -134,6 +136,26 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 To add a command: write it in its module (or `commands.rs` for app-wide ones), register it in
 `generate_handler!`, export its types with ts-rs, add the wrapper to `src/api/index.ts` and a default to
 `src/test/apiMock.ts`.
+
+## Day view
+
+`day/mod.rs`: `view(&DayInput, &ViewSettings) -> DayView` is a pure function ([ADR
+0012](adr/0012-timeline-layout-in-rust.md)); `day::commands::load` reads the rows (`list_for_range`, spans
+from the day before included) and calls it. `ViewSettings` is a copy of `Settings.timeline` and
+`Settings.apps`. In order:
+
+1. `clipped_blocks`: every activity cut to the day's bounds (an open span ends at `now`); private rows keep
+   the app and read "Private" without URL or path. Block ids are `a<activity id>`, `members` the activity ids.
+2. `without_hidden_apps`: apps with `apps[bundleId].hidden` vanish (lanes, totals, gaps).
+3. Seams for timeline settings, each a named function that returns its input for now: `group_by_app`,
+   `bridge_gaps` (continuity), `drop_noise`, `choose_titles`, and `summary_lane` (returns no lane).
+4. `lanes_of`: the `activity` lane (always), one `app:<bundleId>` lane per app with `ownLane`, one
+   `source:<name>` lane per external source; app and source lanes sorted by label.
+5. `packed` per lane: by start, longer first; each block takes the lowest free column; a cluster of
+   overlapping blocks shares its width (`col` of `cols`).
+6. Away blocks (clipped), gaps (`GAP_MIN` 2 min or longer, between the first activity's start and the last
+   one's end, without activity or away) and totals: `trackedMs` the union of tracker spans, `awayMs` the
+   union of away spans, `recordedMs` 0 until recordings. `covered` is false until recordings.
 
 ## Events to the page
 
@@ -325,7 +347,7 @@ save leaves memory unchanged. `JsonStore::open_with` normalizes the loaded value
 |---|---|
 | `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports` each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets unknown accents (`ACCENTS`) and schemes (`SCHEMES`) to `orange`, `ayu-light`, `ayu-mirage`; turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed. A trailing `++` is the `+` key |
-| `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay`, `zoom` (default 1), `paneSizes` (px by pane id) |
+| `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay`, `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id) |
 | `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere |
 | `timetracker.sock`, `timetracker.lock` | single instance |
 

@@ -1,5 +1,7 @@
 import { create, type StoreApi } from "zustand";
 import { dataSlice, type DataSlice } from "./slices/data";
+import { daySlice, type DaySlice } from "./slices/day";
+import { navSlice, type NavSlice } from "./slices/nav";
 import { projectsSlice, type ProjectsSlice } from "./slices/projects";
 import { settingsSlice, type SettingsSlice } from "./slices/settings";
 import { trackerSlice, type TrackerSlice } from "./slices/tracker";
@@ -9,10 +11,12 @@ import { viewStateSlice, type ViewStateSlice } from "./slices/viewState";
 export { fail } from "./requests";
 export { selectDayVersion } from "./slices/data";
 export { flushUiState } from "./slices/viewState";
-export type { Dialog, Toast, View } from "./slices/ui";
+export type { Dialog, Toast } from "./slices/ui";
+export type { View } from "./slices/nav";
+export { TIMELINE_ZOOM } from "./slices/viewState";
 
 /** Every slice's members; modules add theirs with `declare module "../state/store" { interface Store { … } }`. */
-export interface Store extends SettingsSlice, UiSlice, ViewStateSlice, DataSlice, TrackerSlice, ProjectsSlice {}
+export interface Store extends SettingsSlice, UiSlice, NavSlice, ViewStateSlice, DataSlice, TrackerSlice, ProjectsSlice, DaySlice {}
 
 type SetStore = StoreApi<Store>["setState"];
 type GetStore = StoreApi<Store>["getState"];
@@ -41,7 +45,9 @@ export function resetStore(patch: Partial<Store> = {}) {
 
 registerSlice(settingsSlice);
 registerSlice(uiSlice);
+registerSlice(navSlice);
 registerSlice(viewStateSlice);
 registerSlice(dataSlice);
 registerSlice(trackerSlice);
 registerSlice(projectsSlice);
+registerSlice(daySlice);

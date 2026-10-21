@@ -23,7 +23,8 @@ These rules hold everywhere in the code. Keep them when you change things.
 
 1. **Rust owns the logic; React only renders** ([ADR 0001](adr/0001-rust-owns-the-logic.md)). Timeline
    layout, grouping, snapping, overlap checks, report math, rule matching and report text are Rust. The page
-   asks, renders and forwards intent. It does no date math beyond formatting.
+   asks, renders and forwards intent. Its only date math is formatting and stepping calendar days
+   (`lib/day.ts`).
 2. **IPC only in `api.ts` files** ([ADR 0002](adr/0002-ipc-in-api-files.md)). Only `src/api/index.ts` (and
    `src/<module>/api.ts` for an optional module) imports `@tauri-apps/api` or a `@tauri-apps/plugin-*`
    package. Everything else imports the `api` object, which is also what UI tests mock. A boundary test
@@ -46,6 +47,22 @@ These rules hold everywhere in the code. Keep them when you change things.
 
 Time is UTC milliseconds (`i64`) in storage and IPC; a day is a local calendar day `YYYY-MM-DD`, resolved
 to bounds in Rust ([ADR 0011](adr/0011-utc-milliseconds-local-days.md)).
+
+## A request, end to end
+
+The Day view showing a day, the main path through every layer:
+
+1. `DayPage` (`src/components/day/`) asks the `day` slice to `loadDay()` when the day, the day's data
+   version or today's live tick changes.
+2. The slice calls `api.dayView(day)`, which invokes the Tauri command `day_view` (`src/api/index.ts` is the
+   only place that calls `invoke`).
+3. `day::commands::day_view` parses the day, reads the activity and away rows that share time with it
+   (`db::activities::list_for_range`, `db::away::list_for_range`, one indexed query each) and the settings.
+4. `day::view` clips, filters, packs the blocks into lanes and computes away spans, gaps and totals: a pure
+   function, tested without a database ([ADR 0012](adr/0012-timeline-layout-in-rust.md)).
+5. The `DayView` crosses IPC as generated types; `Timeline` positions every block from `start`, `end`, `col`
+   and `cols` and computes nothing else.
+6. A change to the day's data (`data_changed`) bumps its version in the `data` slice, and the page asks again.
 
 ## Process model
 

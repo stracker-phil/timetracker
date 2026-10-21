@@ -3,6 +3,7 @@ import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
 import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type ProjectInput, type Settings, type UiState } from "../api/types";
 import { dataInfo, trackerStatus } from "./data";
+import { dayView } from "./dayFixtures";
 import { client, DEFAULT_TAGS, project } from "./projectFixtures";
 import { settings } from "./settings";
 
@@ -35,6 +36,8 @@ export function createApiMock(): typeof realApi {
     openPrivacySettings: vi.fn().mockResolvedValue(undefined),
     activityList: vi.fn().mockResolvedValue([]),
     awayList: vi.fn().mockResolvedValue([]),
+    dayView: vi.fn(async (day: string) => dayView({ day })),
+    setAppSetting: vi.fn(async () => settings()),
     appsSeen: vi.fn().mockResolvedValue([]),
     activityAdd: vi.fn().mockResolvedValue([]),
     activityStart: vi.fn().mockRejectedValue({ kind: "invalid_input", message: "Not mocked", code: null }),

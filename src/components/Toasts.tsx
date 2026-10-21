@@ -3,11 +3,13 @@ import { AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 import { useStore, type Toast } from "../state/store";
 
 const AUTO_DISMISS_MS = { success: 2500, info: 4000, error: 8000 };
+/** A toast with an action (Undo) stays long enough to reach it. */
+const ACTION_DISMISS_MS = 10_000;
 
 function ToastItem({ toast }: { toast: Toast }) {
   const dismiss = useStore((s) => s.dismissToast);
   useEffect(() => {
-    const timer = setTimeout(() => dismiss(toast.id), AUTO_DISMISS_MS[toast.kind]);
+    const timer = setTimeout(() => dismiss(toast.id), toast.action ? ACTION_DISMISS_MS : AUTO_DISMISS_MS[toast.kind]);
     return () => clearTimeout(timer);
   }, [toast, dismiss]);
   const [details, setDetails] = useState(false);
@@ -30,6 +32,17 @@ function ToastItem({ toast }: { toast: Toast }) {
           </>
         )}
       </span>
+      {toast.action && (
+        <button
+          className="link-btn"
+          onClick={() => {
+            dismiss(toast.id);
+            toast.action?.run();
+          }}
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button className="icon-btn" style={{ width: "1.385rem", height: 18 }} aria-label="Dismiss" onClick={() => dismiss(toast.id)}>
         <X size="0.923rem" />
       </button>

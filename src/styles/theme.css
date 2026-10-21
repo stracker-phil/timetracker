@@ -40,6 +40,11 @@
   /* The window's buttons (trafficLightPosition in tauri.conf.json) don't scale with the UI size: the toolbar's
      left inset keeps clear of them. */
   --traffic-lights: 88px;
+
+  /* The Day view's columns: time axis, recordings column, a lane's narrowest width. */
+  --timeline-axis-w: 56px;
+  --recordings-col-w: 240px;
+  --lane-min-w: 160px;
 }
 
 /* Derived from the accent wherever it is set: an element with `data-accent` sets its own. */

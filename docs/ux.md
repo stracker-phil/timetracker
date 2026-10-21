@@ -89,7 +89,7 @@ Settings → Appearance "UI font" and "Mono font" take any installed family name
 | `--fs-large` | 17px | view titles (the day in the Day view header) |
 
 Both sizes are settings: Appearance "UI size" (13px, 10–24) and "Data size" (12px, 9–28); ⌘= and ⌘- zoom
-both. Chrome sizes are in rem of the UI size. Weights 400, 500 and 600. Numbers and times use tabular
+both, except in the Day view, where they zoom the timeline. Chrome sizes are in rem of the UI size. Weights 400, 500 and 600. Numbers and times use tabular
 figures. Durations read `1 h 05 min` (`formatDuration`), clock times `09:30` (`formatClock`).
 
 ## Opacity levels
@@ -140,6 +140,26 @@ context menu is suppressed outside text fields (`lib/nativeMenu.ts`).
 Pickers (project, tags) are a field with a list below it on `--pop`, using the palette's row anatomy and
 small `--o3` section labels; the last option creates what was typed (`New project "x"…`).
 
+## Timeline
+
+The Day view is a vertical day: a fixed recordings column (`--recordings-col-w`, empty until recordings
+exist), the time axis (`--timeline-axis-w`, hour labels in mono `--o3`; hour hairlines in `--line`, half
+hours from 3 px per minute), then one lane per kind of activity (`--lane-min-w` each): Activity, an app's own
+lane, an external source's lane (its name in mono). Lane labels stick to the top in `--o3`.
+
+- **Blocks** are flat: `--text` at 10% on `--bg`, a `--line` hairline, 4px radius. The app name in sans
+  `--fs-small`, the title in mono `--o2`; short blocks put both on one line, tiny ones show none. Private
+  blocks read "Private" in `--o3`. Overlapping blocks of one lane share its width side by side.
+- **Focus** (J/K/H/L or a click) is a 2px accent outline; ↵ opens the details card for it.
+- **Hover card** after 300 ms on `--pop` with `--shadow`: app, full title, URL or path (selectable; an
+  http(s) URL opens in the browser), `09:12–09:40 · 28 min`, and the source when external.
+- **Away spans and gaps** are dashed `--line` outlines across all lanes; away spans read "Away · idle 25
+  min" when tall enough, gaps (2 min or more between the day's first and last activity) have no label.
+- **Now** is a 1px accent line on today, updated every 30 s.
+- **Empty day:** "Nothing tracked on this day" with the tracker's status line; without the Accessibility
+  permission "Tracking needs permission" with Allow….
+- **Zoom** is 1–8 px per minute (default 2.5), kept in `ui_state.json` as `timelineZoom`.
+
 ## Keys
 
 Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`). Bare keys never fire
@@ -152,7 +172,11 @@ in inputs or dialogs. `Tab` is never bound: it moves the keyboard focus.
 | `?` | global | shortcut overview (`shortcuts.show`) |
 | ⌘⌃S | global | toggle the sidebar (`sidebar.toggle`) |
 | ⌘1 … ⌘5 | global | Day, Week, Month, Reports, Projects (`view.*`) |
-| ⌘= / ⌘- / ⌘0 | global | zoom in / out / reset (`zoom.*`) |
+| ⌘= / ⌘- / ⌘0 | global | zoom in / out / reset (`zoom.*`): the timeline in the Day view, the text elsewhere |
+| ⌘← / ⌘→ / T | day | previous day, next day, today (`nav.*`) |
+| J / K | day | next / previous block in time (`day.nextBlock`, `day.prevBlock`) |
+| H / L | day | the block in the lane to the left / right (`day.prevLane`, `day.nextLane`) |
+| ↵ / ⌃↵ / Escape | day | the focused block's details card, its menu, clear the focus |
 | ⌘W | global | close (hide) the window (`window.hide`) |
 | ⌘Q | menu | quit (`app.quit`) |
 

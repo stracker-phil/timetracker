@@ -4,11 +4,12 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::error::{AppError, AppResult};
+use crate::events::{self, DataKind};
 use crate::launch::LaunchEvent;
 use crate::menu;
 use crate::state::AppState;
 use crate::store::keybindings::Keybindings;
-use crate::store::settings::{LogLevel, Settings, Theme};
+use crate::store::settings::{AppSettingPatch, LogLevel, Settings, Theme};
 use crate::store::ui_state::UiState;
 use crate::tracker::Tracker;
 use crate::window;
@@ -92,8 +93,30 @@ pub async fn update_settings(
     state: State<'_, AppState>,
     settings: Settings,
 ) -> AppResult<Settings> {
+    save_settings(&app, &state, settings).await
+}
+
+/// Changes one app's timeline override; every day may look different, so they all reload.
+#[tauri::command]
+pub async fn app_settings_set(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    bundle_id: String,
+    patch: AppSettingPatch,
+) -> AppResult<Settings> {
+    let settings = state.settings.get().with_app(&bundle_id, &patch)?;
+    let saved = save_settings(&app, &state, settings).await?;
+    events::data_changed(&app, DataKind::Settings, None);
+    Ok(saved)
+}
+
+async fn save_settings(
+    app: &AppHandle,
+    state: &AppState,
+    settings: Settings,
+) -> AppResult<Settings> {
     let (previous, saved) = state.settings.update(settings).await?;
-    apply_settings(&app, Some(&previous), &saved);
+    apply_settings(app, Some(&previous), &saved);
     if let Some(tracker) = app.try_state::<std::sync::Arc<Tracker>>() {
         tracker.set_settings(saved.tracker.clone());
         tracker.set_capture(saved.capture.clone());

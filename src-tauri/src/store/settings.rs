@@ -7,7 +7,7 @@ use ts_rs::TS;
 
 use super::json_store::JsonStore;
 use crate::capture::url::domain;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 /// Falls back to the default for a value the field doesn't know (a typo, a retired variant),
 /// so one bad field doesn't quarantine the whole file and lose every other setting.
@@ -244,6 +244,17 @@ pub struct AppOverride {
     pub own_lane: bool,
 }
 
+/// The fields of one app's `AppOverride` to change; absent ones stay.
+#[derive(Deserialize, Clone, Debug, Default, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct AppSettingPatch {
+    #[ts(optional)]
+    pub own_lane: Option<bool>,
+    #[ts(optional)]
+    pub hidden: Option<bool>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(default, rename_all = "camelCase")]
@@ -363,6 +374,25 @@ impl Settings {
         self
     }
 
+    /// `patch` applied to the app's override; an override that ends up empty is removed.
+    pub fn with_app(mut self, bundle_id: &str, patch: &AppSettingPatch) -> AppResult<Settings> {
+        let bundle_id = bundle_id.trim();
+        if bundle_id.is_empty() {
+            return Err(AppError::InvalidInput("An app needs a bundle id".into()));
+        }
+        let app = self.apps.entry(bundle_id.to_string()).or_default();
+        if let Some(own_lane) = patch.own_lane {
+            app.own_lane = own_lane;
+        }
+        if let Some(hidden) = patch.hidden {
+            app.hidden = hidden;
+        }
+        if *app == AppOverride::default() {
+            self.apps.remove(bundle_id);
+        }
+        Ok(self)
+    }
+
     /// Reads the settings without the store's quarantine, so a short-lived second process
     /// never moves the running app's file aside.
     pub fn peek(dir: &Path) -> Settings {
@@ -463,6 +493,133 @@ mod tests {
             .collect();
         names.sort();
         names
+    }
+
+    fn patch(own_lane: Option<bool>, hidden: Option<bool>) -> AppSettingPatch {
+        AppSettingPatch { own_lane, hidden }
+    }
+
+    #[test]
+    fn with_app_sets_the_fields_of_the_patch() {
+        let updated = Settings::default()
+            .with_app("com.apple.mail", &patch(Some(true), Some(true)))
+            .unwrap();
+
+        assert_eq!(
+            updated.apps,
+            HashMap::from([(
+                "com.apple.mail".to_string(),
+                AppOverride {
+                    own_lane: true,
+                    hidden: true,
+                    ..AppOverride::default()
+                }
+            )])
+        );
+    }
+
+    #[test]
+    fn with_app_keeps_the_fields_the_patch_leaves_out() {
+        let start = settings(|s| {
+            s.apps.insert(
+                "com.apple.mail".into(),
+                AppOverride {
+                    own_lane: true,
+                    group_by_app: Some(false),
+                    ..AppOverride::default()
+                },
+            );
+        });
+
+        let updated = start
+            .with_app("com.apple.mail", &patch(None, Some(true)))
+            .unwrap();
+
+        assert_eq!(
+            updated.apps["com.apple.mail"],
+            AppOverride {
+                own_lane: true,
+                hidden: true,
+                group_by_app: Some(false),
+                titles: None
+            }
+        );
+    }
+
+    #[test]
+    fn with_app_trims_the_bundle_id() {
+        let updated = Settings::default()
+            .with_app("  com.apple.mail ", &patch(Some(true), None))
+            .unwrap();
+
+        assert_eq!(updated.apps.keys().collect::<Vec<_>>(), ["com.apple.mail"]);
+    }
+
+    #[test]
+    fn with_app_rejects_a_blank_bundle_id() {
+        for bundle_id in ["", "   "] {
+            let err = Settings::default()
+                .with_app(bundle_id, &patch(Some(true), None))
+                .unwrap_err();
+            assert_eq!(
+                err.kind(),
+                crate::error::ErrorKind::InvalidInput,
+                "{bundle_id:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn with_app_removes_an_override_that_becomes_the_default() {
+        let start = Settings::default()
+            .with_app("com.apple.mail", &patch(Some(true), Some(true)))
+            .unwrap();
+
+        let half = start
+            .clone()
+            .with_app("com.apple.mail", &patch(Some(false), None))
+            .unwrap();
+        let none = half
+            .clone()
+            .with_app("com.apple.mail", &patch(None, Some(false)))
+            .unwrap();
+
+        assert!(half.apps.contains_key("com.apple.mail"));
+        assert!(none.apps.is_empty());
+    }
+
+    #[test]
+    fn with_app_does_not_create_an_entry_for_an_empty_patch() {
+        let updated = Settings::default()
+            .with_app("com.apple.mail", &patch(None, None))
+            .unwrap();
+
+        assert!(updated.apps.is_empty());
+    }
+
+    #[test]
+    fn with_app_leaves_other_apps_and_settings_untouched() {
+        let start = Settings::default()
+            .with_app("com.apple.notes", &patch(None, Some(true)))
+            .unwrap();
+
+        let updated = start
+            .clone()
+            .with_app("com.apple.mail", &patch(Some(true), None))
+            .unwrap();
+
+        assert_eq!(
+            updated.apps["com.apple.notes"],
+            start.apps["com.apple.notes"]
+        );
+        assert_eq!(updated.apps.len(), 2);
+        assert_eq!(
+            Settings {
+                apps: HashMap::new(),
+                ..updated
+            },
+            Settings::default()
+        );
     }
 
     #[test]

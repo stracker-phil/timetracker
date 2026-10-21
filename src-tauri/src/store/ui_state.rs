@@ -1,5 +1,5 @@
 //! Window layout that survives a restart (`ui_state.json`): sidebar, pane sizes, the last viewed day
-//! and the zoom.
+//! and the timeline zoom.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -19,7 +19,8 @@ pub struct UiState {
     pub sidebar_width: u16,
     /// `YYYY-MM-DD`.
     pub last_day: Option<String>,
-    pub zoom: f32,
+    /// The Day view's scale in px per minute.
+    pub timeline_zoom: f32,
     /// Splitter positions by pane id, in px.
     pub pane_sizes: HashMap<String, f32>,
 }
@@ -30,7 +31,7 @@ impl Default for UiState {
             sidebar_hidden: false,
             sidebar_width: 200,
             last_day: None,
-            zoom: 1.0,
+            timeline_zoom: 2.5,
             pane_sizes: HashMap::new(),
         }
     }
@@ -76,7 +77,7 @@ mod tests {
                 sidebar_hidden: false,
                 sidebar_width: 200,
                 last_day: None,
-                zoom: 1.0,
+                timeline_zoom: 2.5,
                 pane_sizes: HashMap::new(),
             }
         );
@@ -89,7 +90,7 @@ mod tests {
             sidebar_hidden: true,
             sidebar_width: 260,
             last_day: Some("2026-10-21".into()),
-            zoom: 1.5,
+            timeline_zoom: 1.5,
             pane_sizes: HashMap::from([("timeline".to_string(), 320.0)]),
         };
         let saved = UiStateStore::open(dir.path())
@@ -125,9 +126,27 @@ mod tests {
                 "sidebarHidden": false,
                 "sidebarWidth": 200,
                 "lastDay": "2026-10-21",
-                "zoom": 1.0,
+                "timelineZoom": 2.5,
                 "paneSizes": {}
             })
+        );
+    }
+
+    #[test]
+    fn a_file_with_the_old_zoom_key_loads_with_the_default_timeline_zoom() {
+        let dir = temp_config_dir();
+        std::fs::write(
+            dir.path().join("ui_state.json"),
+            r#"{"sidebarWidth": 320, "zoom": 1.5}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            UiStateStore::open(dir.path()).get(),
+            UiState {
+                sidebar_width: 320,
+                timeline_zoom: 2.5,
+                ..UiState::default()
+            }
         );
     }
 }

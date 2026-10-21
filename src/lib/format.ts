@@ -36,10 +36,15 @@ export function formatDuration(ms: number): string {
   return `${hours} h ${String(rest).padStart(2, "0")} min`;
 }
 
-/** Hours and minutes as `12:30 h`; negative counts as zero. */
-export function formatHours(ms: number): string {
+/** Hours and minutes as `12:30`; negative counts as zero. */
+export function formatHm(ms: number): string {
   const minutes = Math.floor(Math.max(0, ms) / MINUTE_MS);
-  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")} h`;
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+/** Hours and minutes as `12:30 h`. */
+export function formatHours(ms: number): string {
+  return `${formatHm(ms)} h`;
 }
 
 /** A UTC millisecond timestamp as local wall-clock time, `09:30`. */

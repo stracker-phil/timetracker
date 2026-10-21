@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityInput, ActivityRow, AppError, AppSeen, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -41,6 +41,10 @@ export const api = {
   /** The day's rows cut to the day; open rows end now. */
   activityList: (day: string) => invoke<ActivityRow[]>("activity_list", { day }),
   awayList: (day: string) => invoke<AwayRow[]>("away_list", { day }),
+  /** The Day view of a day (`YYYY-MM-DD`): lanes of packed blocks, away spans, gaps, totals. */
+  dayView: (day: string) => invoke<DayView>("day_view", { day }),
+  /** Changes one app's timeline override (own lane, hidden); returns the saved settings. */
+  setAppSetting: (bundleId: string, patch: AppSettingPatch) => invoke<Settings>("app_settings_set", { bundleId, patch }),
   /** Apps the tracker recorded in the last `days` days, most time first. */
   appsSeen: (days: number) => invoke<AppSeen[]>("apps_seen", { days }),
   /** Closed spans of other apps, all or none; returns their ids. */
