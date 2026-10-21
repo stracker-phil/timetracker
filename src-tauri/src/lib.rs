@@ -149,12 +149,14 @@ fn start_tracker(app: &AppHandle, state: &AppState) {
         log::warn!("The tracker is off: the data store is not available");
         return;
     };
+    let settings = state.settings.get();
     let tracker = Tracker::new(
         db,
         capture::new_source(app),
-        state.settings.get().tracker,
+        settings.tracker,
         db::time::now_ms(),
     );
+    tracker.set_capture(settings.capture);
     app.manage(Arc::clone(&tracker));
     tracker::start(app, tracker);
 }
@@ -271,6 +273,7 @@ fn start_app(
             db::commands::data_info,
             db::commands::backup_export,
             db::commands::activity_list,
+            db::commands::apps_seen,
             db::commands::away_list,
             tracker::commands::tracker_status,
             tracker::commands::tracker_pause,

@@ -178,6 +178,36 @@ pub async fn delete_range(db: &Db, from: Ms, to: Ms) -> AppResult<u64> {
     )
 }
 
+/// An app the tracker recorded, for pickers such as the excluded apps.
+#[derive(Debug, Clone, PartialEq, Serialize, TS, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct AppSeen {
+    pub bundle_id: Option<String>,
+    /// The name it had most recently.
+    pub app: String,
+    pub last_seen: Ms,
+    pub total_ms: i64,
+}
+
+/// Tracker apps with time since `from`, one per bundle id (or name without one), most time first. Open
+/// spans count until `now`.
+pub async fn apps_seen(db: &Db, from: Ms, now: Ms) -> AppResult<Vec<AppSeen>> {
+    // SQLite takes the bare `bundle_id` and `app` from the row with the latest end.
+    Ok(sqlx::query_as(
+        r#"SELECT bundle_id, app, max(coalesce("end", ?2)) AS last_seen,
+                  sum(max(coalesce("end", ?2), start) - max(start, ?1)) AS total_ms
+           FROM activities
+           WHERE source = 'tracker' AND private = 0 AND coalesce("end", ?2) > ?1
+           GROUP BY coalesce(bundle_id, app)
+           ORDER BY total_ms DESC, app"#,
+    )
+    .bind(from)
+    .bind(now)
+    .fetch_all(db.pool())
+    .await?)
+}
+
 pub async fn count(db: &Db) -> AppResult<i64> {
     Ok(sqlx::query_scalar("SELECT count(*) FROM activities")
         .fetch_one(db.pool())
@@ -449,6 +479,142 @@ mod tests {
         delete_range(&db, 0, 1_000).await.unwrap();
         let next = activity(&db, 100, Some(200), "A", "").await;
         assert!(next.id > newest.id);
+    }
+
+    async fn row_of(
+        db: &Db,
+        (source, private): (&str, bool),
+        (start, end): (Ms, Option<Ms>),
+        (app, bundle_id): (&str, Option<&str>),
+    ) {
+        let id = insert(
+            db,
+            NewActivity {
+                source: source.into(),
+                start,
+                app: app.into(),
+                bundle_id: bundle_id.map(str::to_string),
+                title: String::new(),
+                url: None,
+                path: None,
+                private,
+            },
+        )
+        .await
+        .unwrap();
+        sqlx::query(r#"UPDATE activities SET "end" = ?2 WHERE id = ?1"#)
+            .bind(id)
+            .bind(end)
+            .execute(db.pool())
+            .await
+            .unwrap();
+    }
+
+    fn seen(bundle_id: Option<&str>, app: &str, last_seen: Ms, total_ms: i64) -> AppSeen {
+        AppSeen {
+            bundle_id: bundle_id.map(str::to_string),
+            app: app.into(),
+            last_seen,
+            total_ms,
+        }
+    }
+
+    #[tokio::test]
+    async fn apps_seen_groups_by_bundle_id_with_the_latest_name_and_sums_the_time() {
+        let db = Db::open_memory().await.unwrap();
+        let tracker = ("tracker", false);
+        row_of(&db, tracker, (1_000, Some(3_000)), ("Mail", Some("b.mail"))).await;
+        row_of(
+            &db,
+            tracker,
+            (4_000, Some(5_000)),
+            ("Mail.app", Some("b.mail")),
+        )
+        .await;
+
+        assert_eq!(
+            apps_seen(&db, 0, 10_000).await.unwrap(),
+            [seen(Some("b.mail"), "Mail.app", 5_000, 3_000)]
+        );
+    }
+
+    #[tokio::test]
+    async fn apps_seen_counts_open_rows_until_now_and_cuts_rows_at_from() {
+        let db = Db::open_memory().await.unwrap();
+        let tracker = ("tracker", false);
+        row_of(&db, tracker, (500, Some(2_000)), ("Mail", Some("b.mail"))).await;
+        row_of(&db, tracker, (9_000, None), ("Code", Some("b.code"))).await;
+
+        assert_eq!(
+            apps_seen(&db, 1_000, 10_000).await.unwrap(),
+            [
+                seen(Some("b.code"), "Code", 10_000, 1_000),
+                seen(Some("b.mail"), "Mail", 2_000, 1_000)
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn apps_seen_sorts_by_total_time_and_groups_rows_without_bundle_id_by_name() {
+        let db = Db::open_memory().await.unwrap();
+        let tracker = ("tracker", false);
+        row_of(&db, tracker, (1_000, Some(3_000)), ("Mail", Some("b.mail"))).await;
+        row_of(&db, tracker, (3_000, Some(8_000)), ("Notes", None)).await;
+        row_of(&db, tracker, (8_000, Some(9_000)), ("Notes", None)).await;
+        row_of(&db, tracker, (9_000, Some(9_500)), ("Code", Some("b.code"))).await;
+
+        assert_eq!(
+            apps_seen(&db, 0, 10_000).await.unwrap(),
+            [
+                seen(None, "Notes", 9_000, 6_000),
+                seen(Some("b.mail"), "Mail", 3_000, 2_000),
+                seen(Some("b.code"), "Code", 9_500, 500)
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn apps_seen_ignores_external_sources_private_rows_and_rows_before_from() {
+        let db = Db::open_memory().await.unwrap();
+        row_of(
+            &db,
+            ("external:git", false),
+            (1_000, Some(2_000)),
+            ("git", None),
+        )
+        .await;
+        row_of(
+            &db,
+            ("tracker", true),
+            (1_000, Some(2_000)),
+            ("Chrome", Some("b.chrome")),
+        )
+        .await;
+        row_of(
+            &db,
+            ("tracker", false),
+            (100, Some(1_000)),
+            ("Old", Some("b.old")),
+        )
+        .await;
+        row_of(
+            &db,
+            ("tracker", false),
+            (1_000, Some(1_500)),
+            ("Kept", Some("b.kept")),
+        )
+        .await;
+
+        assert_eq!(
+            apps_seen(&db, 1_000, 10_000).await.unwrap(),
+            [seen(Some("b.kept"), "Kept", 1_500, 500)]
+        );
+    }
+
+    #[tokio::test]
+    async fn apps_seen_of_an_empty_table_is_empty() {
+        let db = Db::open_memory().await.unwrap();
+        assert!(apps_seen(&db, 0, 10_000).await.unwrap().is_empty());
     }
 
     #[tokio::test]

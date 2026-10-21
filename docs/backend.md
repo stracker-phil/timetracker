@@ -85,7 +85,8 @@ itself. Panics unwind ([ADR 0014](adr/0014-panic-unwind.md)), so code takes `std
 
 The tracker is managed beside `AppState` as `Arc<Tracker>` (`tracker/mod.rs`), and only when the data store
 opened. Its commands look it up with `try_state` and fail with `db` "The data store is not available"
-otherwise. `update_settings` hands the new `tracker` settings to `Tracker::set_settings`.
+otherwise. `update_settings` hands the new `tracker` and `capture` settings to `Tracker::set_settings` and
+`Tracker::set_capture`.
 
 ## Tauri commands
 
@@ -109,6 +110,7 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, available, error }` | – (errors are reported inside) |
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes }` | `db`, `io`, `invalid_input` |
 | `activity_list` / `away_list` (`db/commands.rs`) | `day: Day` | `ActivityRow[]` / `AwayRow[]` of the day, cut to its bounds; open rows end now | `db`, `invalid_input` |
+| `apps_seen` (`db/commands.rs`) | `days: u16` | `AppSeen[] { bundleId, app, lastSeen, totalMs }`: tracker apps of the last `days` days, one per bundle id, most time first | `db` |
 | `tracker_status` (`tracker/commands.rs`) | – | `TrackerStatus` (the last one sent) | `db` (tracker off) |
 | `tracker_pause` | `until: PauseUntil` | `TrackerStatus` | `db` |
 | `tracker_resume` | – | `TrackerStatus` | `db` |

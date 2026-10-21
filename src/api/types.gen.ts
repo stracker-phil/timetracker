@@ -33,6 +33,15 @@ export type AppErrorField = { path: string, message: string, };
  */
 export type AppOverride = { groupByApp: boolean | null, titles: Titles | null, hidden: boolean, ownLane: boolean, };
 
+/**
+ * An app the tracker recorded, for pickers such as the excluded apps.
+ */
+export type AppSeen = { bundleId: string | null, 
+/**
+ * The name it had most recently.
+ */
+app: string, lastSeen: number, totalMs: number, };
+
 export type AwayReason = "idle" | "sleep" | "lock" | "paused";
 
 export type AwayRow = { id: number, start: number, 

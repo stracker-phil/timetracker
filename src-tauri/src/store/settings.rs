@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use ts_rs::TS;
 
 use super::json_store::JsonStore;
+use crate::capture::url::domain;
 use crate::error::AppResult;
 
 /// Falls back to the default for a value the field doesn't know (a typo, a retired variant),
@@ -342,6 +343,11 @@ impl Settings {
         tracker.away_prompt_minutes = tracker.away_prompt_minutes.clamp(1, 240);
         tracker.poll_seconds = tracker.poll_seconds.clamp(1, 10);
 
+        let capture = &mut self.capture;
+        capture.excluded_apps = clean_list(std::mem::take(&mut capture.excluded_apps), Some);
+        capture.excluded_domains =
+            clean_list(std::mem::take(&mut capture.excluded_domains), domain_entry);
+
         let timeline = &mut self.timeline;
         timeline.summary_minutes = nearest(SUMMARY_MINUTES, timeline.summary_minutes);
         timeline.snap_minutes = nearest(SNAP_MINUTES, timeline.snap_minutes);
@@ -366,6 +372,30 @@ impl Settings {
             .unwrap_or_default()
             .sanitized()
     }
+}
+
+/// Trimmed, lower case, without blanks and repeats; `shape` may rewrite or drop an entry.
+fn clean_list(entries: Vec<String>, shape: impl Fn(String) -> Option<String>) -> Vec<String> {
+    let mut clean: Vec<String> = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let Some(entry) = shape(entry.trim().to_lowercase()).filter(|e| !e.is_empty()) else {
+            continue;
+        };
+        if !clean.contains(&entry) {
+            clean.push(entry);
+        }
+    }
+    clean
+}
+
+/// A pasted address becomes its host; `www.` goes, as it does for the domains it is matched against.
+fn domain_entry(entry: String) -> Option<String> {
+    let address = if entry.contains("://") {
+        entry
+    } else {
+        format!("http://{entry}")
+    };
+    domain(&address)
 }
 
 fn non_blank(value: Option<String>) -> Option<String> {
@@ -433,6 +463,56 @@ mod tests {
             .collect();
         names.sort();
         names
+    }
+
+    #[test]
+    fn excluded_apps_are_trimmed_lowercased_deduplicated_and_blanks_dropped() {
+        let sanitized = settings(|s| {
+            s.capture.excluded_apps =
+                [" Com.Apple.Mail ", "", "   ", "com.apple.mail", "Test.Code"]
+                    .map(String::from)
+                    .to_vec();
+        })
+        .sanitized();
+
+        assert_eq!(
+            sanitized.capture.excluded_apps,
+            ["com.apple.mail", "test.code"]
+        );
+    }
+
+    #[test]
+    fn excluded_domains_are_cleaned_and_keep_their_first_order() {
+        let sanitized = settings(|s| {
+            s.capture.excluded_domains = [
+                " Bank.Example.com ",
+                "",
+                "a.com",
+                "BANK.example.com",
+                "www.a.com",
+            ]
+            .map(String::from)
+            .to_vec();
+        })
+        .sanitized();
+
+        assert_eq!(
+            sanitized.capture.excluded_domains,
+            ["bank.example.com", "a.com"]
+        );
+    }
+
+    #[test]
+    fn a_pasted_url_in_excluded_domains_becomes_its_host() {
+        for (entry, expected) in [
+            ("https://www.Bank.example.com/login", "bank.example.com"),
+            ("http://bank.example.com:8080/x?y=1", "bank.example.com"),
+            ("www.bank.example.com", "bank.example.com"),
+        ] {
+            let sanitized =
+                settings(|s| s.capture.excluded_domains = vec![entry.into()]).sanitized();
+            assert_eq!(sanitized.capture.excluded_domains, [expected], "{entry}");
+        }
     }
 
     #[test]

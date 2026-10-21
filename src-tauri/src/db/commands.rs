@@ -4,7 +4,7 @@ use serde::Serialize;
 use tauri::State;
 use ts_rs::TS;
 
-use super::activities::ActivityRow;
+use super::activities::{ActivityRow, AppSeen};
 use super::away::AwayRow;
 use super::backup::{self, BackupWritten};
 use super::time::{Day, Ms, now_ms};
@@ -96,6 +96,15 @@ pub async fn data_info(state: State<'_, AppState>) -> AppResult<DataInfo> {
 #[tauri::command]
 pub async fn backup_export(state: State<'_, AppState>, path: String) -> AppResult<BackupWritten> {
     backup::write_to(&state.data.db()?, Path::new(&path)).await
+}
+
+const DAY_MS: Ms = 86_400_000;
+
+/// The apps the tracker recorded in the last `days` days.
+#[tauri::command]
+pub async fn apps_seen(state: State<'_, AppState>, days: u16) -> AppResult<Vec<AppSeen>> {
+    let now = now_ms();
+    activities::apps_seen(&state.data.db()?, now - Ms::from(days) * DAY_MS, now).await
 }
 
 /// The day's activity, cut to the day; open rows end now.

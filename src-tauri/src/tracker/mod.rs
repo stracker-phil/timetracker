@@ -3,6 +3,7 @@
 //! the user.
 
 pub mod commands;
+pub mod filter;
 mod status;
 
 use std::sync::{Arc, Mutex};
@@ -24,7 +25,7 @@ use crate::db::time::{Day, Ms, now_ms};
 use crate::error::AppResult;
 use crate::events::TRACKER_STATUS_EVENT;
 use crate::lock::MutexExt;
-use crate::store::settings::TrackerSettings;
+use crate::store::settings::{CaptureSettings, TrackerSettings};
 use crate::tray;
 
 pub const TRACKER_SOURCE: &str = "tracker";
@@ -112,6 +113,7 @@ pub struct Tracker {
     db: Db,
     source: Arc<dyn Source>,
     settings: Mutex<TrackerSettings>,
+    capture: Mutex<CaptureSettings>,
     inner: tokio::sync::Mutex<Inner>,
     latest: Mutex<TrackerStatus>,
     statuses: broadcast::Sender<TrackerStatus>,
@@ -139,6 +141,7 @@ impl Tracker {
             db,
             source,
             settings: Mutex::new(settings),
+            capture: Mutex::new(CaptureSettings::default()),
             inner: tokio::sync::Mutex::new(inner),
             statuses: broadcast::channel(16).0,
         })
@@ -155,6 +158,10 @@ impl Tracker {
 
     pub fn set_settings(&self, settings: TrackerSettings) {
         *self.settings.lock_unpoisoned() = settings;
+    }
+
+    pub fn set_capture(&self, capture: CaptureSettings) {
+        *self.capture.lock_unpoisoned() = capture;
     }
 
     fn settings(&self) -> TrackerSettings {
@@ -307,11 +314,16 @@ impl Tracker {
         Ok(false)
     }
 
-    /// Keeps the open activity span in step with the frontmost window.
+    /// Keeps the open activity span in step with the frontmost window. Excluded windows leave a gap.
     async fn record(&self, inner: &mut Inner, now: Ms) -> AppResult<()> {
-        let Some(snapshot) = self.source.snapshot() else {
+        let capture = self.capture.lock_unpoisoned().clone();
+        let Some(snapshot) = self.source.snapshot(&capture) else {
             return self.close_activity(inner, now).await;
         };
+        if filter::excluded(&snapshot, &capture) {
+            return self.close_activity(inner, now).await;
+        }
+        let snapshot = filter::redact(snapshot, &capture);
         if let Some(current) = &inner.current {
             if same_window(current, &snapshot) {
                 return Ok(());

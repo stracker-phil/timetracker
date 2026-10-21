@@ -6,6 +6,7 @@ use tokio::sync::broadcast;
 
 use super::{PermissionStatus, Snapshot, Source, SystemEvent};
 use crate::lock::MutexExt;
+use crate::store::settings::CaptureSettings;
 
 pub struct FakeSource {
     snapshot: Mutex<Option<Snapshot>>,
@@ -48,7 +49,7 @@ impl FakeSource {
 }
 
 impl Source for FakeSource {
-    fn snapshot(&self) -> Option<Snapshot> {
+    fn snapshot(&self, _capture: &CaptureSettings) -> Option<Snapshot> {
         self.snapshot.lock_unpoisoned().clone()
     }
 

@@ -96,6 +96,7 @@ pub async fn update_settings(
     apply_settings(&app, Some(&previous), &saved);
     if let Some(tracker) = app.try_state::<std::sync::Arc<Tracker>>() {
         tracker.set_settings(saved.tracker.clone());
+        tracker.set_capture(saved.capture.clone());
     }
     log::info!("Settings updated");
     Ok(saved)

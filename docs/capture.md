@@ -11,7 +11,7 @@ through the `Source` trait ([ADR 0008](adr/0008-capture-behind-a-source-trait.md
 
 | Member | Returns |
 |---|---|
-| `snapshot()` | `Option<Snapshot { at, app, bundle_id, pid, title, url, path, private }>`; `None` when nothing is frontmost. `url`, `path` and `private` stay empty until step 04 |
+| `snapshot(capture)` | `Option<Snapshot { at, app, bundle_id, pid, title, url, path, private }>`; `None` when nothing is frontmost. `capture` (`CaptureSettings`) lets the source skip reading addresses and paths that are turned off |
 | `idle_seconds()` | seconds since the last keyboard, mouse or trackpad input |
 | `events()` | a `broadcast::Receiver<SystemEvent>`: `Activated` (another app came to the front), `Sleep`, `Wake`, `Lock`, `Unlock`, `SessionInactive`, `SessionActive` |
 | `permission()` | `PermissionStatus`: `granted`, `denied`, `unknown` |
@@ -31,15 +31,64 @@ sends a `SystemEvent`, and the observers stay registered for the app's lifetime.
 | Frontmost app (name, bundle id, pid) | `NSWorkspace.frontmostApplication` | none |
 | App switches | `NSWorkspaceDidActivateApplicationNotification` on the workspace notification center | none |
 | Window title | `AXUIElementCreateApplication(pid)` → `AXFocusedWindow` → `AXTitle`, with a 0.5 s messaging timeout so a hung app cannot stall the poll | Accessibility |
+| Document path | `AXDocument` of the focused window (a `file://` URL), not for browsers | Accessibility |
+| Browser address | AppleScript through `NSAppleScript`, see [Browsers](#browsers) | Automation, per browser |
 | Idle time | `CGEventSourceSecondsSinceLastEventType(CombinedSessionState, kCGAnyInputEventType)` | none |
 | Sleep, wake | `NSWorkspaceWillSleepNotification`, `NSWorkspaceDidWakeNotification` | none |
 | Fast user switching | `NSWorkspaceSessionDidResignActiveNotification`, `…DidBecomeActive…` | none |
 | Screen lock | `com.apple.screenIsLocked`, `com.apple.screenIsUnlocked` on `NSDistributedNotificationCenter` | none |
 | Permission | `AXIsProcessTrusted`, and `AXIsProcessTrustedWithOptions({ kAXTrustedCheckOptionPrompt: true })` to prompt | – |
 
-Attribute names are passed as `CFString`s (`"AXFocusedWindow"`, `"AXTitle"`). A failed title read gives an
+Attribute names are passed as `CFString`s (`"AXFocusedWindow"`, `"AXTitle"`, `"AXDocument"`). A failed title read gives an
 empty title and is logged at Debug once per pid. `CGWindowListCopyWindowInfo` is never used, because its
 titles need Screen Recording.
+
+### Browsers
+
+`capture/browsers.rs` knows the browsers and their scripts; `MacSource::browser_page` runs them.
+
+| Bundle ids | Script (inside `with timeout of 1 second`) |
+|---|---|
+| `com.apple.Safari`, `com.apple.SafariTechnologyPreview` | `URL of current tab of front window` |
+| `com.google.Chrome`, `com.google.Chrome.canary`, `com.brave.Browser`, `com.microsoft.edgemac`, `org.chromium.Chromium` | `(mode of front window) & linefeed & (URL of active tab of front window)` |
+| `company.thebrowser.Browser` (Arc), `com.vivaldi.Vivaldi` | `URL of active tab of front window` |
+| `org.mozilla.firefox` (and Developer Edition, Nightly) | none: Firefox is not scriptable, only titles are recorded |
+
+The script runs on the main thread (`run_on_main_thread`), as `NSAppleScript` requires, and the poll waits
+at most 1.5 s for it; a browser that answers later has no address this poll. The first script per browser
+makes macOS ask for Automation (the text is `NSAppleEventsUsageDescription` in `Info.plist`). Outcomes:
+
+| AppleScript result | Address | Logged |
+|---|---|---|
+| an answer | `url::normalize` of it | – |
+| `-1743` (Automation refused) | none; the browser is not asked again this run | Info, once per browser |
+| `-1728` (no window) | none | – |
+| anything else | none | Debug, at most once an hour per browser |
+
+`capture/url.rs`: `normalize` trims, drops the fragment, lowercases scheme and host (the `url` crate), and
+drops empty and new-tab pages (`about:blank`, `chrome://newtab`, …); text that does not parse is kept only
+when it starts with `http` or `file`. `domain` is the host without `www.`, used by exclusions and later by
+rules and grouping. `file_path` turns `AXDocument`'s `file://` URL into a decoded path.
+
+### Private windows
+
+A private window is stored with `private = 1`, title `Private`, no address and no path; the app name stays.
+Consecutive private snapshots of one app are one span, because they look the same after redaction.
+
+| Browser | Recognized by |
+|---|---|
+| Chrome, Brave, Edge, Chromium | the script's window `mode` is `incognito`, or the title ends with ` (Incognito)`, ` (Private)` or ` - InPrivate` |
+| Arc, Vivaldi | the title rule above |
+| Firefox | the title ends with ` — Private Browsing` or ` (Private Browsing)` |
+| Safari | a failing script other than `-1743` and `-1728` is taken as a private window. Not yet confirmed by hand on the current macOS: check whether a private window answers the script or fails, and update `browsers::failed` |
+
+`capture/private.rs` holds the title rules; `browsers::parse` and `browsers::failed` the script ones.
+
+### What is never captured
+
+Keystrokes, screenshots, screen contents, audio, the clipboard and page content. Nothing leaves the Mac.
+Private windows are recorded as "Private" without title or address. The only readings are the ones in the
+table above.
 
 ## Tracker
 
@@ -73,7 +122,9 @@ or pass it on to recording:
 4. **Idle**: at `idle_seconds() >= idleMinutes × 60` the activity closes at `now − idle` (when input
    stopped) and an `idle` span opens there. It never starts before the tracker last started running
    (`running_since`), so it does not overlap an earlier pause or sleep. Input again closes it at `now`.
-5. **Snapshot**: `None` closes the activity. A snapshot whose app, bundle id, title, URL or path differ
+5. **Snapshot**: `None` closes the activity. An excluded snapshot (`filter::excluded`) closes it too and
+   opens nothing, so the time stays a gap. Otherwise `filter::redact` applies the private-window rule and
+   drops the address or path when `captureUrls` / `captureDocuments` are off. A snapshot whose app, bundle id, title, URL or path differ
    from the open row closes it at `now` and inserts a `tracker` row starting at `now`. An equal snapshot
    writes nothing: `end` is written only on a change.
 6. **The 1 s rule**: a change less than 1 s after the open row started replaces that row's details in place
@@ -116,6 +167,13 @@ sidebar. The page never builds it.
 | away | `Away since 10:42` |
 | paused | `Paused until 11:15`, `Paused until tomorrow` (until the next local midnight), or `Paused` |
 | needsPermission | `Needs permission` |
+
+### Exclusions
+
+`Settings.capture.excludedApps` (bundle ids; an app without one by name) and `excludedDomains` (a domain
+excludes itself and every subdomain). `Settings::sanitized` trims, lowercases and dedups both lists, and
+reduces a pasted address to its host without `www.`. The tracker gets them through `Tracker::set_capture`
+(at startup and on `update_settings`) and checks them before any write.
 
 ## Permission onboarding
 

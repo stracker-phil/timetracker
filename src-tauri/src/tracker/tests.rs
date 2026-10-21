@@ -1,5 +1,5 @@
 use super::*;
-use crate::capture::fake::FakeSource;
+use crate::capture::fake::{self, FakeSource};
 use crate::test_support::activity;
 
 const T: Ms = 1_800_000_000_000;
@@ -601,5 +601,210 @@ async fn recover_closes_stale_tracker_and_away_spans_only() {
     assert_eq!(
         aways(&f.db).await,
         [(T, Some(T + 10 * MINUTE), AwayReason::Idle)]
+    );
+}
+
+fn browser_snapshot(title: &str, url: Option<&str>) -> Snapshot {
+    Snapshot {
+        url: url.map(str::to_string),
+        ..fake::snapshot("Chrome", title)
+    }
+}
+
+fn private_snapshot(title: &str, url: &str) -> Snapshot {
+    Snapshot {
+        private: true,
+        url: Some(url.into()),
+        path: Some("/Users/me/secret.txt".into()),
+        ..fake::snapshot("Chrome", title)
+    }
+}
+
+fn excluding(apps: &[&str], domains: &[&str]) -> CaptureSettings {
+    CaptureSettings {
+        excluded_apps: apps.iter().map(|a| a.to_string()).collect(),
+        excluded_domains: domains.iter().map(|d| d.to_string()).collect(),
+        ..CaptureSettings::default()
+    }
+}
+
+async fn rows(db: &Db) -> Vec<ActivityRow> {
+    activities::list_for_range(db, 0, Ms::MAX).await.unwrap()
+}
+
+#[tokio::test]
+async fn a_private_window_is_stored_as_the_app_alone() {
+    let f = fixture().await;
+    f.source.set_snapshot(Some(private_snapshot(
+        "Bank login",
+        "https://bank.example.com/",
+    )));
+
+    f.tracker.tick(T).await.unwrap();
+
+    let rows = rows(&f.db).await;
+    assert_eq!(rows.len(), 1);
+    let row = &rows[0];
+    assert_eq!(row.app, "Chrome");
+    assert_eq!(row.bundle_id.as_deref(), Some("test.chrome"));
+    assert_eq!(row.title, "Private");
+    assert_eq!((row.url.as_deref(), row.path.as_deref()), (None, None));
+    assert!(row.private);
+}
+
+#[tokio::test]
+async fn consecutive_private_windows_stay_one_row() {
+    let f = fixture().await;
+    f.source
+        .set_snapshot(Some(private_snapshot("First", "https://a.example.com/")));
+    f.tracker.tick(T).await.unwrap();
+
+    f.source
+        .set_snapshot(Some(private_snapshot("Second", "https://b.example.com/")));
+    f.tracker.tick(T + 5 * SECOND).await.unwrap();
+
+    assert_eq!(spans(&f.db).await, [title("Private", T, None)]);
+}
+
+#[tokio::test]
+async fn an_excluded_app_closes_the_current_row_and_records_nothing() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+
+    f.tracker.set_capture(excluding(&["test.code"], &[]));
+    f.tracker.tick(T + 5 * SECOND).await.unwrap();
+    f.tracker.tick(T + 10 * SECOND).await.unwrap();
+
+    assert_eq!(spans(&f.db).await, [title("a.rs", T, Some(T + 5 * SECOND))]);
+    assert_eq!(f.tracker.status().current, None);
+}
+
+#[tokio::test]
+async fn an_excluded_app_as_the_first_window_inserts_nothing() {
+    let f = fixture().await;
+    f.tracker.set_capture(excluding(&["test.code"], &[]));
+    f.source.show("Code", "a.rs");
+
+    f.tracker.tick(T).await.unwrap();
+
+    assert!(spans(&f.db).await.is_empty());
+}
+
+#[tokio::test]
+async fn recording_resumes_with_a_new_row_when_a_non_excluded_app_is_in_front() {
+    let f = fixture().await;
+    f.tracker.set_capture(excluding(&["test.code"], &[]));
+    f.source.show("Mail", "Inbox");
+    f.tracker.tick(T).await.unwrap();
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T + 5 * SECOND).await.unwrap();
+
+    f.source.show("Mail", "Inbox");
+    f.tracker.tick(T + 10 * SECOND).await.unwrap();
+
+    assert_eq!(
+        spans(&f.db).await,
+        [
+            title("Inbox", T, Some(T + 5 * SECOND)),
+            title("Inbox", T + 10 * SECOND, None)
+        ]
+    );
+}
+
+#[tokio::test]
+async fn an_excluded_domain_and_its_subdomains_are_not_recorded_but_lookalikes_are() {
+    for (url, recorded) in [
+        ("https://bank.example.com/x", false),
+        ("https://login.bank.example.com/x", false),
+        ("https://notbank.example.com", true),
+        ("https://example.com/bank.example.com", true),
+    ] {
+        let f = fixture().await;
+        f.tracker.set_capture(excluding(&[], &["bank.example.com"]));
+        f.source
+            .set_snapshot(Some(browser_snapshot("Page", Some(url))));
+
+        f.tracker.tick(T).await.unwrap();
+
+        let expected = if recorded {
+            vec![title("Page", T, None)]
+        } else {
+            vec![]
+        };
+        assert_eq!(spans(&f.db).await, expected, "{url}");
+    }
+}
+
+#[tokio::test]
+async fn urls_are_stored_unless_capturing_them_is_off() {
+    for (capture_urls, expected) in [(true, Some("https://example.com/a")), (false, None)] {
+        let f = fixture().await;
+        f.tracker.set_capture(CaptureSettings {
+            capture_urls,
+            ..CaptureSettings::default()
+        });
+        f.source.set_snapshot(Some(browser_snapshot(
+            "Page",
+            Some("https://example.com/a"),
+        )));
+
+        f.tracker.tick(T).await.unwrap();
+
+        assert_eq!(
+            rows(&f.db).await[0].url.as_deref(),
+            expected,
+            "{capture_urls}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn document_paths_are_stored_unless_capturing_them_is_off() {
+    for (capture_documents, expected) in [(true, Some("/Users/me/a.txt")), (false, None)] {
+        let f = fixture().await;
+        f.tracker.set_capture(CaptureSettings {
+            capture_documents,
+            ..CaptureSettings::default()
+        });
+        f.source.set_snapshot(Some(Snapshot {
+            path: Some("/Users/me/a.txt".into()),
+            ..fake::snapshot("Pages", "a.txt")
+        }));
+
+        f.tracker.tick(T).await.unwrap();
+
+        assert_eq!(
+            rows(&f.db).await[0].path.as_deref(),
+            expected,
+            "{capture_documents}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_new_address_in_the_same_window_title_starts_a_new_row() {
+    let f = fixture().await;
+    f.source.set_snapshot(Some(browser_snapshot(
+        "Docs",
+        Some("https://example.com/a"),
+    )));
+    f.tracker.tick(T).await.unwrap();
+
+    f.source.set_snapshot(Some(browser_snapshot(
+        "Docs",
+        Some("https://example.com/b"),
+    )));
+    f.tracker.tick(T + 5 * SECOND).await.unwrap();
+
+    let rows = rows(&f.db).await;
+    assert_eq!(
+        rows.iter()
+            .map(|r| (r.start, r.end, r.url.as_deref()))
+            .collect::<Vec<_>>(),
+        [
+            (T, Some(T + 5 * SECOND), Some("https://example.com/a")),
+            (T + 5 * SECOND, None, Some("https://example.com/b"))
+        ]
     );
 }
