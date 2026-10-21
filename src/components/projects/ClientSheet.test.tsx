@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,8 +27,31 @@ describe("ClientSheet", () => {
     expect(screen.getByRole("heading", { name: "New client" })).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("Name"), "Beta");
     await save();
-    expect(mocked.clientsSave).toHaveBeenCalledWith(null, "Beta");
+    expect(mocked.clientsSave).toHaveBeenCalledWith(null, { name: "Beta", color: "" });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("starts a new client with no color pressed", () => {
+    renderSheet();
+    const swatches = within(screen.getByRole("group", { name: "Accent" })).getAllByRole("button");
+    expect(swatches.every((b) => b.getAttribute("aria-pressed") === "false")).toBe(true);
+  });
+
+  it("saves the picked color with a new client", async () => {
+    renderSheet();
+    await userEvent.type(screen.getByLabelText("Name"), "Beta");
+    await userEvent.click(screen.getByRole("button", { name: "Accent teal" }));
+    expect(screen.getByRole("button", { name: "Accent teal" })).toHaveAttribute("aria-pressed", "true");
+    await save();
+    expect(mocked.clientsSave).toHaveBeenCalledWith(null, { name: "Beta", color: "teal" });
+  });
+
+  it("shows a color error from Rust under the Color field", async () => {
+    mocked.clientsSave.mockRejectedValueOnce({ kind: "invalid_input", message: "Invalid", code: null, field: { path: "color", message: "already taken" } });
+    renderSheet();
+    await userEvent.type(screen.getByLabelText("Name"), "Beta");
+    await save();
+    expect(await screen.findByRole("alert")).toHaveTextContent("already taken");
   });
 
   it("shows a name error from Rust under the field and stays open", async () => {
@@ -40,13 +63,14 @@ describe("ClientSheet", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("prefills the name of an existing client and renames it under its id", async () => {
-    renderSheet("c1");
+  it("prefills the name and color of an existing client and renames it under its id", async () => {
+    renderSheet("c1", [client({ id: "c1", name: "Acme", color: "purple" })]);
     expect(screen.getByRole("heading", { name: "Edit client" })).toBeInTheDocument();
     expect(screen.getByLabelText("Name")).toHaveValue("Acme");
+    expect(screen.getByRole("button", { name: "Accent purple" })).toHaveAttribute("aria-pressed", "true");
     await userEvent.type(screen.getByLabelText("Name"), " Corp");
     await save();
-    expect(mocked.clientsSave).toHaveBeenCalledWith("c1", "Acme Corp");
+    expect(mocked.clientsSave).toHaveBeenCalledWith("c1", { name: "Acme Corp", color: "purple" });
   });
 
   it("archives the client and closes", async () => {

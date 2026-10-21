@@ -4,12 +4,12 @@ import type { Store } from "../state/store";
 
 /** An active project without a client; `patch` overrides fields. */
 export function project(patch: Partial<Project> = {}): Project {
-  return { id: "project-1", clientId: null, name: "Website", color: "blue", archivedAt: null, createdAt: 0, ...patch };
+  return { id: "project-1", clientId: null, name: "Website", color: "blue", shade: 0, archivedAt: null, createdAt: 0, ...patch };
 }
 
 /** An active client; `patch` overrides fields. */
 export function client(patch: Partial<Client> = {}): Client {
-  return { id: "client-1", name: "Acme", archivedAt: null, createdAt: 0, ...patch };
+  return { id: "client-1", name: "Acme", color: "blue", archivedAt: null, createdAt: 0, ...patch };
 }
 
 /** A listed project; `project` patches the project itself, the rest the list fields. */

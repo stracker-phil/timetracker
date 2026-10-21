@@ -37,17 +37,60 @@ describe("ProjectSheet", () => {
       expect(screen.getByRole("heading", { name: "New project" })).toBeInTheDocument();
       await userEvent.type(screen.getByLabelText("Name"), "Website");
       await save();
-      expect(mocked.projectsSave).toHaveBeenCalledWith(null, { clientId: null, name: "Website", color: "orange" });
+      expect(mocked.projectsSave).toHaveBeenCalledWith(null, { clientId: null, name: "Website", color: "orange", shade: null });
       expect(onClose).toHaveBeenCalled();
     });
 
-    it("saves the chosen client and color", async () => {
+    it("saves the chosen color without a client", async () => {
+      renderSheet();
+      await userEvent.type(screen.getByLabelText("Name"), "Website");
+      await userEvent.click(screen.getByRole("button", { name: "Accent teal" }));
+      await save();
+      expect(mocked.projectsSave).toHaveBeenCalledWith(null, { clientId: null, name: "Website", color: "teal", shade: null });
+    });
+
+    it("saves the chosen client", async () => {
       renderSheet();
       await userEvent.type(screen.getByLabelText("Name"), "Website");
       await userEvent.selectOptions(screen.getByLabelText("Client"), "Acme");
-      await userEvent.click(screen.getByRole("button", { name: "Accent teal" }));
       await save();
-      expect(mocked.projectsSave).toHaveBeenCalledWith(null, { clientId: "c-acme", name: "Website", color: "teal" });
+      expect(mocked.projectsSave).toHaveBeenCalledWith(null, expect.objectContaining({ clientId: "c-acme", name: "Website", shade: null }));
+    });
+
+    it("starts with no shade pressed", () => {
+      renderSheet();
+      const shades = within(screen.getByRole("group", { name: "Shade" })).getAllByRole("button");
+      expect(shades).toHaveLength(9);
+      expect(shades.every((b) => b.getAttribute("aria-pressed") === "false")).toBe(true);
+    });
+
+    it("saves the picked shade as its zero-based index", async () => {
+      renderSheet();
+      await userEvent.type(screen.getByLabelText("Name"), "Website");
+      await userEvent.click(screen.getByRole("button", { name: "Shade 3" }));
+      expect(screen.getByRole("button", { name: "Shade 3" })).toHaveAttribute("aria-pressed", "true");
+      await save();
+      expect(mocked.projectsSave).toHaveBeenCalledWith(null, expect.objectContaining({ shade: 2 }));
+    });
+
+    it("offers a Color field and a Shade field without a client", () => {
+      renderSheet();
+      expect(screen.getByRole("group", { name: "Accent" })).toBeInTheDocument();
+      expect(screen.getByText("Shade")).toBeInTheDocument();
+    });
+
+    it("replaces the Accent group by a shade field of the client's color when a client is chosen", async () => {
+      renderSheet();
+      await userEvent.selectOptions(screen.getByLabelText("Client"), "Acme");
+      expect(screen.queryByRole("group", { name: "Accent" })).not.toBeInTheDocument();
+      expect(screen.getByText("Shade of Acme's color")).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: "Shade" })).toBeInTheDocument();
+    });
+
+    it("has no Accent group for a preselected client", () => {
+      renderSheet({ initialClientId: "c-acme" });
+      expect(screen.queryByRole("group", { name: "Accent" })).not.toBeInTheDocument();
+      expect(screen.getByText("Shade of Acme's color")).toBeInTheDocument();
     });
 
     it("preselects the client given by initialClientId and saves with it", async () => {
@@ -111,6 +154,16 @@ describe("ProjectSheet", () => {
       expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
     });
 
+    it("shows a shade error under the shade field", async () => {
+      mocked.projectsSave.mockRejectedValueOnce(fieldError("shade", "out of range"));
+      renderSheet();
+      await userEvent.type(screen.getByLabelText("Name"), "Website");
+      await save();
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("out of range");
+      expect(alert.parentElement).toContainElement(screen.getByRole("group", { name: "Shade" }));
+    });
+
     it("toasts an error without a field and keeps the sheet open", async () => {
       mocked.projectsSave.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
       const { onClose } = renderSheet();
@@ -133,13 +186,22 @@ describe("ProjectSheet", () => {
       expect(screen.getByLabelText("New client")).toBeInTheDocument();
     });
 
-    it("creates the client first and saves the project with its id", async () => {
+    it("offers the Accent group and the Shade field for the new client", async () => {
+      renderSheet({ initialClientId: "c-acme" });
+      expect(screen.queryByRole("group", { name: "Accent" })).not.toBeInTheDocument();
+      await chooseNewClient();
+      expect(screen.getByRole("group", { name: "Accent" })).toBeInTheDocument();
+      expect(screen.getByText("Shade")).toBeInTheDocument();
+    });
+
+    it("creates the client with the chosen accent first and saves the project with its id", async () => {
       const { onClose } = renderSheet();
       await userEvent.type(screen.getByLabelText("Name"), "Website");
       await chooseNewClient();
       await userEvent.type(screen.getByLabelText("New client"), "Beta");
+      await userEvent.click(screen.getByRole("button", { name: "Accent teal" }));
       await save();
-      expect(mocked.clientsSave).toHaveBeenCalledWith(null, "Beta");
+      expect(mocked.clientsSave).toHaveBeenCalledWith(null, { name: "Beta", color: "teal" });
       expect(mocked.projectsSave).toHaveBeenCalledWith(null, expect.objectContaining({ clientId: "client-new", name: "Website" }));
       expect(onClose).toHaveBeenCalled();
     });
@@ -172,14 +234,22 @@ describe("ProjectSheet", () => {
   });
 
   describe("editing", () => {
-    const existing = projectItem({ project: { id: "p1", name: "Website", clientId: "c-acme", color: "purple" }, client: acme });
+    const existing = projectItem({ project: { id: "p1", name: "Website", clientId: "c-acme", color: "purple", shade: 4 }, client: acme });
 
     it("prefills every field", () => {
       renderSheet({ id: "p1" }, { projects: [existing], clients: [acme] });
       expect(screen.getByRole("heading", { name: "Edit project" })).toBeInTheDocument();
       expect(screen.getByLabelText("Name")).toHaveValue("Website");
       expect(screen.getByLabelText("Client")).toHaveDisplayValue("Acme");
+      expect(screen.getByRole("button", { name: "Shade 5" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "Shade 1" })).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("prefills the accent of a project without a client", () => {
+      const loose = projectItem({ project: { id: "p4", color: "purple", shade: 1 } });
+      renderSheet({ id: "p4" }, { projects: [loose] });
       expect(screen.getByRole("button", { name: "Accent purple" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "Shade 2" })).toHaveAttribute("aria-pressed", "true");
     });
 
     it("saves under the project's id", async () => {
@@ -187,7 +257,14 @@ describe("ProjectSheet", () => {
       await userEvent.clear(screen.getByLabelText("Name"));
       await userEvent.type(screen.getByLabelText("Name"), "Site");
       await save();
-      expect(mocked.projectsSave).toHaveBeenCalledWith("p1", { clientId: "c-acme", name: "Site", color: "purple" });
+      expect(mocked.projectsSave).toHaveBeenCalledWith("p1", { clientId: "c-acme", name: "Site", color: "purple", shade: 4 });
+    });
+
+    it("saves a newly picked shade", async () => {
+      renderSheet({ id: "p1" }, { projects: [existing], clients: [acme] });
+      await userEvent.click(screen.getByRole("button", { name: "Shade 9" }));
+      await save();
+      expect(mocked.projectsSave).toHaveBeenCalledWith("p1", expect.objectContaining({ shade: 8 }));
     });
 
     it("archives the project and closes", async () => {

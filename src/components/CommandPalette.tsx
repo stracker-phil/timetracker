@@ -14,6 +14,7 @@ interface Item {
   keys: string;
   /** A project's color dot. */
   accent?: string;
+  shade?: number;
   run: () => void;
 }
 
@@ -43,6 +44,7 @@ function projectItems(query: string, projects: ProjectListItem[]): Item[] {
     title: `Project: ${projectLabel(p)}`,
     keys: "",
     accent: p.project.color,
+    shade: p.project.shade,
     run: () => useStore.getState().openDialog({ type: "project", id: p.project.id }),
   }));
 }
@@ -118,7 +120,7 @@ function PaletteSheet() {
             onMouseEnter={() => setIndex(i)}
             onClick={() => choose(i)}
           >
-            {it.accent && <AccentDot accent={it.accent} />}
+            {it.accent && <AccentDot accent={it.accent} shade={it.shade} />}
             <span className="grow-text">{it.title}</span>
             <KeyCap keys={it.keys} />
             {i === active && <CornerDownLeft size="0.923rem" className="muted" />}

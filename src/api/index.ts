@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityInput, ActivityRow, AppError, AppSeen, AwayRow, BackupWritten, Client, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityInput, ActivityRow, AppError, AppSeen, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -53,7 +53,7 @@ export const api = {
   activitySources: () => invoke<string[]>("activity_sources"),
   clientsList: (includeArchived: boolean) => invoke<Client[]>("clients_list", { includeArchived }),
   /** `id: null` creates; a taken or blank name rejects with `field.path` `name`. */
-  clientsSave: (id: string | null, name: string) => invoke<Client>("clients_save", { id, name }),
+  clientsSave: (id: string | null, input: ClientInput) => invoke<Client>("clients_save", { id, input }),
   /** Archiving a client archives its projects too; restoring restores the client only. */
   clientsArchive: (id: string, archived: boolean) => invoke<Client>("clients_archive", { id, archived }),
   projectsList: (includeArchived: boolean) => invoke<ProjectListItem[]>("projects_list", { includeArchived }),

@@ -6,9 +6,8 @@ use ts_rs::TS;
 
 use super::clients::{self, Client};
 use super::time::{Ms, now_ms};
-use super::{Db, invalid_field, name_in_use, new_id, required_name, same_name};
+use super::{Db, chosen_accent, invalid_field, name_in_use, new_id, required_name, same_name};
 use crate::error::{AppError, AppResult};
-use crate::store::settings::ACCENTS;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -17,8 +16,10 @@ pub struct Project {
     pub id: String,
     pub client_id: Option<String>,
     pub name: String,
-    /// An accent name (`ACCENTS`).
+    /// An accent name (`ACCENTS`): the client's color, or the project's own without a client.
     pub color: String,
+    /// The lightness step of `color`, `0..SHADES`, darkest first.
+    pub shade: u8,
     pub archived_at: Option<Ms>,
     pub created_at: Ms,
 }
@@ -29,40 +30,43 @@ pub struct Project {
 pub struct ProjectInput {
     pub client_id: Option<String>,
     pub name: String,
+    /// Ignored when the project has a client: it takes the client's color.
     pub color: String,
+    /// `None`: kept on an edit within the same client, else the next shade no sibling has.
+    pub shade: Option<u8>,
 }
 
-/// A new project's color when none is given.
+/// A client-less project's color when none is given.
 pub const DEFAULT_COLOR: &str = "orange";
+/// How many shades a color has.
+const SHADES: u8 = 9;
+/// The order new projects of a client get shades in: far apart first.
+const SHADE_ORDER: [u8; SHADES as usize] = [4, 1, 7, 2, 6, 0, 8, 3, 5];
 
-/// The input as stored: trimmed name, default color. `existing` is the project being edited; its
-/// client may stay archived.
-async fn validated(
-    db: &Db,
-    input: ProjectInput,
-    existing: Option<&Project>,
-) -> AppResult<ProjectInput> {
+struct Stored {
+    client_id: Option<String>,
+    name: String,
+    color: String,
+    shade: u8,
+}
+
+/// The input as stored. `existing` is the project being edited; its client may stay archived.
+async fn validated(db: &Db, input: ProjectInput, existing: Option<&Project>) -> AppResult<Stored> {
     let name = required_name(&input.name)?;
-    let color = match input.color.trim() {
-        "" => DEFAULT_COLOR.to_string(),
-        color => color.to_string(),
-    };
-    if !ACCENTS.contains(&color.as_str()) {
-        return Err(invalid_field("color", "must be one of the accent colors"));
-    }
     let client_changed = existing.is_none_or(|p| p.client_id != input.client_id);
-    if let Some(client_id) = input.client_id.as_deref()
-        && client_changed
-        && clients::get(db, client_id).await?.archived_at.is_some()
-    {
-        return Err(invalid_field("clientId", "is archived"));
-    }
+    let color = color_of(db, &input, client_changed).await?;
     let projects = list(db, true).await?;
-    let siblings = projects
+    let except = existing.map(|e| e.id.as_str());
+    let siblings: Vec<&Project> = projects
         .iter()
-        .filter(|p| p.client_id == input.client_id)
-        .map(|p| (p.id.as_str(), p.name.as_str()));
-    if name_in_use(siblings, &name, existing.map(|e| e.id.as_str())) {
+        .filter(|p| p.client_id == input.client_id && Some(p.id.as_str()) != except)
+        .collect();
+    let shade = shade_of(&input, existing.filter(|_| !client_changed), &siblings)?;
+    if name_in_use(
+        siblings.iter().map(|p| (p.id.as_str(), p.name.as_str())),
+        &name,
+        None,
+    ) {
         let owner = if input.client_id.is_some() {
             "of this client"
         } else {
@@ -73,11 +77,52 @@ async fn validated(
             format!("is used by another project {owner}"),
         ));
     }
-    Ok(ProjectInput {
+    Ok(Stored {
+        client_id: input.client_id,
         name,
         color,
-        ..input
+        shade,
     })
+}
+
+/// The client's color, or the input's for a project without a client.
+async fn color_of(db: &Db, input: &ProjectInput, client_changed: bool) -> AppResult<String> {
+    let Some(client_id) = input.client_id.as_deref() else {
+        return Ok(chosen_accent(&input.color)?.unwrap_or_else(|| DEFAULT_COLOR.to_string()));
+    };
+    let client = clients::get(db, client_id).await?;
+    if client_changed && client.archived_at.is_some() {
+        return Err(invalid_field("clientId", "is archived"));
+    }
+    Ok(client.color)
+}
+
+/// The input's shade; without one, `same_client`'s (the edited project when its client stays), else
+/// the next one no sibling has.
+fn shade_of(
+    input: &ProjectInput,
+    same_client: Option<&Project>,
+    siblings: &[&Project],
+) -> AppResult<u8> {
+    match (input.shade, same_client) {
+        (Some(shade), _) if shade < SHADES => Ok(shade),
+        (Some(_), _) => Err(invalid_field(
+            "shade",
+            format!("must be between 0 and {}", SHADES - 1),
+        )),
+        (None, Some(project)) => Ok(project.shade),
+        (None, None) => Ok(next_shade(siblings.iter().map(|p| p.shade))),
+    }
+}
+
+/// The first shade of `SHADE_ORDER` no sibling has; when all are taken, the order starts over.
+fn next_shade(taken: impl Iterator<Item = u8>) -> u8 {
+    let taken: Vec<u8> = taken.collect();
+    SHADE_ORDER
+        .iter()
+        .copied()
+        .find(|s| !taken.contains(s))
+        .unwrap_or(SHADE_ORDER[taken.len() % SHADE_ORDER.len()])
 }
 
 pub async fn list(db: &Db, include_archived: bool) -> AppResult<Vec<Project>> {
@@ -102,13 +147,14 @@ pub async fn get(db: &Db, id: &str) -> AppResult<Project> {
 pub async fn insert(db: &Db, input: ProjectInput) -> AppResult<Project> {
     let input = validated(db, input, None).await?;
     Ok(sqlx::query_as(
-        "INSERT INTO projects (id, client_id, name, color, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5) RETURNING *",
+        "INSERT INTO projects (id, client_id, name, color, shade, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING *",
     )
     .bind(new_id())
     .bind(input.client_id)
     .bind(input.name)
     .bind(input.color)
+    .bind(input.shade)
     .bind(now_ms())
     .fetch_one(db.pool())
     .await?)
@@ -121,12 +167,14 @@ pub async fn update(db: &Db, id: &str, input: ProjectInput) -> AppResult<Project
     found(
         id,
         sqlx::query_as(
-            "UPDATE projects SET client_id = ?2, name = ?3, color = ?4 WHERE id = ?1 RETURNING *",
+            "UPDATE projects SET client_id = ?2, name = ?3, color = ?4, shade = ?5
+             WHERE id = ?1 RETURNING *",
         )
         .bind(id)
         .bind(input.client_id)
         .bind(input.name)
         .bind(input.color)
+        .bind(input.shade)
         .fetch_optional(db.pool())
         .await?,
     )
@@ -284,13 +332,19 @@ fn found(id: &str, project: Option<Project>) -> AppResult<Project> {
 mod tests {
     use super::*;
     use crate::error::ErrorKind;
+    use crate::test_support::{client, client_with_color};
 
     fn input(name: &str) -> ProjectInput {
         ProjectInput {
             client_id: None,
             name: name.into(),
             color: "blue".into(),
+            shade: None,
         }
+    }
+
+    fn shades(projects: &[Project]) -> Vec<u8> {
+        projects.iter().map(|p| p.shade).collect()
     }
 
     fn names(projects: Vec<Project>) -> Vec<String> {
@@ -300,13 +354,14 @@ mod tests {
     #[tokio::test]
     async fn insert_stores_every_field() {
         let db = Db::open_memory().await.unwrap();
-        let client = clients::insert(&db, "Acme").await.unwrap();
+        let client = client_with_color(&db, "Acme", "teal").await;
         let project = insert(
             &db,
             ProjectInput {
                 client_id: Some(client.id.clone()),
                 name: "  Website ".into(),
-                color: "teal".into(),
+                color: "red".into(),
+                shade: Some(6),
             },
         )
         .await
@@ -315,6 +370,7 @@ mod tests {
         assert_eq!(project.client_id, Some(client.id));
         assert_eq!(project.name, "Website");
         assert_eq!(project.color, "teal");
+        assert_eq!(project.shade, 6);
         assert_eq!(project.archived_at, None);
         assert_eq!(get(&db, &project.id).await.unwrap(), project);
         assert_eq!(count(&db).await.unwrap(), 1);
@@ -425,7 +481,7 @@ mod tests {
     #[tokio::test]
     async fn an_archived_client_is_refused_on_create_and_when_switching_to_it() {
         let db = Db::open_memory().await.unwrap();
-        let old = clients::insert(&db, "Old").await.unwrap();
+        let old = client(&db, "Old").await;
         clients::set_archived(&db, &old.id, true).await.unwrap();
         let project = insert(&db, input("P")).await.unwrap();
 
@@ -456,7 +512,7 @@ mod tests {
     #[tokio::test]
     async fn a_project_can_be_edited_while_it_keeps_its_archived_client() {
         let db = Db::open_memory().await.unwrap();
-        let client = clients::insert(&db, "Acme").await.unwrap();
+        let client = client(&db, "Acme").await;
         let project = in_client(&db, &client.id, "P").await;
         clients::set_archived(&db, &client.id, true).await.unwrap();
         set_archived(&db, &project.id, false).await.unwrap();
@@ -480,8 +536,8 @@ mod tests {
     #[tokio::test]
     async fn names_are_unique_per_client_ignoring_case_and_archive_state() {
         let db = Db::open_memory().await.unwrap();
-        let acme = clients::insert(&db, "Acme").await.unwrap();
-        let globex = clients::insert(&db, "Globex").await.unwrap();
+        let acme = client(&db, "Acme").await;
+        let globex = client(&db, "Globex").await;
         insert(&db, input("Äpfel")).await.unwrap();
         let archived = in_client(&db, &acme.id, "Web").await;
         set_archived(&db, &archived.id, true).await.unwrap();
@@ -512,7 +568,7 @@ mod tests {
     #[tokio::test]
     async fn an_update_keeps_its_own_name_but_cannot_take_a_siblings_or_move_into_a_clash() {
         let db = Db::open_memory().await.unwrap();
-        let acme = clients::insert(&db, "Acme").await.unwrap();
+        let acme = client(&db, "Acme").await;
         let first = insert(&db, input("First")).await.unwrap();
         insert(&db, input("Second")).await.unwrap();
         in_client(&db, &acme.id, "First").await;
@@ -587,7 +643,7 @@ mod tests {
     #[tokio::test]
     async fn update_replaces_all_fields() {
         let db = Db::open_memory().await.unwrap();
-        let client = clients::insert(&db, "Acme").await.unwrap();
+        let client = client_with_color(&db, "Acme", "red").await;
         let project = insert(&db, input("Old")).await.unwrap();
 
         let updated = update(
@@ -596,7 +652,8 @@ mod tests {
             ProjectInput {
                 client_id: Some(client.id.clone()),
                 name: "New".into(),
-                color: "red".into(),
+                color: "blue".into(),
+                shade: Some(2),
             },
         )
         .await
@@ -608,6 +665,7 @@ mod tests {
                 client_id: Some(client.id),
                 name: "New".into(),
                 color: "red".into(),
+                shade: 2,
                 ..project
             }
         );
@@ -723,8 +781,8 @@ mod tests {
     #[tokio::test]
     async fn the_same_name_under_two_clients_is_ambiguous() {
         let db = Db::open_memory().await.unwrap();
-        let acme = clients::insert(&db, "Acme").await.unwrap();
-        let globex = clients::insert(&db, "Globex").await.unwrap();
+        let acme = client(&db, "Acme").await;
+        let globex = client(&db, "Globex").await;
         in_client(&db, &acme.id, "Web").await;
         in_client(&db, &globex.id, "Web").await;
 
@@ -759,7 +817,7 @@ mod tests {
         let db = Db::open_memory().await.unwrap();
         let now = 100 * DAY;
         let window_start = now - 30 * DAY;
-        let acme = clients::insert(&db, "Acme").await.unwrap();
+        let acme = client(&db, "Acme").await;
         let busy = in_client(&db, &acme.id, "Busy").await;
         let old = insert(&db, input("Old")).await.unwrap();
         let running = insert(&db, input("Running")).await.unwrap();
@@ -808,7 +866,7 @@ mod tests {
     #[tokio::test]
     async fn list_items_show_archived_projects_and_clients_only_when_asked() {
         let db = Db::open_memory().await.unwrap();
-        let client = clients::insert(&db, "Acme").await.unwrap();
+        let client = client(&db, "Acme").await;
         let project = in_client(&db, &client.id, "P").await;
         insert(&db, input("Active")).await.unwrap();
         let archived_client = clients::set_archived(&db, &client.id, true).await.unwrap();
@@ -822,6 +880,273 @@ mod tests {
         let archived = all.iter().find(|i| i.project.id == project.id).unwrap();
         assert_eq!(archived.client, Some(archived_client));
         assert!(archived.project.archived_at.is_some());
+    }
+
+    fn with_client(client: &Client, name: &str) -> ProjectInput {
+        ProjectInput {
+            client_id: Some(client.id.clone()),
+            ..input(name)
+        }
+    }
+
+    #[tokio::test]
+    async fn a_project_with_a_client_takes_the_clients_color_whatever_it_is_given() {
+        let db = Db::open_memory().await.unwrap();
+        let client = client_with_color(&db, "Acme", "teal").await;
+
+        for (i, color) in ["red", "", "chartreuse"].into_iter().enumerate() {
+            let created = insert(
+                &db,
+                ProjectInput {
+                    color: color.into(),
+                    ..with_client(&client, &format!("P{i}"))
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(created.color, "teal", "insert {color:?}");
+
+            let loose = insert(&db, input(&format!("Loose{i}"))).await.unwrap();
+            let moved = update(
+                &db,
+                &loose.id,
+                ProjectInput {
+                    color: color.into(),
+                    ..with_client(&client, &format!("Loose{i}"))
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(moved.color, "teal", "update {color:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_client_less_project_keeps_the_color_it_is_given() {
+        let db = Db::open_memory().await.unwrap();
+        let project = insert(
+            &db,
+            ProjectInput {
+                color: "purple".into(),
+                ..input("P")
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(project.color, "purple");
+
+        let updated = update(
+            &db,
+            &project.id,
+            ProjectInput {
+                color: "gold".into(),
+                ..input("P")
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated.color, "gold");
+    }
+
+    #[tokio::test]
+    async fn moving_a_project_out_of_its_client_gives_it_the_color_it_is_sent() {
+        let db = Db::open_memory().await.unwrap();
+        let client = client_with_color(&db, "Acme", "teal").await;
+        let project = insert(&db, with_client(&client, "P")).await.unwrap();
+
+        let updated = update(
+            &db,
+            &project.id,
+            ProjectInput {
+                color: "red".into(),
+                ..input("P")
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(updated.color, "red");
+        assert_eq!(updated.client_id, None);
+    }
+
+    #[tokio::test]
+    async fn a_given_shade_is_stored_and_one_past_the_last_is_refused() {
+        let db = Db::open_memory().await.unwrap();
+        for shade in 0..SHADES {
+            let project = insert(
+                &db,
+                ProjectInput {
+                    shade: Some(shade),
+                    ..input(&format!("P{shade}"))
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(project.shade, shade);
+        }
+
+        let existing = insert(&db, input("Existing")).await.unwrap();
+        for shade in [SHADES, 10, 255] {
+            let bad = ProjectInput {
+                shade: Some(shade),
+                ..input("Bad")
+            };
+            for err in [
+                insert(&db, bad.clone()).await.unwrap_err(),
+                update(&db, &existing.id, bad).await.unwrap_err(),
+            ] {
+                match err {
+                    AppError::InvalidField { field, message } => {
+                        assert_eq!(field, "shade", "{shade}");
+                        assert_eq!(message, "must be between 0 and 8", "{shade}");
+                    }
+                    other => panic!("expected an invalid field, got {other:?}"),
+                }
+            }
+        }
+        assert_eq!(count(&db).await.unwrap(), 10);
+    }
+
+    #[tokio::test]
+    async fn new_projects_of_a_client_get_the_shades_in_shade_order() {
+        let db = Db::open_memory().await.unwrap();
+        let client = client(&db, "Acme").await;
+        let mut created = Vec::new();
+        for i in 0..SHADES {
+            let input = with_client(&client, &format!("P{i}"));
+            created.push(insert(&db, input).await.unwrap());
+        }
+        assert_eq!(shades(&created), SHADE_ORDER);
+    }
+
+    #[tokio::test]
+    async fn when_all_shades_are_taken_the_order_starts_over_by_sibling_count() {
+        let db = Db::open_memory().await.unwrap();
+        let client = client(&db, "Acme").await;
+        let mut created = Vec::new();
+        for i in 0..SHADES as usize + 3 {
+            let input = with_client(&client, &format!("P{i}"));
+            created.push(insert(&db, input).await.unwrap());
+        }
+        assert_eq!(
+            shades(&created[SHADES as usize..]),
+            [SHADE_ORDER[0], SHADE_ORDER[1], SHADE_ORDER[2]]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_new_project_takes_the_first_free_shade_counting_archived_siblings() {
+        let db = Db::open_memory().await.unwrap();
+        let client = client(&db, "Acme").await;
+        let explicit = insert(
+            &db,
+            ProjectInput {
+                shade: Some(4),
+                ..with_client(&client, "First")
+            },
+        )
+        .await
+        .unwrap();
+        set_archived(&db, &explicit.id, true).await.unwrap();
+
+        let next = insert(&db, with_client(&client, "Second")).await.unwrap();
+        let after = insert(&db, with_client(&client, "Third")).await.unwrap();
+
+        assert_eq!((next.shade, after.shade), (1, 7));
+    }
+
+    #[tokio::test]
+    async fn shades_are_handed_out_per_client_and_client_less_projects_share_one_pool() {
+        let db = Db::open_memory().await.unwrap();
+        let acme = client(&db, "Acme").await;
+        let globex = client(&db, "Globex").await;
+
+        let a1 = insert(&db, with_client(&acme, "A1")).await.unwrap();
+        let a2 = insert(&db, with_client(&acme, "A2")).await.unwrap();
+        let g1 = insert(&db, with_client(&globex, "G1")).await.unwrap();
+        let l1 = insert(&db, input("L1")).await.unwrap();
+        let l2 = insert(&db, input("L2")).await.unwrap();
+
+        let [first, second] = [SHADE_ORDER[0], SHADE_ORDER[1]];
+        assert_eq!(
+            shades(&[a1, a2, g1, l1, l2]),
+            [first, second, first, first, second]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_update_without_a_shade_keeps_it_within_the_same_client() {
+        let db = Db::open_memory().await.unwrap();
+        let client = client(&db, "Acme").await;
+        insert(&db, with_client(&client, "First")).await.unwrap();
+        let second = insert(&db, with_client(&client, "Second")).await.unwrap();
+        let loose = insert(&db, input("Loose")).await.unwrap();
+
+        let renamed = update(&db, &second.id, with_client(&client, "Renamed"))
+            .await
+            .unwrap();
+        let loose_renamed = update(&db, &loose.id, input("Loose 2")).await.unwrap();
+
+        assert_eq!(renamed.shade, second.shade);
+        assert_eq!(loose_renamed.shade, loose.shade);
+    }
+
+    #[tokio::test]
+    async fn an_update_with_a_shade_replaces_it() {
+        let db = Db::open_memory().await.unwrap();
+        let project = insert(&db, input("P")).await.unwrap();
+
+        let updated = update(
+            &db,
+            &project.id,
+            ProjectInput {
+                shade: Some(0),
+                ..input("P")
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(updated.shade, 0);
+    }
+
+    #[tokio::test]
+    async fn changing_the_client_without_a_shade_takes_the_next_free_shade_of_the_new_client() {
+        let db = Db::open_memory().await.unwrap();
+        let acme = client(&db, "Acme").await;
+        let globex = client(&db, "Globex").await;
+        insert(&db, with_client(&globex, "G1")).await.unwrap();
+        insert(&db, with_client(&globex, "G2")).await.unwrap();
+        let mover = insert(&db, with_client(&acme, "Mover")).await.unwrap();
+        assert_eq!(mover.shade, SHADE_ORDER[0]);
+
+        let moved = update(&db, &mover.id, with_client(&globex, "Mover"))
+            .await
+            .unwrap();
+        assert_eq!(moved.shade, SHADE_ORDER[2]);
+
+        let loose = update(&db, &mover.id, input("Mover")).await.unwrap();
+        assert_eq!(loose.shade, SHADE_ORDER[0]);
+    }
+
+    #[tokio::test]
+    async fn changing_the_client_while_naming_a_shade_uses_that_shade() {
+        let db = Db::open_memory().await.unwrap();
+        let acme = client(&db, "Acme").await;
+        let project = insert(&db, input("P")).await.unwrap();
+
+        let moved = update(
+            &db,
+            &project.id,
+            ProjectInput {
+                shade: Some(8),
+                ..with_client(&acme, "P")
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(moved.shade, 8);
     }
 
     #[tokio::test]
@@ -840,6 +1165,7 @@ mod tests {
                     "clientId": null,
                     "name": "P",
                     "color": "blue",
+                    "shade": 4,
                     "archivedAt": null,
                     "createdAt": project.created_at,
                 },

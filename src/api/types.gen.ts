@@ -73,7 +73,17 @@ export type CaptureSettings = {
  */
 excludedApps: Array<string>, excludedDomains: Array<string>, captureUrls: boolean, captureDocuments: boolean, };
 
-export type Client = { id: string, name: string, archivedAt: number | null, createdAt: number, };
+export type Client = { id: string, name: string, 
+/**
+ * An accent name (`ACCENTS`); the hue of the client's projects.
+ */
+color: string, archivedAt: number | null, createdAt: number, };
+
+export type ClientInput = { name: string, 
+/**
+ * Blank: a new client takes the first accent no active client has; an existing one keeps its color.
+ */
+color: string, };
 
 /**
  * How long a gap may be before two activity blocks of the same kind stop merging.
@@ -128,11 +138,23 @@ export type PermissionStatus = "granted" | "denied" | "unknown";
 
 export type Project = { id: string, clientId: string | null, name: string, 
 /**
- * An accent name (`ACCENTS`).
+ * An accent name (`ACCENTS`): the client's color, or the project's own without a client.
  */
-color: string, archivedAt: number | null, createdAt: number, };
+color: string, 
+/**
+ * The lightness step of `color`, `0..SHADES`, darkest first.
+ */
+shade: number, archivedAt: number | null, createdAt: number, };
 
-export type ProjectInput = { clientId: string | null, name: string, color: string, };
+export type ProjectInput = { clientId: string | null, name: string, 
+/**
+ * Ignored when the project has a client: it takes the client's color.
+ */
+color: string, 
+/**
+ * `None`: kept on an edit within the same client, else the next shade no sibling has.
+ */
+shade: number | null, };
 
 /**
  * A project as the Projects screen lists it.

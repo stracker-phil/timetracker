@@ -85,12 +85,12 @@ mod tests {
     use super::*;
     use crate::db::away::{AwayReason, NewAway};
     use crate::db::recordings::NewRecording;
-    use crate::test_support::{activity, project};
+    use crate::test_support::{activity, client, project};
     use serde_json::{Value, json};
 
     async fn fixture() -> (Db, Value, i64, String) {
         let db = Db::open_memory().await.unwrap();
-        clients::insert(&db, "Acme").await.unwrap();
+        client(&db, "Acme").await;
         let p = project(&db, "Website").await;
         let act = activity(&db, 1_000, Some(2_000), "Code", "main.rs").await;
         away::insert(

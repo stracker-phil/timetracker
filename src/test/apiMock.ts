@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type Keybindings, type ProjectInput, type Settings, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type ProjectInput, type Settings, type UiState } from "../api/types";
 import { dataInfo, trackerStatus } from "./data";
 import { client, DEFAULT_TAGS, project } from "./projectFixtures";
 import { settings } from "./settings";
@@ -41,10 +41,10 @@ export function createApiMock(): typeof realApi {
     activityStop: vi.fn().mockResolvedValue(null),
     activitySources: vi.fn().mockResolvedValue([]),
     clientsList: vi.fn().mockResolvedValue([]),
-    clientsSave: vi.fn(async (id: string | null, name: string) => client({ id: id ?? "client-new", name })),
+    clientsSave: vi.fn(async (id: string | null, input: ClientInput) => client({ ...input, id: id ?? "client-new" })),
     clientsArchive: vi.fn(async (id: string, archived: boolean) => client({ id, archivedAt: archived ? 1 : null })),
     projectsList: vi.fn().mockResolvedValue([]),
-    projectsSave: vi.fn(async (id: string | null, input: ProjectInput) => project({ ...input, id: id ?? "project-new" })),
+    projectsSave: vi.fn(async (id: string | null, input: ProjectInput) => project({ ...input, shade: input.shade ?? 4, id: id ?? "project-new" })),
     projectsArchive: vi.fn(async (id: string, archived: boolean) => project({ id, archivedAt: archived ? 1 : null })),
     projectsRecent: vi.fn().mockResolvedValue([]),
     tagsList: vi.fn().mockResolvedValue(DEFAULT_TAGS),

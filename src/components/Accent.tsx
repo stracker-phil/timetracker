@@ -1,9 +1,9 @@
-import { ACCENTS } from "../api";
+import { ACCENTS, SHADES } from "../api";
 
 /** One swatch per accent hue; `value` is pressed (`null`: none is). */
-export function AccentSwatches({ value, small, onChange }: { value: string | null; small?: boolean; onChange: (accent: string) => void }) {
+export function AccentSwatches({ value, onChange }: { value: string | null; onChange: (accent: string) => void }) {
   return (
-    <div className={small ? "accent-swatches small" : "accent-swatches"} role="group" aria-label="Accent">
+    <div className="accent-swatches" role="group" aria-label="Accent">
       {ACCENTS.map((a) => (
         <button key={a} type="button" aria-label={`Accent ${a}`} aria-pressed={value === a} title={a} style={{ background: `var(--a-${a})` }} onClick={() => onChange(a)} />
       ))}
@@ -11,7 +11,28 @@ export function AccentSwatches({ value, small, onChange }: { value: string | nul
   );
 }
 
-/** A small filled circle in an accent hue, e.g. a project's color. */
-export function AccentDot({ accent }: { accent: string }) {
-  return <span className="accent-dot" aria-hidden="true" style={{ background: `var(--a-${accent})` }} />;
+/** OKLCH lightness of shade 0 and the step between shades: dark to light, all distinct on either background. */
+const DARKEST = 0.36;
+const STEP = 0.06;
+
+/** The accent's chroma and hue at the lightness of `shade`. */
+function shadeColor(accent: string, shade: number): string {
+  return `oklch(from var(--a-${accent}) ${(DARKEST + shade * STEP).toFixed(2)} c h)`;
+}
+
+/** One swatch per shade of `accent`; `value` is pressed (`null`: none is, the shade is picked on save). */
+export function ShadeSwatches({ accent, value, onChange }: { accent: string; value: number | null; onChange: (shade: number) => void }) {
+  return (
+    <div className="accent-swatches" role="group" aria-label="Shade">
+      {Array.from({ length: SHADES }, (_, shade) => (
+        <button key={shade} type="button" aria-label={`Shade ${shade + 1}`} aria-pressed={value === shade} style={{ background: shadeColor(accent, shade) }} onClick={() => onChange(shade)} />
+      ))}
+    </div>
+  );
+}
+
+/** A small filled circle in an accent hue, or in one of its shades, e.g. a project's color. */
+export function AccentDot({ accent, shade }: { accent: string; shade?: number }) {
+  const background = shade === undefined ? `var(--a-${accent})` : shadeColor(accent, shade);
+  return <span className="accent-dot" aria-hidden="true" style={{ background }} />;
 }

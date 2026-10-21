@@ -1,6 +1,7 @@
 //! Helpers shared by unit tests and integration tests through the `test-util` feature.
 
 use crate::db::activities::{self, ActivityRow, NewActivity};
+use crate::db::clients::{self, Client, ClientInput};
 use crate::db::projects::{self, Project, ProjectInput};
 use crate::db::recordings::{self, NewRecording, Recording};
 use crate::db::time::Ms;
@@ -54,6 +55,24 @@ pub async fn activity(db: &Db, start: Ms, end: Option<Ms>, app: &str, title: &st
         .expect("read activity")
 }
 
+/// A client with the next unused color.
+pub async fn client(db: &Db, name: &str) -> Client {
+    client_with_color(db, name, "").await
+}
+
+/// A client with the given accent color.
+pub async fn client_with_color(db: &Db, name: &str, color: &str) -> Client {
+    clients::insert(
+        db,
+        ClientInput {
+            name: name.into(),
+            color: color.into(),
+        },
+    )
+    .await
+    .expect("insert client")
+}
+
 /// A blue project without a client.
 pub async fn project(db: &Db, name: &str) -> Project {
     projects::insert(
@@ -62,6 +81,7 @@ pub async fn project(db: &Db, name: &str) -> Project {
             client_id: None,
             name: name.into(),
             color: "blue".into(),
+            shade: None,
         },
     )
     .await

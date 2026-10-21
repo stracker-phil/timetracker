@@ -4,7 +4,7 @@
 use tauri::{AppHandle, Manager};
 
 use crate::db::Db;
-use crate::db::clients::{self, Client};
+use crate::db::clients::{self, Client, ClientInput};
 use crate::db::projects::{self, Project, ProjectInput, ProjectListItem};
 use crate::db::tags::{self, Tag, TagListItem};
 use crate::db::time::now_ms;
@@ -29,11 +29,15 @@ pub async fn clients_list(app: AppHandle, include_archived: bool) -> AppResult<V
 
 /// `id: None` creates the client.
 #[tauri::command]
-pub async fn clients_save(app: AppHandle, id: Option<String>, name: String) -> AppResult<Client> {
+pub async fn clients_save(
+    app: AppHandle,
+    id: Option<String>,
+    input: ClientInput,
+) -> AppResult<Client> {
     let db = db(&app)?;
     let client = match id {
-        Some(id) => clients::update(&db, &id, &name).await?,
-        None => clients::insert(&db, &name).await?,
+        Some(id) => clients::update(&db, &id, input).await?,
+        None => clients::insert(&db, input).await?,
     };
     changed(&app, DataKind::Projects, client)
 }

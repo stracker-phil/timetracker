@@ -117,7 +117,7 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `request_permission` | – | `PermissionStatus` (after the system prompt, shown once per run) | `db` |
 | `open_privacy_settings` | – | – (System Settings → Privacy & Security → Accessibility) | `io` |
 | `clients_list` (`projects/mod.rs`) | `includeArchived: bool` | `Client[]` by name | `db` |
-| `clients_save` | `id: string \| null, name` | `Client`; `null` creates | `invalid_input` (`field`), `not_found`, `db` |
+| `clients_save` | `id: string \| null, input: ClientInput` | `Client`; `null` creates; a new color recolors its projects | `invalid_input` (`field`), `not_found`, `db` |
 | `clients_archive` | `id, archived: bool` | `Client`; archiving archives its projects | `not_found`, `db` |
 | `projects_list` | `includeArchived: bool` | `ProjectListItem[]` | `db` |
 | `projects_save` | `id: string \| null, input: ProjectInput` | `Project`; `null` creates | `invalid_input` (`field`), `not_found`, `db` |

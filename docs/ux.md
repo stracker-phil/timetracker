@@ -13,8 +13,9 @@ registries, CSS structure): [frontend.md](frontend.md#styling).
   entry.
 - Mono for data values (times, durations, titles, URLs, paths), sans for chrome and labels.
 - Hierarchy comes from opacity and space, not from size, color or boxes. No pills, badges or cards.
-- The accent marks interactive things only: keys, links, focus, selection. Project colors are the scheme's
-  nine accent hues (`--a-<name>`), so a project's `color` is an accent name.
+- The accent marks interactive things only: keys, links, focus, selection. A client's color is one of the
+  scheme's nine accent hues (`--a-<name>`); its projects are shades of it: the hue and chroma of the accent at
+  one of nine lightness steps (`shadeColor` in `components/Accent.tsx`, OKLCH relative colors).
 - Native and light: the tracker is never noticed; the window opens instantly.
 
 ## Surfaces
@@ -107,8 +108,9 @@ an 8px inset and a 5px radius; the active one is `--sel` with its label in the a
 
 Lists grouped under a heading (the clients on the Projects screen) use a section header band: `--band`
 background, small semibold `--o2` text, 5px radius. Archived rows are dimmed (55% opacity) and keep a
-Restore action. A project shows as its accent-hue dot (`AccentDot`) before the name; the color is chosen with
-nine round swatches (`AccentSwatches`), the chosen one ringed. Tags are plain mono text, joined with ` · `
+Restore action. A client band and a project row start with a color dot (`AccentDot`, a project's in its shade).
+Colors are chosen with nine round swatches (`AccentSwatches` for a hue, `ShadeSwatches` for a shade), the
+chosen one ringed. Tags are plain mono text, joined with ` · `
 where several show in one place; never pills.
 
 ## Inputs

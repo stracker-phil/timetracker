@@ -33,8 +33,8 @@ A backup is the JSON export below, or a copy of the folder while the app is not 
 | Table | Holds |
 |---|---|
 | `meta` | `key`/`value` facts: `schema` (`1`), `created_at`, `tags_seeded` |
-| `clients` | `id` (UUID), `name`, `archived_at`, `created_at` |
-| `projects` | `id` (UUID), `client_id`, `name`, `color` (an accent name), `archived_at`, `created_at` |
+| `clients` | `id` (UUID), `name`, `color` (an accent name), `archived_at`, `created_at` |
+| `projects` | `id` (UUID), `client_id`, `name`, `color` (the client's accent, or its own without a client), `shade` (`0..SHADES`), `archived_at`, `created_at` |
 | `tags` | `id` (UUID), `name` (unique, ignoring case), `created_at` |
 | `activities` | one span in one app and window: `id` (AUTOINCREMENT), `source` (`tracker` or `external:<name>`), `start`, `end` (NULL while open), `app`, `bundle_id`, `title`, `url`, `path`, `private`; indexed on `start` and `(source, start)` |
 | `away_spans` | no input, sleep, lock or pause: `id` (AUTOINCREMENT), `start`, `end`, `reason` (`idle`, `sleep`, `lock`, `paused`); indexed on `start` |
@@ -130,7 +130,9 @@ the field:
 | Field | Rule |
 |---|---|
 | `name` | trimmed, not blank, at most 100 characters (`db::MAX_NAME_CHARS`); unique ignoring case (Unicode, not only ASCII): clients among all clients, projects among the projects of the same client (or among client-less ones), tags among all tags. Archived rows count |
-| `color` | one of `ACCENTS`; blank becomes `orange` (`projects::DEFAULT_COLOR`) |
+| `color` (client) | one of `ACCENTS`; blank: a new client takes the first accent no active client has, an edit keeps its color. A new color moves the client's projects to it |
+| `color` (project) | a project of a client takes the client's color, whatever the input; without a client one of `ACCENTS`, blank becomes `orange` (`projects::DEFAULT_COLOR`) |
+| `shade` | `0..SHADES` (9 lightness steps of the color); `null` keeps the shade on an edit within the same client, else takes the first of `SHADE_ORDER` no sibling has (projects of the same client, or all client-less ones) |
 | `clientId` | must exist (`not_found`) and not be archived, checked on create and when the client changes, so a project of an archived client stays editable |
 
 - Nothing is deleted except tags: recordings reference projects, so projects and clients are archived.
@@ -174,6 +176,8 @@ Embedded at compile time with `sqlx::migrate!("./migrations")` and run by `Db::o
 the crate when the folder changes. Migrations are forward-only: add `NNNN_<name>.sql` with the next number and
 never edit a file that has shipped. A downgrade restores a backup. `0002_drop_billing.sql` removed the billing
 columns (`projects.billable`, `projects.hourly_rate`, `recordings.billable`): TimeTracker tracks time only.
+`0003_client_colors.sql` gave clients the color most of their projects had and spread shades over each
+client's projects.
 
 ## Tests
 

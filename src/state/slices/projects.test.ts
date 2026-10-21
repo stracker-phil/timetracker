@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, type ProjectInput } from "../../api";
+import { api, type ClientInput, type ProjectInput } from "../../api";
 import { client, project, projectItem, tag } from "../../test/projectFixtures";
 import { resetStore, useStore } from "../store";
 import { groupProjects, projectLabel } from "./projects";
@@ -10,7 +10,8 @@ import { groupProjects, projectLabel } from "./projects";
 const mocked = vi.mocked(api, true);
 const toastMessages = () => useStore.getState().toasts.map((t) => t.message);
 const fieldError = { kind: "invalid_input", message: "Invalid name", code: null, field: { path: "name", message: "already exists" } };
-const input: ProjectInput = { clientId: null, name: "Website", color: "blue" };
+const input: ProjectInput = { clientId: null, name: "Website", color: "blue", shade: null };
+const clientInput: ClientInput = { name: "Acme", color: "teal" };
 
 describe("projects slice", () => {
   beforeEach(() => {
@@ -53,7 +54,7 @@ describe("projects slice", () => {
 
     it.each([
       ["saveProject", () => useStore.getState().saveProject(null, input)],
-      ["saveClient", () => useStore.getState().saveClient(null, "Acme")],
+      ["saveClient", () => useStore.getState().saveClient(null, clientInput)],
       ["saveTag", () => useStore.getState().saveTag(null, "billing")],
       ["deleteTag", () => useStore.getState().deleteTag("tag-1")],
       ["archiveProject", () => useStore.getState().archiveProject("p1", true)],
@@ -62,6 +63,11 @@ describe("projects slice", () => {
       mocked.projectsList.mockResolvedValueOnce([projectItem({ project: { name: "After" } })]);
       await run();
       await vi.waitFor(() => expect(useStore.getState().projects.map((p) => p.project.name)).toEqual(["After"]));
+    });
+
+    it("saveClient sends the id and input", async () => {
+      await useStore.getState().saveClient("c9", clientInput);
+      expect(mocked.clientsSave).toHaveBeenCalledWith("c9", clientInput);
     });
 
     it("archiveProject passes the archived flag on", async () => {
@@ -77,7 +83,7 @@ describe("projects slice", () => {
 
     it("rejects without a toast when the error names a field", async () => {
       mocked.clientsSave.mockRejectedValueOnce(fieldError);
-      await expect(useStore.getState().saveClient(null, "Acme")).rejects.toMatchObject({ field: { path: "name" } });
+      await expect(useStore.getState().saveClient(null, clientInput)).rejects.toMatchObject({ field: { path: "name" } });
       expect(toastMessages()).toEqual([]);
     });
 

@@ -19,7 +19,7 @@ function projectRow(item: ProjectListItem, keyPrefix: string): PickerRow<Choice>
     value: { kind: "project", id: item.project.id },
     content: (
       <>
-        <AccentDot accent={item.project.color} />
+        <AccentDot accent={item.project.color} shade={item.project.shade} />
         <span className="grow-text">{item.project.name}</span>
         {item.client && <span className="o3">{item.client.name}</span>}
       </>
@@ -89,7 +89,7 @@ export function ProjectPicker({ value, onChange, autoFocus }: Props) {
 
   return (
     <div className="picker" ref={fieldRef}>
-      <InsetField icon={chosen && !open ? <AccentDot accent={chosen.project.color} /> : <Search size="1.077rem" />}>
+      <InsetField icon={chosen && !open ? <AccentDot accent={chosen.project.color} shade={chosen.project.shade} /> : <Search size="1.077rem" />}>
         <input
           aria-label="Project"
           role="combobox"

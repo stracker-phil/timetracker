@@ -140,6 +140,15 @@ impl DataStore {
 
 pub const MAX_NAME_CHARS: usize = 100;
 
+/// `None` for a blank color, else the accent it names; anything else is an error on `color`.
+fn chosen_accent(color: &str) -> AppResult<Option<String>> {
+    match color.trim() {
+        "" => Ok(None),
+        color if crate::store::settings::is_accent(color) => Ok(Some(color.to_string())),
+        _ => Err(invalid_field("color", "must be one of the accent colors")),
+    }
+}
+
 /// `field` is the input's key as the page sends it (`clientId`).
 fn invalid_field(field: &str, message: impl Into<String>) -> AppError {
     AppError::InvalidField {
@@ -259,6 +268,69 @@ mod tests {
         ] {
             assert!(tables.iter().any(|t| t == table), "{table} in {tables:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn the_client_colors_migration_derives_colors_and_shades_from_existing_projects() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .min_connections(1)
+            .idle_timeout(None)
+            .max_lifetime(None)
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .in_memory(true)
+                    .foreign_keys(true),
+            )
+            .await
+            .unwrap();
+        for sql in [
+            include_str!("../../migrations/0001_init.sql"),
+            include_str!("../../migrations/0002_drop_billing.sql"),
+            "INSERT INTO clients (id, name, created_at) VALUES
+               ('a', 'A', 1), ('b', 'B', 2), ('tie', 'Tie', 3);
+             INSERT INTO projects (id, client_id, name, color, created_at) VALUES
+               ('a-late', 'a', 'Late', 'teal', 30),
+               ('a-first', 'a', 'First', 'teal', 10),
+               ('a-mid', 'a', 'Mid', 'red', 20),
+               ('tie-1', 'tie', 'One', 'teal', 40),
+               ('tie-2', 'tie', 'Two', 'red', 50),
+               ('loose', NULL, 'Loose', 'purple', 60);",
+            include_str!("../../migrations/0003_client_colors.sql"),
+        ] {
+            sqlx::raw_sql(sql).execute(&pool).await.unwrap();
+        }
+
+        let clients: Vec<(String, String)> =
+            sqlx::query_as("SELECT id, color FROM clients ORDER BY id")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            clients,
+            [
+                ("a".to_string(), "teal".to_string()),
+                ("b".to_string(), "blue".to_string()),
+                ("tie".to_string(), "red".to_string()),
+            ]
+        );
+
+        let projects: Vec<(String, String, i64)> =
+            sqlx::query_as("SELECT id, color, shade FROM projects ORDER BY created_at")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            projects,
+            [
+                ("a-first".to_string(), "teal".to_string(), 4),
+                ("a-mid".to_string(), "teal".to_string(), 1),
+                ("a-late".to_string(), "teal".to_string(), 7),
+                ("tie-1".to_string(), "red".to_string(), 4),
+                ("tie-2".to_string(), "red".to_string(), 1),
+                ("loose".to_string(), "purple".to_string(), 4),
+            ]
+        );
     }
 
     #[tokio::test]

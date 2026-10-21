@@ -16,7 +16,7 @@ function ProjectRow({ item, onMenu }: { item: ProjectListItem; onMenu: (e: Mouse
   return (
     <li className={archived ? "row project-row dimmed" : "row project-row"} onContextMenu={(e) => onMenu(e, item)}>
       <button type="button" className="project-open" onClick={open}>
-        <AccentDot accent={project.color} />
+        <AccentDot accent={project.color} shade={project.shade} />
         <span className="grow-text">{project.name}</span>
       </button>
       <span className="project-meta mono o2">
@@ -46,9 +46,12 @@ function ClientBand({ client }: { client: Client | null }) {
   return (
     <h2 className={archived ? "band dimmed" : "band"}>
       {client ? (
-        <button type="button" className="band-button" title="Edit client" onClick={() => useStore.getState().openDialog({ type: "client", id: client.id })}>
-          {client.name}
-        </button>
+        <>
+          <AccentDot accent={client.color} />
+          <button type="button" className="band-button" title="Edit client" onClick={() => useStore.getState().openDialog({ type: "client", id: client.id })}>
+            {client.name}
+          </button>
+        </>
       ) : (
         "No client"
       )}

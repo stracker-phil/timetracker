@@ -25,6 +25,9 @@ export const LOG_LEVELS = (Object.keys(LOG_LEVEL_RANK) as LogLevel[]).sort((a, b
 /** Accent hues, defined by every scheme. Rust's `ACCENTS` is the source of truth; keep these equal. */
 export const ACCENTS = ["orange", "gold", "red", "magenta", "purple", "indigo", "blue", "teal", "graphite"] as const;
 
+/** How many shades a project color has; Rust's `projects::SHADES`. */
+export const SHADES = 9;
+
 /** Built-in color schemes (`src/styles/schemes/<id>.css`). Ids match Rust's `SCHEMES`. */
 export const SCHEMES = [
   { id: "ayu-mirage", label: "Ayu Mirage", dark: true },

@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { toAppError, type Project, type ProjectInput } from "../../api";
 import { useStore } from "../../state/store";
-import { AccentSwatches } from "../Accent";
+import { AccentSwatches, ShadeSwatches } from "../Accent";
 import { FormField } from "../Field";
 import { Modal } from "../Modal";
 
@@ -26,8 +26,8 @@ export function ProjectSheet({ id, initialName = "", initialClientId, onClose, o
   const { saveProject, archiveProject, saveClient } = useStore.getState();
   const [input, setInput] = useState<ProjectInput>(() =>
     existing
-      ? { clientId: existing.clientId, name: existing.name, color: existing.color }
-      : { clientId: initialClientId ?? null, name: initialName, color: "orange" },
+      ? { clientId: existing.clientId, name: existing.name, color: existing.color, shade: existing.shade }
+      : { clientId: initialClientId ?? null, name: initialName, color: "orange", shade: null },
   );
   const [newClient, setNewClient] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -36,6 +36,9 @@ export function ProjectSheet({ id, initialName = "", initialClientId, onClose, o
   // Archived clients only show when the project already belongs to one.
   const choices = clients.filter((c) => c.archivedAt === null || c.id === input.clientId);
   const patch = (p: Partial<ProjectInput>) => setInput((current) => ({ ...current, ...p }));
+  // A client's color wins; a project without a client, or with a new one, picks its own.
+  const client = newClient === null ? clients.find((c) => c.id === input.clientId) : undefined;
+  const accent = client?.color ?? input.color;
 
   /** The field errors of a failed save; other errors were toasted by the store. */
   const fieldError = (e: unknown, rename: (path: string) => string = (path) => path) => {
@@ -50,7 +53,7 @@ export function ProjectSheet({ id, initialName = "", initialClientId, onClose, o
       let clientId = input.clientId;
       if (newClient !== null) {
         try {
-          clientId = (await saveClient(null, newClient)).id;
+          clientId = (await saveClient(null, { name: newClient, color: input.color })).id;
         } catch (e) {
           return fieldError(e, () => "clientName");
         }
@@ -109,8 +112,13 @@ export function ProjectSheet({ id, initialName = "", initialClientId, onClose, o
             <input id={ids.newClient} className="input" autoFocus value={newClient} onChange={(e) => setNewClient(e.target.value)} />
           </FormField>
         )}
-        <FormField label="Color" error={errors.color}>
-          <AccentSwatches value={input.color} onChange={(color) => patch({ color })} />
+        {!client && (
+          <FormField label="Color" error={errors.color}>
+            <AccentSwatches value={input.color} onChange={(color) => patch({ color })} />
+          </FormField>
+        )}
+        <FormField label={client ? `Shade of ${client.name}'s color` : "Shade"} error={errors.shade}>
+          <ShadeSwatches accent={accent} value={input.shade} onChange={(shade) => patch({ shade })} />
         </FormField>
         <div className="actions">
           {existing && (

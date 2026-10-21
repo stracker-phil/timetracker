@@ -1,4 +1,4 @@
-import { api, toAppError, type Client, type Project, type ProjectInput, type ProjectListItem, type Tag, type TagListItem } from "../../api";
+import { api, toAppError, type Client, type ClientInput, type Project, type ProjectInput, type ProjectListItem, type Tag, type TagListItem } from "../../api";
 import { fuzzyFilter } from "../../lib/fuzzy";
 import { fail } from "../requests";
 import type { Slice } from "../store";
@@ -19,7 +19,7 @@ export interface ProjectsSlice {
   /** `id: null` creates. Rejects on failure: a field error for the form to show, anything else after a toast. */
   saveProject: (id: string | null, input: ProjectInput) => Promise<Project>;
   archiveProject: (id: string, archived: boolean) => Promise<void>;
-  saveClient: (id: string | null, name: string) => Promise<Client>;
+  saveClient: (id: string | null, input: ClientInput) => Promise<Client>;
   archiveClient: (id: string, archived: boolean) => Promise<void>;
   /** An existing name returns that tag. */
   saveTag: (id: string | null, name: string) => Promise<Tag>;
@@ -58,7 +58,7 @@ export const projectsSlice: Slice<ProjectsSlice> = {
 
       saveProject: (id, input) => write("Could not save the project", () => api.projectsSave(id, input)),
       archiveProject: (id, archived) => write(archived ? "Could not archive the project" : "Could not restore the project", () => api.projectsArchive(id, archived)).then(() => {}),
-      saveClient: (id, name) => write("Could not save the client", () => api.clientsSave(id, name)),
+      saveClient: (id, input) => write("Could not save the client", () => api.clientsSave(id, input)),
       archiveClient: (id, archived) => write(archived ? "Could not archive the client" : "Could not restore the client", () => api.clientsArchive(id, archived)).then(() => {}),
       saveTag: (id, name) => write("Could not save the tag", () => api.tagsSave(id, name)),
       deleteTag: (id) => write("Could not delete the tag", () => api.tagsDelete(id)),

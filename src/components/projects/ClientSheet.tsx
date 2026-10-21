@@ -1,23 +1,27 @@
 import { useId, useState } from "react";
 import { toAppError } from "../../api";
 import { useStore } from "../../state/store";
+import { AccentSwatches } from "../Accent";
 import { Modal } from "../Modal";
 import { FormField } from "../Field";
 
-/** Create (no `id`) or rename a client; Archive also archives its projects. */
+/** Create (no `id`) or edit a client; its color is its projects' hue. Archive also archives its projects. */
 export function ClientSheet({ id, onClose }: { id?: string; onClose: () => void }) {
   const existing = useStore((s) => s.clients.find((c) => c.id === id));
   const { saveClient, archiveClient } = useStore.getState();
   const [name, setName] = useState(existing?.name ?? "");
-  const [error, setError] = useState<string>();
+  // Blank: Rust picks a color no other client has.
+  const [color, setColor] = useState(existing?.color ?? "");
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const nameId = useId();
 
   async function save() {
     try {
-      await saveClient(id ?? null, name);
+      await saveClient(id ?? null, { name, color });
       onClose();
     } catch (e) {
-      setError(toAppError(e).field?.message);
+      const field = toAppError(e).field;
+      if (field) setErrors({ [field.path]: field.message });
     }
   }
 
@@ -31,8 +35,11 @@ export function ClientSheet({ id, onClose }: { id?: string; onClose: () => void 
         }}
       >
         <h2 id="client-sheet-title">{existing ? "Edit client" : "New client"}</h2>
-        <FormField label="Name" htmlFor={nameId} error={error}>
+        <FormField label="Name" htmlFor={nameId} error={errors.name}>
           <input id={nameId} className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+        </FormField>
+        <FormField label="Color" error={errors.color}>
+          <AccentSwatches value={color || null} onChange={setColor} />
         </FormField>
         <div className="actions">
           {existing && (

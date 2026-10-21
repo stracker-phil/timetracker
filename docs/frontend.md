@@ -119,15 +119,19 @@ Tracker components:
 ### Projects screen
 
 `components/projects/`: `ProjectsPage` (the `projects` view): a header (New project, New client, Show
-archived), a band per client by name (every client, "No projects" when empty; clicking the name edits the
-client; a `+` creates a project for that client, except on archived clients), client-less projects under "No client" last, then `TagsSection`. A project row: color dot and name
-(click edits), `last used 2 d ago` and `12:30 h / 30 d` in mono `--o2`; archived rows (with Show archived) are dimmed with Restore. The row's context menu: Edit…, Archive or Restore,
-Copy id.
+archived), a band per client by name with its color dot (every client, "No projects" when empty; clicking
+the name edits the client; a `+` creates a project for that client, except on archived clients),
+client-less projects under "No client" last, then `TagsSection`. A project row: color dot and name (click
+edits), `last used 2 d ago` and `12:30 h / 30 d` in mono `--o2`; archived rows (with Show archived) are
+dimmed with Restore. The row's context menu: Edit…, Archive or Restore, Copy id.
 
-- `ProjectSheet` (`dialog: project`, with an optional `clientId` that preselects the client): name, client select with "New client…" (an inline name; Save creates
-  the client first), `AccentSwatches`, Archive
-  or Restore for an existing project. `FormField` (`components/Field.tsx`) shows `AppError.field` errors under their field.
-- `ClientSheet` (`dialog: client`): name; Archive (also archives its projects) or Restore.
+- `ProjectSheet` (`dialog: project`, an optional `clientId` preselects the client): name, client select
+  with "New client…" (an inline name; Save creates the client first), the color (`AccentSwatches`, only
+  without a client or with a new one) and the shade (`ShadeSwatches`; none pressed lets Rust pick), Archive
+  or Restore for an existing project. `FormField` (`components/Field.tsx`) shows `AppError.field` errors
+  under their field.
+- `ClientSheet` (`dialog: client`): name, color (none pressed on a new client lets Rust pick); Archive
+  (also archives its projects) or Restore.
 - `TagsSection`: one row per tag (name in mono, the number of recordings, delete; a confirm first when
   recordings carry it) and a New tag field (Enter).
 
