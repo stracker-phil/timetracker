@@ -13,7 +13,7 @@ export function Group({ title, children }: { title?: string; children: ReactNode
 }
 
 /** One card row: label and description on the left, the control on the right (or below when `stacked`). */
-export function Row({ label, description, htmlFor, stacked, children }: { label: string; description?: ReactNode; htmlFor?: string; stacked?: boolean; children: ReactNode }) {
+export function Row({ label, description, htmlFor, stacked, children }: { label: string; description?: ReactNode; htmlFor?: string; stacked?: boolean; children?: ReactNode }) {
   return (
     <div className={`settings-row${stacked ? " stacked" : ""}`}>
       <div className="settings-row-text">

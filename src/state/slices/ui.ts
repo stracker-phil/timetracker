@@ -1,4 +1,5 @@
 import { api } from "../../api";
+import { formatDay } from "../../lib/format";
 import type { Slice } from "../store";
 
 export interface Toast {
@@ -25,12 +26,16 @@ export interface UiSlice {
   /** Text the palette opens with, e.g. `>` for commands. */
   paletteSeed: string;
   view: View;
+  /** The day the Day view shows (`YYYY-MM-DD`). */
+  day: string;
   toast: (kind: Toast["kind"], message: string) => void;
   dismissToast: (id: number) => void;
   openDialog: (dialog: Dialog) => void;
   closeDialog: () => void;
   setPaletteOpen: (open: boolean, seed?: string) => void;
   setView: (view: View) => void;
+  /** Shows `day` in the Day view. */
+  goToDay: (day: string) => void;
 }
 
 let nextToastId = 1;
@@ -42,6 +47,7 @@ export const uiSlice: Slice<UiSlice> = {
     paletteOpen: false,
     paletteSeed: "",
     view: "day",
+    day: formatDay(Date.now()),
 
     toast(kind, message) {
       if (kind === "error") void api.logError(message).catch(() => {});
@@ -72,6 +78,10 @@ export const uiSlice: Slice<UiSlice> = {
 
     setView(view) {
       set({ view });
+    },
+
+    goToDay(day) {
+      set({ view: "day", day });
     },
   }),
 };

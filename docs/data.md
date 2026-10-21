@@ -56,6 +56,32 @@ deleted id is never reused and an undo can restore rows by id.
   feature enforces this; the repository only offers the `overlapping` query.
 - A note is one line ([ADR 0018](adr/0018-one-line-notes-tags-copyable-reports.md)).
 
+### External activity
+
+Other apps write activity through the CLI, `timetracker://` links or the `activity_*` commands
+([ADR 0009](adr/0009-external-activity-with-a-source.md), [backend.md](backend.md#cli-and-single-instance-handoff)).
+`activity/external.rs` holds the rules; `activity/mod.rs` adds the `data_changed` events.
+
+- **Source.** `ActivityInput.source` is a name of 1 to 32 lowercase letters, digits, `-` and `_`, starting
+  with a letter or digit; it is stored as `external:<name>`, and `tracker` is refused. Each source is its own
+  lane in the Day view.
+- **Fields** (`validate`, `invalid_input` naming the field): `title` is trimmed and not blank, at most 500
+  characters; `app` (default: the source name) at most 500; `url` and `path` at most 2,000, blank ones stored
+  as `NULL`. Rows get `bundle_id = NULL` and `private = 0`.
+- **Times.** `end > start`, at most 24 h apart; `start` at most 60 s ahead of now (another app's clock may
+  run ahead). An `end` in the future is allowed, so a planned meeting can be written ahead.
+- **Overlap.** A span must not share time with a row of the **same source** (`overlap`, the message lists
+  the row ids, `details.ids` holds them); touching edges are fine. Other sources and the tracker may overlap.
+- **`add_many`** writes closed spans (each needs `end`); it validates every item, then inserts all in one
+  transaction, items checked in order against the rows before them: one bad item fails the batch. In a batch
+  the error names the item (`items[2].title`).
+- **`start`** opens a span (`end = NULL`) and closes the source's open span at the new start, refusing a
+  start before that span's start: at most one span per source is open. **`stop`** closes it at `end` (default
+  now, at most 24 h ahead) and returns `None` when nothing is open; a span may stay open for longer than
+  24 h, so `stop` does not limit its length.
+- The tracker never touches external rows; startup recovery leaves them open
+  ([capture.md](capture.md#startup-and-the-loop)).
+
 ## Time
 
 `db/time.rs` ([ADR 0011](adr/0011-utc-milliseconds-local-days.md)):
@@ -85,7 +111,7 @@ there are no `query!` macros (they need a database at compile time).
 | `clients.rs` | `list(include_archived)`, `get`, `insert(name)`, `update(id, name)`, `set_archived(id, bool)` | names trimmed, not blank; lists by name ignoring case; archiving keeps the first `archived_at` |
 | `projects.rs` | `list`, `get`, `insert(ProjectInput)`, `update(id, ProjectInput)`, `set_archived`, `find_by_name_prefix(prefix)`, `count` | `color` is one of `ACCENTS`; `hourly_rate` finite and ≥ 0; the client must exist (`not_found`); the prefix search ignores case (Unicode) and skips archived projects |
 | `tags.rs` | `list`, `insert(name)`, `rename(id, name)`, `delete(id)`, `seed_defaults` | names unique ignoring case: `insert` of a taken name returns the existing tag, `rename` to it is `invalid_input`; `DEFAULT_TAGS` are seeded once per data store (`meta.tags_seeded`), so deleting them all does not bring them back |
-| `activities.rs` | `apps_seen(from, now)`, `list_clipped(from, to, now)`, `close_stale(source, duration)`, `replace_open(id, NewActivity)`, `insert(NewActivity) -> id`, `close_open(source, end)`, `open_by_source`, `overlapping(source, start, end)`, `list_for_range(from, to)`, `list_sources(from, to)`, `delete_range(from, to)`, `count`, `first_start` | ranges are `[from, to)` and include open spans; touching edges do not overlap; results are not clipped; `close_open` never sets an end before the start |
+| `activities.rs` | `apps_seen(from, now)`, `list_clipped(from, to, now)`, `close_stale(source, duration)`, `replace_open(id, NewActivity)`, `insert(NewActivity) -> id`, `close_open(source, end)`, `open_by_source`, `overlapping(source, start, end)`, `sources_with_prefix(prefix)` (latest first); `insert_on`, `get_on`, `close_open_on`, `open_by_source_on`, `overlapping_on` take a connection so a caller can combine them in a transaction; `list_for_range(from, to)`, `list_sources(from, to)`, `delete_range(from, to)`, `count`, `first_start` | ranges are `[from, to)` and include open spans; touching edges do not overlap; results are not clipped; `close_open` never sets an end before the start |
 | `away.rs` | `insert(NewAway) -> id`, `close_open(end)`, `open`, `list_for_range`, `delete_range` | as for activities; `AwayReason` is stored and sent as `idle`, `sleep`, `lock`, `paused` |
 | `recordings.rs` | `insert(NewRecording)`, `get`, `update(id, RecordingPatch)`, `delete(id) -> Recording`, `list_for_range`, `running`, `overlapping(start, end, except)`, `count` | one transaction per write, tags included; `tag_ids` ordered by tag name; the project and every tag must exist (`not_found`); a note with a line break is `invalid_input`, notes are stored trimmed; `end` must be after `start`; `delete` returns the row so it can be restored under its id |
 | `backup.rs` | `export(db) -> Backup`, `write_to(db, path)` | every table, read in one transaction |

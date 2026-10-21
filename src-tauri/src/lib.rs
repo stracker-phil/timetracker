@@ -1,8 +1,9 @@
+pub mod activity;
 pub mod capture;
 pub mod cli;
 pub mod commands;
 pub mod db;
-mod deep_link;
+pub mod deep_link;
 #[cfg(debug_assertions)]
 mod dev;
 pub mod error;
@@ -30,7 +31,7 @@ use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
-use crate::cli::CliOutcome;
+use crate::cli::{CliError, CliOutcome};
 use crate::ipc::{Forward, IpcMessage};
 use crate::state::AppState;
 use crate::store::json_file::create_private_dir;
@@ -80,6 +81,70 @@ fn forward(socket: &Path, message: &IpcMessage, exit_code: i32) {
         Ok(Forward::Rejected) => fail("The running TimeTracker did not accept the request"),
         Err(e) => fail(&format!("Could not reach the running TimeTracker: {e}")),
     }
+}
+
+/// Sends a subcommand's message to the running app and prints its answer; returns the exit code, or
+/// `None` when nothing listens. A batch sent in parts stops at the first part that fails.
+fn ask_running_instance(socket: &Path, message: &IpcMessage, json: bool) -> Option<i32> {
+    let mut results = Vec::new();
+    for request in cli::split(message.clone()).unwrap_or_else(|e| fail(&e)) {
+        let reply = match ipc::request(socket, request) {
+            Ok(Some(reply)) => reply,
+            Ok(None) if results.is_empty() => return None,
+            Ok(None) => fail("TimeTracker quit before the batch was written"),
+            Err(e) => fail(&format!("Could not reach the running TimeTracker: {e}")),
+        };
+        match reply.into_result() {
+            Ok(result) => results.push(result),
+            Err(error) => {
+                print_error(&error, json, &results);
+                return Some(1);
+            }
+        }
+    }
+    let result = match results.len() {
+        1 => results.remove(0),
+        _ => merge_ids(&results),
+    };
+    print_result(message, &result, json);
+    Some(0)
+}
+
+/// `written` holds the replies of the parts of a batch that went through before the error.
+fn print_error(error: &ipc::IpcError, json: bool, written: &[serde_json::Value]) {
+    if json {
+        println!("{}", serde_json::to_value(error).unwrap_or_default());
+    } else {
+        eprintln!("{}", error.message);
+    }
+    if !written.is_empty() {
+        eprintln!("The parts before it were written: {}", merge_ids(written));
+    }
+}
+
+fn print_result(message: &IpcMessage, result: &serde_json::Value, json: bool) {
+    if json {
+        if !result.is_null() {
+            println!("{result}");
+        }
+        return;
+    }
+    match cli::reply::render(message, result, db::time::now_ms(), &chrono::Local) {
+        Ok(Some(text)) => println!("{text}"),
+        Ok(None) => {}
+        Err(e) => fail(&e),
+    }
+}
+
+/// The `{ ids }` replies of a split batch as one.
+fn merge_ids(results: &[serde_json::Value]) -> serde_json::Value {
+    let ids: Vec<serde_json::Value> = results
+        .iter()
+        .filter_map(|result| result["ids"].as_array())
+        .flatten()
+        .cloned()
+        .collect();
+    serde_json::json!({ "ids": ids })
 }
 
 /// The lock holder may still be starting up and not listen yet.
@@ -139,7 +204,7 @@ fn start_ipc(handle: AppHandle, socket: &Path) {
         }
     };
     tauri::async_runtime::spawn(ipc::serve(listener, move |message| {
-        launch::on_ipc_message(handle.clone(), message)
+        remote::handle(handle.clone(), message)
     }));
 }
 
@@ -170,7 +235,13 @@ pub fn run() {
     let socket = config_dir.join(SOCKET_NAME);
     let stored = Settings::peek(&config_dir);
 
-    let (message, log_override, hidden) = match cli::parse(std::env::args_os()) {
+    let outcome = cli::parse(
+        std::env::args_os(),
+        db::time::now_ms(),
+        &chrono::Local,
+        &mut std::io::stdin(),
+    );
+    let (message, log_override, hidden) = match outcome {
         Ok(CliOutcome::Exit { message }) => {
             print!("{message}");
             std::process::exit(0);
@@ -178,7 +249,24 @@ pub fn run() {
         Ok(CliOutcome::Run { hidden, log_level }) => {
             (IpcMessage::Activate { hidden }, log_level, hidden)
         }
-        Err(message) => {
+        Ok(CliOutcome::Remote {
+            message,
+            json,
+            starts_app,
+        }) => {
+            if let Some(code) = ask_running_instance(&socket, &message, json) {
+                std::process::exit(code);
+            }
+            if !starts_app {
+                fail("TimeTracker is not running");
+            }
+            (message, None, false)
+        }
+        Err(CliError {
+            message,
+            in_app: false,
+        }) => fail(&message),
+        Err(CliError { message, .. }) => {
             eprintln!("{message}");
             (IpcMessage::Error { message }, None, false)
         }
@@ -280,6 +368,10 @@ fn start_app(
             tracker::commands::tracker_resume,
             tracker::commands::request_permission,
             tracker::commands::open_privacy_settings,
+            activity::commands::activity_add,
+            activity::commands::activity_start,
+            activity::commands::activity_stop,
+            activity::commands::activity_sources,
             remote::remote_reply,
         ])
         .build(tauri::generate_context!())

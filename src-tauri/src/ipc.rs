@@ -16,6 +16,13 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 use tokio::net::unix::OwnedWriteHalf;
 
+use crate::activity::ActivityInput;
+use crate::db::time::{Day, Ms};
+use crate::error::{AppError, ErrorKind};
+use crate::tracker::PauseUntil;
+
+/// Every request another process can make. Each CLI subcommand is one message; `remote::handle`
+/// dispatches them.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -28,6 +35,29 @@ pub enum IpcMessage {
     Error {
         message: String,
     },
+    /// Shows the window at `day`'s Day view (today when `None`); `focus` also brings it to the front.
+    Show {
+        day: Option<Day>,
+        focus: bool,
+    },
+    Hide,
+    Quit,
+    Status,
+    Pause {
+        until: PauseUntil,
+    },
+    Resume,
+    ActivityAdd {
+        items: Vec<ActivityInput>,
+    },
+    ActivityStart {
+        input: ActivityInput,
+    },
+    /// `source` is the bare name, as in `ActivityInput`.
+    ActivityStop {
+        source: String,
+        end: Option<Ms>,
+    },
     /// Runs JavaScript in the window (used by scripts/dev to drive the UI).
     #[cfg(debug_assertions)]
     Eval {
@@ -36,11 +66,20 @@ pub enum IpcMessage {
 }
 
 impl IpcMessage {
-    /// The message type for logs; never its contents (scripts).
+    /// The message type for logs; never its contents (titles, scripts).
     pub fn kind(&self) -> &'static str {
         match self {
             IpcMessage::Activate { .. } => "Activate",
             IpcMessage::Error { .. } => "Error",
+            IpcMessage::Show { .. } => "Show",
+            IpcMessage::Hide => "Hide",
+            IpcMessage::Quit => "Quit",
+            IpcMessage::Status => "Status",
+            IpcMessage::Pause { .. } => "Pause",
+            IpcMessage::Resume => "Resume",
+            IpcMessage::ActivityAdd { .. } => "ActivityAdd",
+            IpcMessage::ActivityStart { .. } => "ActivityStart",
+            IpcMessage::ActivityStop { .. } => "ActivityStop",
             #[cfg(debug_assertions)]
             IpcMessage::Eval { .. } => "Eval",
         }
@@ -59,7 +98,7 @@ pub struct IpcReply {
     pub id: String,
     pub ok: bool,
     pub result: serde_json::Value,
-    pub error: Option<String>,
+    pub error: Option<IpcError>,
 }
 
 impl IpcReply {
@@ -84,13 +123,37 @@ impl IpcReply {
         if self.ok {
             Ok(self.result)
         } else {
-            Err(self.error.unwrap_or_else(|| "The request failed".into()))
+            Err(self
+                .error
+                .unwrap_or_else(|| IpcError::new(ErrorKind::Io, "The request failed")))
         }
     }
 }
 
+/// Why a request failed, as its sender sees it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct IpcError {
+    pub kind: ErrorKind,
+    pub message: String,
+}
+
+impl IpcError {
+    pub fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+        }
+    }
+}
+
+impl From<AppError> for IpcError {
+    fn from(e: AppError) -> Self {
+        Self::new(e.kind(), e.to_string())
+    }
+}
+
 /// What handling a message produced: a JSON result, or an error for the sender.
-pub type HandlerResult = Result<serde_json::Value, String>;
+pub type HandlerResult = Result<serde_json::Value, IpcError>;
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -100,7 +163,8 @@ enum Incoming {
 }
 
 const ACK: &str = "ok";
-const MAX_MESSAGE_BYTES: u64 = 64 * 1024;
+/// Longer lines get no answer; the CLI splits larger activity batches (`cli::split`).
+pub const MAX_MESSAGE_BYTES: u64 = 64 * 1024;
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
 const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 
@@ -227,7 +291,7 @@ where
             write_line(&mut write, ACK).await;
             let kind = message.kind();
             if let Err(e) = handler(message).await {
-                log::warn!("Handling {kind} from another process failed: {e}");
+                log::warn!("Handling {kind} from another process failed: {}", e.message);
             }
         }
         Incoming::Request(IpcRequest { id, message }) => {
@@ -300,7 +364,10 @@ mod tests {
         let listener = bind(socket).unwrap();
         tokio::spawn(serve(listener, |m| async move {
             match m {
-                IpcMessage::Error { message } => Err(format!("failed: {message}")),
+                IpcMessage::Error { message } => Err(IpcError::new(
+                    ErrorKind::Overlap,
+                    format!("failed: {message}"),
+                )),
                 other => Ok(serde_json::json!({ "handled": other.kind() })),
             }
         }));
@@ -366,8 +433,252 @@ mod tests {
 
         assert!(!reply.ok);
         assert_eq!(reply.result, serde_json::Value::Null);
-        assert_eq!(reply.error.as_deref(), Some("failed: x"));
-        assert_eq!(reply.into_result(), Err("failed: x".to_string()));
+        let expected = IpcError::new(ErrorKind::Overlap, "failed: x");
+        assert_eq!(reply.error, Some(expected.clone()));
+        assert_eq!(reply.into_result(), Err(expected));
+    }
+
+    fn day(s: &str) -> Day {
+        Day::parse(s).unwrap()
+    }
+
+    fn planner_input(end: Option<Ms>) -> ActivityInput {
+        ActivityInput {
+            source: "planner".into(),
+            title: "Plan".into(),
+            start: 1_000,
+            end,
+            app: None,
+            url: None,
+            path: None,
+        }
+    }
+
+    fn cli_messages() -> Vec<IpcMessage> {
+        vec![
+            IpcMessage::Show {
+                day: Some(day("2026-10-21")),
+                focus: true,
+            },
+            IpcMessage::Show {
+                day: None,
+                focus: false,
+            },
+            IpcMessage::Hide,
+            IpcMessage::Quit,
+            IpcMessage::Status,
+            IpcMessage::Pause {
+                until: PauseUntil::Minutes(15),
+            },
+            IpcMessage::Pause {
+                until: PauseUntil::Tomorrow,
+            },
+            IpcMessage::Pause {
+                until: PauseUntil::Resumed,
+            },
+            IpcMessage::Resume,
+            IpcMessage::ActivityAdd {
+                items: vec![planner_input(Some(2_000)), planner_input(Some(3_000))],
+            },
+            IpcMessage::ActivityStart {
+                input: planner_input(None),
+            },
+            IpcMessage::ActivityStop {
+                source: "planner".into(),
+                end: Some(5_000),
+            },
+        ]
+    }
+
+    #[tokio::test]
+    async fn cli_messages_round_trip_one_way_through_the_socket() {
+        let dir = temp_config_dir();
+        let socket = dir.path().join("tt.sock");
+        let mut rx = serve_into_channel(&socket);
+
+        for message in cli_messages() {
+            assert_eq!(forward(&socket, message.clone()).await, Forward::Delivered);
+            assert_eq!(rx.recv().await.unwrap(), message);
+        }
+    }
+
+    #[tokio::test]
+    async fn cli_messages_round_trip_as_requests_through_the_socket() {
+        let dir = temp_config_dir();
+        let socket = dir.path().join("tt.sock");
+        let mut rx = serve_into_channel(&socket);
+
+        for message in cli_messages() {
+            let reply = ask(&socket, message.clone()).await.unwrap().unwrap();
+            assert!(reply.ok, "{message:?}");
+            assert_eq!(rx.recv().await.unwrap(), message);
+        }
+    }
+
+    #[tokio::test]
+    async fn every_cli_message_reaches_the_handler_as_its_own_kind() {
+        let dir = temp_config_dir();
+        let socket = dir.path().join("tt.sock");
+        serve_answering(&socket);
+
+        for message in cli_messages() {
+            let kind = message.kind();
+            let reply = ask(&socket, message).await.unwrap().unwrap();
+            assert_eq!(reply.result, serde_json::json!({ "handled": kind }));
+        }
+    }
+
+    #[test]
+    fn messages_have_their_wire_shape() {
+        let cases = [
+            (
+                IpcMessage::Show {
+                    day: Some(day("2026-10-21")),
+                    focus: true,
+                },
+                serde_json::json!({ "type": "show", "day": "2026-10-21", "focus": true }),
+            ),
+            (
+                IpcMessage::Show {
+                    day: None,
+                    focus: false,
+                },
+                serde_json::json!({ "type": "show", "day": null, "focus": false }),
+            ),
+            (IpcMessage::Hide, serde_json::json!({ "type": "hide" })),
+            (
+                IpcMessage::Pause {
+                    until: PauseUntil::Minutes(15),
+                },
+                serde_json::json!({ "type": "pause", "until": { "minutes": 15 } }),
+            ),
+            (
+                IpcMessage::Pause {
+                    until: PauseUntil::Tomorrow,
+                },
+                serde_json::json!({ "type": "pause", "until": "tomorrow" }),
+            ),
+            (
+                IpcMessage::ActivityStop {
+                    source: "planner".into(),
+                    end: None,
+                },
+                serde_json::json!({ "type": "activityStop", "source": "planner", "end": null }),
+            ),
+            (
+                IpcMessage::ActivityStart {
+                    input: planner_input(None),
+                },
+                serde_json::json!({
+                    "type": "activityStart",
+                    "input": {
+                        "source": "planner", "title": "Plan", "start": 1000, "end": null,
+                        "app": null, "url": null, "path": null
+                    }
+                }),
+            ),
+        ];
+        for (message, wire) in cases {
+            assert_eq!(serde_json::to_value(&message).unwrap(), wire, "{message:?}");
+            assert_eq!(
+                serde_json::from_value::<IpcMessage>(wire.clone()).unwrap(),
+                message,
+                "{wire}"
+            );
+        }
+    }
+
+    #[test]
+    fn replies_carry_the_error_kind_and_message_on_the_wire() {
+        let reply = IpcReply {
+            id: "7".into(),
+            ok: false,
+            result: serde_json::Value::Null,
+            error: Some(IpcError::new(ErrorKind::Overlap, "Overlaps activity 3")),
+        };
+        assert_eq!(
+            serde_json::to_value(&reply).unwrap(),
+            serde_json::json!({
+                "id": "7",
+                "ok": false,
+                "result": null,
+                "error": { "kind": "overlap", "message": "Overlaps activity 3" }
+            })
+        );
+    }
+
+    #[test]
+    fn ipc_error_from_an_app_error_keeps_its_kind_and_display_text() {
+        let cases = [
+            (
+                AppError::Overlap {
+                    message: "Overlaps activity 3".into(),
+                    details: serde_json::json!({ "ids": [3] }),
+                },
+                IpcError::new(ErrorKind::Overlap, "Overlaps activity 3"),
+            ),
+            (
+                AppError::InvalidField {
+                    field: "title".into(),
+                    message: "must not be empty".into(),
+                },
+                IpcError::new(ErrorKind::InvalidInput, "`title`: must not be empty"),
+            ),
+            (
+                AppError::Io("denied".into()),
+                IpcError::new(ErrorKind::Io, "File error: denied"),
+            ),
+            (
+                AppError::TrackerPaused("Paused".into()),
+                IpcError::new(ErrorKind::TrackerPaused, "Paused"),
+            ),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(IpcError::from(error.clone()), expected, "{error:?}");
+        }
+    }
+
+    #[test]
+    fn a_failed_reply_without_an_error_gets_a_generic_message() {
+        let reply = IpcReply {
+            id: "1".into(),
+            ok: false,
+            result: serde_json::Value::Null,
+            error: None,
+        };
+        assert_eq!(
+            reply.into_result(),
+            Err(IpcError::new(ErrorKind::Io, "The request failed"))
+        );
+    }
+
+    #[test]
+    fn a_successful_reply_turns_into_its_result() {
+        let reply = IpcReply {
+            id: "1".into(),
+            ok: true,
+            result: serde_json::json!({ "ids": [1, 2] }),
+            error: None,
+        };
+        assert_eq!(
+            reply.into_result(),
+            Ok(serde_json::json!({ "ids": [1, 2] }))
+        );
+    }
+
+    #[tokio::test]
+    async fn request_over_64_kib_gets_no_reply_and_returns_an_error() {
+        let dir = temp_config_dir();
+        let socket = dir.path().join("tt.sock");
+        let mut rx = serve_into_channel(&socket);
+
+        let huge = IpcMessage::Error {
+            message: "a".repeat(MAX_MESSAGE_BYTES as usize + 1),
+        };
+        assert!(ask(&socket, huge).await.is_err());
+
+        assert_eq!(forward(&socket, activate()).await, Forward::Delivered);
+        assert_eq!(rx.recv().await.unwrap(), activate());
     }
 
     #[tokio::test]

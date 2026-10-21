@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type ActivityRow, type AwayRow } from "../api";
 import { formatClock, formatDay, formatDuration } from "../lib/format";
 import { useApiResult } from "../lib/useApiResult";
-import { useStore } from "../state/store";
+import { selectDayVersion, useStore } from "../state/store";
 
 const RELOAD_MS = 10_000;
 
@@ -66,24 +66,25 @@ function Rows<T extends ActivityRow | AwayRow>({ label, rows, columns }: { label
 
 /** A plain list of a day's activity and away spans. */
 export function ActivityDebug() {
-  const [day, setDay] = useState(() => formatDay(Date.now()));
+  const day = useStore((s) => s.day);
+  const goToDay = useStore((s) => s.goToDay);
   const pulse = useTrackerPulse();
-  const dataVersion = useStore((s) => s.dataVersion);
-  const key = `${day}\u0000${pulse}\u0000${dataVersion}`;
+  const dayVersion = useStore(selectDayVersion(day));
+  const key = `${day}\u0000${pulse}\u0000${dayVersion}`;
   const activity = useApiResult(key, () => api.activityList(day), { keepData: true });
   const away = useApiResult(key, () => api.awayList(day), { keepData: true });
 
   return (
     <section className="activity-debug" aria-label="Activity">
       <div className="activity-debug-head">
-        <button type="button" className="icon-btn" aria-label="Previous day" onClick={() => setDay((d) => shiftDay(d, -1))}>
+        <button type="button" className="icon-btn" aria-label="Previous day" onClick={() => goToDay(shiftDay(day, -1))}>
           ←
         </button>
         <input className="input mono" type="date" aria-label="Day" value={day} onChange={(e) => {
             // A cleared field keeps the day shown.
-            if (e.target.value) setDay(e.target.value);
+            if (e.target.value) goToDay(e.target.value);
           }} />
-        <button type="button" className="icon-btn" aria-label="Next day" onClick={() => setDay((d) => shiftDay(d, 1))}>
+        <button type="button" className="icon-btn" aria-label="Next day" onClick={() => goToDay(shiftDay(day, 1))}>
           →
         </button>
       </div>

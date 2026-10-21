@@ -6,6 +6,7 @@ import { uiSlice, type UiSlice } from "./slices/ui";
 import { viewStateSlice, type ViewStateSlice } from "./slices/viewState";
 
 export { fail } from "./requests";
+export { selectDayVersion } from "./slices/data";
 export { flushUiState } from "./slices/viewState";
 export type { Dialog, Toast, View } from "./slices/ui";
 

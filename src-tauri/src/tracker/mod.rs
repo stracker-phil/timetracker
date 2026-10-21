@@ -36,7 +36,7 @@ const HEARTBEAT: Ms = 10_000;
 const PERMISSION_POLL: Duration = Duration::from_secs(5);
 const RESTART_DELAY: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub enum TrackerState {
@@ -52,7 +52,7 @@ pub enum TrackerState {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct TrackerStatus {
@@ -64,7 +64,7 @@ pub struct TrackerStatus {
     pub text: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub enum PauseUntil {

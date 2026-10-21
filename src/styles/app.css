@@ -95,6 +95,7 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .hint { font-size: var(--fs-small); color: var(--o3); }
 .muted { color: var(--o2); }
 .mono { font-family: var(--font-mono); }
+.cli-example { display: block; font-size: var(--fs-small); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .o2 { color: var(--o2); }
 .o3 { color: var(--o3); }
 .spacer { flex: 1; }

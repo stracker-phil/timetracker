@@ -4,19 +4,22 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use ts_rs::TS;
 
+use crate::db::time::Day;
 use crate::events::LAUNCH_EVENT;
-use crate::ipc::{HandlerResult, IpcMessage};
+use crate::ipc::IpcMessage;
 use crate::lock::MutexExt;
 use crate::state::AppState;
 use crate::window;
 
-/// Something the page should act on after a launch: the one that started the app, or another one.
+/// Something the page acts on once it listens: from the launch that started the app, a later launch,
+/// or a deep link.
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum LaunchEvent {
     Error { message: String },
     Activate,
+    ShowDay { day: Day },
 }
 
 #[derive(Default)]
@@ -30,6 +33,9 @@ impl LaunchQueue {
         let event = match message {
             IpcMessage::Error { message } => LaunchEvent::Error { message },
             IpcMessage::Activate { hidden: false } => LaunchEvent::Activate,
+            IpcMessage::Show { day, .. } => LaunchEvent::ShowDay {
+                day: day.unwrap_or_else(Day::today),
+            },
             _ => return false,
         };
         self.events.lock_unpoisoned().push(event);
@@ -41,14 +47,8 @@ impl LaunchQueue {
     }
 }
 
-/// Handles a message from another TimeTracker process (activation, CLI error, dev eval).
-pub async fn on_ipc_message(handle: AppHandle, message: IpcMessage) -> HandlerResult {
-    #[cfg(debug_assertions)]
-    if let IpcMessage::Eval { js } = &message {
-        crate::dev::eval(&handle, js);
-        return Ok(serde_json::Value::Null);
-    }
-    log::info!("Received {} from another process", message.kind());
+/// Also shows the window, except for a hidden activation.
+pub fn queue(handle: &AppHandle, message: IpcMessage) {
     let show = !matches!(message, IpcMessage::Activate { hidden: true });
     if handle.state::<AppState>().launches.push(message)
         && let Err(e) = handle.emit(LAUNCH_EVENT, ())
@@ -56,9 +56,8 @@ pub async fn on_ipc_message(handle: AppHandle, message: IpcMessage) -> HandlerRe
         log::warn!("Couldn't notify the page of a launch: {e}");
     }
     if show {
-        window::show_main(&handle);
+        window::show_main(handle);
     }
-    Ok(serde_json::Value::Null)
 }
 
 #[cfg(test)]
@@ -91,6 +90,72 @@ mod tests {
         let queue = LaunchQueue::default();
         assert!(!queue.push(IpcMessage::Activate { hidden: true }));
         assert_eq!(queue.take_events(), vec![]);
+    }
+
+    #[test]
+    fn show_with_a_day_becomes_a_show_day_event_whether_or_not_it_focuses() {
+        let day = Day::parse("2026-10-21").unwrap();
+        for focus in [true, false] {
+            let queue = LaunchQueue::default();
+            assert!(
+                queue.push(IpcMessage::Show {
+                    day: Some(day),
+                    focus
+                }),
+                "focus {focus}"
+            );
+            assert_eq!(
+                queue.take_events(),
+                vec![LaunchEvent::ShowDay { day }],
+                "focus {focus}"
+            );
+        }
+    }
+
+    #[test]
+    fn show_without_a_day_becomes_a_show_day_event_for_today() {
+        let queue = LaunchQueue::default();
+        assert!(queue.push(IpcMessage::Show {
+            day: None,
+            focus: true
+        }));
+        let events = queue.take_events();
+        assert!(
+            matches!(events.as_slice(), [LaunchEvent::ShowDay { .. }]),
+            "{events:?}"
+        );
+    }
+
+    #[test]
+    fn messages_for_the_cli_only_produce_no_event() {
+        let messages = [
+            IpcMessage::Hide,
+            IpcMessage::Quit,
+            IpcMessage::Status,
+            IpcMessage::Resume,
+            IpcMessage::Pause {
+                until: crate::tracker::PauseUntil::Tomorrow,
+            },
+            IpcMessage::ActivityAdd { items: Vec::new() },
+            IpcMessage::ActivityStop {
+                source: "planner".into(),
+                end: None,
+            },
+        ];
+        for message in messages {
+            let queue = LaunchQueue::default();
+            assert!(!queue.push(message.clone()), "{message:?}");
+            assert_eq!(queue.take_events(), vec![], "{message:?}");
+        }
+    }
+
+    #[test]
+    fn show_day_event_serializes_with_a_type_tag_and_the_day() {
+        let day = Day::parse("2026-10-21").unwrap();
+        assert_eq!(
+            serde_json::to_value(LaunchEvent::ShowDay { day }).unwrap(),
+            serde_json::json!({ "type": "showDay", "day": "2026-10-21" })
+        );
     }
 
     #[cfg(debug_assertions)]

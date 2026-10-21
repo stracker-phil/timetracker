@@ -14,9 +14,9 @@ The app's name and ids live in a few places. Change them together.
 |---|---|---|
 | Product name | `TimeTracker` | `tauri.conf.json` `productName` and window `title`; `menu.rs` (app menu, `Quit TimeTracker`); `tray.rs` (tooltip, item labels); `index.html`; the toolbar; user-facing errors in `lib.rs` and `remote.rs`; the `TimeTracker.app` path in `scripts/install-app.sh`, `scripts/install-cli.sh`, `scripts/dev/launch.sh` and the `app` script of `package.json`; the window owner in `scripts/dev/screenshot.sh`; `Info.plist` usage strings |
 | Bundle identifier | `com.philippstracker.timetracker` | `tauri.conf.json` `identifier`; `lib.rs` `IDENTIFIER` (a test compares both); `scripts/dev/js.sh` (socket path); `scripts/dev/launch.sh` (signing identifier). It also names the config dir and the log dir; changing it starts with empty settings and data |
-| Binary and CLI command | `timetracker` | Cargo package `name` in `src-tauri/Cargo.toml`; `cli.rs` `name` and `after_help`; `scripts/install-cli.sh`; `scripts/dev/launch.sh`; `.claude/settings.json` (`pkill -x timetracker`) |
+| Binary and CLI command | `timetracker` | Cargo package `name` in `src-tauri/Cargo.toml`; `cli/mod.rs` `name` and `EXAMPLES`; `cli/reply.rs` (`TimeTracker <version>` line); the README Scripting examples; `scripts/install-cli.sh`; `scripts/dev/launch.sh`; `.claude/settings.json` (`pkill -x timetracker`) |
 | Rust lib | `timetracker_lib` | `Cargo.toml` `[lib]`; `main.rs`; `tests/` |
-| URL scheme | `timetracker://` | `tauri.conf.json` `plugins.deep-link.desktop.schemes` (the bundler writes it into `Info.plist`); `deep_link.rs` |
+| URL scheme | `timetracker://` | `tauri.conf.json` `plugins.deep-link.desktop.schemes` (the bundler writes it into `Info.plist`); `deep_link.rs` (`link_message`, error text); the README Scripting examples |
 | Socket, lock | `timetracker.sock`, `timetracker.lock` | `lib.rs` `SOCKET_NAME`, `LOCK_NAME`; `scripts/dev/js.sh` (the socket) |
 | Config dir | `~/Library/Application Support/com.philippstracker.timetracker/` | `lib.rs` `config_dir()` |
 | Logs dir | `~/Library/Logs/com.philippstracker.timetracker/` | Tauri's `app_log_dir`, from the identifier |

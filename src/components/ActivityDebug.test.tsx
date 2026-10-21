@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -77,7 +77,7 @@ describe("ActivityDebug", () => {
   });
 
   it("requests the day after when Next day is clicked, across a month boundary", async () => {
-    vi.setSystemTime(new Date(2026, 9, 31, 12));
+    act(() => useStore.getState().goToDay("2026-10-31"));
     render(<ActivityDebug />);
     await userEvent.click(screen.getByRole("button", { name: "Next day" }));
     await vi.waitFor(() => expect(mocked.activityList).toHaveBeenLastCalledWith("2026-11-01"));
@@ -102,6 +102,73 @@ describe("ActivityDebug", () => {
 
     await vi.advanceTimersByTimeAsync(5_000);
     expect(await screen.findByRole("cell", { name: "New row" })).toBeInTheDocument();
+  });
+
+  describe("day from the store", () => {
+    it("follows a day chosen from outside", async () => {
+      mocked.activityList.mockImplementation(async (day) => (day === "2026-10-15" ? [activityRow({ app: "Notes", title: "Last week" })] : []));
+      render(<ActivityDebug />);
+      act(() => useStore.getState().goToDay("2026-10-15"));
+      expect(screen.getByLabelText("Day")).toHaveValue("2026-10-15");
+      expect(await screen.findByRole("cell", { name: "Last week" })).toBeInTheDocument();
+    });
+
+    it.each([
+      ["Previous day", "2026-10-20"],
+      ["Next day", "2026-10-22"],
+    ])("%s moves the store's day to %s", async (name, expected) => {
+      render(<ActivityDebug />);
+      await userEvent.click(screen.getByRole("button", { name }));
+      expect(useStore.getState().day).toBe(expected);
+    });
+
+    it("moves the store's day when a date is typed into the field", async () => {
+      render(<ActivityDebug />);
+      fireEvent.change(screen.getByLabelText("Day"), { target: { value: "2026-09-01" } });
+      expect(useStore.getState().day).toBe("2026-09-01");
+    });
+
+    it("keeps the day when the date field is cleared", async () => {
+      render(<ActivityDebug />);
+      fireEvent.change(screen.getByLabelText("Day"), { target: { value: "" } });
+      expect(useStore.getState().day).toBe("2026-10-21");
+    });
+  });
+
+  describe("data changes", () => {
+    const showRows = (title: string) => mocked.activityList.mockResolvedValue([activityRow({ app: "Safari", title })]);
+
+    it("reloads when the shown day changed", async () => {
+      showRows("Old row");
+      render(<ActivityDebug />);
+      await screen.findByRole("cell", { name: "Old row" });
+
+      showRows("New row");
+      act(() => useStore.getState().dataChanged({ kind: "activity", day: "2026-10-21" }));
+      expect(await screen.findByRole("cell", { name: "New row" })).toBeInTheDocument();
+    });
+
+    it("reloads when every day changed", async () => {
+      showRows("Old row");
+      render(<ActivityDebug />);
+      await screen.findByRole("cell", { name: "Old row" });
+
+      showRows("New row");
+      act(() => useStore.getState().dataChanged({ kind: "activity", day: null }));
+      expect(await screen.findByRole("cell", { name: "New row" })).toBeInTheDocument();
+    });
+
+    it("does not reload when another day changed", async () => {
+      showRows("Old row");
+      render(<ActivityDebug />);
+      await screen.findByRole("cell", { name: "Old row" });
+
+      showRows("New row");
+      act(() => useStore.getState().dataChanged({ kind: "activity", day: "2026-10-20" }));
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(screen.getByRole("cell", { name: "Old row" })).toBeInTheDocument();
+      expect(screen.queryByRole("cell", { name: "New row" })).not.toBeInTheDocument();
+    });
   });
 
   it("shows the error message when the activity cannot be read", async () => {

@@ -116,6 +116,10 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `tracker_resume` | – | `TrackerStatus` | `db` |
 | `request_permission` | – | `PermissionStatus` (after the system prompt, shown once per run) | `db` |
 | `open_privacy_settings` | – | – (System Settings → Privacy & Security → Accessibility) | `io` |
+| `activity_add` (`activity/commands.rs`) | `items: ActivityInput[]` | `number[]` (the new ids) | `invalid_input`, `overlap`, `db` |
+| `activity_start` | `input: ActivityInput` | `ActivityRow` (open) | `invalid_input`, `overlap`, `db` |
+| `activity_stop` | `source: String, end: Ms \| null` | `ActivityRow \| null` | `invalid_input`, `db` |
+| `activity_sources` | – | `string[]`: external source names, the latest first | `db` |
 
 To add a command: write it in its module (or `commands.rs` for app-wide ones), register it in
 `generate_handler!`, export its types with ts-rs, add the wrapper to `src/api/index.ts` and a default to
@@ -134,46 +138,144 @@ To add a command: write it in its module (or `commands.rs` for app-wide ones), r
 | `TRACKER_STATUS_EVENT` | `tracker_status` | `TrackerStatus` on every change and at least every 10 s ([capture.md](capture.md#status)) |
 
 `DataKind` is `activity | recordings | projects | tags | rules | settings`; `day` is a `Day` (`YYYY-MM-DD`)
-or `null` when every day may have changed. `events::data_changed(app, kind, day)` emits it. The page bumps
-its `dataVersion` on every `data_changed`, so views keyed on it reload.
+or `null` when every day may have changed. `events::data_changed(app, kind, day)` emits it; external
+activity writes emit one per local day the span touches (`activity::external::days_touched`). The page bumps
+that day's version (or every day's for `null`), so views showing the day reload
+([frontend.md](frontend.md)).
 
 ## CLI and single-instance handoff
 
-`cli.rs` (clap derive): `--hidden` (start without the window; a running instance stays as it is),
-`--log-level <error|warn|info|debug|trace>` (overrides the setting for this run), `--help`, `--version`.
-`parse(args) -> Result<CliOutcome, String>`. Subcommands come with the CLI step.
+The `timetracker` command is the app binary. Without a subcommand it starts the app, or activates the
+running one; every subcommand is a second process that sends one request over the socket, prints the reply
+and exits ([ADR 0017](adr/0017-cli-asks-the-running-app.md)). It never opens the database itself.
+
+### Command tree
+
+`cli/mod.rs` (clap derive). Global flags: `--hidden` (start without the window; a running instance stays
+as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting for this run), `--json`
+(replies as JSON), `--help`, `--version`.
+
+| Subcommand | `IpcMessage` | Prints |
+|---|---|---|
+| `show [DAY]` | `show { day, focus: false }`; `DAY` is `YYYY-MM-DD`, `today` or `yesterday` (default today) | – |
+| `focus` | `activate { hidden: false }` | – |
+| `hide`, `quit` | `hide`, `quit` | – |
+| `status` | `status` | five lines, below |
+| `pause <15m\|1h\|tomorrow\|off>` | `pause { until: PauseUntil }`; `<n>m` or `<n>h` up to 24 h, `tomorrow` = next local midnight, `off` = until resumed | `tracker: paused until 14:30` |
+| `resume` | `resume` | – |
+| `activity add --source S --title T --start ISO --end ISO [--app A] [--url U] [--path P]` | `activityAdd { items: [ActivityInput] }` | `added activity 4711` |
+| `activity add --json` (no other flags) | `activityAdd`, items from a JSON array of `ActivityInput` on stdin (times in UTC ms) | `added 3 activities` |
+| `activity start --source S --title T [--start ISO] [--app A] [--url U] [--path P]` | `activityStart { input }`, start default now | `started planner at 10:00` |
+| `activity stop --source S [--end ISO]` | `activityStop { source, end }`, end default now | `stopped planner at 10:45 (45 min)` or `nothing to stop for planner` |
+
+`parse(args, now, tz, stdin) -> Result<CliOutcome, CliError>` is pure: `CliOutcome` is `Run { hidden,
+log_level }`, `Exit { message }` (help, version) or `Remote { message, json, starts_app }`. The CLI checks
+what it can before sending (times, `activity::external::validate`); the app checks again. `CliError.in_app`
+is true for a plain launch with bad arguments, which also shows the error in the app (it may have been opened
+from Finder); a subcommand's error only prints.
+
+`cli/time.rs`: `instant` reads `2026-10-21T09:30[:15]` (local), the same with `Z` or `±hh:mm`, `09:30`
+(today, local) and `now`; `day` reads `today`, `yesterday` and `YYYY-MM-DD`; `pause` reads the pause words.
+The zone is a parameter, so tests use fixed zones.
+
+`cli/reply.rs`: `render(message, result, now, tz)` is the human text. `status` prints one fact per line, in
+this order, so scripts can grep:
+
+```
+TimeTracker 0.1.0
+tracker: running          (paused | paused until 14:30 | paused until tomorrow | away since 13:02 (idle) | needs permission | off)
+current: Safari · Pull request #42 · 13 min        (current: none)
+timer: none
+window: hidden
+```
+
+`current` is the tracker's open activity only; an open external span (`activity start`) does not show here.
+`--json` prints the reply's `result` instead (`status --json` is a `StatusReport { version, tracker,
+timer, windowVisible }`; `tracker` is `null` while the data store is unavailable); an error prints
+`{ "kind", "message" }`.
+
+**Exit codes:** 0 ok; 1 the app answered with an error; 2 bad arguments, or TimeTracker is not running.
+With no instance, `show` and `focus` start the app with their message queued (`starts_app`); every other
+subcommand exits 2 with `TimeTracker is not running`.
+
+**Adding a subcommand:** a `Command` variant and its arm in `cli::message`, an `IpcMessage` variant, its arm
+in `remote::handle`, a `reply::render` arm when it prints something, and parser tests.
+
+### Socket and protocol
 
 `ipc.rs`:
 
 - **Socket:** a Unix domain socket at `<config dir>/timetracker.sock`, mode 0600 in a 0700 dir. `serve` drops
   peers with another uid (`same_user`, `libc::getuid`).
-- **Protocol:** one line of JSON per connection, at most 64 KiB, within 5 s:
+- **Protocol:** one line of JSON per connection, at most 64 KiB (`MAX_MESSAGE_BYTES`), within 5 s. Any process
+  of the same user may speak it:
   - one-way (a bare `IpcMessage`): answered with `ok\n` before it is handled (`try_forward`);
   - request (`IpcRequest { id, message }`, sent by `ipc::request`): answered once handled with one
-    `IpcReply { id, ok, result, error }` line; `IpcReply::into_result` turns it into a `HandlerResult`.
+    `IpcReply { id, ok, result, error }` line, `error` being `IpcError { kind, message }` (`kind` as in
+    [Errors](#errors)); `IpcReply::into_result` turns it into a `HandlerResult`.
 
-  Malformed, oversized or incomplete lines get no answer.
+  ```
+  → {"id":"7f0c…","message":{"type":"activityStop","source":"planner","end":null}}
+  ← {"id":"7f0c…","ok":true,"result":{"id":4711,"source":"external:planner",…},"error":null}
+  ```
+
+  Malformed, oversized or incomplete lines get no answer. `cli::split` cuts an `activity add` batch into
+  requests of at most 200 items that each fit the limit; such a batch is written part by part, and a failing
+  part stops the rest (the CLI prints the ids already written).
 - **`Forward` outcomes** of `try_forward`: `Delivered` (exit 0, 2 for a CLI error), `NoInstance` (socket
   missing or refused: start the app), `Rejected` (no `ok`) or an error such as a timeout (print and exit 2,
   so a hung instance never leads to a second one).
-- **Messages** (`IpcMessage`, tagged by `type`): `activate { hidden }`, `error { message }`, and `eval { js }`
-  (debug builds only, sent by `scripts/dev/js.sh`).
-- **Handling** (`launch::on_ipc_message`): `eval` runs in the window. Everything else is logged by type
-  (`IpcMessage::kind`, never the contents) and pushed to `LaunchQueue`: `error` becomes
-  `LaunchEvent::Error`, `activate { hidden: false }` becomes `LaunchEvent::Activate`; a queued event emits
-  `launch`. Then the window is shown (`window::show_main`) unless the message was `activate { hidden: true }`.
+- **Messages** (`IpcMessage`, tagged by `type`): `activate { hidden }`, `error { message }`, the subcommand
+  messages above, and `eval { js }` (debug builds only, sent by `scripts/dev/js.sh`).
 - **Stale sockets:** `bind` removes a leftover socket only when connecting to it is refused; it refuses to
   bind while a listener is alive.
+
+### Dispatch
+
+`remote::handle(app, message)` maps each message to the module that does it; it is the one table to extend.
+Every message is logged by type (`IpcMessage::kind`, never the contents).
+
+| Message | Does | Result |
+|---|---|---|
+| `activate`, `error` | `launch::queue`: pushed to `LaunchQueue` (`error` → `LaunchEvent::Error`, `activate { hidden: false }` → `Activate`), `launch` emitted, the window shown unless `hidden` | `null` |
+| `show { day, focus }` | shows the window (`window::show_main`, or `show_main_in_background` without `focus`), then asks the page `ShowDay { day }` (today when `null`) | `null` |
+| `hide` | `window::hide_main` | `null` |
+| `quit` | `app.exit(0)` 200 ms after replying | `null` |
+| `status` | `remote::status_report` | `StatusReport` |
+| `pause { until }`, `resume` | `Tracker::pause`, `Tracker::resume` | `TrackerStatus` |
+| `activityAdd { items }` | `activity::add` | `{ ids }` |
+| `activityStart { input }` | `activity::start` | `ActivityRow` |
+| `activityStop { source, end }` | `activity::stop` | `ActivityRow` or `null` |
+| `eval { js }` | runs in the window | `null` |
+
+Messages that start the app are pushed to `LaunchQueue` in `setup` instead: `show` becomes
+`LaunchEvent::ShowDay { day }`, so the page navigates once it has loaded.
 
 ### Requests the page answers
 
 `remote.rs`: `Bridge::ask` emits `remote` with a fresh id (`pending::PendingReplies`) and waits up to 4 s
-(below the IPC client's 5 s) for `remote_reply`. `RemoteRequest` has no variants yet; the CLI step adds them.
+(below the IPC client's 5 s) for `remote_reply`. `RemoteRequest` is `showDay { day }`;
+`src/commands/remote.ts` (`answerRemote`) always replies, with an error for a request it does not know.
 
 ### Deep links
 
 `deep_link.rs`: `listen` registers `on_open_url` for `timetracker://` (scheme in `tauri.conf.json`
-`plugins.deep-link`) and logs each URL. Routing comes with the CLI step.
+`plugins.deep-link`). macOS delivers a link to the running app, or starts the app and then delivers it.
+`link_message(url, now, tz)` maps a link to a message, reading times as the CLI does:
+
+| Link | Message |
+|---|---|
+| `timetracker://show?day=2026-10-21` | `show { day, focus: true }` |
+| `timetracker://activity?source=planner&title=Lunch&start=2026-10-21T12:00&end=2026-10-21T12:45[&app=&url=&path=]` | `activityAdd` with one item |
+| `timetracker://activity/start?source=…&title=…[&start=…]` | `activityStart` |
+| `timetracker://activity/stop?source=…[&end=…]` | `activityStop` |
+
+Query values are percent-decoded and `+` reads as a space, so an offset like `+05:30` must be written
+`%2B05:30`.
+
+`show` links are queued like a launch (`launch::queue`), so a link that starts the app waits for the page.
+Activity links run through `remote::handle` at once and do not show the window. A link that does not parse
+or fails becomes `IpcMessage::Error`: the window shows a toast, nothing is written.
 
 ## Tray
 

@@ -35,10 +35,21 @@ pub fn bring_to_front(app: &AppHandle) {
 
 /// Shows the hidden or minimized main window and brings it to the front.
 pub fn show_main(app: &AppHandle) {
+    show_main_in_background(app);
+    bring_to_front(app);
+}
+
+/// Shows the window without bringing the app to the front.
+pub fn show_main_in_background(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN) {
         let _ = window.show();
     }
-    bring_to_front(app);
+}
+
+pub fn main_visible(app: &AppHandle) -> bool {
+    app.get_webview_window(MAIN)
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false)
 }
 
 pub fn hide_main(app: &AppHandle) {

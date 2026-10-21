@@ -18,9 +18,10 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 6. `App.tsx` imports the stylesheets (fonts, the scheme files, `theme.css`, `app.css`) and calls
    `useBackendEvents()` once:
    1. `loadSettings()` loads settings and keybindings; `installCommands()` runs again to apply the user's
-      bindings, then `drainLaunches()` pulls the queued launch events (`take_launch_events`).
+      bindings, then `drainLaunches()` pulls the queued launch events (`take_launch_events`): `error` shows a toast, `showDay`
+      calls `goToDay`.
    2. It subscribes to `launch` (drain again), `command` (menu and tray → `runMenuCommand`), `remote`
-      (→ `answerRemote`, which always replies with `remoteReply`), `data_changed` (bumps `dataVersion`) and
+      (→ `answerRemote`, which always replies with `remoteReply`), `data_changed` (→ `dataChanged`) and
       `tracker_status` (→ `setTracker`); `loadTracker()` fetches the current status once.
    3. It adds a capture-phase `keydown` → `handleKeydown`, `error` / `unhandledrejection` → error toast, and
       `beforeunload` → `flushUiState`.
@@ -45,14 +46,14 @@ error's message, returning the `AppError`.
 | Slice | Holds |
 |---|---|
 | `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings`, `saveKeybindings` |
-| `ui` | `toasts`, `dialog` (`settings { page? }`, `shortcuts`, `confirm`), `paletteOpen`, `paletteSeed`, `view` (`day`, `week`, `month`, `reports`, `projects`), `setView` |
-| `data` | `dataVersion`, `bumpData` (called on every `data_changed` event) |
+| `ui` | `toasts`, `dialog` (`settings { page? }`, `shortcuts`, `confirm`), `paletteOpen`, `paletteSeed`, `view` (`day`, `week`, `month`, `reports`, `projects`), `setView`, `day` (the Day view's `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it) |
+| `data` | `dataVersion` (every day changed), `dayVersions` (per day), `dataChanged(event)` (called on every `data_changed` event); `selectDayVersion(day)` changes when that day's data may have changed |
 | `tracker` | `tracker` (`TrackerStatus`, or `null` while the tracker is off), `setTracker`, `loadTracker`, `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then reloads the status), `permissionDialogHidden` |
 | `viewState` | `uiState` (`UiState` from Rust), `setPaneSize`, `toggleSidebar`; a debounced writer saves it, `flushUiState` writes at once |
 
 Components select narrowly (`useStore((s) => s.view)`), never the whole store. `lib/useApiResult` loads a
-value from `api` keyed on its inputs (and on `dataVersion`), so a `data_changed` event reloads every view
-showing that data.
+value from `api` keyed on its inputs (and on `selectDayVersion(day)` or `dataVersion`), so a `data_changed` event
+reloads every view showing that data.
 
 ## API boundary
 

@@ -40,6 +40,10 @@ impl Day {
             .ok_or_else(|| AppError::InvalidInput(format!("Not a day (YYYY-MM-DD): {s}")))
     }
 
+    pub fn date(&self) -> NaiveDate {
+        self.0
+    }
+
     pub fn today() -> Day {
         Day::of(now_ms())
     }

@@ -5,12 +5,15 @@ import { api, SETTINGS_LIMITS, type AppSeen, type CaptureSettings } from "../../
 import { formatDuration } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
 import type { SettingsPageProps } from "../../registry/settingsPages";
+import { useStore } from "../../state/store";
 import { InsetField } from "../Field";
 import { Modal } from "../Modal";
 import { Group, NumberField, Row, Switch } from "./controls";
 
 /** Look-back window, in days, for the app picker. */
 const RECENT_DAYS = 30;
+
+const CLI_EXAMPLE = 'timetracker activity add --source planner --title "Weekly sync" --start 10:00 --end 10:45';
 
 /** How an app is stored in `excludedApps`: its bundle id, or its name without one, in lower case. */
 const appId = (a: AppSeen) => (a.bundleId ?? a.app).toLowerCase();
@@ -120,6 +123,26 @@ function ExcludedSites({ capture, setCapture }: { capture: CaptureSettings; setC
   );
 }
 
+/** Read-only: other apps add activity through the CLI or `timetracker://` links, not here. */
+function ExternalSources() {
+  const dataVersion = useStore((s) => s.dataVersion);
+  const { data: sources } = useApiResult(`activity-sources:${dataVersion}`, () => api.activitySources(), { keepData: true });
+  return (
+    <Group title="External sources">
+      {sources?.map((name) => (
+        <Row key={name} label={name} />
+      ))}
+      <Row
+        stacked
+        label={sources?.length ? "Add another" : "No external sources yet"}
+        description="Other apps, such as a planner, add their activity with the timetracker command. Each source gets its own lane next to the tracker's."
+      >
+        <code className="mono cli-example">{CLI_EXAMPLE}</code>
+      </Row>
+    </Group>
+  );
+}
+
 export function CapturePage({ s, set }: SettingsPageProps) {
   const capture = s.capture;
   const setCapture = (patch: Partial<CaptureSettings>) => set({ capture: { ...capture, ...patch } });
@@ -141,6 +164,7 @@ export function CapturePage({ s, set }: SettingsPageProps) {
       </Group>
       <ExcludedApps capture={capture} setCapture={setCapture} />
       <ExcludedSites capture={capture} setCapture={setCapture} />
+      <ExternalSources />
     </>
   );
 }

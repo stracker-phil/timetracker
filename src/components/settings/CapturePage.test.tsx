@@ -163,6 +163,25 @@ describe("Settings Capture page", () => {
   });
 });
 
+describe("Settings Capture page external sources", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("lists the names of the external sources", async () => {
+    mocked.activitySources.mockResolvedValue(["planner", "calendar"]);
+    renderPage("capture");
+    expect(await screen.findByText("planner")).toBeInTheDocument();
+    expect(screen.getByText("calendar")).toBeInTheDocument();
+    expect(screen.queryByText("No external sources yet")).not.toBeInTheDocument();
+  });
+
+  it("says there are none yet and shows the CLI example when no source exists", async () => {
+    mocked.activitySources.mockResolvedValue([]);
+    renderPage("capture");
+    expect(await screen.findByText("No external sources yet")).toBeInTheDocument();
+    expect(screen.getByText(/timetracker activity add/)).toBeInTheDocument();
+  });
+});
+
 describe("Settings Tracker page", () => {
   beforeEach(() => vi.clearAllMocks());
 

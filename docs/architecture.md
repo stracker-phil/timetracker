@@ -69,9 +69,11 @@ to bounds in Rust ([ADR 0011](adr/0011-utc-milliseconds-local-days.md)).
 - **One instance.** The first process binds `timetracker.sock` in the config dir and holds
   `timetracker.lock`. A second `timetracker …` sends its request over the socket and exits
   ([backend: single instance](backend.md#cli-and-single-instance-handoff),
-  [ADR 0017](adr/0017-cli-asks-the-running-app.md)).
+  [ADR 0017](adr/0017-cli-asks-the-running-app.md)). Every subcommand is a message the running app answers;
+  other apps (a planner) add activity this way or through `timetracker://` links, each in its own lane
+  ([ADR 0009](adr/0009-external-activity-with-a-source.md), [data: external activity](data.md#external-activity)).
 - **Window.** Closing the window hides it; the app keeps running and keeps its Dock icon. Quit only from the
-  tray menu, ⌘Q, or (later) `timetracker quit` ([backend: window lifecycle](backend.md#window-lifecycle),
+  tray menu, ⌘Q, or `timetracker quit` ([backend: window lifecycle](backend.md#window-lifecycle),
   [ADR 0007](adr/0007-tracker-in-process-menu-bar-app.md)).
 - **Tray.** A template-image menu bar item with a status line, Open TimeTracker and Quit TimeTracker.
 - **Launch at login** through `tauri-plugin-autostart` (a LaunchAgent) with `--hidden`, so the app starts
@@ -95,7 +97,8 @@ src-tauri/
   migrations/NNNN_*.sql      sqlx migrations
   src/lib.rs                 startup: config dir, CLI parse, socket handoff, lock, AppState, Tauri builder
   src/main.rs
-  src/cli.rs ipc.rs remote.rs pending.rs launch.rs   CLI parsing, socket, requests the page answers, launch queue
+  src/cli/                   CLI: command tree (mod.rs), time words (time.rs), human replies (reply.rs)
+  src/ipc.rs remote.rs pending.rs launch.rs   socket, dispatch and requests the page answers, launch queue
   src/events.rs              every event name and payload the backend emits
   src/state.rs               AppState
   src/error.rs lock.rs       AppError (+ ErrorKind), poison-tolerant lock helpers
@@ -107,7 +110,8 @@ src-tauri/
   src/db/                    Db (sqlx pool), migrations, time helpers, repositories
   src/capture/               Source trait, Snapshot types, macos.rs (objc2), fake.rs (test-util)
   src/tracker/               state machine: spans, away, pause, status; the tokio task
-  src/activity/ day/ week.rs month.rs projects/ tags.rs recordings/ rules/ reports/ timers.rs away_prompt.rs mcp/
+  src/activity/              external activity (rules, commands)
+  src/day/ week.rs month.rs projects/ tags.rs recordings/ rules/ reports/ timers.rs away_prompt.rs mcp/
   tests/                     integration tests on a temp SQLite file
 src/
   main.tsx modules.ts App.tsx

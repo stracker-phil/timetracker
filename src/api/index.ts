@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityRow, AppError, AppSeen, AwayRow, BackupWritten, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityInput, ActivityRow, AppError, AppSeen, AwayRow, BackupWritten, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -43,6 +43,14 @@ export const api = {
   awayList: (day: string) => invoke<AwayRow[]>("away_list", { day }),
   /** Apps the tracker recorded in the last `days` days, most time first. */
   appsSeen: (days: number) => invoke<AppSeen[]>("apps_seen", { days }),
+  /** Closed spans of other apps, all or none; returns their ids. */
+  activityAdd: (items: ActivityInput[]) => invoke<number[]>("activity_add", { items }),
+  /** Opens a span of `input.source`, closing its open one. */
+  activityStart: (input: ActivityInput) => invoke<ActivityRow>("activity_start", { input }),
+  /** Closes the source's open span at `end` (now when `null`); `null` when none is open. */
+  activityStop: (source: string, end: number | null) => invoke<ActivityRow | null>("activity_stop", { source, end }),
+  /** The names of the sources that reported activity, the latest first. */
+  activitySources: () => invoke<string[]>("activity_sources"),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   /** Native menu and tray items emit the id of the command they run. */

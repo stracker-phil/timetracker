@@ -1,6 +1,6 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./api", async (orig) => ({ ...(await orig<object>()), api: (await import("./test/apiMock")).createApiMock() }));
 
@@ -54,6 +54,35 @@ describe("App", () => {
       mocked.takeLaunchEvents.mockRejectedValueOnce({ kind: "io", message: "Channel closed", code: null });
       await renderApp();
       expect(await screen.findByRole("alert")).toHaveTextContent("Launch request failed: Channel closed");
+    });
+  });
+
+  describe("backend events", () => {
+    afterEach(() => mocked.activityList.mockResolvedValue([]));
+
+    it("shows the day of a showDay launch event in the Day view", async () => {
+      mocked.takeLaunchEvents.mockResolvedValueOnce([{ type: "showDay", day: "2026-10-20" }]);
+      await renderApp({ view: "month" });
+      expect(await screen.findByLabelText("Day")).toHaveValue("2026-10-20");
+      expect(mainHeading("Day")).toBeInTheDocument();
+    });
+
+    it("shows the day of a showDay request from another process and replies without an error", async () => {
+      await renderApp({ view: "reports" });
+      const onRemote = mocked.onRemote.mock.calls[0][0];
+      act(() => void onRemote({ id: "3", request: { type: "showDay", day: "2026-10-19" } }));
+      expect(await screen.findByLabelText("Day")).toHaveValue("2026-10-19");
+      await vi.waitFor(() => expect(mocked.remoteReply).toHaveBeenCalledWith("3", null, null));
+    });
+
+    it("reloads the shown day when its data changed", async () => {
+      mocked.activityList.mockResolvedValue([]);
+      await renderApp();
+      mocked.activityList.mockResolvedValue([activityRow({ app: "Planner", title: "Weekly sync" })]);
+      const day = screen.getByLabelText<HTMLInputElement>("Day").value;
+      const onChanged = mocked.onDataChanged.mock.calls[0][0];
+      act(() => onChanged({ kind: "activity", day } as never));
+      expect(await screen.findByRole("cell", { name: "Weekly sync" })).toBeInTheDocument();
     });
   });
 

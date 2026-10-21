@@ -1,4 +1,4 @@
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 use ts_rs::TS;
 
 pub type AppResult<T> = Result<T, AppError>;
@@ -115,7 +115,7 @@ pub struct FieldJson<'a> {
     pub message: &'a str,
 }
 
-#[derive(Serialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {

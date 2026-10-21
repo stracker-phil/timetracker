@@ -26,15 +26,16 @@ import "./styles/theme.css";
 import "./styles/app.css";
 
 function handleLaunchEvents(events: LaunchEvent[]) {
-  const { toast } = useStore.getState();
+  const { toast, goToDay } = useStore.getState();
   for (const event of events) {
     if (event.type === "error") toast("error", event.message);
+    if (event.type === "showDay") goToDay(event.day);
   }
 }
 
 function useBackendEvents() {
   useEffect(() => {
-    const { loadSettings, loadUiState, loadTracker, setTracker, toast, bumpData } = useStore.getState();
+    const { loadSettings, loadUiState, loadTracker, setTracker, toast, dataChanged } = useStore.getState();
     const drainLaunches = () => api.takeLaunchEvents().then(handleLaunchEvents, (e) => toast("error", `Launch request failed: ${toAppError(e).message}`));
 
     // Re-installing applies the user's keybinding overrides, which arrive with the settings.
@@ -45,7 +46,7 @@ function useBackendEvents() {
       api.onLaunch(() => void drainLaunches()),
       api.onCommand(runMenuCommand),
       api.onRemote((e) => void answerRemote(e)),
-      api.onDataChanged(bumpData),
+      api.onDataChanged(dataChanged),
       api.onTrackerStatus(setTracker),
     ];
 

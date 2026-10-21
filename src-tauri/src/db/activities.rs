@@ -41,31 +41,52 @@ pub struct NewActivity {
 }
 
 pub async fn insert(db: &Db, activity: NewActivity) -> AppResult<i64> {
+    insert_on(&mut *db.pool().acquire().await?, &activity, None).await
+}
+
+/// `end: None` leaves the span open.
+pub async fn insert_on(
+    conn: &mut SqliteConnection,
+    activity: &NewActivity,
+    end: Option<Ms>,
+) -> AppResult<i64> {
     Ok(sqlx::query(
-        "INSERT INTO activities (source, start, app, bundle_id, title, url, path, private)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        r#"INSERT INTO activities (source, start, "end", app, bundle_id, title, url, path, private)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
     )
-    .bind(activity.source)
+    .bind(&activity.source)
     .bind(activity.start)
-    .bind(activity.app)
-    .bind(activity.bundle_id)
-    .bind(activity.title)
-    .bind(activity.url)
-    .bind(activity.path)
+    .bind(end)
+    .bind(&activity.app)
+    .bind(&activity.bundle_id)
+    .bind(&activity.title)
+    .bind(&activity.url)
+    .bind(&activity.path)
     .bind(activity.private)
-    .execute(db.pool())
+    .execute(conn)
     .await?
     .last_insert_rowid())
 }
 
+pub async fn get_on(conn: &mut SqliteConnection, id: i64) -> AppResult<ActivityRow> {
+    Ok(sqlx::query_as("SELECT * FROM activities WHERE id = ?1")
+        .bind(id)
+        .fetch_one(conn)
+        .await?)
+}
+
 /// Ends every open span of `source` at `end` (never before its start); returns how many it closed.
 pub async fn close_open(db: &Db, source: &str, end: Ms) -> AppResult<u64> {
+    close_open_on(&mut *db.pool().acquire().await?, source, end).await
+}
+
+pub async fn close_open_on(conn: &mut SqliteConnection, source: &str, end: Ms) -> AppResult<u64> {
     Ok(sqlx::query(
         r#"UPDATE activities SET "end" = max(?2, start) WHERE source = ?1 AND "end" IS NULL"#,
     )
     .bind(source)
     .bind(end)
-    .execute(db.pool())
+    .execute(conn)
     .await?
     .rows_affected())
 }
@@ -106,16 +127,32 @@ pub async fn replace_open(db: &Db, id: i64, activity: NewActivity) -> AppResult<
 
 /// The latest open span of `source`.
 pub async fn open_by_source(db: &Db, source: &str) -> AppResult<Option<ActivityRow>> {
+    open_by_source_on(&mut *db.pool().acquire().await?, source).await
+}
+
+pub async fn open_by_source_on(
+    conn: &mut SqliteConnection,
+    source: &str,
+) -> AppResult<Option<ActivityRow>> {
     Ok(sqlx::query_as(
         r#"SELECT * FROM activities WHERE source = ?1 AND "end" IS NULL ORDER BY start DESC, id DESC LIMIT 1"#,
     )
     .bind(source)
-    .fetch_optional(db.pool())
+    .fetch_optional(conn)
     .await?)
 }
 
 /// Rows of `source` that share time with `[start, end)`; touching edges do not count.
 pub async fn overlapping(db: &Db, source: &str, start: Ms, end: Ms) -> AppResult<Vec<ActivityRow>> {
+    overlapping_on(&mut *db.pool().acquire().await?, source, start, end).await
+}
+
+pub async fn overlapping_on(
+    conn: &mut SqliteConnection,
+    source: &str,
+    start: Ms,
+    end: Ms,
+) -> AppResult<Vec<ActivityRow>> {
     Ok(sqlx::query_as(
         r#"SELECT * FROM activities WHERE source = ?1 AND start < ?3 AND ("end" IS NULL OR "end" > ?2)
            ORDER BY start, id"#,
@@ -123,6 +160,17 @@ pub async fn overlapping(db: &Db, source: &str, start: Ms, end: Ms) -> AppResult
     .bind(source)
     .bind(start)
     .bind(end)
+    .fetch_all(conn)
+    .await?)
+}
+
+/// The sources starting with `prefix`, the one with the latest row first.
+pub async fn sources_with_prefix(db: &Db, prefix: &str) -> AppResult<Vec<String>> {
+    Ok(sqlx::query_scalar(
+        "SELECT source FROM activities WHERE substr(source, 1, length(?1)) = ?1
+         GROUP BY source ORDER BY max(start) DESC, source",
+    )
+    .bind(prefix)
     .fetch_all(db.pool())
     .await?)
 }
@@ -615,6 +663,61 @@ mod tests {
     async fn apps_seen_of_an_empty_table_is_empty() {
         let db = Db::open_memory().await.unwrap();
         assert!(apps_seen(&db, 0, 10_000).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn insert_on_with_an_end_stores_a_closed_row_that_get_on_reads_back() {
+        let db = Db::open_memory().await.unwrap();
+        let mut conn = db.pool().acquire().await.unwrap();
+
+        let id = insert_on(&mut conn, &external("external:git", 100), Some(250))
+            .await
+            .unwrap();
+        let row = get_on(&mut conn, id).await.unwrap();
+        let open = open_by_source_on(&mut conn, "external:git").await.unwrap();
+
+        assert_eq!(
+            row,
+            ActivityRow {
+                id,
+                source: "external:git".into(),
+                start: 100,
+                end: Some(250),
+                app: "git".into(),
+                bundle_id: None,
+                title: "commit".into(),
+                url: None,
+                path: None,
+                private: false,
+            }
+        );
+        assert_eq!(open, None);
+    }
+
+    #[tokio::test]
+    async fn sources_with_prefix_lists_matching_sources_by_their_latest_row() {
+        let db = Db::open_memory().await.unwrap();
+        insert(&db, external("external:git", 100)).await.unwrap();
+        insert(&db, external("external:zed", 300)).await.unwrap();
+        insert(&db, external("external:git", 500)).await.unwrap();
+        insert(&db, external("externalx", 900)).await.unwrap();
+        activity(&db, 700, Some(800), "Code", "").await;
+
+        assert_eq!(
+            sources_with_prefix(&db, "external:").await.unwrap(),
+            ["external:git", "external:zed"]
+        );
+        assert_eq!(
+            sources_with_prefix(&db, "external").await.unwrap(),
+            ["externalx", "external:git", "external:zed"]
+        );
+        assert!(
+            sources_with_prefix(&db, "external_")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(sources_with_prefix(&db, "other:").await.unwrap().is_empty());
     }
 
     #[tokio::test]

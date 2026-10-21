@@ -20,6 +20,18 @@ pub enum AwayReason {
     Paused,
 }
 
+impl AwayReason {
+    /// The name the wire and the database use.
+    pub fn label(self) -> &'static str {
+        match self {
+            AwayReason::Idle => "idle",
+            AwayReason::Sleep => "sleep",
+            AwayReason::Lock => "lock",
+            AwayReason::Paused => "paused",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]

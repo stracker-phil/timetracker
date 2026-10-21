@@ -137,7 +137,7 @@ Nothing is split at midnight; readers clip (`time::clip`, `activities::list_clip
 `pause(until, now)` takes `PauseUntil`: `{ minutes: n }`, `tomorrow` (the next local midnight) or `resumed`.
 It closes the activity and any away span, and opens a `paused` span. Pausing again only moves `until`.
 `resume(now)` closes the paused span and runs a step at once. Pauses come from the tray, the sidebar, the
-palette (`tracker.pause`, `tracker.resume`) and, in step 05, the CLI.
+palette (`tracker.pause`, `tracker.resume`) and the CLI (`timetracker pause`, `timetracker resume`).
 
 ### Startup and the loop
 
