@@ -7,7 +7,8 @@ import { TIMELINE_ZOOM, useStore, type View } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, isTextInput, registerCommands, resolveKeydown, setOverrides, type Command } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
 
-const CALENDAR_VIEWS: View[] = ["day", "week", "month"];
+/** The views with a period, which the sidebar's date navigator and P, N, O step. */
+const DATED_VIEWS: View[] = ["day", "week", "month", "reports"];
 
 export * from "./registry";
 export * from "./scopes";
@@ -15,9 +16,9 @@ export * from "./scopes";
 /** Registers the core scopes; safe to call again (tests and re-installs do). A view's scope is active while it shows. */
 export function registerCoreScopes() {
   registerScope({ id: "global", parent: null, label: "Everywhere", isActive: () => true });
-  registerScope({ id: "calendar", parent: "global", label: "Day, Week and Month", isActive: () => CALENDAR_VIEWS.includes(useStore.getState().view) });
+  registerScope({ id: "dated", parent: "global", label: "Day, Week, Month and Reports", isActive: () => DATED_VIEWS.includes(useStore.getState().view) });
   for (const { id, label } of VIEWS) {
-    const parent = CALENDAR_VIEWS.includes(id) ? "calendar" : "global";
+    const parent = DATED_VIEWS.includes(id) ? "dated" : "global";
     registerScope({ id, parent, label, isActive: () => useStore.getState().view === id });
   }
 }
@@ -198,9 +199,9 @@ const APP_COMMANDS: Command[] = [
   { id: "window.hide", title: "Close window", scope: "global", defaultBinding: "Mod+W", menu: true, run: () => void api.hideWindow() },
   { id: "tracker.pause", title: "Pause tracking", scope: "global", when: () => isTracking(), run: () => void useStore.getState().pauseTracker("resumed") },
   { id: "tracker.resume", title: "Resume tracking", scope: "global", when: () => useStore.getState().tracker?.state.kind === "paused", run: () => void useStore.getState().resumeTracker() },
-  { id: "nav.prev", title: "Previous day, week or month", scope: "calendar", defaultBinding: "Mod+ArrowLeft", run: () => useStore.getState().step(-1) },
-  { id: "nav.next", title: "Next day, week or month", scope: "calendar", defaultBinding: "Mod+ArrowRight", run: () => useStore.getState().step(1) },
-  { id: "nav.today", title: "Go to today", scope: "calendar", defaultBinding: "T", run: () => useStore.getState().goToday() },
+  { id: "nav.prev", title: "Previous day, week, month or period", scope: "dated", defaultBinding: "P", run: () => useStore.getState().step(-1) },
+  { id: "nav.next", title: "Next day, week, month or period", scope: "dated", defaultBinding: "N", run: () => useStore.getState().step(1) },
+  { id: "nav.today", title: "Go to today", scope: "dated", defaultBinding: "O", run: () => useStore.getState().goToday() },
   { id: "day.nextBlock", title: "Next block", scope: "day", defaultBinding: "J", when: timelineShown, run: () => moveFocus(stepBlock, 1) },
   { id: "day.prevBlock", title: "Previous block", scope: "day", defaultBinding: "K", when: timelineShown, run: () => moveFocus(stepBlock, -1) },
   { id: "day.prevLane", title: "Block in the lane to the left", scope: "day", defaultBinding: "H", when: timelineShown, run: () => moveFocus(stepLane, -1) },
@@ -215,8 +216,8 @@ const APP_COMMANDS: Command[] = [
   { id: "activity.deleteDay", title: "Delete activity for this day…", scope: "day", when: () => !!shownDayView(), run: () => openDeleteActivity(false) },
   { id: "activity.deleteRange", title: "Delete activity in a range…", scope: "day", when: () => !!shownDayView(), run: () => openDeleteActivity(true) },
   { id: "day.clearFocus", title: "Clear selection", scope: "day", defaultBinding: "Escape", when: () => hasFocusedBlock() || hasSelection() || hasFocusedRecording(), run: clearDayFocus },
-  { id: "recording.next", title: "Next recording", scope: "day", defaultBinding: "N", when: timelineShown, run: () => stepRecording(1) },
-  { id: "recording.prev", title: "Previous recording", scope: "day", defaultBinding: "Shift+N", when: timelineShown, run: () => stepRecording(-1) },
+  { id: "recording.next", title: "Next recording", scope: "day", defaultBinding: "]", when: timelineShown, run: () => stepRecording(1) },
+  { id: "recording.prev", title: "Previous recording", scope: "day", defaultBinding: "[", when: timelineShown, run: () => stepRecording(-1) },
   { id: "recording.open", title: "Record selection or edit recording", scope: "day", defaultBinding: "Enter", when: () => hasSelection() || hasFocusedRecording(), run: openRecording },
   { id: "recording.create", title: "New recording from selection", scope: "day", menu: true, when: hasSelection, run: () => (useStore.getState().focusRecording(null), openRecording()) },
   { id: "recording.edit", title: "Edit recording", scope: "day", menu: true, when: hasFocusedRecording, run: openRecording },

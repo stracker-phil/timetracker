@@ -30,6 +30,27 @@ Separators between surfaces are `--line` hairlines. No inset panels, nested surf
 inside content stay on `--bg` and are separated by hairlines. The window is transparent with the macOS
 `sidebar` vibrancy behind the chrome.
 
+## Shell
+
+One place for views and one place for dates: the sidebar.
+
+- **Toolbar**: a thin drag strip with the app title and the Settings button. No view switch.
+- **Sidebar**: on top the date navigator, then the views (Day to Rules, ⌘1 to ⌘6) with saved reports under
+  Reports. The navigator shows the active period as a heading in `--fs-large` semibold: Day `Wed, Oct 21`
+  (with the year when it is not this year's), Week `Oct 19 – 25`, Month `October 2026`, Reports the period's
+  name (`Today`, `This week`, …) or its days (`Oct 5 – 14`). Below it ‹ and › and a Today button labelled
+  by the unit (Today, This week, This month), disabled while the period holds today. In Reports ‹ › step the
+  period by its own length: a month, a week, or its number of days; a step that lands on a preset shows its
+  name (a week back from This week is Last week). Projects and Rules keep the navigator's space empty.
+  Clicking the heading opens a month calendar under it (today in accent text, the shown day, week or month
+  on `--sel`); a day shows that day, its week or month, or in Reports the report's period that holds it.
+- **View headers** keep their titles, totals and view switches, never date controls. The Day header shows
+  the shown day's totals only when it is not today.
+- **Status bar** (plain text in `--o3`): on the left the sidebar toggle, the tracker's state (a dot: accent
+  while running, `--o3` while away or paused, `--style-red` without permission; the tray's text; Pause,
+  Resume or Allow…) and the selection; on the right the running timer and today's totals in mono,
+  `recorded 1:00 · tracked 3:12`, in every view. The text zoom has no readout: ⌘= ⌘- ⌘0.
+
 ## Color schemes and tokens
 
 A scheme is a complete token set in `src/styles/schemes/<id>.css`, applied through `[data-scheme="<id>"]` on
@@ -86,7 +107,7 @@ Settings → Appearance "UI font" and "Mono font" take any installed family name
 |---|---|---|
 | `--fs-small` | 11.5px | captions, counts, labels in bands |
 | `--fs-base` | 13px (sans, the UI size); mono values use `--data-font-size`, 12px | everything else |
-| `--fs-large` | 17px | view titles (the day in the Day view header) |
+| `--fs-large` | 17px | view titles (the day in the Day view header) and the sidebar's date heading |
 
 Both sizes are settings: Appearance "UI size" (13px, 10–24) and "Data size" (12px, 9–28); ⌘= and ⌘- zoom
 both, except in the Day view, where they zoom the timeline. Chrome sizes are in rem of the UI size. Weights 400, 500 and 600. Numbers and times use tabular
@@ -122,7 +143,7 @@ Inputs look like inputs, never like rows.
   `.input` controls (dialogs, Settings) share the frame without the icon.
 - **Segmented control** (`.segmented`): a field-styled track; segments in `--o2`, hover primary text; the
   selected segment is a rounded tile in `--field-line`, its label in `--text-strong`. Used for the
-  Day/Week/Month switch in the toolbar and Settings choices.
+  Day mode switch, the report's Group by and Settings choices.
 - **Switch:** a track in `--field-line` with a `--knob` thumb; on, the track is the accent and the thumb
   `--on-accent`.
 - **Key cap** (`KeyCap`): mono 11px, `--o3`, 1px `--field-line` border, 4px radius. Key caps follow the
@@ -305,15 +326,17 @@ Rules of the keys (`handleKeydown`):
 - Bare keys never fire in text fields; there only ⌘ and ⌃ combinations and Escape do.
 - While a dialog, the palette, the recording editor or a context menu is open, only Settings, `?`, the
   palette, zoom, Close window and Quit run; every other key belongs to the overlay.
-- ↵ and Space on a focused button or link activate it. J, K, H, L, V, ⇧J, ⇧K, N and ⇧N give the keys back to
+- ↵ and Space on a focused button or link activate it. J, K, H, L, V, ⇧J, ⇧K, ] and [ give the keys back to
   the timeline: they take the focus off a Tabbed-to button.
+- A command has one binding. P, N and O replaced ⌘←, ⌘→ and T for the dates; ] and [ replaced N and ⇧N for
+  the recordings; T is free.
 - `Tab` is never bound: it moves the keyboard focus. Dialogs keep it inside (`Modal`), in reading order:
   fields first, then Cancel and the default button; the first control, or the one a dialog marks, has the
   focus, and closing returns it to where it was.
 
-Scopes are the registry's (`src/commands/scopes.ts`): `global`; `calendar` under it, active in Day, Week and
-Month; and one scope per view (`day`, `week`, `month` under `calendar`; `reports`, `projects`, `rules` under
-`global`), active while that view shows.
+Scopes are the registry's (`src/commands/scopes.ts`): `global`; `dated` under it, active in Day, Week, Month
+and Reports; and one scope per view (`day`, `week`, `month`, `reports` under `dated`; `projects`, `rules`
+under `global`), active while that view shows.
 
 | Command | Label | Default key | Scope |
 |---|---|---|---|
@@ -332,8 +355,8 @@ Month; and one scope per view (`day`, `week`, `month` under `calendar`; `reports
 | `edit.undo` / `edit.redo` | Undo / Redo recording change (outside text fields) | ⌘Z / ⌘⇧Z | global |
 | `logs.open` | Open log folder | palette | global |
 | `app.quit` | Quit TimeTracker | ⌘Q | global |
-| `nav.prev` / `nav.next` | Previous / Next day, week or month | ⌘← / ⌘→ | calendar |
-| `nav.today` | Go to today | T | calendar |
+| `nav.prev` / `nav.next` | Previous / Next day, week, month or report period | P / N | dated |
+| `nav.today` | Go to today (this week, this month, the report's period that holds today) | O | dated |
 | `day.nextBlock` / `day.prevBlock` | Next / Previous block in time | J / K | day |
 | `day.prevLane` / `day.nextLane` | Block in the lane to the left / right | H / L | day |
 | `day.details` | Block details | Space | day |
@@ -345,7 +368,7 @@ Month; and one scope per view (`day`, `week`, `month` under `calendar`; `reports
 | `activity.deleteRange` | Delete activity in a range… | – | day |
 | `day.settings` | Timeline settings | palette | day |
 | `day.clearFocus` | Clear selection (and the block and recording focus) | Escape | day |
-| `recording.next` / `recording.prev` | Next / Previous recording | N / ⇧N | day |
+| `recording.next` / `recording.prev` | Next / Previous recording | ] / [ | day |
 | `recording.open` | Record selection or edit recording | ↵ | day |
 | `recording.create` | New recording from selection | palette, menu | day |
 | `recording.edit` | Edit recording | palette, menu | day |
@@ -372,6 +395,7 @@ Keys of controls, not commands (they act on the focused control and are not rebi
 | Context menu (⌃↵ on a block) | ↑↓ items, ↵ runs, Escape closes |
 | Pickers in the Reports filter | type, ↑↓, ↵ adds, ⌫ on an empty field removes the last |
 | Week and Month | Tab to a day head (Week) or a day cell (Month), ↵ opens that day |
+| Date picker (the sidebar's date heading) | ←→ by a day, ↑↓ by a week, PageUp / PageDown by a month, ↵ shows the day, Escape closes |
 | Settings → Shortcuts | a key field records the next key; Escape stops, ⌫ unbinds |
 
 Left to the pointer, each with a keyboard way to the same result: dragging a selection (V, ⇧J, ⇧K, or the
@@ -386,7 +410,7 @@ CLI and the MCP server list the ids.
 
 From any view, with the documented default keys only:
 
-1. ⌘1 shows the Day view, T today.
+1. ⌘1 shows the Day view, O today.
 2. J focuses the first block of the day (K, H and L move on); Space shows its details.
 3. V selects the focused block's span; ⇧J (or ⇧K) grows the selection over the next (or previous) block, as
    far as the work went. The status bar shows the span and its length; Escape clears it.
@@ -396,12 +420,12 @@ From any view, with the documented default keys only:
 6. ⌘↵ saves (↵ in a time or the note field does too). If it overlaps a recording, ↵ in the dialog replaces
    the overlapped part and Escape goes back.
 7. The new recording has the focus: ⌥↑ ⌥↓ move it, ⌥⇧↓ ⌥⇧↑ change its end, ↵ edits it again, ⌫ deletes it,
-   ⌘Z undoes the last change. N and ⇧N step through the day's recordings.
+   ⌘Z undoes the last change. ] and [ step through the day's recordings.
 8. Back to step 2 for the next stretch (J moves on from the last focused block). Rule suggestions are
    buttons in the recordings column: Tab to one, ↵ records it.
-9. ⌘← and ⌘→ step to other days. ⌘2 shows the week (⌘← ⌘→ by week; Tab to a day head and ↵ opens it), ⌘3
+9. P and N step to other days. ⌘2 shows the week (P N by week; Tab to a day head and ↵ opens it), ⌘3
    the month (by month; Tab to a day and ↵ opens it).
-10. ⌘4 shows Reports: Tab to the range (This week, Last week, …) and ↵, on to the client, project and tag
+10. ⌘4 shows Reports (P N step its period, O goes back to the current one): Tab to the range (This week, Last week, …) and ↵, on to the client, project and tag
     pickers, Group by and Rounding; ⌘⇧C copies the report as text, ⌘K `> save` saves it under a name.
 
 ## Scheme audit

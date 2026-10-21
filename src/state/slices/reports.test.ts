@@ -2,13 +2,35 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
+import { api } from "../../api";
 import { savedReport } from "../../test/reportFixtures";
 import { resetStore, useStore } from "../store";
 import { defaultFilter } from "./reports";
 
+const mocked = vi.mocked(api, true);
 const state = () => useStore.getState();
 const weekly = savedReport({ id: "s1", name: "Weekly", filter: { ...defaultFilter(null), range: { kind: "lastWeek" } } });
 const monthly = savedReport({ id: "s2", name: "Monthly", filter: { ...defaultFilter(null), range: { kind: "lastMonth" } } });
+
+describe("reports slice, shifting the period", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore({ view: "reports", reportFilter: { ...defaultFilter(null), range: { kind: "thisWeek" }, groupBy: "tag" } });
+  });
+
+  it("keeps the rest of the filter when the range moves", async () => {
+    mocked.reportRangeShift.mockResolvedValueOnce({ kind: "lastWeek" });
+    await state().shiftReportRange(null, -1);
+    expect(state().reportFilter).toMatchObject({ range: { kind: "lastWeek" }, groupBy: "tag" });
+  });
+
+  it("toasts and keeps the filter when Rust rejects the shift", async () => {
+    mocked.reportRangeShift.mockRejectedValueOnce({ kind: "io", message: "Out of range", code: null });
+    await state().shiftReportRange(null, 1);
+    expect(state().reportFilter).toMatchObject({ range: { kind: "thisWeek" }, groupBy: "tag" });
+    expect(state().toasts.map((t) => t.message)).toEqual(["Could not change the report's period: Out of range"]);
+  });
+});
 
 describe("reports slice, the opened saved report", () => {
   beforeEach(() => {

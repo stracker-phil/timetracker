@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
+import userEvent from "@testing-library/user-event";
+
 import { api } from "../api";
 import { resetStore, useStore } from "../state/store";
-import { at } from "../test/dayFixtures";
-import { conflicts, getCommand, installCommands, runCommand, runMenuCommand } from "./index";
+import { at, DAY, dayView, recordingBlock } from "../test/dayFixtures";
+import { conflicts, getCommand, handleKeydown, installCommands, runCommand, runMenuCommand } from "./index";
 
 const mocked = vi.mocked(api, true);
 const state = () => useStore.getState();
@@ -56,8 +58,8 @@ describe("recording commands", () => {
     ["day.selectBlock", "V"],
     ["day.extendNext", "Shift+J"],
     ["day.extendPrev", "Shift+K"],
-    ["recording.next", "N"],
-    ["recording.prev", "Shift+N"],
+    ["recording.next", "]"],
+    ["recording.prev", "["],
     ["recording.moveToPrevDay", "Alt+ArrowLeft"],
     ["recording.moveToNextDay", "Alt+ArrowRight"],
     ["recording.copyToPrevDay", "Alt+Shift+ArrowLeft"],
@@ -83,6 +85,46 @@ describe("recording commands", () => {
 
     it.each(["day.extendNext", "day.extendPrev", "recording.next", "recording.prev"])("%s is available on the timeline without a focus", (id) => {
       expect(runCommand(id)).toBe(true);
+    });
+  });
+
+  describe("stepping recordings with ] and [", () => {
+    beforeEach(() => {
+      resetStore({
+        view: "day",
+        day: DAY,
+        dayView: dayView({ recordings: [recordingBlock({ id: "r2", start: at("11:00"), end: at("12:00") }), recordingBlock({ id: "r1" })] }),
+      });
+    });
+
+    async function press(keys: string) {
+      window.addEventListener("keydown", handleKeydown, true);
+      try {
+        await userEvent.keyboard(keys);
+      } finally {
+        window.removeEventListener("keydown", handleKeydown, true);
+      }
+    }
+
+    it("] focuses the first recording of the day, then the next one", async () => {
+      await press("]");
+      expect(state().focusedRecording).toBe("r1");
+      await press("]");
+      expect(state().focusedRecording).toBe("r2");
+    });
+
+    it("[ focuses the last recording of the day, then the previous one", async () => {
+      await press("[[");
+      expect(state().focusedRecording).toBe("r2");
+      await press("[[");
+      expect(state().focusedRecording).toBe("r1");
+    });
+
+    it("N steps the day and leaves the focused recording alone", async () => {
+      state().focusRecording("r1");
+      await press("n");
+      expect(state().focusedRecording).toBe("r1");
+      expect(state().day).toBe("2026-03-11");
     });
   });
 

@@ -31,10 +31,10 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 ```
 App
 └─ .app grid
-   ├─ Toolbar        traffic-light inset, app title, Day/Week/Month segmented control, Settings button
-   ├─ Sidebar        Day, Week, Month, Reports, Projects; a tracker status line at the bottom
-   ├─ main           DayPage for Day, ProjectsPage for Projects, else EmptyView: the active view's name
-   └─ StatusBar      left: status text; right: zoom
+   ├─ Toolbar        drag strip: traffic-light inset, app title, Settings button
+   ├─ Sidebar        DateNavigator (the shown period, ‹ › Today), then Day, Week, Month, Reports, Projects, Rules
+   ├─ main           the active view's page (EmptyView for an unknown one)
+   └─ StatusBar      left: sidebar toggle, TrackerStatus, the selection; right: running timer, today's totals
 Dialogs (settings, shortcuts, confirm) · PermissionDialog · Welcome · CommandPalette · Toasts
 ```
 
@@ -47,10 +47,10 @@ error's message, returning the `AppError`.
 | Slice | Holds |
 |---|---|
 | `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings`, `saveKeybindings`, `setLaunchAtLogin(enabled)` (resolves whether it is on now, `null` on a toasted failure) |
-| `ui` | `toasts` (an optional `action`, e.g. Undo, with an optional `ttlMs`; an action toast stays 10 s by default), `dialog` (`settings { page? }`, `shortcuts`, `confirm`, `project { id?, clientId? }`, `client { id? }`, `rule { id?, draft? }`, `deleteActivity { day, bounds, range }`), `paletteOpen`, `paletteSeed` |
-| `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`, `rules`), `setView`, `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `goToday` (keeps the view), `step(±1)` (a day, a week or a month by the view; `addDays`, `addMonths` in `lib/day.ts`); each remembers the day as `uiState.lastDay`, and `restoreDay` shows it again at boot when it is at most 30 days old |
+| `ui` | `toasts` (an optional `action`, e.g. Undo, with an optional `ttlMs`; an action toast stays 10 s by default), `dialog` (`settings { page? }`, `shortcuts`, `confirm`, `project { id?, clientId? }`, `client { id? }`, `rule { id?, draft? }`, `deleteActivity { day, bounds, range }`, `timelineSettings`, `datePicker`), `paletteOpen`, `paletteSeed` |
+| `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`, `rules`), `setView`, `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `goToday` (keeps the view), `showDate(day)` (keeps the view; the date picker), `step(±1)` (a day, a week or a month by the view; `addDays`, `addMonths` in `lib/day.ts`); in Reports the three move the report's period instead (`shiftReportRange`); each remembers the day as `uiState.lastDay`, and `restoreDay` shows it again at boot when it is at most 30 days old |
 | `day` | `dayView` (the shown day's `DayView`; the previous one stays while the next day loads), `dayError`, `loadDay` (drops answers for a day no longer shown), `focusedBlock`/`focusBlock`, `detailsBlock`/`toggleDetails` (the card opened by keyboard), `blockMenuRequest`/`requestBlockMenu`, `setAppSetting(appKey, patch)` (stores the returned settings; the Day view reloads on the `data_changed` it causes) |
-| `reports` | `reportFilter` (`null` follows `settings.reports` through `defaultFilter`), `setReportFilter(patch)`, `savedReports`/`loadSavedReports` (boot), `saveReport(name)` (the shown filter), `renameSavedReport`, `deleteSavedReport`, `openSavedReport` (its filter, and the Reports view) |
+| `reports` | `reportFilter` (`null` follows `settings.reports` through `defaultFilter`), `setReportFilter(patch)`, `shiftReportRange(anchor, by)` (`api.reportRangeShift`: the period `by` steps of its unit away, from the period holding `anchor` when given, so `by = 0` is that period; failures toast), `savedReports`/`loadSavedReports` (boot), `saveReport(name)` (the shown filter), `renameSavedReport`, `deleteSavedReport`, `openSavedReport` (its filter, and the Reports view) |
 | `rules` | `rules` (by position), `loadRules` (the Rules view, and every `data_changed` of `rules`), `saveRule(id, input)` (rejects; toasted unless the error has a `field`), `deleteRule`, `reorderRules(ids)`, `setRuleEnabled`, `acceptSuggestion(suggestion)` and `acceptRuleSuggestions(ruleId)` on the shown day, each with a toast offering Undo |
 | `data` | `dataVersion` (every day changed), `dayVersions` (per day), `changeCount` (every event, for views over many days), `dataChanged(event)` (called on every `data_changed` event); `selectDayVersion(day)` changes when that day's data may have changed |
 | `projects` | `projects` (`ProjectListItem[]`, archived included), `clients`, `tags` (`TagListItem[]`), `recent`, `projectsLoaded`; `loadProjects` (boot, and every `data_changed` of `projects` or `tags`); `saveProject(id, input)`, `archiveProject`, `saveClient`, `archiveClient`, `saveTag`, `deleteTag` reload after the write and reject on failure (toasted, unless the error has a `field` for the form). Helpers: `groupProjects(projects, clients, archived)`, `projectLabel` |
@@ -84,8 +84,8 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 
 - **Bindings** are strings like `Mod+Shift+K` (`Mod` is ⌘), normalized to `Mod, Ctrl, Alt, Shift` and shown
   as `⌘⇧K`. User overrides come from `keybindings.json`.
-- **Scopes** (`commands/scopes.ts`) form a tree: `global`; under it `calendar` (with `day`, `week` and
-  `month`), `reports`, `projects` and `rules`, each active while `view` matches. The most specific active scope wins a key.
+- **Scopes** (`commands/scopes.ts`) form a tree: `global`; under it `dated` (with `day`, `week`, `month`
+  and `reports`), `projects` and `rules`, each active while `view` matches. The most specific active scope wins a key.
 - **Keys.** `handleKeydown` runs in the capture phase. Inside text inputs only `Mod`/`Ctrl` combinations and
   Escape fire. While a dialog, the palette, the editor or a context menu (`[role="menu"]`) has the keys only
   `MODAL_ALLOWED` commands run. Bare ↵ and Space on a focused button or link stay with it
@@ -98,8 +98,9 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   typed text; once something is typed, active projects follow as `Project: Client / Name` with their color
   dot (fuzzy, `lib/fuzzy.ts`), and Enter opens the project's sheet. `>` limits the list to commands, `p:` to
   projects.
-- **Day, Week and Month** (scope `calendar`, the parent of the three views' scopes). `nav.prev` (⌘←),
-  `nav.next` (⌘→) step by the view's unit; `nav.today` (T).
+- **Day, Week, Month and Reports** (scope `dated`, the parent of the four views' scopes). `nav.prev` (P),
+  `nav.next` (N) step by the view's unit (in Reports the report's period); `nav.today` (O). The registry
+  holds one binding per command, so ⌘← ⌘→ are gone.
 - **Day view.** `day.nextBlock` (J),
   `day.prevBlock` (K), `day.prevLane` (H), `day.nextLane` (L), and with a focused block `day.details`
   (Space), `day.blockMenu` (⌃↵, which also offers Make a rule…), `day.selectBlock` (V, its span as the
@@ -107,7 +108,7 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   `day.clearFocus` (Escape) clears the block focus, the selection and the focused recording.
   `activity.deleteDay` and `activity.deleteRange` (no default keys; also in the Day header's ⋯ menu) open
   `DeleteActivityDialog` once the shown day's view has loaded.
-- **Recordings.** `recording.next`/`prev` (N ⇧N) focus the shown day's recordings by start;
+- **Recordings.** `recording.next`/`prev` (] [) focus the shown day's recordings by start;
   `recording.open` (Enter) edits the focused recording or records the selection;
   `recording.create` and `recording.edit` (menu and palette) do one of the two; `recording.delete` (⌫);
   `recording.nudgeEarlier`/`nudgeLater` (⌥↑ ⌥↓) move the focused recording and `recording.extend`/`shrink`
@@ -127,13 +128,32 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 
 ## Components
 
-Shell components in `components/`: `Toolbar` (Day/Week/Month switch), `Sidebar` (the entries of `views.ts`), `StatusBar`, `EmptyView`, `Modal`, `ContextMenu`,
+Shell components in `components/`: `Toolbar` (title and Settings; a drag strip), `Sidebar` (`DateNavigator`, then
+the entries of `views.ts`), `StatusBar`, `EmptyView`, `Modal`, `ContextMenu`,
 `Toasts`, `Field` (`InsetField`, `KeyCap`), `Splitter`, `ErrorBoundary`, `CommandPalette`,
 `ShortcutsDialog`, `Dialogs`.
 
+Dates are changed in one place, the sidebar:
+
+- `DateNavigator` (top of the sidebar): the shown period as a heading, ‹ › and a Today button. In Day, Week
+  and Month `useCalendarPeriod` asks Rust for the period (`api.calendarPeriod(unit, day)`: `from`, `to`,
+  `holdsToday`) and the page only formats it: Day `Wed, Oct 21` (`formatDayLabel`), Week `Oct 19 – 25`
+  (`formatRangeLabel`), Month `October 2026` (`formatMonthLabel`). Reports shows the preset's name or the
+  custom range. The Today button reads Today, This week or This month by the unit and is disabled while the
+  period holds today. The buttons call `step` and `goToday`, as P, N and O do. Projects and Rules render it
+  hidden (`date-nav--idle`), so the view list keeps its place.
+- `DatePickerPopover` (dialog `datePicker`, opened by the heading; anchored under `[data-date-heading]`): the
+  month grid from Rust (`api.calendarPicker(month, selected)`: whole weeks from Monday, each day with
+  `outside`, `isToday` and `selected`), today in accent text, the shown period (or a custom report range) on
+  `--sel`. ‹ › and PageUp / PageDown turn the month, arrow keys move the focused day, ↵ or a click calls
+  `showDate` and closes it.
+- `StatusBar`: the sidebar toggle, `TrackerStatus` and the selection on the left; the running timer and
+  `TodayTotals` (`api.dayTotals(today)`, reloaded on `selectDayVersion(today)` and the `useLiveReload` tick) on
+  the right, so today's `recorded 1:00 · tracked 3:12` shows in every view.
+
 Tracker components:
 
-- `TrackerStatus` (sidebar foot): a dot (accent while running, `--o3` while away or paused, `--style-red`
+- `TrackerStatus` (status bar, left; the tracker state shows only there): a dot (accent while running, `--o3` while away or paused, `--style-red`
   without permission), the status text Rust computed (the tray shows the same), and Pause (a `ContextMenu`:
   15 minutes, 1 hour, until tomorrow, until resumed) while running or away, Resume while paused, and
   "Allow…" (shows the permission dialog again) without permission. "Tracking off" while `tracker` is `null`.
@@ -157,7 +177,7 @@ Tracker components:
 | File | Renders |
 |---|---|
 | `DayPage` | `DayHeader` and `Timeline`; the empty state ("Nothing tracked on this day" with the tracker's status text on today, or "Tracking needs permission" with Allow…). Loads on a new day, on `selectDayVersion(day)`, and while today on `useLiveReload` (every 30 s, and on tracker statuses at most every 10 s, since the tracker sends no `data_changed`; paused while `document.visibilityState` is hidden, which WKWebView sets when the window hides, with one reload when it shows again) |
-| `DayHeader` | ‹ Today ›, the date (`formatDayLabel`), totals `recorded 0:00 · tracked 6:12 · away 1:05` (`formatHm`), the gear that opens `TimelineSettingsPopover` (command `day.settings`, no default key), and the ⋯ menu: Delete activity for this day…, Delete activity in a range… |
+| `DayHeader` | the date (`formatDayLabel`), totals `recorded 0:00 · tracked 6:12 · away 1:05` (`formatHm`) only for a day other than today (the status bar has today's), the gear that opens `TimelineSettingsPopover` (command `day.settings`, no default key), and the ⋯ menu: Delete activity for this day…, Delete activity in a range… |
 | `DeleteActivityDialog` | dialog `deleteActivity`, a `Modal` sheet: the day (its `dayView.bounds`) or two `datetime-local` fields prefilled with them, the sentence "Deletes 412 activity spans and 3 away spans. Spans that cross the range are deleted entirely. Recordings are not affected." (counts from `api.activityCount`), errors inline, and Delete (`api.activityDelete`). Then a toast `Deleted activity for Tue, Oct 21` whose Undo (`api.activityDeleteUndo`) lasts until `undoUntil`; the Day view reloads from `data_changed` |
 | `TimelineSettingsPopover` | dialog `timelineSettings`, a `Modal` panel under the header's gear: `TimelineControls` and "Hidden apps: n" from `dayView.hiddenApps`, each with Unhide |
 | `Timeline` | the scroll box: `LaneHeader` (sticky), the recordings column (empty until recordings), `TimeAxis`, the lanes with `Spans` (away, gaps) behind them and the current-time line on today. Opens a day scrolled to 30 min before its first activity. Hover (one `mouseover` listener reading `data-block-id`) shows `HoverCard` after 300 ms; right-click, the gear on a hovered block, or ⌃↵ opens the block menu. With `compact` it draws the day at 60% of the zoom and adds `timeline--compact` |
@@ -234,7 +254,7 @@ position) and their writes; a `data_changed` of kind `rules` reloads them.
 
 ### Week and Month
 
-`components/calendar/`: `CalendarHeader` (‹ Today ›, the title, totals). `WeekView` runs `weekView(day)` keyed
+`components/calendar/`: `CalendarHeader` (the title, totals). `WeekView` runs `weekView(day)` keyed
 by the day and `changeCount`: day heads (label and total; a click opens the day) over a `TimeAxis` and seven
 columns that place each day's `RecordingBlock`s from the column's bounds. A block keeps its vertical move
 and resize; released over another column (`onDrop`, found with `elementFromPoint`) it moves there, with ⌥ it

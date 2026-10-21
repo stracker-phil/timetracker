@@ -1,5 +1,6 @@
 use tauri::State;
 
+use super::period::{Period, PeriodUnit, PickerMonth, period, picker_month};
 use super::{CalendarInput, MonthView, WeekView, month, month_days, week, week_days};
 use crate::day::commands::names;
 use crate::db::time::{Day, now_ms};
@@ -42,4 +43,14 @@ pub async fn week_view(state: State<'_, AppState>, day: Day) -> AppResult<WeekVi
 #[tauri::command]
 pub async fn month_view(state: State<'_, AppState>, day: Day) -> AppResult<MonthView> {
     load_month(&state.data.db()?, day).await
+}
+
+#[tauri::command]
+pub fn calendar_period(unit: PeriodUnit, day: Day) -> Period {
+    period(unit, day, Day::today())
+}
+
+#[tauri::command]
+pub fn calendar_picker(month: Day, selected: Option<(Day, Day)>) -> PickerMonth {
+    picker_month(month, selected, Day::today())
 }

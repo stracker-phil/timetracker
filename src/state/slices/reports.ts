@@ -10,6 +10,11 @@ export interface ReportsSlice {
   openedReport: string | null;
   /** Merges `patch` into the shown filter; the Reports view runs it again. */
   setReportFilter: (patch: Partial<ReportFilter>) => void;
+  /**
+   * Moves the report's period `by` steps of its unit (Rust decides), from the period holding `anchor` when
+   * given; `by = 0` with an anchor is the period holding `anchor`.
+   */
+  shiftReportRange: (anchor: string | null, by: number) => Promise<void>;
   loadSavedReports: () => Promise<void>;
   /** Saves the shown filter under `name`. */
   saveReport: (name: string) => Promise<void>;
@@ -41,6 +46,15 @@ export const reportsSlice: Slice<ReportsSlice> = {
 
     setReportFilter(patch) {
       set({ reportFilter: { ...selectReportFilter(get()), ...patch }, openedReport: null });
+    },
+
+    async shiftReportRange(anchor, by) {
+      try {
+        const range = await api.reportRangeShift(selectReportFilter(get()).range, anchor, by);
+        get().setReportFilter({ range });
+      } catch (e) {
+        fail(e, "Could not change the report's period");
+      }
     },
 
     async loadSavedReports() {

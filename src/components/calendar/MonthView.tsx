@@ -30,11 +30,10 @@ export function MonthView() {
   const day = useStore((s) => s.day);
   const changes = useStore((s) => s.changeCount);
   const { data: month, error } = useApiResult(`month:${day}#${changes}`, () => api.monthView(day), { keepData: true });
-  const current = !!month?.weeks.some((w) => w.some((d) => d.isToday && d.inMonth));
 
   return (
     <section className="day-page" aria-label="Month">
-      <CalendarHeader title={month?.label ?? ""} unit="month" current={current}>
+      <CalendarHeader title={month?.label ?? ""}>
         {month && (
           <span className="day-totals mono o2" aria-label="Totals">
             recorded {formatHm(month.totalMs)}

@@ -223,6 +223,27 @@ pub struct DayTotals {
     pub away_ms: i64,
 }
 
+/// Recorded, tracked and away time inside the day; `names` is not read.
+pub fn totals(input: &DayInput) -> DayTotals {
+    let clipped = |start: Ms, end: Option<Ms>| clip(start, end, input.bounds, input.now);
+    DayTotals {
+        recorded_ms: input
+            .recordings
+            .iter()
+            .filter_map(|r| clipped(r.start, r.end))
+            .map(|(start, end)| end - start)
+            .sum(),
+        tracked_ms: tracked_ms(&input.activities, input.bounds, input.now),
+        away_ms: union_length(
+            input
+                .away
+                .iter()
+                .filter_map(|a| clipped(a.start, a.end))
+                .collect(),
+        ),
+    }
+}
+
 pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
     let rows = clipped_blocks(input);
     let recordings = recording_blocks(&input.recordings, &input.names, input.bounds, input.now);
@@ -233,11 +254,7 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
     let activity: Vec<(Ms, Ms)> = rows.iter().map(span).collect();
     let away_spans: Vec<(Ms, Ms)> = away.iter().map(|a| (a.start, a.end)).collect();
     let recorded: Vec<(Ms, Ms)> = recordings.iter().map(|r| (r.start, r.end)).collect();
-    let totals = DayTotals {
-        recorded_ms: recorded.iter().map(|(start, end)| end - start).sum(),
-        tracked_ms: tracked_ms(&input.activities, input.bounds, input.now),
-        away_ms: union_length(away_spans.clone()),
-    };
+    let totals = totals(input);
     let gaps = gaps(&activity, &away_spans);
     let first_activity = activity.iter().map(|s| s.0).min();
     let mut sources: Vec<String> = rows.iter().map(|b| b.source.clone()).collect();
@@ -1346,5 +1363,78 @@ mod tests {
                 "clippedEnd": false
             }])
         );
+    }
+
+    fn busy_input() -> DayInput {
+        DayInput {
+            bounds: (HOUR, 3 * HOUR),
+            now: 2 * HOUR + mins(30),
+            recordings: vec![
+                recording("r1", 0, Some(mins(90))),
+                recording("r2", mins(100), Some(mins(110))),
+                recording("r3", mins(140), None),
+                recording("r4", 4 * HOUR, Some(5 * HOUR)),
+            ],
+            ..input(
+                vec![
+                    activity(1, 0, Some(mins(90)), "Code", ""),
+                    activity(2, mins(80), Some(mins(100)), "Mail", ""),
+                    activity(3, mins(150), Some(mins(170)), "Code", ""),
+                    activity(4, 4 * HOUR, Some(5 * HOUR), "Code", ""),
+                ],
+                vec![
+                    away(1, mins(70), Some(mins(100)), AwayReason::Idle),
+                    away(2, mins(90), Some(mins(130)), AwayReason::Sleep),
+                    away(3, mins(140), None, AwayReason::Lock),
+                ],
+            )
+        }
+    }
+
+    #[test]
+    fn totals_count_recorded_tracked_and_away_time_inside_the_day() {
+        assert_eq!(
+            totals(&busy_input()),
+            DayTotals {
+                recorded_ms: mins(30) + mins(10) + mins(10),
+                tracked_ms: mins(40) + mins(20),
+                away_ms: mins(60) + mins(10),
+            }
+        );
+    }
+
+    #[test]
+    fn a_running_recording_in_totals_ends_at_now() {
+        let input = DayInput {
+            now: 2 * HOUR,
+            ..input_with_recordings(vec![recording("r1", HOUR, None)])
+        };
+
+        assert_eq!(totals(&input).recorded_ms, HOUR);
+    }
+
+    #[test]
+    fn overlapping_away_spans_count_once_in_totals() {
+        let input = input(
+            vec![],
+            vec![
+                away(1, mins(60), Some(mins(120)), AwayReason::Idle),
+                away(2, mins(90), Some(mins(180)), AwayReason::Sleep),
+            ],
+        );
+
+        assert_eq!(totals(&input).away_ms, mins(120));
+    }
+
+    #[test]
+    fn totals_of_an_empty_day_are_zero() {
+        assert_eq!(totals(&input(vec![], vec![])), DayTotals::default());
+    }
+
+    #[test]
+    fn totals_equal_the_totals_of_the_view() {
+        for input in [busy_input(), input(vec![], vec![])] {
+            assert_eq!(totals(&input), view(&input, &settings()).totals);
+        }
     }
 }

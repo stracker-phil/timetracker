@@ -1,7 +1,7 @@
 use tauri::State;
 
 use super::saved::{self, SavedReport};
-use super::{ReportFilter, ReportResult, run, text};
+use super::{Range, ReportFilter, ReportResult, run, shift, text};
 use crate::db::time::{Day, now_ms};
 use crate::error::AppResult;
 use crate::state::AppState;
@@ -12,6 +12,11 @@ pub async fn report_run(
     filter: ReportFilter,
 ) -> AppResult<ReportResult> {
     run(&state.data.db()?, &filter, Day::today(), now_ms()).await
+}
+
+#[tauri::command]
+pub fn report_range_shift(range: Range, anchor: Option<Day>, by: i32) -> AppResult<Range> {
+    shift(&range, anchor, by, Day::today())
 }
 
 #[tauri::command]

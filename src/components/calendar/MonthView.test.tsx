@@ -47,16 +47,10 @@ describe("MonthView", () => {
       expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 2:00");
     });
 
-    it("disables Today while the month contains today", async () => {
-      renderMonth(monthView({ today: "2026-03-20" }));
+    it("has no buttons to change the month", async () => {
+      renderMonth();
       await grid();
-      expect(screen.getByRole("button", { name: "Today" })).toBeDisabled();
-    });
-
-    it("enables Today when today only shows as a day of a neighboring month", async () => {
-      renderMonth(monthView({ today: "2026-04-02" }));
-      await grid();
-      expect(screen.getByRole("button", { name: "Today" })).toBeEnabled();
+      for (const name of ["Previous month", "Next month", "Today"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     });
 
     it("shows the error when the month cannot be loaded", async () => {
@@ -107,18 +101,18 @@ describe("MonthView", () => {
   });
 
   describe("navigation", () => {
-    it("loads the first of the next month with ⌘→", async () => {
+    it("loads the first of the next month with N", async () => {
       renderMonth();
       await grid();
-      await userEvent.keyboard("{Meta>}{ArrowRight}{/Meta}");
+      await userEvent.keyboard("n");
       await vi.waitFor(() => expect(mocked.monthView).toHaveBeenLastCalledWith("2026-04-01"));
       expect(useStore.getState().view).toBe("month");
     });
 
-    it("loads the previous month with its button", async () => {
+    it("loads the previous month with P", async () => {
       renderMonth();
       await grid();
-      await userEvent.click(screen.getByRole("button", { name: "Previous month" }));
+      await userEvent.keyboard("p");
       await vi.waitFor(() => expect(mocked.monthView).toHaveBeenLastCalledWith("2026-02-01"));
     });
   });

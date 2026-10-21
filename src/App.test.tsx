@@ -7,7 +7,7 @@ vi.mock("./api", async (orig) => ({ ...(await orig<object>()), api: (await impor
 import App from "./App";
 import { api, EMPTY_UI_STATE } from "./api";
 import { addDays, today } from "./lib/day";
-import { resetStore, type View } from "./state/store";
+import { resetStore, useStore, type View } from "./state/store";
 import { activityRow, trackerStatus } from "./test/data";
 import { dayView } from "./test/dayFixtures";
 import { projectItem, tag } from "./test/projectFixtures";
@@ -21,7 +21,8 @@ const mocked = vi.mocked(api, true);
 async function renderApp(patch: Parameters<typeof resetStore>[0] = {}) {
   resetStore(patch);
   render(<App />);
-  await screen.findByRole("button", { name: "13 px" });
+  await vi.waitFor(() => expect(useStore.getState().settings).not.toBeNull());
+  await screen.findByLabelText("Today");
 }
 
 /** The Day, Week, Month and Reports views are regions, the Projects and Rules pages have a level-1 heading. */
@@ -103,8 +104,8 @@ describe("App", () => {
     });
 
     it("reloads the shown day when its data changed", async () => {
-      const day = today();
-      await renderApp();
+      const day = addDays(today(), -1);
+      await renderApp({ day });
       await screen.findByText("recorded 0:00 · tracked 0:00 · away 0:00");
       mocked.dayView.mockResolvedValue(dayView({ day, totals: { recordedMs: 0, trackedMs: 1_800_000, awayMs: 0 } }));
       act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "activity", day }));
@@ -220,10 +221,10 @@ describe("App", () => {
       expect(mainHeading("Reports")).toBeInTheDocument();
     });
 
-    it("switches the view from the toolbar", async () => {
+    it("steps to the previous day from the sidebar's date navigator", async () => {
       await renderApp();
-      await userEvent.click(within(screen.getByRole("group", { name: "View" })).getByRole("button", { name: "Month" }));
-      expect(mainHeading("Month")).toBeInTheDocument();
+      await userEvent.click(await screen.findByRole("button", { name: "Previous day" }));
+      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith(addDays(today(), -1)));
     });
 
     it.each<[string, string, View]>([
@@ -257,9 +258,9 @@ describe("App", () => {
   });
 
   describe("tracker", () => {
-    const sidebar = () => within(screen.getByRole("complementary", { name: "Sidebar" }));
+    const sidebar = () => within(screen.getByRole("contentinfo"));
 
-    it("shows the status loaded on boot in the sidebar", async () => {
+    it("shows the status loaded on boot in the status bar", async () => {
       mocked.trackerStatus.mockResolvedValueOnce(trackerStatus({ text: "Tracking · Mail" }));
       await renderApp();
       expect(await sidebar().findByText("Tracking · Mail")).toBeInTheDocument();
@@ -310,14 +311,14 @@ describe("App", () => {
     const needsPermission = () => trackerStatus({ state: { kind: "needsPermission" }, permission: "denied", text: "Needs permission" });
     const dialogName = "Allow TimeTracker to read window titles";
 
-    it("reopens from the sidebar's Allow… button after it was dismissed", async () => {
+    it("reopens from the status bar's Allow… button after it was dismissed", async () => {
       await renderApp();
       act(() => mocked.onTrackerStatus.mock.calls[0][0](needsPermission()));
       await screen.findByRole("dialog", { name: dialogName });
       await userEvent.keyboard("{Escape}");
       expect(screen.queryByRole("dialog", { name: dialogName })).not.toBeInTheDocument();
 
-      await userEvent.click(within(screen.getByRole("complementary", { name: "Sidebar" })).getByRole("button", { name: "Allow…" }));
+      await userEvent.click(within(screen.getByRole("contentinfo")).getByRole("button", { name: "Allow…" }));
       expect(await screen.findByRole("dialog", { name: dialogName })).toBeInTheDocument();
     });
 

@@ -78,16 +78,10 @@ describe("WeekView", () => {
       expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 0:45 · tracked 1:00");
     });
 
-    it("disables Today while the week contains today", async () => {
-      renderWeek(weekView({ today: NEXT_DAY }));
-      await screen.findAllByRole("columnheader");
-      expect(screen.getByRole("button", { name: "Today" })).toBeDisabled();
-    });
-
-    it("enables Today in another week", async () => {
+    it("has no buttons to change the week", async () => {
       renderWeek();
       await screen.findAllByRole("columnheader");
-      expect(screen.getByRole("button", { name: "Today" })).toBeEnabled();
+      for (const name of ["Previous week", "Next week", "Today"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     });
 
     it("shows the error when the week cannot be loaded", async () => {
@@ -130,17 +124,17 @@ describe("WeekView", () => {
   });
 
   describe("navigation", () => {
-    it("loads the next week with ⌘→", async () => {
+    it("loads the next week with N", async () => {
       renderWeek();
       await screen.findAllByRole("columnheader");
-      await userEvent.keyboard("{Meta>}{ArrowRight}{/Meta}");
+      await userEvent.keyboard("n");
       await vi.waitFor(() => expect(mocked.weekView).toHaveBeenLastCalledWith("2026-03-17"));
     });
 
-    it("loads the previous week with its button", async () => {
+    it("loads the previous week with P", async () => {
       renderWeek();
       await screen.findAllByRole("columnheader");
-      await userEvent.click(screen.getByRole("button", { name: "Previous week" }));
+      await userEvent.keyboard("p");
       await vi.waitFor(() => expect(mocked.weekView).toHaveBeenLastCalledWith("2026-03-03"));
       expect(useStore.getState().view).toBe("week");
     });

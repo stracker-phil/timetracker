@@ -141,13 +141,24 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
   padding: 0 0.923rem 0 var(--traffic-lights); background: var(--chrome); border-bottom: 1px solid var(--line);
 }
 .app-title { font-weight: 600; font-size: 1rem; letter-spacing: -0.01em; }
-.view-switch { margin: 0 auto; }
 
 .empty-view { flex: 1; display: grid; place-items: center; color: var(--o3); font-size: var(--fs-large); }
 .empty-view-title { margin: 0; font-size: inherit; font-weight: 500; }
 
 /* ---------- sidebar ---------- */
 .sidebar { display: flex; flex-direction: column; min-height: 0; background: var(--chrome); border-right: 1px solid var(--line); }
+/* The date navigator keeps its height in views without a period (date-nav--idle), so the view list never moves. */
+.date-nav { display: flex; flex-direction: column; gap: 0.308rem; padding: 0.769rem 1.231rem 0.615rem; border-bottom: 1px solid var(--line); }
+.date-nav--idle { visibility: hidden; }
+.date-nav-title {
+  align-self: flex-start; max-width: 100%; margin: 0 -0.308rem; padding: 0.154rem 0.308rem; border: none; border-radius: var(--radius-sm);
+  background: none; color: var(--text); font-size: var(--fs-large); font-weight: 600; line-height: 1.3; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default;
+}
+.date-nav-title:hover { background: var(--row-hover); }
+.date-nav-title:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.date-nav-buttons { display: flex; align-items: center; gap: 0.308rem; min-height: 1.846rem; margin-left: -0.308rem; }
+.date-nav-buttons .btn { margin-left: 0.308rem; }
 .sidebar-body { flex: 1; overflow: auto; padding: 0 0 0.769rem; scrollbar-gutter: stable; }
 /* Sidebar items share the row anatomy: --pad around a 20px line, 8px inset, 5px radius (docs/ux.md). On the
    right the scrollbar's gutter (always kept) stands in for the inset, as far as it is wide. */
@@ -168,8 +179,8 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .sidebar-nav { display: flex; flex-direction: column; }
 .sidebar-entry, .sidebar-saved { display: flex; flex-direction: column; }
 .si.si-sub { padding-left: 1.846rem; font-size: var(--fs-small); }
-.sidebar-foot { padding: 0.615rem 1.231rem; border-top: 1px solid var(--line); font-size: var(--fs-small); color: var(--o3); }
-.tracker-status { display: flex; align-items: center; gap: 0.462rem; }
+.tracker-status { display: flex; align-items: center; gap: 0.462rem; min-width: 0; }
+.tracker-status .grow-text { flex: 0 1 auto; }
 .tracker-dot { flex: none; width: 0.462rem; height: 0.462rem; border-radius: 50%; background: var(--o3); }
 .tracker-dot.running { background: var(--accent); }
 .tracker-dot.attention { background: var(--style-red); }
@@ -220,6 +231,20 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 }
 .dialog.panel { overflow: hidden; }
 .dialog.timeline-popover { width: min(34rem, calc(100vw - 1.231rem)); max-height: calc(100vh - 8rem); overflow: auto; padding: 0.615rem 0.923rem; }
+.dialog.date-picker { padding: 0.615rem; }
+.date-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 0.462rem; margin-bottom: 0.308rem; }
+.date-picker-month { font-weight: 600; }
+.date-picker-grid { display: grid; grid-template-columns: repeat(7, 2.154rem); gap: 2px; }
+.date-picker-weekday { padding: 0.154rem 0; color: var(--o3); font-size: var(--fs-small); text-align: center; }
+.date-picker-day {
+  height: 2rem; padding: 0; border: none; border-radius: var(--radius-sm); background: none; color: var(--text);
+  font-family: var(--font-mono); font-size: var(--data-font-size); font-variant-numeric: tabular-nums; cursor: default;
+}
+.date-picker-day:hover { background: var(--row-hover); }
+.date-picker-day:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.date-picker-day.outside { color: var(--o3); }
+.date-picker-day.sel { background: var(--sel); }
+.date-picker-day.today { color: var(--accent-text); font-weight: 600; }
 .dialog.wide { width: min(43.077rem, calc(100vw - 2.462rem)); }
 .dialog.sheet h2 { margin: 0; font-size: 1.154rem; }
 .form-contents { display: contents; }
@@ -400,7 +425,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 /* ---------- day ---------- */
 .day-page { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .day-head { display: flex; align-items: center; gap: 0.462rem; padding: 0.615rem 1.231rem; border-bottom: 1px solid var(--line); }
-.day-title { margin: 0 auto 0 0.462rem; font-size: var(--fs-large); font-weight: 600; }
+.day-title { margin: 0 auto 0 0; font-size: var(--fs-large); font-weight: 600; }
 .day-totals { font-size: var(--data-font-size); }
 .day-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.462rem; color: var(--text); }
 .day-empty p { margin: 0; }

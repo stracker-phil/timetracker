@@ -34,6 +34,8 @@ export type Dialog =
   | { type: "prompt"; title: string; label: string; initial: string; confirmLabel: string; onSubmit: (value: string) => void }
   /** The Day header's timeline settings. */
   | { type: "timelineSettings" }
+  /** The calendar under the sidebar's date heading: picks the day (or the period holding it) to show. */
+  | { type: "datePicker" }
   /** Delete the activity of `day` (its `bounds`), or of a range starting there when `range`. */
   | { type: "deleteActivity"; day: string; bounds: [number, number]; range: boolean }
   /** A recording write overlaps `recordings`; replace their overlapped part, or cancel. */

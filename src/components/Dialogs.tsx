@@ -1,4 +1,5 @@
 import { useStore } from "../state/store";
+import { DatePickerPopover } from "./DatePickerPopover";
 import { DeleteActivityDialog } from "./day/DeleteActivityDialog";
 import { OverlapDialog } from "./day/OverlapDialog";
 import { TimelineSettingsPopover } from "./day/TimelineSettingsPopover";
@@ -50,6 +51,8 @@ export function Dialogs() {
       return <PromptDialog {...dialog} />;
     case "timelineSettings":
       return <TimelineSettingsPopover />;
+    case "datePicker":
+      return <DatePickerPopover />;
     case "deleteActivity":
       return <DeleteActivityDialog key={`${dialog.day}-${dialog.range}`} day={dialog.day} bounds={dialog.bounds} range={dialog.range} />;
     case "rule":

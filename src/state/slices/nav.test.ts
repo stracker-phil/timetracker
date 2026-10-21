@@ -4,6 +4,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api, EMPTY_UI_STATE } from "../../api";
 import { flushUiState, resetStore, useStore } from "../store";
+import { defaultFilter } from "./reports";
 
 const mocked = vi.mocked(api, true);
 const state = () => useStore.getState();
@@ -85,10 +86,50 @@ describe("nav slice", () => {
       expect(mocked.setUiState).toHaveBeenCalledWith(expect.objectContaining({ lastDay: "2026-10-18" }));
     });
 
+    it.each(["day", "week", "month"] as const)("showDate shows the day and keeps the %s view", (view) => {
+      resetStore({ day: "2026-01-05", view });
+      state().showDate("2026-03-10");
+      expect(state().day).toBe("2026-03-10");
+      expect(state().view).toBe(view);
+    });
+
     it("setView does not change the day", () => {
       state().setView("week");
       expect(state().view).toBe("week");
       expect(state().day).toBe("2026-10-21");
+    });
+  });
+
+  describe("in the Reports view", () => {
+    const thisWeek = { kind: "thisWeek" } as const;
+    const lastWeek = { kind: "lastWeek" } as const;
+
+    beforeEach(() => {
+      resetStore({ view: "reports", day: "2026-03-10", reportFilter: { ...defaultFilter(null), range: thisWeek } });
+    });
+
+    it.each([-1, 1] as const)("step(%i) asks Rust to shift the report's range and shows the result", async (by) => {
+      mocked.reportRangeShift.mockResolvedValue(lastWeek);
+      state().step(by);
+      await vi.waitFor(() => expect(state().reportFilter?.range).toEqual(lastWeek));
+      expect(mocked.reportRangeShift).toHaveBeenCalledWith(thisWeek, null, by);
+      expect(state().day).toBe("2026-03-10");
+      expect(state().view).toBe("reports");
+    });
+
+    it("goToday asks for the period that holds today", async () => {
+      mocked.reportRangeShift.mockResolvedValue({ kind: "today" });
+      state().goToday();
+      await vi.waitFor(() => expect(state().reportFilter?.range).toEqual({ kind: "today" }));
+      expect(mocked.reportRangeShift).toHaveBeenCalledWith(thisWeek, "2026-10-21", 0);
+    });
+
+    it("showDate asks for the period that holds the day", async () => {
+      const custom = { kind: "custom", from: "2026-03-10", to: "2026-03-10" } as const;
+      mocked.reportRangeShift.mockResolvedValue(custom);
+      state().showDate("2026-03-10");
+      await vi.waitFor(() => expect(state().reportFilter?.range).toEqual(custom));
+      expect(mocked.reportRangeShift).toHaveBeenCalledWith(thisWeek, "2026-03-10", 0);
     });
   });
 

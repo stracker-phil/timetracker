@@ -63,7 +63,7 @@ export function WeekView() {
 
   return (
     <section className="day-page" aria-label="Week">
-      <CalendarHeader title={week?.label ?? ""} unit="week" current={!!week?.days.some((d) => d.isToday)}>
+      <CalendarHeader title={week?.label ?? ""}>
         {week && (
           <span className="day-totals mono o2" aria-label="Totals">
             recorded {formatHm(week.totalMs)} · tracked {formatHm(week.trackedMs)}

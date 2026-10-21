@@ -1,6 +1,7 @@
 //! The Week and Month views: recordings over several days, cut per day like the Day view.
 
 pub mod commands;
+pub mod period;
 
 use std::collections::HashMap;
 
@@ -92,10 +93,15 @@ pub fn week_days(day: Day) -> (Day, Day) {
     (start, add_days(start, 6))
 }
 
+/// The first and the last day of `day`'s month.
+pub fn month_range(day: Day) -> (Day, Day) {
+    let first = day.month_start();
+    (first, Day::from_date(first.date() + Months::new(1)).prev())
+}
+
 /// The first and the last day of the month grid of `day`: whole weeks from the Monday on or before the 1st.
 pub fn month_days(day: Day) -> (Day, Day) {
-    let first = day.month_start();
-    let last = Day::from_date(first.date() + Months::new(1)).prev();
+    let (first, last) = month_range(day);
     (first.week_start(), add_days(last.week_start(), 6))
 }
 

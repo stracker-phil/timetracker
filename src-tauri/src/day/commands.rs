@@ -5,7 +5,7 @@ use tauri::State;
 
 use super::apps::{KnownApp, known_apps};
 use super::list::{ListView, list};
-use super::{DayInput, DayView, Names, ProjectRef, ViewSettings, view};
+use super::{DayInput, DayTotals, DayView, Names, ProjectRef, ViewSettings, totals, view};
 use crate::db::time::{Day, Ms, now_ms};
 use crate::db::{Db, activities, away, clients, projects, recordings, tags};
 use crate::error::AppResult;
@@ -35,8 +35,14 @@ async fn build(
     now: Ms,
     names: Names,
 ) -> AppResult<DayView> {
+    let input = input(db, day, now, names).await?;
+    Ok(view(&input, &ViewSettings::from(settings)))
+}
+
+/// The rows that share time with the day.
+async fn input(db: &Db, day: Day, now: Ms, names: Names) -> AppResult<DayInput> {
     let bounds = day.bounds();
-    let input = DayInput {
+    Ok(DayInput {
         day,
         bounds,
         now,
@@ -44,8 +50,7 @@ async fn build(
         away: away::list_for_range(db, bounds.0, bounds.1).await?,
         recordings: recordings::list_for_range(db, bounds.0, bounds.1).await?,
         names,
-    };
-    Ok(view(&input, &ViewSettings::from(settings)))
+    })
 }
 
 /// Archived projects and clients included: old recordings still show their names.
@@ -93,6 +98,16 @@ pub async fn day_view(state: State<'_, AppState>, day: String) -> AppResult<DayV
         started.elapsed().as_millis()
     );
     Ok(result)
+}
+
+/// The day's totals, without building its view.
+async fn totals_of(db: &Db, day: Day, now: Ms) -> AppResult<DayTotals> {
+    Ok(totals(&input(db, day, now, Names::default()).await?))
+}
+
+#[tauri::command]
+pub async fn day_totals(state: State<'_, AppState>, day: Day) -> AppResult<DayTotals> {
+    totals_of(&state.data.db()?, day, now_ms()).await
 }
 
 /// The day's activity grouped as the timeline labels it, longest first.
@@ -435,6 +450,58 @@ mod tests {
         println!("load of {ROWS} activities took {elapsed:?}");
         assert_eq!(blocks, ROWS as usize);
         assert!(elapsed.as_millis() < 500, "took {elapsed:?}");
+    }
+
+    #[tokio::test]
+    #[ignore = "db: temp SQLite file"]
+    async fn totals_of_a_stored_day_clip_to_it_and_match_the_view() {
+        let (_dir, db) = temp_db().await;
+        let (monday, tuesday) = (day("2026-01-05"), day("2026-01-06"));
+        let midnight = tuesday.bounds().0;
+        let p = project(&db, "Portal").await;
+        recording(&db, &p.id, midnight - HOUR, Some(midnight + HOUR)).await;
+        recording(&db, &p.id, midnight + 3 * HOUR, None).await;
+        activity(&db, midnight - HOUR, Some(midnight + 2 * HOUR), "Code", "").await;
+        activity(&db, midnight + HOUR, Some(midnight + 3 * HOUR), "Mail", "").await;
+        away::insert(
+            &db,
+            NewAway {
+                start: midnight + 4 * HOUR,
+                reason: AwayReason::Idle,
+            },
+        )
+        .await
+        .unwrap();
+        let now = midnight + 6 * HOUR;
+
+        let first = totals_of(&db, monday, now).await.unwrap();
+        let second = totals_of(&db, tuesday, now).await.unwrap();
+
+        assert_eq!(
+            first,
+            DayTotals {
+                recorded_ms: HOUR,
+                tracked_ms: HOUR,
+                away_ms: 0,
+            }
+        );
+        assert_eq!(
+            second,
+            DayTotals {
+                recorded_ms: HOUR + 3 * HOUR,
+                tracked_ms: 3 * HOUR,
+                away_ms: 2 * HOUR,
+            }
+        );
+        let settings = Settings::default();
+        assert_eq!(
+            second,
+            load(&db, tuesday, &settings, now).await.unwrap().totals
+        );
+        assert_eq!(
+            first,
+            view_of(&db, monday, &settings, now).await.unwrap().totals
+        );
     }
 
     mod suggestions {

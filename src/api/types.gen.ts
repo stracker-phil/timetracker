@@ -328,10 +328,30 @@ export type Overlap = "replace" | "cancel";
 
 export type PauseUntil = { "minutes": number } | "tomorrow" | "resumed";
 
+export type Period = { from: Day, to: Day, holdsToday: boolean, };
+
+export type PeriodUnit = "day" | "week" | "month";
+
 /**
  * The Accessibility permission, which window titles need.
  */
 export type PermissionStatus = "granted" | "denied" | "unknown";
+
+export type PickerDay = { day: Day, 
+/**
+ * The day belongs to the month before or after.
+ */
+outside: boolean, isToday: boolean, 
+/**
+ * Inside the selected days.
+ */
+selected: boolean, };
+
+export type PickerMonth = { monthStart: Day, 
+/**
+ * Monday to Sunday rows covering the month.
+ */
+weeks: Array<Array<PickerDay>>, };
 
 export type PreviewHit = { block: ActivityBlock, day: Day, };
 

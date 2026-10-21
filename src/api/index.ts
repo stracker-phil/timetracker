@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, DeleteResult, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleInput, RulePreview, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleInput, RulePreview, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -51,6 +51,8 @@ export const api = {
   awayList: (day: string) => invoke<AwayRow[]>("away_list", { day }),
   /** The Day view of a day (`YYYY-MM-DD`): lanes of packed blocks, away spans, gaps, totals. */
   dayView: (day: string) => invoke<DayView>("day_view", { day }),
+  /** Recorded, tracked and away time of a day, without its view. */
+  dayTotals: (day: string) => invoke<DayTotals>("day_totals", { day }),
   /** Saves a new recording; Rust snaps its times. `overlap: "cancel"` rejects with kind `overlap` (`details`: the recordings in the way). */
   recordingCreate: (input: RecordingInput, overlap: Overlap) => invoke<Recording>("recording_create", { input, overlap }),
   recordingUpdate: (id: string, patch: RecordingPatch, overlap: Overlap) => invoke<Recording>("recording_update", { id, patch, overlap }),
@@ -78,10 +80,16 @@ export const api = {
   timerPickerClose: () => invoke<null>("timer_picker_close"),
   weekView: (day: string) => invoke<WeekView>("week_view", { day }),
   monthView: (day: string) => invoke<MonthView>("month_view", { day }),
+  /** The day, week or month that holds `day`: its first and last day, and whether it holds today. */
+  calendarPeriod: (unit: PeriodUnit, day: string) => invoke<Period>("calendar_period", { unit, day }),
+  /** The whole weeks covering `month`'s month, the days `selected` spans marked. */
+  calendarPicker: (month: string, selected: [string, string] | null) => invoke<PickerMonth>("calendar_picker", { month, selected }),
   /** To `day` at the same time of day; Rust keeps the length. */
   recordingMove: (id: string, day: string, overlap: Overlap) => invoke<Recording>("recording_move", { id, day, overlap }),
   recordingCopy: (id: string, day: string, overlap: Overlap) => invoke<Recording>("recording_copy", { id, day, overlap }),
   reportRun: (filter: ReportFilter) => invoke<ReportResult>("report_run", { filter }),
+  /** The period of the range's unit (month, week or its days) `by` steps away, from `anchor`'s period when given; presets where they match. */
+  reportRangeShift: (range: Range, anchor: string | null, by: number) => invoke<Range>("report_range_shift", { range, anchor, by }),
   /** The report as the plain text the CLI prints. */
   reportText: (filter: ReportFilter) => invoke<string>("report_text", { filter }),
   savedReportsList: () => invoke<SavedReport[]>("saved_reports_list"),

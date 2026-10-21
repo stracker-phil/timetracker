@@ -42,3 +42,22 @@ export function formatDayLabel(day: string): string {
   const sameYear = y === new Date().getFullYear();
   return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
 }
+
+const monthDay = (y: number, m: number, d: number) => new Date(y, m, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+/** `Oct 19 – 25`, `Oct 26 – Nov 1`, `Dec 29, 2025 – Jan 4, 2026`; the year only when it is not this year's. */
+export function formatRangeLabel(from: string, to: string): string {
+  if (from === to) return formatDayLabel(from);
+  const [fy, fm, fd] = parts(from);
+  const [ty, tm, td] = parts(to);
+  if (fy !== ty) return `${monthDay(fy, fm, fd)}, ${fy} – ${monthDay(ty, tm, td)}, ${ty}`;
+  const year = fy === new Date().getFullYear() ? "" : `, ${fy}`;
+  const end = fm === tm ? String(td) : monthDay(ty, tm, td);
+  return `${monthDay(fy, fm, fd)} – ${end}${year}`;
+}
+
+/** `October 2026`. */
+export function formatMonthLabel(day: string): string {
+  const [y, m] = parts(day);
+  return new Date(y, m, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}

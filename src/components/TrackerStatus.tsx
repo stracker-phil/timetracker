@@ -12,7 +12,7 @@ const PAUSES: { label: string; until: PauseUntil }[] = [
 
 const TONES: Partial<Record<TrackerState["kind"], string>> = { running: "running", needsPermission: "attention" };
 
-/** The tracker's status line at the bottom of the sidebar, with the same text as the tray. */
+/** The tracker's status at the left of the status bar, with the same text as the tray. */
 export function TrackerStatus() {
   const tracker = useStore((s) => s.tracker);
   const pauseTracker = useStore((s) => s.pauseTracker);
@@ -31,7 +31,7 @@ export function TrackerStatus() {
   };
 
   return (
-    <div className="sidebar-foot tracker-status">
+    <div className="tracker-status">
       <span className={`tracker-dot ${(kind && TONES[kind]) ?? ""}`} aria-hidden="true" />
       <span className="grow-text" role="status" title={text}>
         {text}

@@ -6,7 +6,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { installCommands } from "../../commands";
-import { formatDayLabel } from "../../lib/day";
+import { formatDayLabel, today } from "../../lib/day";
 import { resetStore } from "../../state/store";
 import { DAY, dayView } from "../../test/dayFixtures";
 import { settings } from "../../test/settings";
@@ -32,6 +32,32 @@ describe("DayHeader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocked.activityCount.mockResolvedValue({ activities: 4, away: 0 });
+  });
+
+  describe("date and totals", () => {
+    const totals = { recordedMs: 3_600_000, trackedMs: 7_200_000, awayMs: 600_000 };
+
+    function renderFor(day: string) {
+      resetStore({ settings: settings(), day });
+      installCommands();
+      render(<DayHeader day={day} totals={totals} />);
+    }
+
+    it("shows the date and the totals of a past day", () => {
+      renderFor(DAY);
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(formatDayLabel(DAY));
+      expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 1:00 · tracked 2:00 · away 0:10");
+    });
+
+    it("hides the totals on today, which the status bar shows", () => {
+      renderFor(today());
+      expect(screen.queryByLabelText("Totals")).not.toBeInTheDocument();
+    });
+
+    it("has no buttons to change the day", () => {
+      renderFor(DAY);
+      for (const name of ["Previous day", "Next day", "Today"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    });
   });
 
   describe("more actions menu", () => {

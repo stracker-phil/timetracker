@@ -3,9 +3,9 @@ import type { SavedReport } from "../api";
 import { useBindingLabel } from "../commands";
 import { useStore } from "../state/store";
 import { useContextMenu, type MenuEntry } from "./ContextMenu";
+import { DateNavigator } from "./DateNavigator";
 import { KeyCap } from "./Field";
 import { confirmDeleteReport, renameReport } from "./reports/actions";
-import { TrackerStatus } from "./TrackerStatus";
 import { VIEWS } from "./views";
 
 function NavEntry({ view }: { view: (typeof VIEWS)[number] }) {
@@ -54,6 +54,7 @@ function SavedReports() {
 export function Sidebar() {
   return (
     <aside className="sidebar" aria-label="Sidebar">
+      <DateNavigator />
       <div className="sidebar-body">
         <nav className="sidebar-nav" aria-label="Views">
           {VIEWS.map((view) => (
@@ -64,7 +65,6 @@ export function Sidebar() {
           ))}
         </nav>
       </div>
-      <TrackerStatus />
     </aside>
   );
 }

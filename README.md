@@ -48,7 +48,8 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
   the editor asks for a project, a one-line note and tags.
 - Recordings never overlap. Drag to move or resize, ⌘Z undoes; rules (⌥-drag a block onto a project) suggest
   recordings you accept with a click.
-- ‹ Today › and ⌘← ⌘→ step through days; ⌘1 to ⌘6 switch to Day, Week, Month, Reports, Projects and Rules.
+- The sidebar shows the day (or week, month, report period) with ‹ › and Today; P, N and O do the same, and a
+  click on the date opens a calendar. ⌘1 to ⌘6 switch to Day, Week, Month, Reports, Projects and Rules.
 - Everything works from the keyboard: ⌘K opens the command palette, ? lists the shortcuts.
 
 ## CLI

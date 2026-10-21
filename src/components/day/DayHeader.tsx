@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Ellipsis, SlidersHorizontal } from "lucide-react";
+import { Ellipsis, SlidersHorizontal } from "lucide-react";
 import type { DayTotals } from "../../api";
 import { runCommand, useBindingLabel } from "../../commands";
 import { formatDayLabel, isToday } from "../../lib/day";
@@ -11,12 +11,11 @@ const DAY_MODES = ["timeline", "list"] as const;
 
 const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` : label);
 
-/** Day navigation, the date, the day's totals, the Timeline or List switch and the ⋯ menu (delete activity). */
+/**
+ * The date, the day's totals (only for a day other than today: the status bar shows today's), the Timeline or
+ * List switch and the ⋯ menu (delete activity). The sidebar changes the day.
+ */
 export function DayHeader({ day, totals }: { day: string; totals: DayTotals | null }) {
-  const { step, goToday } = useStore.getState();
-  const prevKeys = useBindingLabel("nav.prev");
-  const nextKeys = useBindingLabel("nav.next");
-  const todayKeys = useBindingLabel("nav.today");
   const settingsKeys = useBindingLabel("day.settings");
   const mode = useStore((s) => s.uiState.dayMode);
   const setDayMode = useStore((s) => s.setDayMode);
@@ -30,17 +29,8 @@ export function DayHeader({ day, totals }: { day: string; totals: DayTotals | nu
   };
   return (
     <header className="day-head">
-      <button type="button" className="icon-btn" aria-label="Previous day" title={withKeys("Previous day", prevKeys)} onClick={() => step(-1)}>
-        <ChevronLeft size="1.077rem" />
-      </button>
-      <button type="button" className="btn" disabled={isToday(day)} title={withKeys("Today", todayKeys)} onClick={goToday}>
-        Today
-      </button>
-      <button type="button" className="icon-btn" aria-label="Next day" title={withKeys("Next day", nextKeys)} onClick={() => step(1)}>
-        <ChevronRight size="1.077rem" />
-      </button>
       <h1 className="day-title">{formatDayLabel(day)}</h1>
-      {totals && (
+      {totals && !isToday(day) && (
         <span className="day-totals mono o2" aria-label="Totals">
           recorded {formatHm(totals.recordedMs)} · tracked {formatHm(totals.trackedMs)} · away {formatHm(totals.awayMs)}
         </span>

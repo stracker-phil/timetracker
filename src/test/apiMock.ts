@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type ProjectInput, type RecordingInput, type RecordingPatch, type ReportFilter, type RuleInput, type Settings, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingInput, type RecordingPatch, type ReportFilter, type RuleInput, type Settings, type UiState } from "../api/types";
 import { mondayOf, monthView, weekView } from "./calendarFixtures";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
@@ -47,8 +47,11 @@ export function createApiMock(): typeof realApi {
     activityList: vi.fn().mockResolvedValue([]),
     awayList: vi.fn().mockResolvedValue([]),
     dayView: vi.fn(async (day: string) => dayView({ day })),
+    dayTotals: vi.fn().mockResolvedValue({ recordedMs: 0, trackedMs: 0, awayMs: 0 }),
     weekView: vi.fn(async (day: string) => weekView({ weekStart: mondayOf(day) })),
     monthView: vi.fn(async (day: string) => monthView({ monthStart: `${day.slice(0, 7)}-01` })),
+    calendarPeriod: vi.fn(async (_unit: PeriodUnit, day: string) => ({ from: day, to: day, holdsToday: false })),
+    calendarPicker: vi.fn(async (month: string) => ({ monthStart: `${month.slice(0, 7)}-01`, weeks: [] })),
     recordingMove: vi.fn(async (id: string) => recording({ id })),
     recordingCopy: vi.fn(async () => recording({ id: "recording-copy" })),
     recordingCreate: vi.fn(async (input: RecordingInput) => recording({ ...input, id: "recording-new" })),
@@ -80,6 +83,7 @@ export function createApiMock(): typeof realApi {
     tagsSave: vi.fn(async (id: string | null, name: string) => ({ id: id ?? `tag-${name}`, name, createdAt: 0 })),
     tagsDelete: vi.fn().mockResolvedValue(undefined),
     reportRun: vi.fn().mockResolvedValue(reportResult()),
+    reportRangeShift: vi.fn(async (range: Range) => range),
     reportText: vi.fn().mockResolvedValue("Mon 2026-10-20\n\nNo recordings.\n"),
     savedReportsList: vi.fn().mockResolvedValue([]),
     savedReportSave: vi.fn(async (name: string, filter: ReportFilter) => savedReport({ name, filter })),

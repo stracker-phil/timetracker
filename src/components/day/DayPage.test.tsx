@@ -139,21 +139,17 @@ describe("DayPage", () => {
       expect(await screen.findByText("recorded 1:30 · tracked 0:00 · away 0:00")).toBeInTheDocument();
     });
 
-    it("steps to the previous and next day with its buttons", async () => {
+    it("has no buttons to change the day", async () => {
       renderDay(busyDay());
       await blockEl("Safari: Docs");
-      await userEvent.click(screen.getByRole("button", { name: "Next day" }));
-      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith("2026-03-11"));
-      await userEvent.click(screen.getByRole("button", { name: "Previous day" }));
-      await userEvent.click(screen.getByRole("button", { name: "Previous day" }));
-      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith("2026-03-09"));
+      for (const name of ["Previous day", "Next day", "Today"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     });
 
-    it("disables Today on today and enables it on another day", async () => {
-      renderDay(dayView({ day: today() }));
-      expect(screen.getByRole("button", { name: "Today" })).toBeDisabled();
-      act(() => useStore.getState().step(-1));
-      expect(screen.getByRole("button", { name: "Today" })).toBeEnabled();
+    it("hides the totals on today, which the status bar shows", async () => {
+      const totals = { recordedMs: 0, trackedMs: 60 * MINUTE_MS, awayMs: 0 };
+      renderDay(dayView({ day: today(), totals }));
+      await screen.findByText("Nothing tracked on this day");
+      expect(screen.queryByLabelText("Totals")).not.toBeInTheDocument();
     });
   });
 
@@ -383,21 +379,21 @@ describe("DayPage", () => {
   });
 
   describe("day shortcuts", () => {
-    it("loads the next day with ⌘→ and the previous with ⌘←", async () => {
+    it("loads the next day with N and the previous with P", async () => {
       renderDay(busyDay());
       await blockEl("Safari: Docs");
-      await userEvent.keyboard("{Meta>}{ArrowRight}{/Meta}");
+      await userEvent.keyboard("n");
       await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith("2026-03-11"));
-      await userEvent.keyboard("{Meta>}{ArrowLeft}{ArrowLeft}{/Meta}");
+      await userEvent.keyboard("pp");
       await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith("2026-03-09"));
     });
 
-    it("returns to today with T", async () => {
+    it("returns to today with O", async () => {
       renderDay(busyDay());
       await blockEl("Safari: Docs");
-      await userEvent.keyboard("t");
+      await userEvent.keyboard("o");
       await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith(today()));
-      expect(screen.getByRole("button", { name: "Today" })).toBeDisabled();
+      expect(useStore.getState().day).toBe(today());
     });
 
     it("zooms the timeline with ⌘= and resets it with ⌘0", async () => {
@@ -1056,31 +1052,31 @@ describe("DayPage", () => {
       });
     });
 
-    describe("N and ⇧N focus recordings", () => {
-      it("N focuses the first recording by start, then the next, and stops at the last", async () => {
+    describe("] and [ focus recordings", () => {
+      it("] focuses the first recording by start, then the next, and stops at the last", async () => {
         renderDay(twoRecordings(), withProject);
         await blockEl("Website: standup");
-        await userEvent.keyboard("n");
+        await userEvent.keyboard("]");
         expect(focusedRecordings()).toEqual(["Website: standup"]);
-        await userEvent.keyboard("n");
+        await userEvent.keyboard("]");
         expect(focusedRecordings()).toEqual(["Website: review"]);
-        await userEvent.keyboard("n");
+        await userEvent.keyboard("]");
         expect(focusedRecordings()).toEqual(["Website: review"]);
       });
 
-      it("⇧N goes back to the previous recording and stops at the first", async () => {
+      it("[ goes back to the previous recording and stops at the first", async () => {
         renderDay(twoRecordings(), withProject);
         await blockEl("Website: standup");
-        await userEvent.keyboard("nn{Shift>}n{/Shift}");
+        await userEvent.keyboard("]][[");
         expect(focusedRecordings()).toEqual(["Website: standup"]);
-        await userEvent.keyboard("{Shift>}n{/Shift}");
+        await userEvent.keyboard("[[");
         expect(focusedRecordings()).toEqual(["Website: standup"]);
       });
 
-      it("⇧N starts from the last recording", async () => {
+      it("[ starts from the last recording", async () => {
         renderDay(twoRecordings(), withProject);
         await blockEl("Website: standup");
-        await userEvent.keyboard("{Shift>}n{/Shift}");
+        await userEvent.keyboard("[[");
         expect(focusedRecordings()).toEqual(["Website: review"]);
       });
 
@@ -1088,7 +1084,7 @@ describe("DayPage", () => {
         mocked.recordingsList.mockResolvedValue([meetingRow]);
         renderDay(twoRecordings(), withProject);
         await blockEl("Website: standup");
-        await userEvent.keyboard("n{Enter}");
+        await userEvent.keyboard("]{Enter}");
         expect(await screen.findByRole("dialog", { name: "Edit recording" })).toBeInTheDocument();
       });
 
@@ -1097,7 +1093,7 @@ describe("DayPage", () => {
         renderDay(twoRecordings(), withProject);
         await userEvent.click(await blockEl("Safari: Docs"));
         await screen.findByLabelText("Selection");
-        await userEvent.keyboard("n");
+        await userEvent.keyboard("]");
         expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
         expect(focusedBlocks()).toEqual([]);
         await userEvent.keyboard("{Enter}");
@@ -1108,7 +1104,7 @@ describe("DayPage", () => {
       it("does nothing on a day without recordings", async () => {
         renderDay(busyDay());
         await blockEl("Safari: Docs");
-        await userEvent.keyboard("n{Enter}");
+        await userEvent.keyboard("]{Enter}");
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       });
     });
@@ -1166,13 +1162,13 @@ describe("DayPage", () => {
       it.each([
         ["↵", "{Enter}"],
         ["Space", " "],
-      ])("%s activates Today instead of opening the editor or the details", async (_name, keys) => {
+      ])("%s activates the button instead of opening the editor or the details", async (_name, keys) => {
         renderDay(busyDay());
         await userEvent.click(await blockEl("Safari: Docs"));
         await screen.findByLabelText("Selection");
-        screen.getByRole("button", { name: "Today" }).focus();
+        screen.getByRole("button", { name: "More day actions" }).focus();
         await userEvent.keyboard(keys);
-        await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith(today()));
+        expect(await screen.findByRole("menu")).toBeInTheDocument();
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       });
     });
@@ -1189,8 +1185,8 @@ describe("DayPage", () => {
           ["Select block", "V"],
           ["Extend selection to the next block", "⇧J"],
           ["Extend selection to the previous block", "⇧K"],
-          ["Next recording", "N"],
-          ["Previous recording", "⇧N"],
+          ["Next recording", "]"],
+          ["Previous recording", "["],
           ["Move recording to the previous day", "⌥←"],
           ["Move recording to the next day", "⌥→"],
           ["Copy recording to the previous day", "⌥⇧←"],

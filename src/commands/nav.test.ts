@@ -3,18 +3,38 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
+import { api } from "../api";
 import { resetStore, useStore, type View } from "../state/store";
-import { handleKeydown, installCommands, runCommand } from "./index";
+import { defaultFilter } from "../state/slices/reports";
+import { conflicts, handleKeydown, installCommands, runCommand } from "./index";
 
+const mocked = vi.mocked(api, true);
 const state = () => useStore.getState();
 
-describe("calendar navigation commands", () => {
+async function press(keys: string) {
+  window.addEventListener("keydown", handleKeydown, true);
+  try {
+    await userEvent.keyboard(keys);
+  } finally {
+    window.removeEventListener("keydown", handleKeydown, true);
+  }
+}
+
+describe("date navigation commands", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 9, 21, 12) });
     installCommands();
   });
 
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.useRealTimers();
+  });
+
+  it("has no default binding that two commands of overlapping scopes share", () => {
+    expect(conflicts().map((c) => [c.binding, c.a.id, c.b.id])).toEqual([]);
+  });
 
   it.each<[View, string, string]>([
     ["day", "nav.next", "2026-03-11"],
@@ -37,32 +57,71 @@ describe("calendar navigation commands", () => {
     expect(state().view).toBe(view);
   });
 
-  it.each<[View, string]>([
-    ["reports", "{Meta>}{ArrowRight}{/Meta}"],
-    ["reports", "{Meta>}{ArrowLeft}{/Meta}"],
-    ["projects", "{Meta>}{ArrowRight}{/Meta}"],
-    ["projects", "t"],
-  ])("a key press in the %s view (%s) leaves the day alone", async (view, keys) => {
-    resetStore({ view, day: "2026-03-10" });
-    window.addEventListener("keydown", handleKeydown, true);
-    try {
-      await userEvent.keyboard(keys);
-    } finally {
-      window.removeEventListener("keydown", handleKeydown, true);
-    }
-    expect(state().day).toBe("2026-03-10");
-  });
+  describe("keys", () => {
+    it.each<[View, string, string]>([
+      ["day", "n", "2026-03-11"],
+      ["day", "p", "2026-03-09"],
+      ["week", "n", "2026-03-17"],
+      ["week", "p", "2026-03-03"],
+      ["month", "n", "2026-04-01"],
+      ["month", "p", "2026-02-01"],
+      ["day", "o", "2026-10-21"],
+      ["week", "o", "2026-10-21"],
+      ["month", "o", "2026-10-21"],
+    ])("in the %s view %s moves the day to %s", async (view, keys, expected) => {
+      resetStore({ view, day: "2026-03-10" });
+      await press(keys);
+      expect(state().day).toBe(expected);
+      expect(state().view).toBe(view);
+    });
 
-  it("⌘→ and ⌘← step by the view's unit", async () => {
-    resetStore({ view: "week", day: "2026-03-10" });
-    window.addEventListener("keydown", handleKeydown, true);
-    try {
-      await userEvent.keyboard("{Meta>}{ArrowRight}{/Meta}");
-      expect(state().day).toBe("2026-03-17");
-      await userEvent.keyboard("{Meta>}{ArrowLeft}{ArrowLeft}{/Meta}");
-      expect(state().day).toBe("2026-03-03");
-    } finally {
-      window.removeEventListener("keydown", handleKeydown, true);
-    }
+    it.each<[string, string | null, number]>([
+      ["n", null, 1],
+      ["p", null, -1],
+      ["o", "2026-10-21", 0],
+    ])("in the Reports view %s shifts the period from anchor %s by %i", async (keys, anchor, by) => {
+      const range = { kind: "thisWeek" } as const;
+      resetStore({ view: "reports", day: "2026-03-10", reportFilter: { ...defaultFilter(null), range } });
+      await press(keys);
+      expect(mocked.reportRangeShift).toHaveBeenCalledWith(range, anchor, by);
+      expect(state().day).toBe("2026-03-10");
+    });
+
+    it.each<[View, string]>([
+      ["projects", "n"],
+      ["projects", "p"],
+      ["projects", "o"],
+      ["rules", "n"],
+      ["rules", "p"],
+      ["rules", "o"],
+    ])("in the %s view %s leaves the day alone", async (view, keys) => {
+      resetStore({ view, day: "2026-03-10" });
+      await press(keys);
+      expect(state().day).toBe("2026-03-10");
+      expect(mocked.reportRangeShift).not.toHaveBeenCalled();
+    });
+
+    it.each(["n", "p", "o"])("%s types into a focused text field instead of navigating", async (keys) => {
+      resetStore({ view: "day", day: "2026-03-10" });
+      const input = document.body.appendChild(document.createElement("input"));
+      input.focus();
+      await press(keys);
+      expect(input.value).toBe(keys);
+      expect(state().day).toBe("2026-03-10");
+    });
+
+    it.each<[View, string]>([
+      ["day", "t"],
+      ["week", "t"],
+      ["reports", "t"],
+      ["week", "{Meta>}{ArrowRight}{/Meta}"],
+      ["month", "{Meta>}{ArrowLeft}{/Meta}"],
+    ])("in the %s view %s does nothing", async (view, keys) => {
+      resetStore({ view, day: "2026-03-10" });
+      await press(keys);
+      expect(state().day).toBe("2026-03-10");
+      expect(state().view).toBe(view);
+      expect(mocked.reportRangeShift).not.toHaveBeenCalled();
+    });
   });
 });

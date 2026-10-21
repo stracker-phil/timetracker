@@ -143,11 +143,13 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes, recordings, activities }` | `db`, `io`, `invalid_input` |
 | `report_run` (`reports/commands.rs`) | `filter: ReportFilter` | `ReportResult` (see [Reports](#reports)) | `invalid_input` (a range that ends before it starts), `db` |
 | `report_text` | `filter: ReportFilter` | the report as text (`reports::text`) | the same |
+| `report_range_shift` | `range: Range, anchor: Day \| null, by: i32` | `Range`: the period of the range's unit `by` steps away (`reports::shift`, see [Reports](#reports)); the sidebar's ‹ › Today and date picker in Reports | `invalid_input` |
 | `saved_reports_list` | – | `SavedReport[] { id, name, filter, position }`, by position | `db` |
 | `saved_report_save` | `name, filter` | `SavedReport` (appended) | `invalid_input` (`field: name`), `db` |
 | `saved_report_rename` | `id, name` | `SavedReport` | `not_found`, `invalid_input` |
 | `saved_report_delete` | `id` | – | `not_found` |
 | `day_view` (`day/commands.rs`) | `day: String` | `DayView` (see [Day view](#day-view)) with the saved rules' `suggestions`; logs the time it took at debug level | `invalid_input`, `db` |
+| `day_totals` (`day/commands.rs`) | `day: Day` | `DayTotals { recordedMs, trackedMs, awayMs }` (`day::totals`, without building the view; the status bar's today) | `invalid_input`, `db` |
 | `list_view` (`day/commands.rs`) | `day: String` | `ListView { day, rows: ListRow[], totalMs }` (see [List view](#list-view)) | `invalid_input`, `db` |
 | `away_prompt_current` (`away_prompt/commands.rs`) | – | `AwayPrompt \| null` | – |
 | `away_prompt_answer` | `input: RecordingInput` | `Recording`, created with `overlap: cancel` (undoable); closes the window | `not_found` (no prompt), `invalid_input` (`field`: `start` outside the last 7 days, or the recording's own fields), `overlap` (the prompt stays open) |
@@ -169,6 +171,8 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `recording_move` / `recording_copy` | `id, day: Day, overlap` | `Recording`: moved, or a new copy, to `day` at the same local time (`same_time_on`, DST-safe) with the same length, through `update` / `create` (undoable; a recording over midnight moves with its start day) | `invalid_input` (the running timer), `overlap`, `not_found`, `db` |
 | `week_view` (`calendar/commands.rs`) | `day: Day` | `WeekView { weekStart, label, days: DayColumn[], totalMs, trackedMs }`; `DayColumn { day, bounds, label, isToday, recordings, totalMs, trackedMs }` | `invalid_input`, `db` |
 | `month_view` | `day: Day` | `MonthView { monthStart, label, weeks: MonthDay[][], totalMs }` (whole weeks Monday to Sunday; `totalMs` counts the month's own days); `MonthDay { day, inMonth, isToday, recordedMs, projects }` (the top three by time, with color and shade) | `invalid_input`, `db` |
+| `calendar_period` (`calendar/commands.rs`) | `unit: PeriodUnit` (`day`, `week`, `month`), `day: Day` | `Period { from, to, holdsToday }`: the day, Monday-to-Sunday week or month holding `day` (`calendar::period::period`); the sidebar's date heading | `invalid_input` |
+| `calendar_picker` | `month: Day` (any day of it), `selected: [Day, Day] \| null` | `PickerMonth { monthStart, weeks: PickerDay[][] }` (whole weeks Monday to Sunday); `PickerDay { day, outside, isToday, selected }` (`calendar::period::picker_month`); the date picker | `invalid_input` |
 | `recordings_list` | `from: Ms, to: Ms` | `Recording[]` sharing time with the range | `db` |
 | `recording_snap` | `start: Ms, end: Ms` | `Span` as a write would snap it (the drag ghost) | – |
 | `undo` / `redo` | – | the label undone or redone, `null` when there was none | `overlap`, `db` |
@@ -231,8 +235,8 @@ from the day before included) and calls it. `ViewSettings` is a copy of `Setting
 1. `clipped_blocks`: every activity cut to the day's bounds (an open span ends at `now`); private rows keep
    the app and read "Private" without URL or path. `appKey` is the bundle id, else the app name: what
    `Settings.apps` overrides are keyed by.
-2. Totals, gaps, `firstActivity` and `sources` come from these raw rows, so hiding and merging never change
-   them: `trackedMs` the union of tracker spans, `awayMs` the union of away spans, `recordedMs` the sum of
+2. Totals (`totals`, also behind `day_totals`), gaps, `firstActivity` and `sources` come from these raw rows,
+   so hiding and merging never change them: `trackedMs` the union of tracker spans, `awayMs` the union of away spans, `recordedMs` the sum of
    the recordings' parts in the day; gaps are holes of `GAP_MIN` (2 min) or longer between the first
    activity's start and the last one's end, without activity or away.
 3. External rows go to their source lanes as they are. Tracker rows run through `day/transform.rs`:
@@ -301,6 +305,12 @@ days' columns with its parts.
 last week from Monday, this or last month, or custom days), reads the recordings sharing time with it and
 calls the pure `build`. A `ReportFilter` reuses the settings' `Group` and `Rounding`, so the Reports screen
 starts from `settings.reports`.
+
+`shift(range, anchor, by, today)` steps a range for the sidebar's navigator: its unit is a calendar month
+(first to last day), a Monday-to-Sunday week, or else its own number of days. It moves `by` units from the
+range, or with `anchor` from the unit that holds the anchor (for days: the days ending on it), so `by: 0`
+with today is "Today", "This week" or "This month". A result equal to a preset becomes that preset (a week
+back from This week is Last week), anything else `Custom`.
 
 - Rows: each recording's part in each day of the range (the running one ends now), so a recording over
   midnight counts on both days, as in the Day view. Client, project and tag lists narrow

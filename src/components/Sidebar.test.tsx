@@ -38,6 +38,33 @@ const savedReportCommand = (name: RegExp) => screen.queryByRole("option", { name
 const RENAME = /Rename saved report…/;
 const DELETE = /Delete saved report…/;
 
+describe("Sidebar date navigator", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const views = () => within(screen.getByRole("navigation", { name: "Views" })).getAllByRole("button");
+
+  it("shows the date next to the list of views", async () => {
+    renderSidebar({ view: "day", savedReports: [] });
+    expect(within(await screen.findByRole("group", { name: "Date" })).getByRole("button", { name: "Previous day" })).toBeInTheDocument();
+    ["Day", "Week", "Month", "Reports", "Projects", "Rules"].forEach((name, i) => expect(views()[i]).toHaveTextContent(new RegExp(`^${name}`)));
+    expect(views()).toHaveLength(6);
+  });
+
+  it.each(["projects", "rules"] as const)("keeps the views and shows no date in the %s view", (view) => {
+    renderSidebar({ view });
+    expect(screen.queryByRole("group", { name: "Date" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Previous/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Day/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Projects/ })).toBeInTheDocument();
+  });
+
+  it("steps the shown day with the date buttons", async () => {
+    renderSidebar({ view: "day", day: "2026-03-10" });
+    await userEvent.click(await screen.findByRole("button", { name: "Next day" }));
+    expect(useStore.getState().day).toBe("2026-03-11");
+  });
+});
+
 describe("Sidebar saved reports", () => {
   beforeEach(() => vi.clearAllMocks());
 
