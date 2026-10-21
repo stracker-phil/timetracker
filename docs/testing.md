@@ -86,6 +86,7 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 | `scripts/dev/js.sh '<js>'` | runs JavaScript in the running debug app over the IPC socket. Fire-and-forget: no return value, and top-level `const` declarations collide across calls, so wrap them in an IIFE |
 | `scripts/dev/screenshot.sh out.png` | captures the TimeTracker window, also while it is in the background |
 | `bun run app` | builds and `open`s the app; this takes focus |
+| `bun run release` | builds the release `.app` and `.dmg` (`src-tauri/target/release/bundle/`), signed ad hoc |
 
 The store is available as `window.timetracker` in the debug bundle: `bun run build:app` sets
 `VITE_DEV_HOOKS=1` at build time, and `main.tsx` exposes the store only then. A release build has no

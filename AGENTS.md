@@ -30,11 +30,12 @@ git clone <this repository>
 cd timetracker
 bun install
 bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/TimeTracker.app
-bun run tauri build      # release bundle: src-tauri/target/release/bundle/macos/TimeTracker.app
+bun run release          # release bundle: src-tauri/target/release/bundle/macos/TimeTracker.app and a .dmg
 ```
 
 The first Rust build takes several minutes. Optional links for the user: `scripts/install-cli.sh` (the
-`timetracker` command in `~/.local/bin`) and `scripts/install-app.sh` (the app in `~/Applications`).
+`timetracker` command in `~/.local/bin`) and `scripts/install-app.sh` (the app in `~/Applications`); both
+link the release build, or the debug build with `--debug`.
 
 ## Verify
 

@@ -14,11 +14,17 @@ binaries, no support. To build it or port it, point a coding agent at [AGENTS.md
 
 ```sh
 bun install
+bun run release          # src-tauri/target/release/bundle/macos/TimeTracker.app and a .dmg
 bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/TimeTracker.app
 ```
 
-`scripts/install-app.sh` links the app into `~/Applications`, `scripts/install-cli.sh` links the
-`timetracker` command into `~/.local/bin`.
+`scripts/install-app.sh` links the release app into `~/Applications`, `scripts/install-cli.sh` links the
+`timetracker` command into `~/.local/bin`; both take `--debug` to link the debug build instead.
+
+- **Accessibility:** the grant is tied to the bundle's signature. A rebuilt debug app may ask again; the
+  release build keeps it.
+- **Launch at login:** the LaunchAgent points at the bundle path at the time it is enabled. After moving or
+  installing the app, turn launch at login off and on again in Settings.
 
 ## CLI
 

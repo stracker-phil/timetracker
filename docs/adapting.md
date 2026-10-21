@@ -22,7 +22,7 @@ The app's name and ids live in a few places. Change them together.
 | Logs dir | `~/Library/Logs/com.philippstracker.timetracker/` | Tauri's `app_log_dir`, from the identifier |
 | Env vars | `TIMETRACKER_WINDOW_FRAME`, `TIMETRACKER_BACKGROUND`, `TIMETRACKER_DEV_TERMINAL`, `TIMETRACKER_SIGN_IDENTITY` | `dev.rs`, `window.rs`, `scripts/dev/launch.sh` |
 | Store on `window` | `window.timetracker` | `src/main.tsx`, `src/vite-env.d.ts`, the dev scripts |
-| Icons | clock glyph | `src-tauri/icons/` (regenerate with `bun tauri icon <1024px png or svg>`); tray template images in `src-tauri/icons/tray/` |
+| Icons | clock glyph | `design/icon.svg`, rasterized to `design/icon-1024.png` (`rsvg-convert -w 1024 -h 1024`); `src-tauri/icons/` regenerated with `bun tauri icon design/icon-1024.png` (only the desktop files are kept); tray template images in `src-tauri/icons/tray/` |
 | Author, license | Philipp Stracker, MIT | `Cargo.toml`, `package.json`, `LICENSE` |
 
 ## Platform-specific code
@@ -41,7 +41,7 @@ The app's name and ids live in a few places. Change them together.
 | **Launch at login**: `MacosLauncher::LaunchAgent` | `lib.rs` (autostart plugin), `autostart.rs` | the plugin writes an XDG autostart entry | the plugin writes a registry key |
 | **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs | `src/commands/registry.ts`, `keybindings.rs` `key_label` | Map `Mod` to Ctrl | Same |
 | **Fonts**: bundled Geist and JetBrains Mono with `-apple-system` and `Menlo` fallbacks | `fonts.css`, `theme.css` | Works | Works |
-| **Bundle targets**: only `app` | `tauri.conf.json` `bundle.targets`; `package.json` scripts | `deb`, `appimage` | `nsis`, `msi` |
+| **Bundle targets**: `app` and `dmg`, signed ad hoc (`bundle.macOS.signingIdentity: "-"`) | `tauri.conf.json` `bundle.targets`; `package.json` scripts | `deb`, `appimage` | `nsis`, `msi` |
 | **Dev and install scripts** (zsh, Swift, CoreGraphics, `screencapture`) | `scripts/` | Rewrite or use `bun tauri dev` | PowerShell |
 | **Capture** (later steps): objc2, Accessibility, Apple Events for browser URLs | `capture/macos.rs` | A new `Source` (X11/Wayland) | A new `Source` (Win32) |
 | **Tests**: the setup pretends to be a Mac | `src/test-setup.ts` | Make the platform a parameter | Same |
