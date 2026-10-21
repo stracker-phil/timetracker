@@ -1,4 +1,4 @@
-//! Helpers shared by unit tests and integration tests through the `test-util` feature.
+//! Fixtures for unit tests and integration tests.
 
 use crate::db::activities::{self, ActivityRow, NewActivity};
 use crate::db::clients::{self, Client, ClientInput};

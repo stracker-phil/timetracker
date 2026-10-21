@@ -76,6 +76,13 @@ pub enum IpcMessage {
     Eval {
         js: String,
     },
+    /// Seeds generated workdays (`test_support::seed`); refused when activity before today exists,
+    /// unless `yes`.
+    #[cfg(debug_assertions)]
+    DevSeed {
+        years: u32,
+        yes: bool,
+    },
 }
 
 impl IpcMessage {
@@ -99,6 +106,17 @@ impl IpcMessage {
             IpcMessage::TimerStop => "TimerStop",
             #[cfg(debug_assertions)]
             IpcMessage::Eval { .. } => "Eval",
+            #[cfg(debug_assertions)]
+            IpcMessage::DevSeed { .. } => "DevSeed",
+        }
+    }
+
+    /// How long the sender waits for the answer.
+    fn reply_timeout(&self) -> Duration {
+        match self {
+            #[cfg(debug_assertions)]
+            IpcMessage::DevSeed { .. } => SEED_TIMEOUT,
+            _ => CLIENT_TIMEOUT,
         }
     }
 }
@@ -183,6 +201,9 @@ const ACK: &str = "ok";
 /// Longer lines get no answer; the CLI splits larger activity batches (`cli::split`).
 pub const MAX_MESSAGE_BYTES: u64 = 64 * 1024;
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
+/// Seeding years of data takes seconds.
+#[cfg(debug_assertions)]
+const SEED_TIMEOUT: Duration = Duration::from_secs(120);
 const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -202,13 +223,17 @@ fn no_listener(e: &io::Error) -> bool {
 }
 
 /// Sends `value` as one line and reads the answer line; `None` when nothing listens.
-fn send_line(socket: &Path, value: &impl Serialize) -> io::Result<Option<String>> {
+fn send_line(
+    socket: &Path,
+    value: &impl Serialize,
+    timeout: Duration,
+) -> io::Result<Option<String>> {
     let mut stream = match UnixStream::connect(socket) {
         Ok(s) => s,
         Err(e) if no_listener(&e) => return Ok(None),
         Err(e) => return Err(e),
     };
-    stream.set_read_timeout(Some(CLIENT_TIMEOUT))?;
+    stream.set_read_timeout(Some(timeout))?;
     let mut line = serde_json::to_string(value).map_err(io::Error::other)?;
     line.push('\n');
     stream.write_all(line.as_bytes())?;
@@ -219,7 +244,7 @@ fn send_line(socket: &Path, value: &impl Serialize) -> io::Result<Option<String>
 
 /// A timeout or other socket error is an `Err`: an instance may be alive but hung.
 pub fn try_forward(socket: &Path, message: &IpcMessage) -> io::Result<Forward> {
-    Ok(match send_line(socket, message)? {
+    Ok(match send_line(socket, message, CLIENT_TIMEOUT)? {
         None => Forward::NoInstance,
         Some(answer) if answer.trim() == ACK => Forward::Delivered,
         Some(_) => Forward::Rejected,
@@ -228,11 +253,12 @@ pub fn try_forward(socket: &Path, message: &IpcMessage) -> io::Result<Forward> {
 
 /// Sends `message` as a request and waits for its reply; `None` when nothing listens.
 pub fn request(socket: &Path, message: IpcMessage) -> io::Result<Option<IpcReply>> {
+    let timeout = message.reply_timeout();
     let request = IpcRequest {
         id: uuid::Uuid::new_v4().to_string(),
         message,
     };
-    let Some(answer) = send_line(socket, &request)? else {
+    let Some(answer) = send_line(socket, &request, timeout)? else {
         return Ok(None);
     };
     match serde_json::from_str::<IpcReply>(&answer) {
@@ -528,6 +554,20 @@ mod tests {
     fn timer_messages_are_of_their_own_kinds() {
         assert_eq!(timer_start_message().kind(), "TimerStart");
         assert_eq!(IpcMessage::TimerStop.kind(), "TimerStop");
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn a_dev_seed_message_is_of_the_kind_dev_seed_and_keeps_its_wire_shape() {
+        let message = IpcMessage::DevSeed {
+            years: 3,
+            yes: true,
+        };
+        let wire = serde_json::json!({ "type": "devSeed", "years": 3, "yes": true });
+
+        assert_eq!(message.kind(), "DevSeed");
+        assert_eq!(serde_json::to_value(&message).unwrap(), wire);
+        assert_eq!(serde_json::from_value::<IpcMessage>(wire).unwrap(), message);
     }
 
     fn report_message() -> IpcMessage {

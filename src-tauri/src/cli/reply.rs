@@ -100,6 +100,14 @@ pub fn render<Tz: TimeZone>(
             None => "no timer running".into(),
         }),
         IpcMessage::Report { .. } => Some(read::<Reported>(result)?.text.trim_end().to_string()),
+        #[cfg(debug_assertions)]
+        IpcMessage::DevSeed { .. } => {
+            let stats = read::<crate::test_support::seed::SeedStats>(result)?;
+            Some(format!(
+                "seeded {} workdays: {} activity spans, {} away spans, {} recordings over {} projects",
+                stats.days, stats.activities, stats.away_spans, stats.recordings, stats.projects
+            ))
+        }
         _ => None,
     })
 }
@@ -599,6 +607,27 @@ mod tests {
         assert_eq!(
             render_at_now(&IpcMessage::TimerStop, &Value::Null),
             Ok(Some("no timer running".into()))
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn dev_seed_prints_what_was_seeded() {
+        let result = json!({
+            "days": 520,
+            "activities": 260000,
+            "awaySpans": 1560,
+            "recordings": 3120,
+            "projects": 5,
+            "tags": 5,
+        });
+
+        assert_eq!(
+            render_at_now(&IpcMessage::DevSeed { years: 2, yes: false }, &result),
+            Ok(Some(
+                "seeded 520 workdays: 260000 activity spans, 1560 away spans, 3120 recordings over 5 projects"
+                    .into()
+            ))
         );
     }
 

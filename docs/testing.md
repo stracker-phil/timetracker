@@ -9,7 +9,7 @@ stay out of the main context ([`.claude/rules/testing.md`](../.claude/rules/test
 | Command | Runs |
 |---|---|
 | `bun run test` | Vitest UI tests (`test:ui`), then the Rust tests (`test:rust`) |
-| `bun run test:db` | `cargo test -- --ignored`: the integration tests on temp SQLite files (no Docker) |
+| `bun run test:db` | `cargo test -- --ignored`: the integration tests on temp SQLite files (no Docker), including the performance test `tests/performance.rs` |
 | `bun run lint` | regenerates the IPC types (`types`: the ts-rs `export_bindings` tests) and fails when `src/api/types.gen.ts` changed, then `tsc --noEmit` (app and tests), `eslint .` (`eslint.config.js`: `@eslint/js` and type-checked `typescript-eslint` recommended plus `react-hooks/rules-of-hooks` and `exhaustive-deps`; test files and `apiMock.ts` turn off the rules that fight mocks) and `cargo clippy --lib --bins -- -D warnings` (production code only) |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml` | Rust formatting (run before lint) |
 
@@ -38,8 +38,12 @@ launch and commit at the end of every step.
   use `temp_db` or a `DataStore` on a temp dir. Calendar tests pass a fixed zone (`chrono-tz`) to
   `Day::bounds_in` / `Day::of_in`, never the machine's.
 - **Integration tests** live in `src-tauri/tests/` and use the public `timetracker_lib` API on a temp SQLite
-  file; slow ones are `#[ignore]` and run with `test:db` (none yet).
-- **Helpers** are in `src/test_support.rs`: `temp_config_dir`, `temp_db` (a migrated SQLite file in a temp
+  file; slow ones are `#[ignore]` and run with `test:db`. `tests/performance.rs` seeds two years and fails
+  with the measured medians when a view gets slower than its limit ([data.md](data.md#seed-fixture-and-performance)).
+  Run it optimized with `cargo test --release --test performance -- --ignored --nocapture`.
+- **Seed fixture:** `test_support/seed.rs` (`seed_years`, `seed_days`): a deterministic multi-year data set,
+  also compiled into debug builds for `timetracker dev seed`.
+- **Helpers** are in `src/test_support/` (`fixtures.rs`): `temp_config_dir`, `temp_db` (a migrated SQLite file in a temp
   dir) and the fixtures `activity`, `project` and `recording` ([data.md](data.md#tests)); later the fake capture source,
   compiled with `cfg(test)` or the `test-util` feature ([ADR 0015](adr/0015-test-doubles-behind-test-util.md)).
   The crate lists itself as a dev-dependency with `test-util`, so `tests/` sees them.
@@ -100,6 +104,19 @@ System Settings → Privacy & Security → Accessibility and grant the new one. 
 before starting it, with the identifier `com.philippstracker.timetracker` and the keychain identity in
 `TIMETRACKER_SIGN_IDENTITY`, or ad hoc without it. With a certificate (for example a self-signed
 "Code Signing" certificate made in Keychain Access), the grant survives rebuilds.
+
+### Sample data
+
+`timetracker dev seed [--years N] [--yes]` (debug builds only, N from 1 to 10, default 2) asks the running
+debug app to write N years of generated workdays up to yesterday into its database (`test_support::seed`,
+seed 42) and prints the counts. It refuses when the database already holds activity before today, so a real
+history never gets sample data mixed in; `--yes` seeds anyway. Run it against a dev data folder, never your
+own: there is no undo short of restoring a backup.
+
+```sh
+timetracker dev seed --years 2
+# seeded 522 workdays: 261000 activity spans, 1566 away spans, 3132 recordings over 5 projects
+```
 
 `launch.sh` sets `TIMETRACKER_WINDOW_FRAME` and `TIMETRACKER_BACKGROUND=1`. Rust reads both in `dev.rs`, a
 module compiled into debug builds only. JavaScript eval over the socket is compiled out of release builds

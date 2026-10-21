@@ -1,6 +1,14 @@
 //! Debug-build conveniences for driving the app from scripts/dev without disturbing the
-//! user: window placement and background launches. Only compiled into debug builds
+//! user: window placement, background launches and seeding sample data. Only compiled into debug builds
 //! (`#[cfg(debug_assertions)]` on the module and its call sites in `lib.rs`).
+
+use tauri::Manager;
+
+use crate::db::time::Day;
+use crate::error::{AppError, AppResult};
+use crate::events::{DataKind, data_changed};
+use crate::state::AppState;
+use crate::test_support::seed::{SeedStats, has_activity_before, seed_years};
 
 /// `TIMETRACKER_WINDOW_FRAME="x,y,width,height"` (logical points) places the main window.
 pub fn window_frame() -> Option<(f64, f64, f64, f64)> {
@@ -15,7 +23,6 @@ pub fn background() -> bool {
 /// Runs JavaScript sent by `scripts/dev/js.sh` in the main window, or in another one named by a first
 /// line `@<label>`.
 pub fn eval(app: &tauri::AppHandle, js: &str) {
-    use tauri::Manager;
     let (label, js) = match js.strip_prefix('@').and_then(|rest| rest.split_once('\n')) {
         Some((label, rest)) => (label.trim(), rest),
         None => ("main", js),
@@ -27,6 +34,31 @@ pub fn eval(app: &tauri::AppHandle, js: &str) {
         log::warn!("Couldn't evaluate script from scripts/dev: {e}");
     }
 }
+
+/// `timetracker dev seed`: writes `years` of generated workdays up to yesterday into the open data
+/// store. Refused when activity before today exists, so a real history is never mixed with sample
+/// data by accident; `yes` seeds anyway.
+pub async fn seed(app: &tauri::AppHandle, years: u32, yes: bool) -> AppResult<SeedStats> {
+    let db = app.state::<AppState>().data.db()?;
+    if !yes && has_activity_before(&db, Day::today()).await? {
+        return Err(AppError::InvalidInput(
+            "The database already holds activity before today; pass --yes to seed anyway".into(),
+        ));
+    }
+    let stats = seed_years(&db, years, SEED).await?;
+    for kind in [
+        DataKind::Activity,
+        DataKind::Recordings,
+        DataKind::Projects,
+        DataKind::Tags,
+    ] {
+        data_changed(app, kind, None);
+    }
+    Ok(stats)
+}
+
+/// The seed of `timetracker dev seed`, so every dev database looks the same.
+const SEED: u64 = 42;
 
 fn parse_frame(raw: &str) -> Option<(f64, f64, f64, f64)> {
     let v: Vec<f64> = raw

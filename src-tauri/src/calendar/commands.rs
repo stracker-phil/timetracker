@@ -24,18 +24,22 @@ async fn input(db: &Db, (from, to): (Day, Day), with_activity: bool) -> AppResul
     })
 }
 
+/// The week of `day` with tracked time.
+pub async fn load_week(db: &Db, day: Day) -> AppResult<WeekView> {
+    Ok(week(day, &input(db, week_days(day), true).await?))
+}
+
+/// The month grid of `day`, recordings only.
+pub async fn load_month(db: &Db, day: Day) -> AppResult<MonthView> {
+    Ok(month(day, &input(db, month_days(day), false).await?))
+}
+
 #[tauri::command]
 pub async fn week_view(state: State<'_, AppState>, day: Day) -> AppResult<WeekView> {
-    Ok(week(
-        day,
-        &input(&state.data.db()?, week_days(day), true).await?,
-    ))
+    load_week(&state.data.db()?, day).await
 }
 
 #[tauri::command]
 pub async fn month_view(state: State<'_, AppState>, day: Day) -> AppResult<MonthView> {
-    Ok(month(
-        day,
-        &input(&state.data.db()?, month_days(day), false).await?,
-    ))
+    load_month(&state.data.db()?, day).await
 }

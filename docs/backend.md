@@ -432,7 +432,9 @@ in `remote::handle`, a `reply::render` arm when it prints something, and parser 
   missing or refused: start the app), `Rejected` (no `ok`) or an error such as a timeout (print and exit 2,
   so a hung instance never leads to a second one).
 - **Messages** (`IpcMessage`, tagged by `type`): `activate { hidden }`, `error { message }`, the subcommand
-  messages above, and `eval { js }` (debug builds only, sent by `scripts/dev/js.sh`).
+  messages above, `eval { js }` (debug builds only, sent by `scripts/dev/js.sh`) and `devSeed { years, yes }`
+  (debug builds only, sent by `timetracker dev seed`; its sender waits up to 120 s instead of 5 s,
+  `IpcMessage::reply_timeout`).
 - **Stale sockets:** `bind` removes a leftover socket only when connecting to it is refused; it refuses to
   bind while a listener is alive.
 
@@ -453,6 +455,7 @@ Every message is logged by type (`IpcMessage::kind`, never the contents).
 | `activityStart { input }` | `activity::start` | `ActivityRow` |
 | `activityStop { source, end }` | `activity::stop` | `ActivityRow` or `null` |
 | `eval { js }` | runs in the window | `null` |
+| `devSeed { years, yes }` | `dev::seed`: refused unless `yes` when activity before today exists, then `test_support::seed::seed_years` (seed 42) and `data_changed` for activity, recordings, projects and tags | `SeedStats` |
 
 Messages that start the app are pushed to `LaunchQueue` in `setup` instead: `show` becomes
 `LaunchEvent::ShowDay { day }`, so the page navigates once it has loaded.

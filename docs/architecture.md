@@ -156,14 +156,14 @@ src-tauri/
   src/store/                 JsonFile, JsonStore, settings.rs, keybindings.rs, ui_state.rs
   src/commands.rs            settings, keybindings, ui state, misc; feature commands sit in their module
   src/tray.rs menu.rs window.rs deep_link.rs   tray, native menu, window helpers, timetracker:// links
-  src/dev.rs                 debug builds only: window frame, background launch, eval
-  src/test_support.rs        test helpers behind cfg(test) / feature test-util
+  src/dev.rs                 debug builds only: window frame, background launch, eval, dev seed
+  src/test_support/          test helpers behind cfg(test) / feature test-util; seed.rs also in debug builds
   src/db/                    Db (sqlx pool), migrations, time helpers, repositories
   src/capture/               Source trait, Snapshot types, macos.rs (objc2), fake.rs (test-util)
   src/tracker/               state machine: spans, away, pause, status; the tokio task
   src/activity/              external activity (rules, commands)
   src/day/ calendar/ projects/ recordings/ rules/ reports/ timers/ away_prompt.rs mcp/
-  tests/                     integration tests on a temp SQLite file
+  tests/                     integration tests on a temp SQLite file (performance.rs)
 src/
   main.tsx modules.ts App.tsx
   api/index.ts types.gen.ts types.ts

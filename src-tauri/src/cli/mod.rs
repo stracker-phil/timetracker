@@ -128,6 +128,25 @@ enum Command {
     /// Serve a read-only MCP server on stdin/stdout for Claude and other MCP clients; it reads the data
     /// itself, so it works while the app is closed (`claude mcp add timetracker -- ~/.local/bin/timetracker mcp`)
     Mcp,
+    /// Developer tools (debug builds only)
+    #[cfg(debug_assertions)]
+    #[command(subcommand)]
+    Dev(DevCommand),
+}
+
+#[cfg(debug_assertions)]
+#[derive(Subcommand, Debug)]
+enum DevCommand {
+    /// Write generated workdays up to yesterday into the running app's database; refused when it
+    /// holds activity before today
+    Seed {
+        /// How many years back (1 to 10)
+        #[arg(long, default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..=10))]
+        years: u32,
+        /// Seed even when the database holds activity before today
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -355,6 +374,8 @@ fn message<Tz: TimeZone>(
             },
         },
         Command::Stop => IpcMessage::TimerStop,
+        #[cfg(debug_assertions)]
+        Command::Dev(DevCommand::Seed { years, yes }) => IpcMessage::DevSeed { years, yes },
         Command::Mcp => unreachable!("`parse` serves `mcp` before it builds a message"),
         Command::Report(args) => IpcMessage::Report {
             request: args.request(now, tz)?,
@@ -1003,6 +1024,42 @@ mod tests {
     #[test]
     fn stop_becomes_a_timer_stop_message() {
         assert_eq!(remote(&["stop"]), (IpcMessage::TimerStop, false, false));
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn dev_seed_defaults_to_two_years_and_asks_before_seeding() {
+        assert_eq!(
+            remote(&["dev", "seed"]),
+            (
+                IpcMessage::DevSeed {
+                    years: 2,
+                    yes: false
+                },
+                false,
+                false
+            )
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn dev_seed_takes_years_and_yes() {
+        assert_eq!(
+            remote(&["dev", "seed", "--years", "5", "--yes"]).0,
+            IpcMessage::DevSeed {
+                years: 5,
+                yes: true
+            }
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn dev_seed_rejects_years_outside_one_to_ten() {
+        for years in ["0", "11"] {
+            assert!(run(&["dev", "seed", "--years", years]).is_err(), "{years}");
+        }
     }
 
     #[test]

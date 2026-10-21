@@ -24,7 +24,7 @@ pub mod reports;
 pub mod rules;
 pub mod state;
 pub mod store;
-#[cfg(any(test, feature = "test-util"))]
+#[cfg(any(test, feature = "test-util", debug_assertions))]
 pub mod test_support;
 pub mod timers;
 pub mod tracker;

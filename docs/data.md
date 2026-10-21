@@ -223,7 +223,33 @@ client's projects. `0004_saved_reports.sql` adds `saved_reports (id, name, filte
 
 ## Tests
 
-`test_support.rs` has `temp_db()` (a migrated file database in a temp dir, so WAL and migrations run as in the
+`test_support/` has `temp_db()` (a migrated file database in a temp dir, so WAL and migrations run as in the
 app) and fixtures `activity(db, start, end, app, title)`, `project(db, name)`, `recording(db, project_id, start,
 end)`. Repository tests use `Db::open_memory()` (one connection that never closes). See
 [testing.md](testing.md#rust).
+
+### Seed fixture and performance
+
+`test_support/seed.rs` (`test-util` and debug builds) writes a deterministic data set: `seed_days(db, first,
+last, seed)` fills every workday of the range, `seed_years(db, years, seed)` the `years` up to yesterday.
+Per workday, 08:00–18:00 local: `ACTIVITIES_PER_DAY` (500) back-to-back `tracker` spans over 12 apps and 40
+titles, `AWAY_PER_DAY` (3) away spans (two short `idle`, a `lock` lunch; activity ends where they start) and
+`RECORDINGS_PER_DAY` (6) non-overlapping recordings over 5 projects of 2 clients, with notes and 0–2 of 5
+tags. Clients, projects and tags are reused by name. A small splitmix64 generator keeps it free of `rand`;
+the same seed writes the same rows except the random recording ids. Each day is one multi-row transaction:
+two years (522 workdays, 261 000 activity spans, 3 132 recordings) seed in about 1.5 s in a debug build,
+0.7 s in release.
+
+`tests/performance.rs` (`#[ignore]`, so `test:db`) seeds two years into a temp file and asserts medians of
+20 runs for a workday a year back:
+
+| Path | Limit | Measured (debug / release) |
+|---|---|---|
+| `day::commands::load` (Day view with suggestions) | 50 ms | 14 / 12 ms |
+| `reports::run` for that month | 200 ms | 3 / 2 ms |
+| `calendar::commands::load_week` | 100 ms | 25 / 17 ms |
+| `calendar::commands::load_month` | 150 ms | 2 / 2 ms |
+| `day::list::list` of `day::commands::view_of` (List mode) | 50 ms | 13 / 10 ms |
+
+The schema's indexes suffice. The debug profile compiles `libsqlite3-sys` with `opt-level = 3`
+(`Cargo.toml`): unoptimized SQLite made the week view take 120 ms in debug builds.

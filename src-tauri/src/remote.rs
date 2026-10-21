@@ -193,6 +193,8 @@ pub async fn handle(app: AppHandle, message: IpcMessage) -> HandlerResult {
             crate::dev::eval(&app, &js);
             Ok(serde_json::Value::Null)
         }
+        #[cfg(debug_assertions)]
+        IpcMessage::DevSeed { years, yes } => json(crate::dev::seed(&app, years, yes).await?),
     }
 }
 

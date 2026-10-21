@@ -49,6 +49,10 @@ lto = true
 opt-level = 3
 strip = true
 
+# SQLite is C: unoptimized, debug builds and `test:db` read a large database several times slower.
+[profile.dev.package.libsqlite3-sys]
+opt-level = 3
+
 [dev-dependencies]
 # Itself with test helpers, so integration tests in tests/ can use them (ADR 0015).
 timetracker = { path = ".", features = ["test-util"] }
