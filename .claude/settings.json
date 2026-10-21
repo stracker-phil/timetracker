@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bun run:*)",
+      "Bash(bun add:*)",
+      "Bash(bun install:*)",
+      "Bash(bun remove:*)",
+      "Bash(cargo:*)",
+      "Bash(rustup:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(pgrep:*)",
+      "Bash(pkill -x timetracker)"
+    ]
+  }
+}

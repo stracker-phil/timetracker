@@ -1,1 +1,16 @@
 /docs/plan
+.DS_Store
+target/
+node_modules/
+dist/
+dist-ssr/
+*.local
+*.log
+src-tauri/gen/schemas/
+.project-launcher.json
+
+# Track project Claude tooling (overrides global ignore), but not local settings
+!.claude/
+.claude/settings.local.json
+.claude/worktrees/
+.claude/scheduled_tasks.lock
