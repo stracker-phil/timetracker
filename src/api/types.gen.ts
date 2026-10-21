@@ -81,6 +81,12 @@ export type AppSettingPatch = { groupByApp?: boolean | null, titles?: Titles | n
 
 export type AwayBlock = { id: number, start: number, end: number, reason: AwayReason, };
 
+export type AwayPrompt = { span: AwayRow, 
+/**
+ * The span snapped as a recording would be.
+ */
+suggested: Span, };
+
 export type AwayReason = "idle" | "sleep" | "lock" | "paused";
 
 export type AwayRow = { id: number, start: number, 
@@ -147,6 +153,11 @@ export type DayColumn = { day: Day, bounds: [number, number],
  * `Mon 20`.
  */
 label: string, isToday: boolean, recordings: Array<RecordingBlock>, totalMs: number, trackedMs: number, };
+
+/**
+ * How the Day view shows the day.
+ */
+export type DayMode = "timeline" | "list";
 
 export type DayTotals = { 
 /**
@@ -227,6 +238,34 @@ export type LaneKind = "summary" | "activity" | "app" | "source";
  * or a deep link.
  */
 export type LaunchEvent = { "type": "error", message: string, } | { "type": "activate" } | { "type": "showDay", day: Day, };
+
+export type ListRow = { key: string, app: string, bundleId: string | null, 
+/**
+ * What the timeline shows for these blocks: the document name or the app, by the title setting.
+ */
+label: string, 
+/**
+ * The longest block's window title.
+ */
+title: string, url: string | null, path: string | null, source: string, private: boolean, totalMs: number, 
+/**
+ * The part of `total_ms` inside recordings.
+ */
+coveredMs: number, firstStart: number, lastEnd: number, 
+/**
+ * The blocks' spans, touching ones merged, by start.
+ */
+spans: Array<[number, number]>, 
+/**
+ * The time between the spans: what a recording from `first_start` to `last_end` adds.
+ */
+gapMs: number, blockIds: Array<string>, };
+
+export type ListView = { day: Day, 
+/**
+ * By total time, longest first; then by first start.
+ */
+rows: Array<ListRow>, totalMs: number, };
 
 export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
 
@@ -559,7 +598,7 @@ timelineZoom: number,
 /**
  * Splitter positions by pane id, in px.
  */
-paneSizes: { [key in string]: number }, };
+paneSizes: { [key in string]: number }, dayMode: DayMode, };
 
 export type UndoStatus = { undoLabel: string | null, redoLabel: string | null, };
 

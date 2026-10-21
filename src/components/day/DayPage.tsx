@@ -3,6 +3,7 @@ import type { DayView } from "../../api";
 import { isToday } from "../../lib/day";
 import { selectDayVersion, useStore } from "../../state/store";
 import { DayHeader } from "./DayHeader";
+import { ListView } from "./list/ListView";
 import { RecordingEditor } from "./RecordingEditor";
 import { Timeline } from "./Timeline";
 import { useLiveReload } from "./useLiveReload";
@@ -30,7 +31,7 @@ function EmptyDay({ day }: { day: string }) {
   );
 }
 
-/** The Day view: the shown day's timeline; it reloads when the day's data changes, and keeps following today. */
+/** The Day view: the shown day's timeline or list; it reloads when the day's data changes, and keeps following today. */
 export function DayPage() {
   const day = useStore((s) => s.day);
   const version = useStore(selectDayVersion(day));
@@ -38,6 +39,7 @@ export function DayPage() {
   const view = useStore((s) => (s.dayView?.day === day ? s.dayView : null));
   const error = useStore((s) => s.dayError);
   const editor = useStore((s) => s.editor);
+  const mode = useStore((s) => s.uiState.dayMode);
 
   useEffect(() => {
     void useStore.getState().loadDay();
@@ -47,7 +49,7 @@ export function DayPage() {
     <section className="day-page" aria-label="Day">
       <DayHeader day={day} totals={view?.totals ?? null} />
       {error && !view && <p className="settings-alert">{error.message}</p>}
-      {view && (isEmpty(view) ? <EmptyDay day={day} /> : <Timeline view={view} />)}
+      {view && (isEmpty(view) ? <EmptyDay day={day} /> : mode === "list" ? <ListView day={day} reload={live} /> : <Timeline view={view} />)}
       {editor && <RecordingEditor key={editor.mode === "edit" ? editor.id : `${editor.start}`} editor={editor} />}
     </section>
   );

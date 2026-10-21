@@ -183,3 +183,11 @@ run), then an immediate step, so a granted permission starts tracking without a 
 
 The grant belongs to the code signature, so dev builds need a stable signature to keep it
 ([testing.md](testing.md#accessibility-in-dev-builds)).
+
+## Away prompt trigger
+
+The tracker broadcasts an away span when it ends because the user came back (`Tracker::subscribe_away`):
+input after idle, wake, unlock, session active, or resume after a pause. `away_prompt::should_prompt` then
+asks only for spans at least `tracker.awayPromptMinutes` long while `tracker.awayPromptEnabled` is on, and
+never for a pause, which the user started on purpose. Spans closed at startup recovery never prompt: the app
+was not running when they ended. See [backend.md](backend.md#away-prompt).

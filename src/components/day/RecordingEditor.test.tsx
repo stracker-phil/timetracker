@@ -164,6 +164,23 @@ describe("RecordingEditor", () => {
       expect(screen.getByText("2 h 15 min")).toBeInTheDocument();
     });
 
+    it("counts a valid typed time at once, so Enter saves it without leaving the field", async () => {
+      renderCreate();
+      await editorDialog("New recording");
+      await chooseWebsite();
+      await userEvent.clear(field("To"));
+      await userEvent.type(field("To"), "11:15{Enter}");
+      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ start: START, end: at("11:15") }), "cancel"));
+    });
+
+    it("updates the length while a valid time is typed, before the field is left", async () => {
+      renderCreate();
+      await editorDialog("New recording");
+      await userEvent.clear(field("To"));
+      await userEvent.type(field("To"), "11:15");
+      expect(screen.getByText("2 h 15 min")).toBeInTheDocument();
+    });
+
     it("accepts a time typed without a colon", async () => {
       renderCreate();
       await editorDialog("New recording");

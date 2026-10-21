@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod away_prompt;
 pub mod calendar;
 pub mod capture;
 pub mod cli;
@@ -230,6 +231,7 @@ fn start_tracker(app: &AppHandle, state: &AppState) {
     );
     tracker.set_capture(settings.capture);
     app.manage(Arc::clone(&tracker));
+    away_prompt::watch(app, &tracker);
     tracker::start(app, tracker);
 }
 
@@ -315,6 +317,7 @@ fn start_app(
     tauri::Builder::default()
         .manage(state)
         .manage(remote::Bridge::default())
+        .manage(away_prompt::AwayPromptState::default())
         .plugin(log_plugin())
         .plugin(init_logging(log_level))
         .plugin(tauri_plugin_opener::init())
@@ -418,6 +421,10 @@ fn start_app(
             timers::commands::timer_picker_close,
             calendar::commands::week_view,
             calendar::commands::month_view,
+            away_prompt::commands::away_prompt_current,
+            away_prompt::commands::away_prompt_answer,
+            away_prompt::commands::away_prompt_skip,
+            day::commands::list_view,
             rules::commands::rules_list,
             rules::commands::rule_save,
             rules::commands::rule_delete,

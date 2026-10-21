@@ -169,6 +169,12 @@ export function CapturePage({ s, set }: SettingsPageProps) {
   );
 }
 
+const AWAY_PROMPT_MINUTES = [5, 10, 15, 20, 30, 45, 60];
+
+/** The fixed choices, plus a hand-edited value so the select still shows it. */
+const awayPromptChoices = (current: number) =>
+  AWAY_PROMPT_MINUTES.includes(current) ? AWAY_PROMPT_MINUTES : [...AWAY_PROMPT_MINUTES, current].sort((a, b) => a - b);
+
 export function TrackerPage({ s, set }: SettingsPageProps) {
   const tracker = s.tracker;
   return (
@@ -191,6 +197,27 @@ export function TrackerPage({ s, set }: SettingsPageProps) {
         max={SETTINGS_LIMITS.pollSeconds.max}
         onCommit={(pollSeconds) => set({ tracker: { ...tracker, pollSeconds } })}
       />
+      <Switch
+        label="Ask what I did after being away"
+        description="After a long away span, a small window asks for the project to record it for. Pauses never ask."
+        checked={tracker.awayPromptEnabled}
+        onChange={(awayPromptEnabled) => set({ tracker: { ...tracker, awayPromptEnabled } })}
+      />
+      <Row label="For longer than" htmlFor="settings-away-prompt-minutes">
+        <select
+          id="settings-away-prompt-minutes"
+          className="input"
+          disabled={!tracker.awayPromptEnabled}
+          value={tracker.awayPromptMinutes}
+          onChange={(e) => set({ tracker: { ...tracker, awayPromptMinutes: Number(e.target.value) } })}
+        >
+          {awayPromptChoices(tracker.awayPromptMinutes).map((minutes) => (
+            <option key={minutes} value={minutes}>
+              {minutes} min
+            </option>
+          ))}
+        </select>
+      </Row>
     </Group>
   );
 }

@@ -148,7 +148,7 @@ Tracker components:
 | `SuggestionBlock` | a rule's suggestion: a button, dashed in the project's shade, with the project, the rule and the duration; click sends `acceptSuggestion`, ⌥-click `acceptRuleSuggestions` (the `rules` slice; Rust's `data_changed` reloads the day) |
 | `useRuleDrag` | ⌥-pressing an activity block (in `Timeline`) shows the recent projects over the top of the recordings column; releasing over one opens the `rule` dialog with `draftFromBlock`: `<app> → <project>`, `app is <app>` and `domain is <host>` for a URL block, else `title contains <title>` |
 | `RecordingBlock` | the project's shade as a 3px bar and a 22% tint, project, note, tags and duration; dashed top or bottom edge when clipped to the day. Click focuses, double-click edits; dragging the body moves it and an edge resizes it (`pointerDrag`, pointer capture), with the ghost from `useSnappedSpan`; release sends `updateRecording` |
-| `RecordingEditor` | project (`ProjectPicker`), From and To (`HH:MM`, ↑↓ step by the snap interval; an end before the start is on the next day), duration, note (one line; pasted line breaks become spaces), tags (`TagPicker`); Save (↵ or ⌘↵), Cancel, Delete (⌘⌫) when editing. It edits the whole recording, also when the day shows a part of it |
+| `RecordingEditor` | an optional warning (the List view's gaps), project (`ProjectPicker`; focus starts on the note when one is given), From and To (`HH:MM`, ↑↓ step by the snap interval; an end before the start is on the next day), duration, note (one line; pasted line breaks become spaces), tags (`TagPicker`); Save (↵ or ⌘↵), Cancel, Delete (⌘⌫) when editing. It edits the whole recording, also when the day shows a part of it |
 | `OverlapDialog` | the recordings in the way, "Replace overlapped part" or Cancel |
 | `selectionPress` | the press on the lanes and the axis: a drag selects a span (auto-scrolling near the edges) and dropped on the recordings column opens the editor; a click selects a block's span, ⇧-click extends the selection, a click on nothing clears it |
 | `useSnappedSpan` | a span as Rust will snap it (`api.recordingSnap`, at most once per frame; the raw span stands in until the answer) |
@@ -168,6 +168,33 @@ Secondary windows are pages of their own in `src/windows/<name>/` (`index.html`,
 `build.rollupOptions.input` entry in `vite.config.ts`; they import `src/styles/index.ts` and use the same
 store and `api`. `windows/timer/TimerPicker.tsx` reloads settings, projects, the timer and the recent timers
 whenever the window gains focus (it is hidden, not closed, between uses), and reports its errors to the log.
+
+### List view
+
+`components/day/list/`, shown by `DayPage` when `uiState.dayMode` is `list` (the "Day mode" segmented
+buttons in `DayHeader`, or ⌘⇧L `day.toggleList`; `viewState.setDayMode` persists it).
+
+- `ListView` loads `api.listView(day)` through `useApiResult`, keyed on `selectDayVersion(day)` and the live
+  tick, and keeps Rust's order. The search field filters the loaded rows by app, label, title, URL and path
+  (`/` focuses it, Escape clears it). ↑↓ move between rows; ↵ opens the recording editor for the row's span
+  without a project; Space selects the row's span and blocks and switches to the timeline.
+- `ListRow`: app, label, URL or path, the duration, `· n spans`, and a bar for the covered share. Clicking
+  the title shows its details (title, URL, path, spans).
+- `ProjectStrip`: active projects, recent first, 8 chips and the rest under More…. Dragging a row onto a chip
+  (`pointerDrag`, `elementFromPoint` on `[data-project-id]`) or clicking a chip with a row focused opens the
+  editor with that project; a row with several spans adds the gaps warning (`Editor.create { projectId?,
+  warning? }`).
+- Timeline-only commands (block focus, selection, recording keys) are off in List mode, so the rows keep
+  their keys; zoom zooms the text.
+
+### Away window
+
+`windows/away/AwayPrompt.tsx`, the `away` window's page. It loads settings, projects and
+`awayPromptCurrent` on mount and on focus, and refills from `away_prompt_changed` (the form is keyed by the
+span, so a refresh of the same span keeps what was typed). Record sends `awayPromptAnswer`; an `overlap`
+shows which recordings are in the way and keeps the form; Escape or Skip sends `awayPromptSkip`. It has no
+toasts: unexpected errors are logged and shown inline. Settings → Tracker has the away prompt's switch and
+its minimum length.
 
 ### Rules screen
 

@@ -25,6 +25,7 @@ export function RecordingEditor({ editor }: { editor: Editor }) {
   const ids = { start: useId(), end: useId(), note: useId() };
 
   if (!draft) return null;
+  const projectGiven = editor.mode === "create" && !!editor.projectId;
   // An end at or before the start is on the next day.
   const end = draft.end > draft.start ? draft.end : draft.end + DAY_MS;
 
@@ -72,8 +73,13 @@ export function RecordingEditor({ editor }: { editor: Editor }) {
         }}
       >
         <h2 id="recording-editor-title">{existing ? "Edit recording" : "New recording"}</h2>
+        {editor.mode === "create" && editor.warning && (
+          <p className="editor-warning" role="note">
+            {editor.warning}
+          </p>
+        )}
         <FormField label="Project" error={errors.projectId}>
-          <ProjectPicker value={draft.projectId} autoFocus={!existing} onChange={(projectId) => patch({ projectId })} />
+          <ProjectPicker value={draft.projectId} autoFocus={!existing && !projectGiven} onChange={(projectId) => patch({ projectId })} />
         </FormField>
         <div className="recording-times">
           <FormField label="From" htmlFor={ids.start}>
@@ -87,8 +93,8 @@ export function RecordingEditor({ editor }: { editor: Editor }) {
         <FormField label="Note" htmlFor={ids.note} error={errors.note}>
           <NoteInput
             id={ids.note}
-            // Editing starts at the note; the open project list would hide the project.
-            autoFocus={!!existing}
+            // Editing, or a given project, starts at the note; the open project list would hide the project.
+            autoFocus={!!existing || projectGiven}
             maxLength={500}
             value={draft.note}
             onChange={(note) => patch({ note })}

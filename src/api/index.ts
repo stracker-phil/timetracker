@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, Rule, RuleInput, RulePreview, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleInput, RulePreview, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -106,6 +106,14 @@ export const api = {
   /** Also removes the tag from every recording. */
   tagsDelete: (id: string) => invoke<void>("tags_delete", { id }),
 
+  /** The open away prompt, `null` when there is none. */
+  awayPromptCurrent: () => invoke<AwayPrompt | null>("away_prompt_current"),
+  /** Records the answer and closes the window; an `overlap` keeps the prompt open. */
+  awayPromptAnswer: (input: RecordingInput) => invoke<Recording>("away_prompt_answer", { input }),
+  awayPromptSkip: () => invoke<void>("away_prompt_skip"),
+  /** The day's activity grouped as the timeline labels it, longest first. */
+  listView: (day: string) => invoke<ListView>("list_view", { day }),
+
   /** In position order: the first matching rule wins. */
   rulesList: () => invoke<Rule[]>("rules_list"),
   /** `id: null` creates; validation errors name the field (`name`, `projectId`, `note`, `tagIds`, `conditions`, `conditions.<i>.value`). */
@@ -130,6 +138,8 @@ export const api = {
   onTrackerStatus: (handler: (status: TrackerStatus) => void): Promise<UnlistenFn> => listen<TrackerStatus>("tracker_status", (e) => handler(e.payload)),
   /** Data of one day (or every day, `day: null`) changed in Rust; views showing it reload. */
   onDataChanged: (handler: (event: DataChanged) => void): Promise<UnlistenFn> => listen<DataChanged>("data_changed", (e) => handler(e.payload)),
+  /** The away window: a new away span replaced the open prompt's. */
+  onAwayPromptChanged: (handler: (prompt: AwayPrompt) => void): Promise<UnlistenFn> => listen<AwayPrompt>("away_prompt_changed", (e) => handler(e.payload)),
   onTimerStatus: (handler: (status: TimerStatus) => void): Promise<UnlistenFn> => listen<TimerStatus>("timer_status", (e) => handler(e.payload)),
 };
 

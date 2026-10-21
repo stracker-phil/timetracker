@@ -202,6 +202,44 @@ describe("Settings Tracker page", () => {
     expect(lastSaved().tracker).toEqual({ ...settings().tracker, pollSeconds: 4 });
   });
 
+  describe("away prompt", () => {
+    const minutesField = () => screen.getByRole("combobox", { name: "For longer than" });
+    const askSwitch = () => screen.getByRole("switch", { name: "Ask what I did after being away" });
+
+    it("shows the prompt on with a threshold of 10 minutes", () => {
+      renderPage("tracker");
+      expect(askSwitch()).toBeChecked();
+      expect(minutesField()).toHaveValue("10");
+      expect(minutesField()).toBeEnabled();
+    });
+
+    it("offers 5 to 60 minutes", () => {
+      renderPage("tracker");
+      expect(within(minutesField()).getAllByRole("option").map((o) => o.textContent)).toEqual(["5 min", "10 min", "15 min", "20 min", "30 min", "45 min", "60 min"]);
+    });
+
+    it("keeps a hand-edited threshold selectable", () => {
+      const base = settings();
+      resetStore({ settings: { ...base, tracker: { ...base.tracker, awayPromptMinutes: 12 } }, dialog: { type: "settings", page: "tracker" } });
+      installCommands();
+      render(<SettingsDialog />);
+      expect(minutesField()).toHaveValue("12");
+    });
+
+    it("saves the chosen threshold", async () => {
+      renderPage("tracker");
+      await userEvent.selectOptions(minutesField(), "30");
+      expect(lastSaved().tracker).toEqual({ ...settings().tracker, awayPromptMinutes: 30 });
+    });
+
+    it("saves the prompt switched off and disables the threshold", async () => {
+      renderPage("tracker");
+      await userEvent.click(askSwitch());
+      expect(lastSaved().tracker).toEqual({ ...settings().tracker, awayPromptEnabled: false });
+      expect(minutesField()).toBeDisabled();
+    });
+  });
+
   it.each([
     ["Away after", "500"],
     ["Away after", "0"],

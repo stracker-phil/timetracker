@@ -11,3 +11,5 @@ import "./schemes/solarized-light.css";
 import "./theme.css";
 import "./app.css";
 import "./rules.css";
+import "./away.css";
+import "./list.css";

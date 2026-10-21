@@ -4,16 +4,21 @@ import { useBindingLabel } from "../../commands";
 import { formatDayLabel, isToday } from "../../lib/day";
 import { formatHm } from "../../lib/format";
 import { useStore } from "../../state/store";
+import { SegmentedButtons } from "../settings/controls";
+
+const DAY_MODES = ["timeline", "list"] as const;
 
 const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` : label);
 
-/** Day navigation, the date and the day's totals. */
+/** Day navigation, the date, the day's totals and the Timeline or List switch. */
 export function DayHeader({ day, totals }: { day: string; totals: DayTotals | null }) {
   const { step, goToday } = useStore.getState();
   const prevKeys = useBindingLabel("nav.prev");
   const nextKeys = useBindingLabel("nav.next");
   const todayKeys = useBindingLabel("nav.today");
   const settingsKeys = useBindingLabel("day.settings");
+  const mode = useStore((s) => s.uiState.dayMode);
+  const setDayMode = useStore((s) => s.setDayMode);
   return (
     <header className="day-head">
       <button type="button" className="icon-btn" aria-label="Previous day" title={withKeys("Previous day", prevKeys)} onClick={() => step(-1)}>
@@ -31,6 +36,7 @@ export function DayHeader({ day, totals }: { day: string; totals: DayTotals | nu
           recorded {formatHm(totals.recordedMs)} · tracked {formatHm(totals.trackedMs)} · away {formatHm(totals.awayMs)}
         </span>
       )}
+      <SegmentedButtons label="Day mode" options={DAY_MODES} value={mode} onChange={setDayMode} />
       <button
         type="button"
         className="icon-btn"

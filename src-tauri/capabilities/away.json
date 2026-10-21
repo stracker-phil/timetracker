@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "away",
+  "description": "Capability for the away prompt window",
+  "windows": ["away"],
+  "permissions": ["core:default"]
+}

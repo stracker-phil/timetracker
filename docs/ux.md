@@ -196,6 +196,24 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   or deletes them.
 - Every change ends in a toast with Undo.
 
+## Away prompt
+
+- After an away span of at least the set minutes (Settings → Tracker; not after a pause), a small sheet on
+  `--pop` opens on top of everything: `You were away 42 min`, `12:03–12:45 · idle` (asleep, locked), then
+  project (the last used one), From and To (snapped), note, tags, and Record (↵) / Skip (Escape).
+- A recording in the way reads `A recording already covers 12:10–12:30 (Project)` above the buttons; the
+  form stays, so the times can change. The sheet stays open when another app takes focus.
+
+## List view
+
+- ⌘⇧L or Day mode → List shows the day as rows grouped like the timeline, longest first: app in `--o2`, the
+  label in mono, URL or path below, the duration right with a thin covered bar (`--sel` over `--line`) and
+  `· 3 spans` when the activity came in parts.
+- A strip of project chips (recent first, More… for the rest) sits above the rows. Drag a row onto a chip
+  to record it: the editor opens with the row's first start to last end and, for several spans, the warning
+  `This activity has gaps (3 spans, 0:40 in between). Adjust the times if needed.`
+- Keyboard: `/` search, ↑↓ rows, ↵ record (pick the project), Space show on the timeline.
+
 ## Rules and suggestions
 
 - **Suggestions** sit in the recordings column under the recordings: a dashed outline in the project's shade
@@ -277,6 +295,7 @@ in inputs or dialogs. `Tab` is never bound: it moves the keyboard focus.
 | ⌫ | day | delete the focused recording (Undo in the toast) |
 | ⌥↑ / ⌥↓, ⌥⇧↓ / ⌥⇧↑ | day | move the focused recording, extend or shorten it, by one snap step |
 | Escape | day | clear the selection and the focus |
+| ⌘⇧L | day | switch between Timeline and List (`day.toggleList`) |
 | ⌘T / ⌘⇧. | global | open the timer picker / stop the running timer (`timer.start`, `timer.stop`); ⌘⇧T opens the picker from any app |
 | ⌘⇧C | reports | copy the report as text (`reports.copyText`) |
 | ⌘Z / ⌘⇧Z | global | undo / redo the last recording change (outside text fields) |

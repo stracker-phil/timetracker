@@ -4,6 +4,7 @@ use std::time::Instant;
 use tauri::State;
 
 use super::apps::{KnownApp, known_apps};
+use super::list::{ListView, list};
 use super::{DayInput, DayView, Names, ProjectRef, ViewSettings, view};
 use crate::db::time::{Day, Ms, now_ms};
 use crate::db::{Db, activities, away, clients, projects, recordings, tags};
@@ -94,6 +95,14 @@ pub async fn day_view(state: State<'_, AppState>, day: String) -> AppResult<DayV
     Ok(result)
 }
 
+/// The day's activity grouped as the timeline labels it, longest first.
+#[tauri::command]
+pub async fn list_view(state: State<'_, AppState>, day: String) -> AppResult<ListView> {
+    let day = Day::parse(&day)?;
+    let view = view_of(&state.data.db()?, day, &state.settings.get(), now_ms()).await?;
+    Ok(list(&view))
+}
+
 #[tauri::command]
 pub async fn apps_list(state: State<'_, AppState>) -> AppResult<Vec<KnownApp>> {
     known_apps(&state.data.db()?, &state.settings.get(), now_ms()).await
@@ -105,7 +114,7 @@ mod tests {
     use crate::day::RecordingBlock;
     use crate::db::activities::NewActivity;
     use crate::db::away::{AwayReason, NewAway};
-    use crate::store::settings::{Continuity, Noise};
+    use crate::store::settings::{Continuity, Noise, Titles};
     use crate::test_support::{activity, client_with_color, project, recording, temp_db};
 
     const HOUR: Ms = 3_600_000;
@@ -165,6 +174,40 @@ mod tests {
         assert_eq!(
             activity_spans(&view),
             [(bounds.0 + HOUR, bounds.0 + 2 * HOUR)]
+        );
+    }
+
+    #[tokio::test]
+    async fn the_list_of_a_stored_day_groups_by_app_and_counts_recorded_time() {
+        let db = Db::open_memory().await.unwrap();
+        let today = day("2026-01-05");
+        let start = today.bounds().0 + HOUR;
+        activity(&db, start, Some(start + HOUR), "Code", "a.rs").await;
+        activity(
+            &db,
+            start + 2 * HOUR,
+            Some(start + 3 * HOUR),
+            "Code",
+            "b.rs",
+        )
+        .await;
+        activity(&db, start + HOUR, Some(start + 2 * HOUR), "Mail", "Inbox").await;
+        let acme = project(&db, "Acme").await;
+        recording(&db, &acme.id, start, Some(start + HOUR / 2)).await;
+        let mut settings = Settings::default();
+        settings.timeline.titles = Titles::App;
+        let now = start + 10 * HOUR;
+
+        let list = list(&view_of(&db, today, &settings, now).await.unwrap());
+
+        assert_eq!(list.day, today);
+        assert_eq!(list.total_ms, 3 * HOUR);
+        assert_eq!(
+            list.rows
+                .iter()
+                .map(|r| (r.label.as_str(), r.total_ms, r.covered_ms))
+                .collect::<Vec<_>>(),
+            [("Code", 2 * HOUR, HOUR / 2), ("Mail", HOUR, 0)]
         );
     }
 

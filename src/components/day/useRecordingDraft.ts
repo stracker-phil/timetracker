@@ -15,7 +15,7 @@ export interface Draft {
 export function useRecordingDraft(editor: Editor) {
   const [existing, setExisting] = useState<Recording | null>(null);
   const [draft, setDraft] = useState<Draft | null>(() =>
-    editor.mode === "create" ? { projectId: null, start: editor.start, end: editor.end, note: "", tagIds: [] } : null,
+    editor.mode === "create" ? { projectId: editor.projectId ?? null, start: editor.start, end: editor.end, note: "", tagIds: [] } : null,
   );
 
   useEffect(() => {

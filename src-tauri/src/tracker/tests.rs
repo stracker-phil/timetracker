@@ -604,6 +604,114 @@ async fn recover_closes_stale_tracker_and_away_spans_only() {
     );
 }
 
+/// What the subscriber got, as (start, end, reason).
+fn drain(rx: &mut tokio::sync::broadcast::Receiver<AwayRow>) -> Vec<(Ms, Option<Ms>, AwayReason)> {
+    let mut got = Vec::new();
+    while let Ok(row) = rx.try_recv() {
+        got.push((row.start, row.end, row.reason));
+    }
+    got
+}
+
+#[tokio::test]
+async fn input_after_idle_sends_the_closed_idle_span() {
+    let f = fixture().await;
+    let mut rx = f.tracker.subscribe_away();
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+    f.source.set_idle(300.0);
+    f.tracker.tick(T + 400 * SECOND).await.unwrap();
+    assert!(drain(&mut rx).is_empty());
+
+    f.source.set_idle(0.0);
+    let back = T + 410 * SECOND;
+    f.tracker.tick(back).await.unwrap();
+
+    assert_eq!(
+        drain(&mut rx),
+        [(T + 100 * SECOND, Some(back), AwayReason::Idle)]
+    );
+}
+
+#[tokio::test]
+async fn unlocking_sends_the_closed_lock_span() {
+    let f = fixture().await;
+    let mut rx = f.tracker.subscribe_away();
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+    f.tracker
+        .on_event(SystemEvent::Lock, T + 10 * SECOND)
+        .await
+        .unwrap();
+    assert!(drain(&mut rx).is_empty());
+
+    f.tracker
+        .on_event(SystemEvent::Unlock, T + 20 * MINUTE)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        drain(&mut rx),
+        [(T + 10 * SECOND, Some(T + 20 * MINUTE), AwayReason::Lock)]
+    );
+}
+
+#[tokio::test]
+async fn resuming_sends_the_closed_pause_span() {
+    let f = fixture().await;
+    let mut rx = f.tracker.subscribe_away();
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+    f.tracker
+        .pause(PauseUntil::Resumed, T + SECOND)
+        .await
+        .unwrap();
+    assert!(drain(&mut rx).is_empty());
+
+    f.tracker.resume(T + 30 * MINUTE).await.unwrap();
+
+    assert_eq!(
+        drain(&mut rx),
+        [(T + SECOND, Some(T + 30 * MINUTE), AwayReason::Paused)]
+    );
+}
+
+#[tokio::test]
+async fn a_span_closed_by_entering_another_away_state_is_not_sent() {
+    let f = fixture().await;
+    let mut rx = f.tracker.subscribe_away();
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+    f.source.set_idle(300.0);
+    f.tracker.tick(T + 400 * SECOND).await.unwrap();
+
+    f.tracker
+        .on_event(SystemEvent::Sleep, T + 500 * SECOND)
+        .await
+        .unwrap();
+
+    assert!(drain(&mut rx).is_empty());
+}
+
+#[tokio::test]
+async fn recover_sends_nothing() {
+    let f = fixture().await;
+    let mut rx = f.tracker.subscribe_away();
+    away::insert(
+        &f.db,
+        NewAway {
+            start: T,
+            reason: AwayReason::Idle,
+        },
+    )
+    .await
+    .unwrap();
+
+    f.tracker.recover(T + 10 * MINUTE).await.unwrap();
+
+    assert!(drain(&mut rx).is_empty());
+}
+
 fn browser_snapshot(title: &str, url: Option<&str>) -> Snapshot {
     Snapshot {
         url: url.map(str::to_string),

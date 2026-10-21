@@ -116,6 +116,10 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `saved_report_rename` | `id, name` | `SavedReport` | `not_found`, `invalid_input` |
 | `saved_report_delete` | `id` | – | `not_found` |
 | `day_view` (`day/commands.rs`) | `day: String` | `DayView` (see [Day view](#day-view)) with the saved rules' `suggestions`; logs the time it took at debug level | `invalid_input`, `db` |
+| `list_view` (`day/commands.rs`) | `day: String` | `ListView { day, rows: ListRow[], totalMs }` (see [List view](#list-view)) | `invalid_input`, `db` |
+| `away_prompt_current` (`away_prompt/commands.rs`) | – | `AwayPrompt \| null` | – |
+| `away_prompt_answer` | `input: RecordingInput` | `Recording`, created with `overlap: cancel` (undoable); closes the window | `not_found` (no prompt), `invalid_input` (`field`: `start` outside the last 7 days, or the recording's own fields), `overlap` (the prompt stays open) |
+| `away_prompt_skip` | – | – (clears the prompt, closes the window; nothing is recorded) | – |
 | `rules_list` (`rules/commands.rs`) | – | `Rule[] { id, name, projectId, position, enabled, note, tagIds, conditions }`, by position | `db` |
 | `rule_save` | `id: string \| null, input: RuleInput` | `Rule`; `null` appends a new rule; an existing one keeps its position and gets the new conditions | `invalid_input` (`field`: `name`, `projectId`, `note`, `tagIds`, `conditions`, `conditions.<i>.value`), `not_found`, `db` |
 | `rule_delete` | `id` | – (its conditions go with it) | `not_found` |
@@ -259,6 +263,32 @@ starts from `settings.reports`.
 - `reports/saved.rs`: saved reports in `saved_reports` (the filter as JSON; a filter this version can't read
   opens as the default). Presets stay relative, so a saved "this month" follows the calendar.
 
+## List view
+
+`day/list.rs`: `list(&DayView) -> ListView` groups the blocks of every lane but the summary by source, app
+key and label (the timeline's grouping, titles, hidden apps and noise already applied, so with titles set to
+the app a whole app is one row). A row has the merged spans of its blocks (touching ones joined), their total, the time between them (`gapMs`),
+the part inside recordings (`coveredMs`), the first start and last end, and the longest block's app, title,
+URL and path. Rows sort by total, longest first, then by first start. `list_view` builds the view without
+suggestions (`day::commands::view_of`).
+
+## Away prompt
+
+`away_prompt/`: after a long away span the `away` window asks what the user did.
+
+- `Tracker::subscribe_away` broadcasts each away span `leave_away` closes because the user is back (input
+  after idle, wake, unlock, resume). Spans closed at startup (`recover`) or by switching to another away
+  reason are not sent, so a prompt only follows a live return.
+- `watch` (started with the tracker) checks `should_prompt`: the setting is on, the span is closed, at least
+  `tracker.awayPromptMinutes` long, and not a pause (the user chose it). It stores the `AwayPrompt { span,
+  suggested }` (`suggestion`: both ends snapped, at least one snap step) in `AwayPromptState`, replacing an
+  open one, sends `away_prompt_changed` to an open window, and opens the window.
+- `window.rs`: label `away`, `src/windows/away/index.html`, 420×380, no decorations, always on top, centered,
+  built on the main thread (`run_on_main_thread`, since `watch` runs on a tokio task). It stays open when it
+  loses focus; closing it clears the prompt. Capability `capabilities/away.json`.
+- `answer` records through the recordings service with `overlap: cancel`; an overlap keeps the prompt so the
+  times can change; success clears it.
+
 ## Rules and suggestions
 
 `rules/`: a rule says "activity like this belongs to project X"; it never writes a recording. Its suggestions
@@ -297,6 +327,8 @@ fill `DayView.suggestions`, and accepting one is an ordinary undoable create.
 | `REMOTE_EVENT` | `remote` | `RemoteEvent { id, request }`, answered with `remote_reply` |
 | `DATA_CHANGED_EVENT` | `data_changed` | `DataChanged { kind, day }` |
 | `TRACKER_STATUS_EVENT` | `tracker_status` | `TrackerStatus` on every change and at least every 10 s ([capture.md](capture.md#status)) |
+| `TIMER_STATUS_EVENT` | `timer_status` | `TimerStatus` at start, on every change and every minute while a timer runs |
+| `AWAY_PROMPT_CHANGED_EVENT` | `away_prompt_changed` | `AwayPrompt`, only to the `away` window, when a new span replaces the open prompt's |
 
 `DataKind` is `activity | recordings | projects | tags | rules | settings`; `day` is a `Day` (`YYYY-MM-DD`)
 or `null` when every day may have changed. `events::data_changed(app, kind, day)` emits it; external

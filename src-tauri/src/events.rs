@@ -16,6 +16,8 @@ pub const REMOTE_EVENT: &str = "remote";
 pub const TRACKER_STATUS_EVENT: &str = "tracker_status";
 /// Payload: a `DataChanged`; views that show the day reload.
 pub const DATA_CHANGED_EVENT: &str = "data_changed";
+/// Payload: an `AwayPrompt`, to the `away` window when a new span replaces the open prompt's.
+pub const AWAY_PROMPT_CHANGED_EVENT: &str = "away_prompt_changed";
 /// Payload: a `TimerStatus`; at start, on every change and every minute while a timer runs.
 pub const TIMER_STATUS_EVENT: &str = "timer_status";
 

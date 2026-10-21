@@ -1,5 +1,5 @@
 //! Window layout that survives a restart (`ui_state.json`): sidebar, pane sizes, the last viewed day
-//! and the timeline zoom.
+//! the timeline zoom and the Day view's mode.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -23,6 +23,17 @@ pub struct UiState {
     pub timeline_zoom: f32,
     /// Splitter positions by pane id, in px.
     pub pane_sizes: HashMap<String, f32>,
+    pub day_mode: DayMode,
+}
+
+/// How the Day view shows the day.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub enum DayMode {
+    #[default]
+    Timeline,
+    List,
 }
 
 impl Default for UiState {
@@ -33,6 +44,7 @@ impl Default for UiState {
             last_day: None,
             timeline_zoom: 2.5,
             pane_sizes: HashMap::new(),
+            day_mode: DayMode::Timeline,
         }
     }
 }
@@ -79,7 +91,33 @@ mod tests {
                 last_day: None,
                 timeline_zoom: 2.5,
                 pane_sizes: HashMap::new(),
+                day_mode: DayMode::Timeline,
             }
+        );
+    }
+
+    #[test]
+    fn a_file_without_day_mode_opens_the_timeline() {
+        let dir = temp_config_dir();
+        std::fs::write(dir.path().join("ui_state.json"), r#"{"sidebarWidth": 320}"#).unwrap();
+        assert_eq!(
+            UiStateStore::open(dir.path()).get().day_mode,
+            DayMode::Timeline
+        );
+    }
+
+    #[test]
+    fn day_mode_serializes_as_a_camel_case_tag() {
+        let ui = UiState {
+            day_mode: DayMode::List,
+            ..UiState::default()
+        };
+        assert_eq!(serde_json::to_value(&ui).unwrap()["dayMode"], "list");
+        assert_eq!(
+            serde_json::from_str::<UiState>(r#"{"dayMode": "list"}"#)
+                .unwrap()
+                .day_mode,
+            DayMode::List
         );
     }
 
@@ -92,6 +130,7 @@ mod tests {
             last_day: Some("2026-10-21".into()),
             timeline_zoom: 1.5,
             pane_sizes: HashMap::from([("timeline".to_string(), 320.0)]),
+            day_mode: DayMode::List,
         };
         let saved = UiStateStore::open(dir.path())
             .set(ui.clone())
@@ -127,7 +166,8 @@ mod tests {
                 "sidebarWidth": 200,
                 "lastDay": "2026-10-21",
                 "timelineZoom": 2.5,
-                "paneSizes": {}
+                "paneSizes": {},
+                "dayMode": "timeline"
             })
         );
     }

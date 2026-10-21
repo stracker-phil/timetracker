@@ -20,7 +20,7 @@ pub use status::status_text;
 use crate::capture::{PermissionStatus, Snapshot, Source, SystemEvent};
 use crate::db::Db;
 use crate::db::activities::{self, ActivityRow, NewActivity};
-use crate::db::away::{self, AwayReason, NewAway};
+use crate::db::away::{self, AwayReason, AwayRow, NewAway};
 use crate::db::time::{Day, Ms, now_ms};
 use crate::error::AppResult;
 use crate::events::TRACKER_STATUS_EVENT;
@@ -117,6 +117,7 @@ pub struct Tracker {
     inner: tokio::sync::Mutex<Inner>,
     latest: Mutex<TrackerStatus>,
     statuses: broadcast::Sender<TrackerStatus>,
+    away_ended: broadcast::Sender<AwayRow>,
 }
 
 impl Tracker {
@@ -144,6 +145,7 @@ impl Tracker {
             capture: Mutex::new(CaptureSettings::default()),
             inner: tokio::sync::Mutex::new(inner),
             statuses: broadcast::channel(16).0,
+            away_ended: broadcast::channel(4).0,
         })
     }
 
@@ -154,6 +156,11 @@ impl Tracker {
 
     pub fn subscribe(&self) -> broadcast::Receiver<TrackerStatus> {
         self.statuses.subscribe()
+    }
+
+    /// Every away span the tracker closes because the user is back (not those closed at startup).
+    pub fn subscribe_away(&self) -> broadcast::Receiver<AwayRow> {
+        self.away_ended.subscribe()
     }
 
     pub fn set_settings(&self, settings: TrackerSettings) {
@@ -362,7 +369,15 @@ impl Tracker {
     }
 
     async fn leave_away(&self, inner: &mut Inner, now: Ms) -> AppResult<()> {
+        let open = away::open(&self.db).await?;
         away::close_open(&self.db, now).await?;
+        if let Some(span) = open {
+            let end = now.max(span.start);
+            let _ = self.away_ended.send(AwayRow {
+                end: Some(end),
+                ..span
+            });
+        }
         inner.state = TrackerState::Running;
         inner.running_since = now;
         Ok(())

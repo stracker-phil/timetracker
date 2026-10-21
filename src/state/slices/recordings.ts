@@ -10,8 +10,13 @@ export interface Selection {
   blockIds: string[];
 }
 
-/** `at`: a span of the recording, to find it by; the shown day's block when absent. */
-export type Editor = { mode: "create"; start: number; end: number } | { mode: "edit"; id: string; at?: { start: number; end: number } };
+/**
+ * `projectId`: preselected for a new recording; `warning`: shown above the fields.
+ * `at`: a span of the recording, to find it by; the shown day's block when absent.
+ */
+export type Editor =
+  | { mode: "create"; start: number; end: number; projectId?: string; warning?: string }
+  | { mode: "edit"; id: string; at?: { start: number; end: number } };
 
 export interface RecordingsSlice {
   selection: Selection | null;

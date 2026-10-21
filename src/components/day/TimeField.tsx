@@ -20,7 +20,7 @@ interface Props {
   onChange: (ms: number) => void;
 }
 
-/** A clock time typed as `HH:MM`; a typo reverts on blur. */
+/** A clock time typed as `HH:MM`; each valid time counts at once (so ↵ saves it), a typo reverts on blur. */
 export function TimeField({ id, value, step, onChange }: Props) {
   const [text, setText] = useState(formatClock(value));
   const change = (ms: number) => {
@@ -37,5 +37,10 @@ export function TimeField({ id, value, step, onChange }: Props) {
     e.preventDefault();
     change(value + (e.key === "ArrowUp" ? step : -step));
   };
-  return <input id={id} className="input mono time-input" value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={onKeyDown} />;
+  const type = (typed: string) => {
+    setText(typed);
+    const ms = atClock(value, typed);
+    if (ms !== null) onChange(ms);
+  };
+  return <input id={id} className="input mono time-input" value={text} onChange={(e) => type(e.target.value)} onBlur={commit} onKeyDown={onKeyDown} />;
 }

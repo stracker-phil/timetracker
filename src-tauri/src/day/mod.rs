@@ -4,6 +4,7 @@
 pub mod apps;
 pub mod commands;
 mod lanes;
+pub mod list;
 #[cfg(test)]
 mod testing;
 pub(crate) mod transform;

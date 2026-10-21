@@ -30,7 +30,9 @@ function saveTextSizes(sizes: (current: Settings) => Pick<Settings, "uiFontSize"
 const zoomText = (step: number) => saveTextSizes((c) => ({ uiFontSize: c.uiFontSize + step, dataFontSize: c.dataFontSize + step }));
 const resetText = () => saveTextSizes(() => ({ uiFontSize: TEXT_SIZES.ui.default, dataFontSize: TEXT_SIZES.data.default }));
 
-const onTimeline = () => useStore.getState().view === "day";
+// The List mode handles its own keys; these act on what only the timeline shows.
+const timelineShown = () => useStore.getState().uiState.dayMode === "timeline";
+const onTimeline = () => useStore.getState().view === "day" && timelineShown();
 // The Day view zooms its timeline; every other view zooms the text.
 const zoomIn = () => (onTimeline() ? useStore.getState().stepTimelineZoom(1) : zoomText(1));
 const zoomOut = () => (onTimeline() ? useStore.getState().stepTimelineZoom(-1) : zoomText(-1));
@@ -44,9 +46,14 @@ function moveFocus(step: typeof stepBlock, by: 1 | -1) {
   if (s.dayView?.day === s.day) s.focusBlock(step(s.dayView, s.focusedBlock, by));
 }
 
-const hasFocusedBlock = () => useStore.getState().focusedBlock !== null;
-const hasSelection = () => useStore.getState().selection !== null;
-const hasFocusedRecording = () => useStore.getState().focusedRecording !== null;
+const hasFocusedBlock = () => timelineShown() && useStore.getState().focusedBlock !== null;
+const hasSelection = () => timelineShown() && useStore.getState().selection !== null;
+const hasFocusedRecording = () => timelineShown() && useStore.getState().focusedRecording !== null;
+
+function toggleList() {
+  const s = useStore.getState();
+  s.setDayMode(s.uiState.dayMode === "list" ? "timeline" : "list");
+}
 
 /** Edits the focused recording, else opens the editor for the selection. */
 function openRecording() {
@@ -114,12 +121,13 @@ const APP_COMMANDS: Command[] = [
   { id: "nav.prev", title: "Previous day, week or month", scope: "calendar", defaultBinding: "Mod+ArrowLeft", run: () => useStore.getState().step(-1) },
   { id: "nav.next", title: "Next day, week or month", scope: "calendar", defaultBinding: "Mod+ArrowRight", run: () => useStore.getState().step(1) },
   { id: "nav.today", title: "Go to today", scope: "calendar", defaultBinding: "T", run: () => useStore.getState().goToday() },
-  { id: "day.nextBlock", title: "Next block", scope: "day", defaultBinding: "J", run: () => moveFocus(stepBlock, 1) },
-  { id: "day.prevBlock", title: "Previous block", scope: "day", defaultBinding: "K", run: () => moveFocus(stepBlock, -1) },
-  { id: "day.prevLane", title: "Block in the lane to the left", scope: "day", defaultBinding: "H", run: () => moveFocus(stepLane, -1) },
-  { id: "day.nextLane", title: "Block in the lane to the right", scope: "day", defaultBinding: "L", run: () => moveFocus(stepLane, 1) },
+  { id: "day.nextBlock", title: "Next block", scope: "day", defaultBinding: "J", when: timelineShown, run: () => moveFocus(stepBlock, 1) },
+  { id: "day.prevBlock", title: "Previous block", scope: "day", defaultBinding: "K", when: timelineShown, run: () => moveFocus(stepBlock, -1) },
+  { id: "day.prevLane", title: "Block in the lane to the left", scope: "day", defaultBinding: "H", when: timelineShown, run: () => moveFocus(stepLane, -1) },
+  { id: "day.nextLane", title: "Block in the lane to the right", scope: "day", defaultBinding: "L", when: timelineShown, run: () => moveFocus(stepLane, 1) },
   { id: "day.details", title: "Block details", scope: "day", defaultBinding: "Space", when: hasFocusedBlock, run: () => useStore.getState().toggleDetails() },
   { id: "day.blockMenu", title: "Block actions…", scope: "day", defaultBinding: "Ctrl+Enter", when: hasFocusedBlock, run: () => useStore.getState().requestBlockMenu() },
+  { id: "day.toggleList", title: "Toggle timeline and list", scope: "day", defaultBinding: "Mod+Shift+L", run: toggleList },
   { id: "day.settings", title: "Timeline settings", scope: "day", run: () => useStore.getState().openDialog({ type: "timelineSettings" }) },
   { id: "day.clearFocus", title: "Clear selection", scope: "day", defaultBinding: "Escape", when: () => hasFocusedBlock() || hasSelection() || hasFocusedRecording(), run: clearDayFocus },
   { id: "recording.open", title: "Record selection or edit recording", scope: "day", defaultBinding: "Enter", when: () => hasSelection() || hasFocusedRecording(), run: openRecording },

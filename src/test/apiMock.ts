@@ -5,6 +5,7 @@ import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type ProjectInput, 
 import { mondayOf, monthView, weekView } from "./calendarFixtures";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
+import { listView } from "./listFixtures";
 import { client, DEFAULT_TAGS, project } from "./projectFixtures";
 import { recording } from "./recordingFixtures";
 import { reportResult, savedReport } from "./reportFixtures";
@@ -82,6 +83,10 @@ export function createApiMock(): typeof realApi {
     timersRecent: vi.fn().mockResolvedValue([]),
     timerPickerOpen: vi.fn().mockResolvedValue(null),
     timerPickerClose: vi.fn().mockResolvedValue(null),
+    awayPromptCurrent: vi.fn().mockResolvedValue(null),
+    awayPromptAnswer: vi.fn(async (input: RecordingInput) => recording({ ...input, id: "recording-away" })),
+    awayPromptSkip: vi.fn().mockResolvedValue(undefined),
+    listView: vi.fn(async (day: string) => listView({ day })),
     rulesList: vi.fn().mockResolvedValue([]),
     ruleSave: vi.fn(async (id: string | null, input: RuleInput) => rule({ ...input, id: id ?? "rule-new", conditions: input.conditions.map((c, i) => ({ ...c, id: `c${i}` })) })),
     ruleDelete: vi.fn().mockResolvedValue(undefined),
@@ -96,5 +101,6 @@ export function createApiMock(): typeof realApi {
     onTrackerStatus: vi.fn(noUnlisten),
     onTimerStatus: vi.fn(noUnlisten),
     onDataChanged: vi.fn(noUnlisten),
+    onAwayPromptChanged: vi.fn(noUnlisten),
   };
 }
