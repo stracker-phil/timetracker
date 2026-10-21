@@ -27,3 +27,18 @@ export function InsetField({ icon, keys = "", className = "", children }: InsetF
     </label>
   );
 }
+
+/** One labelled form field with its error from `AppError.field` below it. */
+export function FormField({ label, error, children, htmlFor }: { label: string; error?: string; htmlFor?: string; children: ReactNode }) {
+  return (
+    <div className="form-field">
+      {htmlFor ? <label htmlFor={htmlFor}>{label}</label> : <span className="form-field-label">{label}</span>}
+      {children}
+      {error && (
+        <span className="form-field-error" role="alert">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}

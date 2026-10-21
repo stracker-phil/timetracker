@@ -108,9 +108,9 @@ there are no `query!` macros (they need a database at compile time).
 
 | Module | Functions | Invariants |
 |---|---|---|
-| `clients.rs` | `list(include_archived)`, `get`, `insert(name)`, `update(id, name)`, `set_archived(id, bool)` | names trimmed, not blank; lists by name ignoring case; archiving keeps the first `archived_at` |
-| `projects.rs` | `list`, `get`, `insert(ProjectInput)`, `update(id, ProjectInput)`, `set_archived`, `find_by_name_prefix(prefix)`, `count` | `color` is one of `ACCENTS`; `hourly_rate` finite and ≥ 0; the client must exist (`not_found`); the prefix search ignores case (Unicode) and skips archived projects |
-| `tags.rs` | `list`, `insert(name)`, `rename(id, name)`, `delete(id)`, `seed_defaults` | names unique ignoring case: `insert` of a taken name returns the existing tag, `rename` to it is `invalid_input`; `DEFAULT_TAGS` are seeded once per data store (`meta.tags_seeded`), so deleting them all does not bring them back |
+| `clients.rs` | `list(include_archived)`, `get`, `insert(name)`, `update(id, name)`, `set_archived(id, bool)` | names unique (archived clients count); lists by name ignoring case; archiving keeps the first `archived_at` and archives the client's projects in the same transaction; restoring restores the client only |
+| `projects.rs` | `list`, `list_items(include_archived, now)`, `get`, `insert(ProjectInput)`, `update(id, ProjectInput)`, `set_archived`, `recent(limit)`, `resolve(name_or_id)`, `count` | see [Projects, clients and tags](#projects-clients-and-tags) |
+| `tags.rs` | `list`, `list_with_usage`, `insert(name)`, `rename(id, name)`, `delete(id)`, `resolve_names(names)`, `seed_defaults` | names unique ignoring case: `insert` of a taken name returns the existing tag, `rename` to it is `invalid_input`; `DEFAULT_TAGS` are seeded once per data store (`meta.tags_seeded`), so deleting them all does not bring them back |
 | `activities.rs` | `apps_seen(from, now)`, `list_clipped(from, to, now)`, `close_stale(source, duration)`, `replace_open(id, NewActivity)`, `insert(NewActivity) -> id`, `close_open(source, end)`, `open_by_source`, `overlapping(source, start, end)`, `sources_with_prefix(prefix)` (latest first); `insert_on`, `get_on`, `close_open_on`, `open_by_source_on`, `overlapping_on` take a connection so a caller can combine them in a transaction; `list_for_range(from, to)`, `list_sources(from, to)`, `delete_range(from, to)`, `count`, `first_start` | ranges are `[from, to)` and include open spans; touching edges do not overlap; results are not clipped; `close_open` never sets an end before the start |
 | `away.rs` | `insert(NewAway) -> id`, `close_open(end)`, `open`, `list_for_range`, `delete_range` | as for activities; `AwayReason` is stored and sent as `idle`, `sleep`, `lock`, `paused` |
 | `recordings.rs` | `insert(NewRecording)`, `get`, `update(id, RecordingPatch)`, `delete(id) -> Recording`, `list_for_range`, `running`, `overlapping(start, end, except)`, `count` | one transaction per write, tags included; `tag_ids` ordered by tag name; the project and every tag must exist (`not_found`); a note with a line break is `invalid_input`, notes are stored trimmed; `end` must be after `start`; `delete` returns the row so it can be restored under its id |
@@ -121,6 +121,34 @@ there are no `query!` macros (they need a database at compile time).
 Errors: `From<sqlx::Error>` maps a database error to `db` with SQLite's extended result code as `code`
 (`2067` unique, `787` foreign key), `RowNotFound` to `not_found`, anything else to `db`; a failed migration is
 `db` "Migration failed: …".
+
+### Projects, clients and tags
+
+Validation errors are `invalid_input` with `field` set (`AppError::InvalidField`), so a form shows them under
+the field:
+
+| Field | Rule |
+|---|---|
+| `name` | trimmed, not blank, at most 100 characters (`db::MAX_NAME_CHARS`); unique ignoring case (Unicode, not only ASCII): clients among all clients, projects among the projects of the same client (or among client-less ones), tags among all tags. Archived rows count |
+| `color` | one of `ACCENTS`; blank becomes `orange` (`projects::DEFAULT_COLOR`) |
+| `hourlyRate` | `null` or a finite number ≥ 0, stored as given |
+| `clientId` | must exist (`not_found`) and not be archived, checked on create and when the client changes, so a project of an archived client stays editable |
+
+- Nothing is deleted except tags: recordings reference projects, so projects and clients are archived.
+  Editing an archived project keeps it archived. Archiving a client archives its active projects (an earlier
+  archive time stays); restoring a client leaves its projects archived.
+- `list_items` gives `ProjectListItem { project, client, lastUsed, recordedMs30d }` from one grouped query:
+  `lastUsed` is the latest recording start, `recordedMs30d` the recorded time in the 30 days before now (a
+  running recording counts until now).
+- `recent(limit)`: active projects by their latest recording start, newest first.
+- `resolve(name_or_id)` (the CLI's `--project`, step 08): an exact id (archived too); else the active projects
+  with exactly that name, ignoring case; else the active projects whose name starts with it. One match wins;
+  none is `not_found`; several are `invalid_input` listing `name (id)`.
+- Tags: `insert` of a taken name returns that tag; `list_with_usage` gives `TagListItem` (a `Tag` plus
+  `recordings`, the number of recordings that carry it); `delete` removes it from every recording;
+  `resolve_names` finds tags by name ignoring case, `not_found` naming the first missing one. Seven tags are
+  seeded once per data store when it opens (`seed_defaults`).
+- `projects/mod.rs` holds the Tauri commands; every write emits `data_changed { kind: projects | tags, day: null }`.
 
 ## Backup
 

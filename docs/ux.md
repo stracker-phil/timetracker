@@ -105,6 +105,12 @@ Every list shares one row: sidebar entries, palette results, settings lists. A 2
 and below, a 1px `--line` hairline below, `--row-hover` on hover, `--sel` when selected. Sidebar entries have
 an 8px inset and a 5px radius; the active one is `--sel` with its label in the accent.
 
+Lists grouped under a heading (the clients on the Projects screen) use a section header band: `--band`
+background, small semibold `--o2` text, 5px radius. Archived rows are dimmed (55% opacity) and keep a
+Restore action. A project shows as its accent-hue dot (`AccentDot`) before the name; the color is chosen with
+nine round swatches (`AccentSwatches`), the chosen one ringed. Tags are plain mono text, joined with ` · `
+where several show in one place; never pills.
+
 ## Inputs
 
 Inputs look like inputs, never like rows.
@@ -129,6 +135,9 @@ and command shortcuts show as key caps. Context menus use the UI font; the hover
 `--accent` with `--on-accent` text, disabled items `--o3`, separators a 1px `--line`. The native WebKit
 context menu is suppressed outside text fields (`lib/nativeMenu.ts`).
 
+Pickers (project, tags) are a field with a list below it on `--pop`, using the palette's row anatomy and
+small `--o3` section labels; the last option creates what was typed (`New project "x"…`).
+
 ## Keys
 
 Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`). Bare keys never fire
@@ -137,7 +146,7 @@ in inputs or dialogs. `Tab` is never bound: it moves the keyboard focus.
 | Key | Scope | Action |
 |---|---|---|
 | ⌘, | global | Settings (`settings.toggle`) |
-| ⌘K | global | command palette (`palette.toggle`); `>` lists commands |
+| ⌘K | global | command palette (`palette.toggle`); `>` lists commands, `p:` projects |
 | `?` | global | shortcut overview (`shortcuts.show`) |
 | ⌘⌃S | global | toggle the sidebar (`sidebar.toggle`) |
 | ⌘1 … ⌘5 | global | Day, Week, Month, Reports, Projects (`view.*`) |

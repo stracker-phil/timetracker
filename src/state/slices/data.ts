@@ -6,15 +6,16 @@ export interface DataSlice {
   dataVersion: number;
   /** Bumped per day (`YYYY-MM-DD`) when that day's data changed. */
   dayVersions: Record<string, number>;
-  /** A `null` day bumps every day. */
+  /** A `null` day bumps every day; projects and tags reload their lists. */
   dataChanged: (event: DataChanged) => void;
 }
 
 export const dataSlice: Slice<DataSlice> = {
-  create: (set) => ({
+  create: (set, get) => ({
     dataVersion: 0,
     dayVersions: {},
-    dataChanged({ day }) {
+    dataChanged({ kind, day }) {
+      if (kind === "projects" || kind === "tags") void get().loadProjects();
       if (day === null) set((s) => ({ dataVersion: s.dataVersion + 1 }));
       else set((s) => ({ dayVersions: { ...s.dayVersions, [day]: (s.dayVersions[day] ?? 0) + 1 } }));
     },

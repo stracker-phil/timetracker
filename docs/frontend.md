@@ -46,8 +46,9 @@ error's message, returning the `AppError`.
 | Slice | Holds |
 |---|---|
 | `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings`, `saveKeybindings` |
-| `ui` | `toasts`, `dialog` (`settings { page? }`, `shortcuts`, `confirm`), `paletteOpen`, `paletteSeed`, `view` (`day`, `week`, `month`, `reports`, `projects`), `setView`, `day` (the Day view's `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it) |
+| `ui` | `toasts`, `dialog` (`settings { page? }`, `shortcuts`, `confirm`, `project { id? }`, `client { id? }`), `paletteOpen`, `paletteSeed`, `view` (`day`, `week`, `month`, `reports`, `projects`), `setView`, `day` (the Day view's `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it) |
 | `data` | `dataVersion` (every day changed), `dayVersions` (per day), `dataChanged(event)` (called on every `data_changed` event); `selectDayVersion(day)` changes when that day's data may have changed |
+| `projects` | `projects` (`ProjectListItem[]`, archived included), `clients`, `tags` (`TagListItem[]`), `recent`, `projectsLoaded`; `loadProjects` (boot, and every `data_changed` of `projects` or `tags`); `saveProject(id, input)`, `archiveProject`, `saveClient`, `archiveClient`, `saveTag`, `deleteTag` reload after the write and reject on failure (toasted, unless the error has a `field` for the form). Helpers: `groupProjects(projects, clients, archived)`, `projectLabel` |
 | `tracker` | `tracker` (`TrackerStatus`, or `null` while the tracker is off), `setTracker`, `loadTracker`, `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then reloads the status), `permissionDialogHidden` |
 | `viewState` | `uiState` (`UiState` from Rust), `setPaneSize`, `toggleSidebar`; a debounced writer saves it, `flushUiState` writes at once |
 
@@ -85,7 +86,11 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 - **Menu.** Native menu and tray items emit `command`; `runMenuCommand` runs the id under the same rules.
   A command shown in the menu has the same id and default as its `MENU_ITEMS` entry in `menu.rs`.
 - **Palette.** `CommandPalette` lists the commands of the active scopes with their key caps, filtered by the
-  typed text (a leading `>` is ignored); `runCommand(id)` runs one.
+  typed text; once something is typed, active projects follow as `Project: Client / Name` with their color
+  dot (fuzzy, `lib/fuzzy.ts`), and Enter opens the project's sheet. `>` limits the list to commands, `p:` to
+  projects.
+- **Projects.** `projects.new` (⌘N) and `clients.new` (no default) open the sheets while the Projects view
+  shows; `view.projects` (⌘5) shows it.
 - **Tracker.** `tracker.pause` (until resumed; while tracking) and `tracker.resume` (while paused), no default
   bindings.
 - **Window.** `window.hide` calls `api.hideWindow`; `app.quit` is handled by Rust when it comes from the menu.
@@ -110,6 +115,33 @@ Tracker components:
   two plain tables from `activityList(day)` (with the URL or path; private rows dimmed) and `awayList(day)`, reloaded on `data_changed` and on tracker
   statuses at most every 10 s (a status inside the 10 s reloads when they end). Its previous/next day buttons
   step the date in the page; the Day view moves that to Rust.
+
+### Projects screen
+
+`components/projects/`: `ProjectsPage` (the `projects` view): a header (New project, New client, Show
+archived), a band per client by name (every client, "No projects" when empty; clicking the name edits the
+client), client-less projects under "No client" last, then `TagsSection`. A project row: color dot and name
+(click edits), `last used 2 d ago` and `12:30 h / 30 d` in mono `--o2`, `$` when billable, the hourly rate;
+archived rows (with Show archived) are dimmed with Restore. The row's context menu: Edit…, Archive or Restore,
+Copy id.
+
+- `ProjectSheet` (`dialog: project`): name, client select with "New client…" (an inline name; Save creates
+  the client first), `AccentSwatches`, a billable switch, the hourly rate (blank = none; `,` or `.`), Archive
+  or Restore for an existing project. `FormField` (`components/Field.tsx`) shows `AppError.field` errors under their field.
+- `ClientSheet` (`dialog: client`): name; Archive (also archives its projects) or Restore.
+- `TagsSection`: one row per tag (name in mono, the number of recordings, delete; a confirm first when
+  recordings carry it) and a New tag field (Enter).
+
+### Pickers
+
+`components/pickers/`, pure UI over the `projects` slice (they only call the api to create). Both open their
+list (`PickerList`, a portal below the field, so a sheet's overflow never clips it) on focus; ↑ ↓ move,
+Enter picks, Esc closes the list without closing the sheet around it; the list closes on blur.
+
+| Picker | Props | Behavior |
+|---|---|---|
+| `ProjectPicker` | `value: string \| null`, `onChange(projectId)`, `autoFocus?` | shows the chosen project as color dot + `Client / Name`; empty query: "Recent" (up to 5) then all active projects by client; typed: fuzzy matches, best first; the last option is always `New project "<query>"…`, which opens `ProjectSheet` prefilled and picks the saved project. Archived projects never show |
+| `TagPicker` | `value: string[]`, `onChange(tagIds)` | chosen tags as mono `a · b` in the field; typing filters the unchosen tags; Enter adds the highlighted one or creates `New tag "<query>"` (`saveTag`) and adds it; ⌫ on an empty query removes the last tag |
 
 ### Settings pages
 

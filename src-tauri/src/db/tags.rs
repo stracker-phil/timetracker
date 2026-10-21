@@ -3,7 +3,7 @@ use sqlx::SqliteConnection;
 use ts_rs::TS;
 
 use super::time::{Ms, now_ms};
-use super::{Db, new_id, required_name};
+use super::{Db, name_in_use, name_taken, new_id, required_name, same_name};
 use crate::error::{AppError, AppResult};
 
 /// The kinds of work a new data store starts with (ADR 0018); the user can rename or delete them.
@@ -40,7 +40,14 @@ pub async fn list(db: &Db) -> AppResult<Vec<Tag>> {
 
 /// A name that exists already (in any case) returns the existing tag.
 pub async fn insert(db: &Db, name: &str) -> AppResult<Tag> {
-    let name = required_name(name, "A tag")?;
+    let name = required_name(name)?;
+    if let Some(existing) = list(db)
+        .await?
+        .into_iter()
+        .find(|t| same_name(&t.name, &name))
+    {
+        return Ok(existing);
+    }
     let mut conn = db.pool().acquire().await?;
     insert_on(&mut conn, &name, now_ms()).await
 }
@@ -60,17 +67,16 @@ async fn insert_on(conn: &mut SqliteConnection, name: &str, now: Ms) -> AppResul
         .await?)
 }
 
-/// `invalid_input` when another tag has the name.
+/// `invalid_input` on `name` when another tag has the name.
 pub async fn rename(db: &Db, id: &str, name: &str) -> AppResult<Tag> {
-    let name = required_name(name, "A tag")?;
-    let taken: Option<String> =
-        sqlx::query_scalar("SELECT id FROM tags WHERE name = ?1 AND id != ?2")
-            .bind(&name)
-            .bind(id)
-            .fetch_optional(db.pool())
-            .await?;
-    if taken.is_some() {
-        return Err(AppError::InvalidInput(format!("A tag named {name} exists")));
+    let name = required_name(name)?;
+    let tags = list(db).await?;
+    if name_in_use(
+        tags.iter().map(|t| (t.id.as_str(), t.name.as_str())),
+        &name,
+        Some(id),
+    ) {
+        return Err(name_taken("A tag"));
     }
     sqlx::query_as("UPDATE tags SET name = ?2 WHERE id = ?1 RETURNING *")
         .bind(id)
@@ -78,6 +84,44 @@ pub async fn rename(db: &Db, id: &str, name: &str) -> AppResult<Tag> {
         .fetch_optional(db.pool())
         .await?
         .ok_or_else(|| not_found(id))
+}
+
+/// The tags with these names, ignoring case, in the order given; a missing one is `not_found` naming it.
+pub async fn resolve_names(db: &Db, names: &[String]) -> AppResult<Vec<Tag>> {
+    let tags = list(db).await?;
+    names
+        .iter()
+        .map(|name| {
+            let wanted = name.trim();
+            tags.iter()
+                .find(|t| same_name(&t.name, wanted))
+                .cloned()
+                .ok_or_else(|| AppError::NotFound(format!("No tag named {wanted}")))
+        })
+        .collect()
+}
+
+/// A tag with the number of recordings that carry it.
+#[derive(Debug, Clone, PartialEq, Serialize, TS, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct TagListItem {
+    #[serde(flatten)]
+    #[sqlx(flatten)]
+    #[ts(flatten)]
+    pub tag: Tag,
+    pub recordings: i64,
+}
+
+/// Every tag by name, with its use count.
+pub async fn list_with_usage(db: &Db) -> AppResult<Vec<TagListItem>> {
+    Ok(sqlx::query_as(
+        "SELECT t.*, count(rt.recording_id) AS recordings FROM tags t
+         LEFT JOIN recording_tags rt ON rt.tag_id = t.id
+         GROUP BY t.id ORDER BY t.name COLLATE NOCASE",
+    )
+    .fetch_all(db.pool())
+    .await?)
 }
 
 /// Also removes the tag from every recording.
@@ -163,18 +207,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn blank_names_are_rejected() {
+    async fn inserting_an_existing_name_in_another_unicode_case_returns_the_existing_tag() {
+        let db = Db::open_memory().await.unwrap();
+        let existing = insert(&db, "Äpfel").await.unwrap();
+        for name in ["äpfel", "ÄPFEL"] {
+            assert_eq!(insert(&db, name).await.unwrap(), existing, "{name:?}");
+        }
+        assert_eq!(list(&db).await.unwrap().len(), DEFAULT_TAGS.len() + 1);
+    }
+
+    fn field_of(err: AppError) -> String {
+        match err {
+            AppError::InvalidField { field, .. } => field,
+            other => panic!("expected an invalid field, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn blank_and_oversized_names_are_rejected_on_the_name_field() {
         let db = Db::open_memory().await.unwrap();
         let tag = insert(&db, "x").await.unwrap();
-        for name in ["", "  "] {
-            assert_eq!(
-                insert(&db, name).await.unwrap_err().kind(),
-                ErrorKind::InvalidInput
-            );
-            assert_eq!(
-                rename(&db, &tag.id, name).await.unwrap_err().kind(),
-                ErrorKind::InvalidInput
-            );
+        let too_long = "t".repeat(crate::db::MAX_NAME_CHARS + 1);
+        for name in ["", "  ", too_long.as_str()] {
+            let err = insert(&db, name).await.unwrap_err();
+            assert_eq!(field_of(err), "name", "insert {name:?}");
+            let err = rename(&db, &tag.id, name).await.unwrap_err();
+            assert_eq!(field_of(err), "name", "rename {name:?}");
         }
     }
 
@@ -198,8 +256,10 @@ mod tests {
         let a = insert(&db, "alpha").await.unwrap();
         insert(&db, "beta").await.unwrap();
 
-        let err = rename(&db, &a.id, "beta").await.unwrap_err();
-        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        for name in ["beta", "BETA"] {
+            let err = rename(&db, &a.id, name).await.unwrap_err();
+            assert_eq!(field_of(err), "name", "{name:?}");
+        }
 
         let renamed = rename(&db, &a.id, "Alpha").await.unwrap();
         assert_eq!(renamed.name, "Alpha");
@@ -238,5 +298,105 @@ mod tests {
             [keep.id]
         );
         assert!(!list(&db).await.unwrap().iter().any(|t| t.id == drop.id));
+        let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM recording_tags")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(remaining, 1);
+    }
+
+    #[tokio::test]
+    async fn resolve_names_ignores_case_trims_and_keeps_the_given_order() {
+        let db = Db::open_memory().await.unwrap();
+        let apple = insert(&db, "Äpfel").await.unwrap();
+        let beta = insert(&db, "beta").await.unwrap();
+
+        let resolved = resolve_names(
+            &db,
+            &[
+                " BETA ".to_string(),
+                "äpfel".to_string(),
+                "beta".to_string(),
+            ],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(resolved, [beta.clone(), apple, beta]);
+        assert!(resolve_names(&db, &[]).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn resolve_names_with_a_missing_name_is_not_found_naming_it() {
+        let db = Db::open_memory().await.unwrap();
+        insert(&db, "beta").await.unwrap();
+
+        let err = resolve_names(&db, &["beta".to_string(), " ghost ".to_string()])
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+        assert_eq!(err.to_string(), "No tag named ghost");
+    }
+
+    #[tokio::test]
+    async fn list_with_usage_counts_recordings_per_tag_ordered_by_name() {
+        let db = Db::open_memory().await.unwrap();
+        sqlx::query("DELETE FROM tags")
+            .execute(db.pool())
+            .await
+            .unwrap();
+        let beta = insert(&db, "beta").await.unwrap();
+        let alpha = insert(&db, "Alpha").await.unwrap();
+        let unused = insert(&db, "zeta").await.unwrap();
+        let p = project(&db, "P").await;
+        let first = recording(&db, &p.id, 1_000, Some(2_000)).await;
+        let second = recording(&db, &p.id, 3_000, Some(4_000)).await;
+        for (recording, tags) in [(&first, vec![&alpha, &beta]), (&second, vec![&beta])] {
+            let patch = recordings::RecordingPatch {
+                tag_ids: Some(tags.iter().map(|t| t.id.clone()).collect()),
+                ..Default::default()
+            };
+            recordings::update(&db, &recording.id, patch).await.unwrap();
+        }
+
+        let items = list_with_usage(&db).await.unwrap();
+
+        assert_eq!(
+            items,
+            [
+                TagListItem {
+                    tag: alpha,
+                    recordings: 1
+                },
+                TagListItem {
+                    tag: beta,
+                    recordings: 2
+                },
+                TagListItem {
+                    tag: unused,
+                    recordings: 0
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_tag_list_item_serializes_flat() {
+        let db = Db::open_memory().await.unwrap();
+        let tag = insert(&db, "zzz").await.unwrap();
+
+        let items = list_with_usage(&db).await.unwrap();
+        let item = items.iter().find(|i| i.tag.id == tag.id).unwrap();
+
+        assert_eq!(
+            serde_json::to_value(item).unwrap(),
+            serde_json::json!({
+                "id": tag.id,
+                "name": "zzz",
+                "createdAt": tag.created_at,
+                "recordings": 0,
+            })
+        );
     }
 }

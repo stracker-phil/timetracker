@@ -8,6 +8,7 @@ import App from "./App";
 import { api } from "./api";
 import { resetStore, type View } from "./state/store";
 import { activityRow, trackerStatus } from "./test/data";
+import { projectItem, tag } from "./test/projectFixtures";
 
 const mocked = vi.mocked(api, true);
 
@@ -83,6 +84,58 @@ describe("App", () => {
       const onChanged = mocked.onDataChanged.mock.calls[0][0];
       act(() => onChanged({ kind: "activity", day } as never));
       expect(await screen.findByRole("cell", { name: "Weekly sync" })).toBeInTheDocument();
+    });
+  });
+
+  describe("projects", () => {
+    const website = projectItem({ project: { id: "p-site", name: "Website" } });
+
+    it("loads the projects on boot", async () => {
+      mocked.projectsList.mockResolvedValueOnce([website]);
+      await renderApp({ view: "projects" });
+      expect(await screen.findByRole("button", { name: "Website" })).toBeInTheDocument();
+    });
+
+    it("reloads the projects when projects changed", async () => {
+      await renderApp({ view: "projects" });
+      mocked.projectsList.mockResolvedValueOnce([website]);
+      act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "projects", day: null }));
+      expect(await screen.findByRole("button", { name: "Website" })).toBeInTheDocument();
+    });
+
+    it("reloads the tags when tags changed", async () => {
+      await renderApp({ view: "projects" });
+      mocked.tagsList.mockResolvedValueOnce([tag({ name: "billing" })]);
+      act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "tags", day: null }));
+      expect(await screen.findByText("billing")).toBeInTheDocument();
+    });
+
+    it("leaves the projects alone when other data changed", async () => {
+      await renderApp({ view: "projects" });
+      mocked.projectsList.mockClear();
+      act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "recordings", day: null }));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(mocked.projectsList).not.toHaveBeenCalled();
+    });
+
+    it("opens the new project sheet with ⌘N in the Projects view", async () => {
+      await renderApp({ view: "projects" });
+      await userEvent.keyboard("{Meta>}n{/Meta}");
+      expect(await screen.findByRole("dialog", { name: "New project" })).toBeInTheDocument();
+    });
+
+    it("ignores ⌘N in other views", async () => {
+      await renderApp({ view: "day" });
+      await userEvent.keyboard("{Meta>}n{/Meta}");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("finds a project through the palette and opens its sheet", async () => {
+      mocked.projectsList.mockResolvedValueOnce([website]);
+      await renderApp();
+      await userEvent.keyboard("{Meta>}k{/Meta}");
+      await userEvent.type(await screen.findByLabelText("Search commands"), "p:web{Enter}");
+      expect(await screen.findByRole("dialog", { name: "Edit project" })).toBeInTheDocument();
     });
   });
 
@@ -231,7 +284,7 @@ describe("App", () => {
       await renderApp();
       await userEvent.keyboard("{Meta>}k{/Meta}");
       await userEvent.type(await screen.findByLabelText("Search commands"), "qqq");
-      expect(screen.getByText("No matching commands.")).toBeInTheDocument();
+      expect(screen.getByText("No matches.")).toBeInTheDocument();
     });
 
     it("runs the chosen command on Enter and closes", async () => {

@@ -10,3 +10,8 @@ export function AccentSwatches({ value, small, onChange }: { value: string | nul
     </div>
   );
 }
+
+/** A small filled circle in an accent hue, e.g. a project's color. */
+export function AccentDot({ accent }: { accent: string }) {
+  return <span className="accent-dot" aria-hidden="true" style={{ background: `var(--a-${accent})` }} />;
+}

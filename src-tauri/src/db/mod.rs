@@ -138,13 +138,48 @@ impl DataStore {
     }
 }
 
-/// A trimmed, non-blank name.
-fn required_name(name: &str, what: &str) -> AppResult<String> {
+pub const MAX_NAME_CHARS: usize = 100;
+
+/// `field` is the input's key as the page sends it (`hourlyRate`).
+fn invalid_field(field: &str, message: impl Into<String>) -> AppError {
+    AppError::InvalidField {
+        field: field.into(),
+        message: message.into(),
+    }
+}
+
+/// The trimmed name of a client, project or tag.
+fn required_name(name: &str) -> AppResult<String> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(AppError::InvalidInput(format!("{what} needs a name")));
+        return Err(invalid_field("name", "must not be empty"));
+    }
+    if name.chars().count() > MAX_NAME_CHARS {
+        return Err(invalid_field(
+            "name",
+            format!("must be at most {MAX_NAME_CHARS} characters"),
+        ));
     }
     Ok(name.to_string())
+}
+
+/// Names compare ignoring case, beyond ASCII (SQLite's `NOCASE` folds ASCII only).
+fn same_name(a: &str, b: &str) -> bool {
+    a.to_lowercase() == b.to_lowercase()
+}
+
+/// Whether one of the `(id, name)` rows other than `except` has `name`.
+fn name_in_use<'a>(
+    rows: impl IntoIterator<Item = (&'a str, &'a str)>,
+    name: &str,
+    except: Option<&str>,
+) -> bool {
+    rows.into_iter()
+        .any(|(id, row_name)| Some(id) != except && same_name(row_name, name))
+}
+
+fn name_taken(what: &str) -> AppError {
+    invalid_field("name", format!("{what} with this name already exists"))
 }
 
 fn new_id() -> String {

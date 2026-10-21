@@ -134,6 +134,19 @@ color: string, billable: boolean, hourlyRate: number | null, archivedAt: number 
 
 export type ProjectInput = { clientId: string | null, name: string, color: string, billable: boolean, hourlyRate: number | null, };
 
+/**
+ * A project as the Projects screen lists it.
+ */
+export type ProjectListItem = { project: Project, client: Client | null, 
+/**
+ * The start of its latest recording.
+ */
+lastUsed: number | null, 
+/**
+ * Recorded time in the 30 days before now; a running recording counts until now.
+ */
+recordedMs30d: number, };
+
 export type Recording = { id: string, projectId: string, start: number, 
 /**
  * `None` only for the running timer.
@@ -197,6 +210,15 @@ export type StatusReport = { version: string, tracker: TrackerStatus | null,
 timer: unknown, windowVisible: boolean, };
 
 export type Tag = { id: string, 
+/**
+ * Unique, ignoring case.
+ */
+name: string, createdAt: number, };
+
+/**
+ * A tag with the number of recordings that carry it.
+ */
+export type TagListItem = { recordings: number, id: string, 
 /**
  * Unique, ignoring case.
  */

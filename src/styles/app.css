@@ -367,3 +367,35 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .shortcut-conflicts { padding: 0.462rem 0.615rem; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); color: var(--style-yellow); font-size: var(--fs-small); }
 .toast-title { display: block; margin-bottom: 0.154rem; }
 .toast-details { margin: 0.385rem 0 0; max-height: 10rem; overflow: auto; font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; word-break: break-word; color: var(--o2); }
+
+/* ---------- projects ---------- */
+.projects-page { flex: 1; overflow: auto; padding: 1.231rem 1.538rem; display: flex; flex-direction: column; gap: 1.231rem; }
+.projects-head { display: flex; align-items: center; gap: 0.615rem; }
+.projects-head h1 { margin: 0 auto 0 0; font-size: var(--fs-large); font-weight: 600; }
+.projects-archived { display: flex; align-items: center; gap: 0.462rem; color: var(--o2); }
+/* A section header band (docs/ux.md, Rows): the client's name over its projects. */
+.band { display: flex; align-items: center; gap: 0.615rem; margin: 0; padding: var(--pad) 0.615rem; background: var(--band); border-radius: 5px; font-size: var(--fs-small); font-weight: 600; color: var(--o2); }
+.band-button { border: none; background: none; padding: 0; font: inherit; color: inherit; }
+.band-button:hover { color: var(--text); }
+.project-rows, .tag-rows { list-style: none; margin: 0; padding: 0; }
+.row { display: flex; align-items: center; gap: 0.769rem; min-height: var(--row-h); padding: 0 0.615rem; border-bottom: 1px solid var(--line); }
+.row:hover { background: var(--row-hover); }
+.dimmed { opacity: 0.55; }
+.project-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.615rem; border: none; background: none; padding: 0; font: inherit; color: var(--text); text-align: left; }
+.project-meta { display: flex; gap: 1.077rem; font-size: var(--data-font-size); }
+.project-none { margin: 0.462rem 0.615rem; }
+.accent-dot { flex: none; width: 0.615rem; height: 0.615rem; border-radius: 50%; }
+.tag-add { margin-top: 0.615rem; max-width: 20rem; }
+/* Sheet forms: a label over its control, the field's error below. */
+.form-field { display: flex; flex-direction: column; gap: 0.308rem; }
+.form-field > label, .form-field-label { color: var(--o2); font-size: var(--fs-small); }
+.form-field-error { color: var(--style-red); font-size: var(--fs-small); }
+.form-row { display: flex; align-items: center; justify-content: space-between; }
+.dialog .actions .actions-start { margin-right: auto; }
+
+/* ---------- pickers ---------- */
+.picker { position: relative; }
+.picker .inset-field input { min-width: 0; }
+.picker-list { position: fixed; z-index: 60; max-height: 18rem; background: var(--pop); border: 1px solid var(--field-line); border-radius: 10px; box-shadow: var(--shadow); }
+.palette-list > li.palette-section { padding: 0.462rem 1.231rem 0.154rem; font-size: var(--fs-small); color: var(--o3); }
+.tag-picker-chosen { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

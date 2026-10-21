@@ -15,7 +15,11 @@ export type Dialog =
   | { type: "settings"; page?: string }
   | { type: "confirm"; title: string; message: string; confirmLabel: string; onConfirm: () => void }
   /** The shortcut overview of the scopes that were active when it opened. */
-  | { type: "shortcuts"; scopes: string[] };
+  | { type: "shortcuts"; scopes: string[] }
+  /** Edit a project (`id`) or create one. */
+  | { type: "project"; id?: string }
+  /** Edit a client (`id`) or create one. */
+  | { type: "client"; id?: string };
 
 export type View = "day" | "week" | "month" | "reports" | "projects";
 

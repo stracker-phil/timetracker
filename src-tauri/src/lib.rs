@@ -13,6 +13,7 @@ pub mod launch;
 pub mod lock;
 pub mod menu;
 pub mod pending;
+pub mod projects;
 pub mod remote;
 pub mod state;
 pub mod store;
@@ -372,6 +373,16 @@ fn start_app(
             activity::commands::activity_start,
             activity::commands::activity_stop,
             activity::commands::activity_sources,
+            projects::clients_list,
+            projects::clients_save,
+            projects::clients_archive,
+            projects::projects_list,
+            projects::projects_save,
+            projects::projects_archive,
+            projects::projects_recent,
+            projects::tags_list,
+            projects::tags_save,
+            projects::tags_delete,
             remote::remote_reply,
         ])
         .build(tauri::generate_context!())

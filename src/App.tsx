@@ -5,6 +5,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { Dialogs } from "./components/Dialogs";
 import { EmptyView } from "./components/EmptyView";
 import { PermissionDialog } from "./components/PermissionDialog";
+import { ProjectsPage } from "./components/projects/ProjectsPage";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { Toasts } from "./components/Toasts";
@@ -12,7 +13,7 @@ import { Toolbar } from "./components/Toolbar";
 import { handleKeydown, installCommands, runMenuCommand } from "./commands";
 import { answerRemote } from "./commands/remote";
 import { applyAppearance, useSystemDark } from "./lib/theme";
-import { flushUiState, useStore } from "./state/store";
+import { flushUiState, useStore, type View } from "./state/store";
 import "./styles/fonts.css";
 import "./styles/schemes/ayu-mirage.css";
 import "./styles/schemes/monokai.css";
@@ -35,13 +36,14 @@ function handleLaunchEvents(events: LaunchEvent[]) {
 
 function useBackendEvents() {
   useEffect(() => {
-    const { loadSettings, loadUiState, loadTracker, setTracker, toast, dataChanged } = useStore.getState();
+    const { loadSettings, loadUiState, loadTracker, loadProjects, setTracker, toast, dataChanged } = useStore.getState();
     const drainLaunches = () => api.takeLaunchEvents().then(handleLaunchEvents, (e) => toast("error", `Launch request failed: ${toAppError(e).message}`));
 
     // Re-installing applies the user's keybinding overrides, which arrive with the settings.
     void loadSettings().then(() => (installCommands(), drainLaunches()));
     void loadUiState();
     void loadTracker();
+    void loadProjects();
     const unlisten = [
       api.onLaunch(() => void drainLaunches()),
       api.onCommand(runMenuCommand),
@@ -66,6 +68,17 @@ function useBackendEvents() {
   }, []);
 }
 
+function ViewContent({ view }: { view: View }) {
+  switch (view) {
+    case "day":
+      return <ActivityDebug />;
+    case "projects":
+      return <ProjectsPage />;
+    default:
+      return <EmptyView />;
+  }
+}
+
 /** Hiding the sidebar removes it entirely; `main` keeps its tree position so views keep their state. */
 function Workspace() {
   const sidebarHidden = useStore((s) => s.uiState.sidebarHidden);
@@ -74,7 +87,7 @@ function Workspace() {
     <div className={sidebarHidden ? "workspace no-sidebar" : "workspace"}>
       {!sidebarHidden && <Sidebar />}
       <main className="main">
-        {view === "day" ? <ActivityDebug /> : <EmptyView />}
+        <ViewContent view={view} />
       </main>
     </div>
   );

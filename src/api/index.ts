@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityInput, ActivityRow, AppError, AppSeen, AwayRow, BackupWritten, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityInput, ActivityRow, AppError, AppSeen, AwayRow, BackupWritten, Client, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -51,6 +51,23 @@ export const api = {
   activityStop: (source: string, end: number | null) => invoke<ActivityRow | null>("activity_stop", { source, end }),
   /** The names of the sources that reported activity, the latest first. */
   activitySources: () => invoke<string[]>("activity_sources"),
+  clientsList: (includeArchived: boolean) => invoke<Client[]>("clients_list", { includeArchived }),
+  /** `id: null` creates; a taken or blank name rejects with `field.path` `name`. */
+  clientsSave: (id: string | null, name: string) => invoke<Client>("clients_save", { id, name }),
+  /** Archiving a client archives its projects too; restoring restores the client only. */
+  clientsArchive: (id: string, archived: boolean) => invoke<Client>("clients_archive", { id, archived }),
+  projectsList: (includeArchived: boolean) => invoke<ProjectListItem[]>("projects_list", { includeArchived }),
+  /** `id: null` creates; validation errors name the field (`name`, `color`, `hourlyRate`, `clientId`). */
+  projectsSave: (id: string | null, input: ProjectInput) => invoke<Project>("projects_save", { id, input }),
+  projectsArchive: (id: string, archived: boolean) => invoke<Project>("projects_archive", { id, archived }),
+  /** Active projects by their latest recording. */
+  projectsRecent: (limit: number) => invoke<Project[]>("projects_recent", { limit }),
+  /** Every tag by name, with how many recordings carry it. */
+  tagsList: () => invoke<TagListItem[]>("tags_list"),
+  /** `id: null` creates, or returns the tag that has the name already. */
+  tagsSave: (id: string | null, name: string) => invoke<Tag>("tags_save", { id, name }),
+  /** Also removes the tag from every recording. */
+  tagsDelete: (id: string) => invoke<void>("tags_delete", { id }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   /** Native menu and tray items emit the id of the command they run. */

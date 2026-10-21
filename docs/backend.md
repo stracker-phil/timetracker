@@ -116,6 +116,16 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `tracker_resume` | – | `TrackerStatus` | `db` |
 | `request_permission` | – | `PermissionStatus` (after the system prompt, shown once per run) | `db` |
 | `open_privacy_settings` | – | – (System Settings → Privacy & Security → Accessibility) | `io` |
+| `clients_list` (`projects/mod.rs`) | `includeArchived: bool` | `Client[]` by name | `db` |
+| `clients_save` | `id: string \| null, name` | `Client`; `null` creates | `invalid_input` (`field`), `not_found`, `db` |
+| `clients_archive` | `id, archived: bool` | `Client`; archiving archives its projects | `not_found`, `db` |
+| `projects_list` | `includeArchived: bool` | `ProjectListItem[]` | `db` |
+| `projects_save` | `id: string \| null, input: ProjectInput` | `Project`; `null` creates | `invalid_input` (`field`), `not_found`, `db` |
+| `projects_archive` | `id, archived: bool` | `Project` | `not_found`, `db` |
+| `projects_recent` | `limit: u32` | `Project[]` by latest recording | `db` |
+| `tags_list` | – | `TagListItem[]` by name | `db` |
+| `tags_save` | `id: string \| null, name` | `Tag`; `null` creates or returns the tag with that name | `invalid_input` (`field`), `not_found`, `db` |
+| `tags_delete` | `id` | – | `not_found`, `db` |
 | `activity_add` (`activity/commands.rs`) | `items: ActivityInput[]` | `number[]` (the new ids) | `invalid_input`, `overlap`, `db` |
 | `activity_start` | `input: ActivityInput` | `ActivityRow` (open) | `invalid_input`, `overlap`, `db` |
 | `activity_stop` | `source: String, end: Ms \| null` | `ActivityRow \| null` | `invalid_input`, `db` |

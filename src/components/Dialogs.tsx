@@ -1,5 +1,7 @@
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
+import { ClientSheet } from "./projects/ClientSheet";
+import { ProjectSheet } from "./projects/ProjectSheet";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 
@@ -35,6 +37,10 @@ export function Dialogs() {
       return <ShortcutsDialog scopes={dialog.scopes} />;
     case "confirm":
       return <ConfirmDialog {...dialog} />;
+    case "project":
+      return <ProjectSheet key={dialog.id ?? ""} id={dialog.id} onClose={useStore.getState().closeDialog} />;
+    case "client":
+      return <ClientSheet key={dialog.id ?? ""} id={dialog.id} onClose={useStore.getState().closeDialog} />;
     default:
       return null;
   }
