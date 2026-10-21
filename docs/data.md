@@ -34,11 +34,11 @@ A backup is the JSON export below, or a copy of the folder while the app is not 
 |---|---|
 | `meta` | `key`/`value` facts: `schema` (`1`), `created_at`, `tags_seeded` |
 | `clients` | `id` (UUID), `name`, `archived_at`, `created_at` |
-| `projects` | `id` (UUID), `client_id`, `name`, `color` (an accent name), `billable`, `hourly_rate`, `archived_at`, `created_at` |
+| `projects` | `id` (UUID), `client_id`, `name`, `color` (an accent name), `archived_at`, `created_at` |
 | `tags` | `id` (UUID), `name` (unique, ignoring case), `created_at` |
 | `activities` | one span in one app and window: `id` (AUTOINCREMENT), `source` (`tracker` or `external:<name>`), `start`, `end` (NULL while open), `app`, `bundle_id`, `title`, `url`, `path`, `private`; indexed on `start` and `(source, start)` |
 | `away_spans` | no input, sleep, lock or pause: `id` (AUTOINCREMENT), `start`, `end`, `reason` (`idle`, `sleep`, `lock`, `paused`); indexed on `start` |
-| `recordings` | time confirmed for a project: `id` (UUID), `project_id`, `start`, `end` (NULL only for the running timer), `note`, `billable`, `created_at`, `updated_at`; indexed on `start` |
+| `recordings` | time confirmed for a project: `id` (UUID), `project_id`, `start`, `end` (NULL only for the running timer), `note`, `created_at`, `updated_at`; indexed on `start` |
 | `recording_tags` | `(recording_id, tag_id)`; deleting either side deletes the link |
 
 `end` is a SQL keyword, so queries quote it (`"end"`). `activities` and `away_spans` use AUTOINCREMENT so a
@@ -131,7 +131,6 @@ the field:
 |---|---|
 | `name` | trimmed, not blank, at most 100 characters (`db::MAX_NAME_CHARS`); unique ignoring case (Unicode, not only ASCII): clients among all clients, projects among the projects of the same client (or among client-less ones), tags among all tags. Archived rows count |
 | `color` | one of `ACCENTS`; blank becomes `orange` (`projects::DEFAULT_COLOR`) |
-| `hourlyRate` | `null` or a finite number ≥ 0, stored as given |
 | `clientId` | must exist (`not_found`) and not be archived, checked on create and when the client changes, so a project of an archived client stays editable |
 
 - Nothing is deleted except tags: recordings reference projects, so projects and clients are archived.
@@ -161,7 +160,7 @@ the field:
   "exportedAt": 1792540800000,
   "clients": [], "projects": [], "tags": [],
   "activities": [], "awaySpans": [],
-  "recordings": [{ "id": "…", "projectId": "…", "start": 0, "end": 0, "note": "", "tagIds": [], "billable": true, "createdAt": 0, "updatedAt": 0 }],
+  "recordings": [{ "id": "…", "projectId": "…", "start": 0, "end": 0, "note": "", "tagIds": [], "createdAt": 0, "updatedAt": 0 }],
   "rules": [], "savedReports": []
 }
 ```
@@ -173,7 +172,8 @@ Rows have the shape of their IPC types (`Client`, `Project`, `Tag`, `ActivityRow
 
 Embedded at compile time with `sqlx::migrate!("./migrations")` and run by `Db::open`; `build.rs` rebuilds
 the crate when the folder changes. Migrations are forward-only: add `NNNN_<name>.sql` with the next number and
-never edit a file that has shipped. A downgrade restores a backup.
+never edit a file that has shipped. A downgrade restores a backup. `0002_drop_billing.sql` removed the billing
+columns (`projects.billable`, `projects.hourly_rate`, `recordings.billable`): TimeTracker tracks time only.
 
 ## Tests
 

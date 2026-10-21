@@ -54,7 +54,7 @@ pub async fn activity(db: &Db, start: Ms, end: Option<Ms>, app: &str, title: &st
         .expect("read activity")
 }
 
-/// A billable blue project without a client.
+/// A blue project without a client.
 pub async fn project(db: &Db, name: &str) -> Project {
     projects::insert(
         db,
@@ -62,15 +62,13 @@ pub async fn project(db: &Db, name: &str) -> Project {
             client_id: None,
             name: name.into(),
             color: "blue".into(),
-            billable: true,
-            hourly_rate: None,
         },
     )
     .await
     .expect("insert project")
 }
 
-/// A billable recording without note or tags; `end: None` is the running timer.
+/// A recording without note or tags; `end: None` is the running timer.
 pub async fn recording(db: &Db, project_id: &str, start: Ms, end: Option<Ms>) -> Recording {
     recordings::insert(
         db,
@@ -80,7 +78,6 @@ pub async fn recording(db: &Db, project_id: &str, start: Ms, end: Option<Ms>) ->
             start,
             end,
             note: String::new(),
-            billable: true,
             tag_ids: Vec::new(),
         },
     )

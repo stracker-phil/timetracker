@@ -57,7 +57,7 @@ export const api = {
   /** Archiving a client archives its projects too; restoring restores the client only. */
   clientsArchive: (id: string, archived: boolean) => invoke<Client>("clients_archive", { id, archived }),
   projectsList: (includeArchived: boolean) => invoke<ProjectListItem[]>("projects_list", { includeArchived }),
-  /** `id: null` creates; validation errors name the field (`name`, `color`, `hourlyRate`, `clientId`). */
+  /** `id: null` creates; validation errors name the field (`name`, `color`, `clientId`). */
   projectsSave: (id: string | null, input: ProjectInput) => invoke<Project>("projects_save", { id, input }),
   projectsArchive: (id: string, archived: boolean) => invoke<Project>("projects_archive", { id, archived }),
   /** Active projects by their latest recording. */

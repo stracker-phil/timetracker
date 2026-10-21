@@ -12,26 +12,27 @@ interface Props {
   id?: string;
   /** A new project's name, e.g. what was typed into a picker. */
   initialName?: string;
+  /** The client a new project starts with. */
+  initialClientId?: string;
   onClose: () => void;
   /** After a save, with the saved project. */
   onSaved?: (project: Project) => void;
 }
 
 /** Create or edit a project; archive or restore an existing one. */
-export function ProjectSheet({ id, initialName = "", onClose, onSaved }: Props) {
+export function ProjectSheet({ id, initialName = "", initialClientId, onClose, onSaved }: Props) {
   const existing = useStore((s) => s.projects.find((p) => p.project.id === id)?.project);
   const clients = useStore((s) => s.clients);
   const { saveProject, archiveProject, saveClient } = useStore.getState();
   const [input, setInput] = useState<ProjectInput>(() =>
     existing
-      ? { clientId: existing.clientId, name: existing.name, color: existing.color, billable: existing.billable, hourlyRate: existing.hourlyRate }
-      : { clientId: null, name: initialName, color: "orange", billable: true, hourlyRate: null },
+      ? { clientId: existing.clientId, name: existing.name, color: existing.color }
+      : { clientId: initialClientId ?? null, name: initialName, color: "orange" },
   );
-  const [rateText, setRateText] = useState(input.hourlyRate === null ? "" : String(input.hourlyRate));
   const [newClient, setNewClient] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  const ids = { name: useId(), client: useId(), newClient: useId(), rate: useId(), billable: useId() };
+  const ids = { name: useId(), client: useId(), newClient: useId() };
   // Archived clients only show when the project already belongs to one.
   const choices = clients.filter((c) => c.archivedAt === null || c.id === input.clientId);
   const patch = (p: Partial<ProjectInput>) => setInput((current) => ({ ...current, ...p }));
@@ -43,8 +44,6 @@ export function ProjectSheet({ id, initialName = "", onClose, onSaved }: Props) 
   };
 
   async function save() {
-    const rate = rateText.trim() === "" ? null : Number(rateText.replace(",", "."));
-    if (rate !== null && !Number.isFinite(rate)) return setErrors({ hourlyRate: "must be a number" });
     setErrors({});
     setSaving(true);
     try {
@@ -60,7 +59,7 @@ export function ProjectSheet({ id, initialName = "", onClose, onSaved }: Props) 
         patch({ clientId });
       }
       try {
-        const project = await saveProject(id ?? null, { ...input, clientId, hourlyRate: rate });
+        const project = await saveProject(id ?? null, { ...input, clientId });
         onClose();
         onSaved?.(project);
       } catch (e) {
@@ -112,13 +111,6 @@ export function ProjectSheet({ id, initialName = "", onClose, onSaved }: Props) 
         )}
         <FormField label="Color" error={errors.color}>
           <AccentSwatches value={input.color} onChange={(color) => patch({ color })} />
-        </FormField>
-        <div className="form-row">
-          <label htmlFor={ids.billable}>Billable</label>
-          <input id={ids.billable} className="switch" type="checkbox" role="switch" checked={input.billable} onChange={(e) => patch({ billable: e.target.checked })} />
-        </div>
-        <FormField label="Hourly rate" htmlFor={ids.rate} error={errors.hourlyRate}>
-          <input id={ids.rate} className="input mono" inputMode="decimal" placeholder="none" value={rateText} onChange={(e) => setRateText(e.target.value)} />
         </FormField>
         <div className="actions">
           {existing && (

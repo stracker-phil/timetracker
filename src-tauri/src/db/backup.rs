@@ -111,7 +111,6 @@ mod tests {
                 start: 1_000,
                 end: Some(2_000),
                 note: "work".into(),
-                billable: true,
                 tag_ids: vec![tag.id.clone()],
             },
         )

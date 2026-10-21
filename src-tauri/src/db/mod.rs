@@ -140,7 +140,7 @@ impl DataStore {
 
 pub const MAX_NAME_CHARS: usize = 100;
 
-/// `field` is the input's key as the page sends it (`hourlyRate`).
+/// `field` is the input's key as the page sends it (`clientId`).
 fn invalid_field(field: &str, message: impl Into<String>) -> AppError {
     AppError::InvalidField {
         field: field.into(),

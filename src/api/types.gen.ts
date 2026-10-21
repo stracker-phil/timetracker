@@ -130,9 +130,9 @@ export type Project = { id: string, clientId: string | null, name: string,
 /**
  * An accent name (`ACCENTS`).
  */
-color: string, billable: boolean, hourlyRate: number | null, archivedAt: number | null, createdAt: number, };
+color: string, archivedAt: number | null, createdAt: number, };
 
-export type ProjectInput = { clientId: string | null, name: string, color: string, billable: boolean, hourlyRate: number | null, };
+export type ProjectInput = { clientId: string | null, name: string, color: string, };
 
 /**
  * A project as the Projects screen lists it.
@@ -159,12 +159,12 @@ note: string,
 /**
  * Ordered by tag name.
  */
-tagIds: Array<string>, billable: boolean, createdAt: number, updatedAt: number, };
+tagIds: Array<string>, createdAt: number, updatedAt: number, };
 
 /**
  * Absent fields stay as they are; `end: null` makes the recording running.
  */
-export type RecordingPatch = { projectId?: string, start?: number, end?: number | null, note?: string, billable?: boolean, tagIds?: Array<string>, };
+export type RecordingPatch = { projectId?: string, start?: number, end?: number | null, note?: string, tagIds?: Array<string>, };
 
 export type RemoteEvent = { id: string, request: RemoteRequest, };
 

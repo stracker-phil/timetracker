@@ -38,7 +38,7 @@ export function Dialogs() {
     case "confirm":
       return <ConfirmDialog {...dialog} />;
     case "project":
-      return <ProjectSheet key={dialog.id ?? ""} id={dialog.id} onClose={useStore.getState().closeDialog} />;
+      return <ProjectSheet key={dialog.id ?? ""} id={dialog.id} initialClientId={dialog.clientId} onClose={useStore.getState().closeDialog} />;
     case "client":
       return <ClientSheet key={dialog.id ?? ""} id={dialog.id} onClose={useStore.getState().closeDialog} />;
     default:

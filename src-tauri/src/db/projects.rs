@@ -19,8 +19,6 @@ pub struct Project {
     pub name: String,
     /// An accent name (`ACCENTS`).
     pub color: String,
-    pub billable: bool,
-    pub hourly_rate: Option<f64>,
     pub archived_at: Option<Ms>,
     pub created_at: Ms,
 }
@@ -32,8 +30,6 @@ pub struct ProjectInput {
     pub client_id: Option<String>,
     pub name: String,
     pub color: String,
-    pub billable: bool,
-    pub hourly_rate: Option<f64>,
 }
 
 /// A new project's color when none is given.
@@ -53,9 +49,6 @@ async fn validated(
     };
     if !ACCENTS.contains(&color.as_str()) {
         return Err(invalid_field("color", "must be one of the accent colors"));
-    }
-    if input.hourly_rate.is_some_and(|r| !r.is_finite() || r < 0.0) {
-        return Err(invalid_field("hourlyRate", "must be zero or more"));
     }
     let client_changed = existing.is_none_or(|p| p.client_id != input.client_id);
     if let Some(client_id) = input.client_id.as_deref()
@@ -109,15 +102,13 @@ pub async fn get(db: &Db, id: &str) -> AppResult<Project> {
 pub async fn insert(db: &Db, input: ProjectInput) -> AppResult<Project> {
     let input = validated(db, input, None).await?;
     Ok(sqlx::query_as(
-        "INSERT INTO projects (id, client_id, name, color, billable, hourly_rate, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) RETURNING *",
+        "INSERT INTO projects (id, client_id, name, color, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5) RETURNING *",
     )
     .bind(new_id())
     .bind(input.client_id)
     .bind(input.name)
     .bind(input.color)
-    .bind(input.billable)
-    .bind(input.hourly_rate)
     .bind(now_ms())
     .fetch_one(db.pool())
     .await?)
@@ -130,15 +121,12 @@ pub async fn update(db: &Db, id: &str, input: ProjectInput) -> AppResult<Project
     found(
         id,
         sqlx::query_as(
-            "UPDATE projects SET client_id = ?2, name = ?3, color = ?4, billable = ?5, hourly_rate = ?6
-             WHERE id = ?1 RETURNING *",
+            "UPDATE projects SET client_id = ?2, name = ?3, color = ?4 WHERE id = ?1 RETURNING *",
         )
         .bind(id)
         .bind(input.client_id)
         .bind(input.name)
         .bind(input.color)
-        .bind(input.billable)
-        .bind(input.hourly_rate)
         .fetch_optional(db.pool())
         .await?,
     )
@@ -302,8 +290,6 @@ mod tests {
             client_id: None,
             name: name.into(),
             color: "blue".into(),
-            billable: true,
-            hourly_rate: None,
         }
     }
 
@@ -321,8 +307,6 @@ mod tests {
                 client_id: Some(client.id.clone()),
                 name: "  Website ".into(),
                 color: "teal".into(),
-                billable: false,
-                hourly_rate: Some(95.5),
             },
         )
         .await
@@ -331,8 +315,6 @@ mod tests {
         assert_eq!(project.client_id, Some(client.id));
         assert_eq!(project.name, "Website");
         assert_eq!(project.color, "teal");
-        assert!(!project.billable);
-        assert_eq!(project.hourly_rate, Some(95.5));
         assert_eq!(project.archived_at, None);
         assert_eq!(get(&db, &project.id).await.unwrap(), project);
         assert_eq!(count(&db).await.unwrap(), 1);
@@ -353,27 +335,6 @@ mod tests {
                 "unknown color",
                 ProjectInput {
                     color: "chartreuse".into(),
-                    ..input("x")
-                },
-            ),
-            (
-                "negative rate",
-                ProjectInput {
-                    hourly_rate: Some(-1.0),
-                    ..input("x")
-                },
-            ),
-            (
-                "NaN rate",
-                ProjectInput {
-                    hourly_rate: Some(f64::NAN),
-                    ..input("x")
-                },
-            ),
-            (
-                "infinite rate",
-                ProjectInput {
-                    hourly_rate: Some(f64::INFINITY),
                     ..input("x")
                 },
             ),
@@ -436,30 +397,6 @@ mod tests {
                 },
                 "color",
             ),
-            (
-                "negative rate",
-                ProjectInput {
-                    hourly_rate: Some(-0.5),
-                    ..input("x")
-                },
-                "hourlyRate",
-            ),
-            (
-                "NaN rate",
-                ProjectInput {
-                    hourly_rate: Some(f64::NAN),
-                    ..input("x")
-                },
-                "hourlyRate",
-            ),
-            (
-                "infinite rate",
-                ProjectInput {
-                    hourly_rate: Some(f64::INFINITY),
-                    ..input("x")
-                },
-                "hourlyRate",
-            ),
         ];
         for (case, bad, field) in cases {
             let err = insert(&db, bad).await.unwrap_err();
@@ -468,21 +405,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_empty_color_becomes_the_default_and_a_zero_rate_is_allowed() {
+    async fn an_empty_color_becomes_the_default() {
         let db = Db::open_memory().await.unwrap();
         for color in ["", "  "] {
             let project = insert(
                 &db,
                 ProjectInput {
                     color: color.into(),
-                    hourly_rate: Some(0.0),
                     ..input(&format!("P{}", color.len()))
                 },
             )
             .await
             .unwrap();
             assert_eq!(project.color, DEFAULT_COLOR, "{color:?}");
-            assert_eq!(project.hourly_rate, Some(0.0));
         }
         assert_eq!(DEFAULT_COLOR, "orange");
     }
@@ -662,8 +597,6 @@ mod tests {
                 client_id: Some(client.id.clone()),
                 name: "New".into(),
                 color: "red".into(),
-                billable: false,
-                hourly_rate: Some(10.0),
             },
         )
         .await
@@ -675,8 +608,6 @@ mod tests {
                 client_id: Some(client.id),
                 name: "New".into(),
                 color: "red".into(),
-                billable: false,
-                hourly_rate: Some(10.0),
                 ..project
             }
         );
@@ -896,15 +827,7 @@ mod tests {
     #[tokio::test]
     async fn a_list_item_serializes_with_camel_case_fields() {
         let db = Db::open_memory().await.unwrap();
-        let project = insert(
-            &db,
-            ProjectInput {
-                hourly_rate: Some(50.0),
-                ..input("P")
-            },
-        )
-        .await
-        .unwrap();
+        let project = insert(&db, input("P")).await.unwrap();
         record(&db, &project.id, 2 * HOUR, Some(3 * HOUR)).await;
 
         let items = list_items(&db, false, 4 * HOUR).await.unwrap();
@@ -917,8 +840,6 @@ mod tests {
                     "clientId": null,
                     "name": "P",
                     "color": "blue",
-                    "billable": true,
-                    "hourlyRate": 50.0,
                     "archivedAt": null,
                     "createdAt": project.created_at,
                 },

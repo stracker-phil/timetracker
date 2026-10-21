@@ -22,8 +22,6 @@ function ProjectRow({ item, onMenu }: { item: ProjectListItem; onMenu: (e: Mouse
       <span className="project-meta mono o2">
         {item.lastUsed !== null && <span>last used {relativeTime(item.lastUsed)}</span>}
         <span>{formatHours(item.recordedMs30d)} / 30 d</span>
-        {project.billable && <span title="Billable">$</span>}
-        {project.hourlyRate !== null && <span>{project.hourlyRate}/h</span>}
       </span>
       {archived && (
         <button type="button" className="btn" onClick={() => void useStore.getState().archiveProject(project.id, false).catch(() => {})}>
@@ -34,15 +32,27 @@ function ProjectRow({ item, onMenu }: { item: ProjectListItem; onMenu: (e: Mouse
   );
 }
 
+function AddProjectButton({ client }: { client: Client | null }) {
+  const label = client ? `New project for ${client.name}` : "New project without a client";
+  return (
+    <button type="button" className="icon-btn band-add" aria-label={label} title={label} onClick={() => useStore.getState().openDialog({ type: "project", clientId: client?.id })}>
+      <Plus size="1rem" />
+    </button>
+  );
+}
+
 function ClientBand({ client }: { client: Client | null }) {
-  if (!client) return <h2 className="band">No client</h2>;
-  const archived = client.archivedAt !== null;
+  const archived = client !== null && client.archivedAt !== null;
   return (
     <h2 className={archived ? "band dimmed" : "band"}>
-      <button type="button" className="band-button" title="Edit client" onClick={() => useStore.getState().openDialog({ type: "client", id: client.id })}>
-        {client.name}
-      </button>
-      {archived && <span className="o3">archived</span>}
+      {client ? (
+        <button type="button" className="band-button" title="Edit client" onClick={() => useStore.getState().openDialog({ type: "client", id: client.id })}>
+          {client.name}
+        </button>
+      ) : (
+        "No client"
+      )}
+      {archived ? <span className="o3">archived</span> : <AddProjectButton client={client} />}
     </h2>
   );
 }

@@ -37,19 +37,30 @@ describe("ProjectSheet", () => {
       expect(screen.getByRole("heading", { name: "New project" })).toBeInTheDocument();
       await userEvent.type(screen.getByLabelText("Name"), "Website");
       await save();
-      expect(mocked.projectsSave).toHaveBeenCalledWith(null, { clientId: null, name: "Website", color: "orange", billable: true, hourlyRate: null });
+      expect(mocked.projectsSave).toHaveBeenCalledWith(null, { clientId: null, name: "Website", color: "orange" });
       expect(onClose).toHaveBeenCalled();
     });
 
-    it("saves the chosen client, color, billable switch and rate", async () => {
+    it("saves the chosen client and color", async () => {
       renderSheet();
       await userEvent.type(screen.getByLabelText("Name"), "Website");
       await userEvent.selectOptions(screen.getByLabelText("Client"), "Acme");
       await userEvent.click(screen.getByRole("button", { name: "Accent teal" }));
-      await userEvent.click(screen.getByRole("switch", { name: "Billable" }));
-      await userEvent.type(screen.getByLabelText("Hourly rate"), "85");
       await save();
-      expect(mocked.projectsSave).toHaveBeenCalledWith(null, { clientId: "c-acme", name: "Website", color: "teal", billable: false, hourlyRate: 85 });
+      expect(mocked.projectsSave).toHaveBeenCalledWith(null, { clientId: "c-acme", name: "Website", color: "teal" });
+    });
+
+    it("preselects the client given by initialClientId and saves with it", async () => {
+      renderSheet({ initialClientId: "c-acme" });
+      expect(screen.getByLabelText("Client")).toHaveDisplayValue("Acme");
+      await userEvent.type(screen.getByLabelText("Name"), "Website");
+      await save();
+      expect(mocked.projectsSave).toHaveBeenCalledWith(null, expect.objectContaining({ clientId: "c-acme" }));
+    });
+
+    it("starts without a client when no initialClientId is given", () => {
+      renderSheet();
+      expect(screen.getByLabelText("Client")).toHaveDisplayValue("No client");
     });
 
     it("rings the chosen color", async () => {
@@ -86,31 +97,6 @@ describe("ProjectSheet", () => {
     });
   });
 
-  describe("hourly rate", () => {
-    it.each([
-      ["85", 85],
-      ["85.5", 85.5],
-      ["85,5", 85.5],
-      ["  ", null],
-    ])("reads %j as %j", async (text, rate) => {
-      renderSheet();
-      await userEvent.type(screen.getByLabelText("Name"), "Website");
-      await userEvent.type(screen.getByLabelText("Hourly rate"), text);
-      await save();
-      expect(mocked.projectsSave).toHaveBeenCalledWith(null, expect.objectContaining({ hourlyRate: rate }));
-    });
-
-    it("says it must be a number and does not save", async () => {
-      const { onClose } = renderSheet();
-      await userEvent.type(screen.getByLabelText("Name"), "Website");
-      await userEvent.type(screen.getByLabelText("Hourly rate"), "abc");
-      await save();
-      expect(await screen.findByRole("alert")).toHaveTextContent("must be a number");
-      expect(mocked.projectsSave).not.toHaveBeenCalled();
-      expect(onClose).not.toHaveBeenCalled();
-    });
-  });
-
   describe("errors", () => {
     it("shows a field error under its field, keeps the sheet open and shows no toast", async () => {
       mocked.projectsSave.mockRejectedValueOnce(fieldError("name", "already exists"));
@@ -123,14 +109,6 @@ describe("ProjectSheet", () => {
       expect(screen.getAllByRole("alert")).toHaveLength(1);
       expect(onClose).not.toHaveBeenCalled();
       expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
-    });
-
-    it("shows a rate error from Rust under the rate field", async () => {
-      mocked.projectsSave.mockRejectedValueOnce(fieldError("hourlyRate", "must not be negative"));
-      renderSheet();
-      await userEvent.type(screen.getByLabelText("Name"), "Website");
-      await save();
-      expect(await screen.findByRole("alert")).toHaveTextContent("must not be negative");
     });
 
     it("toasts an error without a field and keeps the sheet open", async () => {
@@ -194,7 +172,7 @@ describe("ProjectSheet", () => {
   });
 
   describe("editing", () => {
-    const existing = projectItem({ project: { id: "p1", name: "Website", clientId: "c-acme", color: "purple", billable: false, hourlyRate: 90 }, client: acme });
+    const existing = projectItem({ project: { id: "p1", name: "Website", clientId: "c-acme", color: "purple" }, client: acme });
 
     it("prefills every field", () => {
       renderSheet({ id: "p1" }, { projects: [existing], clients: [acme] });
@@ -202,8 +180,6 @@ describe("ProjectSheet", () => {
       expect(screen.getByLabelText("Name")).toHaveValue("Website");
       expect(screen.getByLabelText("Client")).toHaveDisplayValue("Acme");
       expect(screen.getByRole("button", { name: "Accent purple" })).toHaveAttribute("aria-pressed", "true");
-      expect(screen.getByRole("switch", { name: "Billable" })).not.toBeChecked();
-      expect(screen.getByLabelText("Hourly rate")).toHaveValue("90");
     });
 
     it("saves under the project's id", async () => {
@@ -211,7 +187,7 @@ describe("ProjectSheet", () => {
       await userEvent.clear(screen.getByLabelText("Name"));
       await userEvent.type(screen.getByLabelText("Name"), "Site");
       await save();
-      expect(mocked.projectsSave).toHaveBeenCalledWith("p1", { clientId: "c-acme", name: "Site", color: "purple", billable: false, hourlyRate: 90 });
+      expect(mocked.projectsSave).toHaveBeenCalledWith("p1", { clientId: "c-acme", name: "Site", color: "purple" });
     });
 
     it("archives the project and closes", async () => {

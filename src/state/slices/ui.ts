@@ -16,8 +16,8 @@ export type Dialog =
   | { type: "confirm"; title: string; message: string; confirmLabel: string; onConfirm: () => void }
   /** The shortcut overview of the scopes that were active when it opened. */
   | { type: "shortcuts"; scopes: string[] }
-  /** Edit a project (`id`) or create one. */
-  | { type: "project"; id?: string }
+  /** Edit a project (`id`) or create one, for `clientId` when given. */
+  | { type: "project"; id?: string; clientId?: string }
   /** Edit a client (`id`) or create one. */
   | { type: "client"; id?: string };
 

@@ -23,7 +23,6 @@ pub struct Recording {
     pub note: String,
     /// Ordered by tag name.
     pub tag_ids: Vec<String>,
-    pub billable: bool,
     pub created_at: Ms,
     pub updated_at: Ms,
 }
@@ -36,7 +35,6 @@ pub struct NewRecording {
     pub start: Ms,
     pub end: Option<Ms>,
     pub note: String,
-    pub billable: bool,
     pub tag_ids: Vec<String>,
 }
 
@@ -54,8 +52,6 @@ pub struct RecordingPatch {
     pub end: Option<Option<Ms>>,
     #[ts(optional)]
     pub note: Option<String>,
-    #[ts(optional)]
-    pub billable: Option<bool>,
     #[ts(optional)]
     pub tag_ids: Option<Vec<String>>,
 }
@@ -91,7 +87,6 @@ impl FromRow<'_, SqliteRow> for Recording {
                 index: "tag_ids".into(),
                 source: Box::new(e),
             })?,
-            billable: row.try_get("billable")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
         })
@@ -105,15 +100,14 @@ pub async fn insert(db: &Db, new: NewRecording) -> AppResult<Recording> {
     check_project(&mut tx, &new.project_id).await?;
     let now = now_ms();
     sqlx::query(
-        r#"INSERT INTO recordings (id, project_id, start, "end", note, billable, created_at, updated_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)"#,
+        r#"INSERT INTO recordings (id, project_id, start, "end", note, created_at, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)"#,
     )
     .bind(&new.id)
     .bind(&new.project_id)
     .bind(new.start)
     .bind(new.end)
     .bind(note)
-    .bind(new.billable)
     .bind(now)
     .execute(&mut *tx)
     .await?;
@@ -137,15 +131,14 @@ pub async fn update(db: &Db, id: &str, patch: RecordingPatch) -> AppResult<Recor
     check_span(start, end)?;
     check_project(&mut tx, &project_id).await?;
     sqlx::query(
-        r#"UPDATE recordings SET project_id = ?2, start = ?3, "end" = ?4, note = ?5, billable = ?6,
-           updated_at = ?7 WHERE id = ?1"#,
+        r#"UPDATE recordings SET project_id = ?2, start = ?3, "end" = ?4, note = ?5, updated_at = ?6
+           WHERE id = ?1"#,
     )
     .bind(id)
     .bind(&project_id)
     .bind(start)
     .bind(end)
     .bind(note)
-    .bind(patch.billable.unwrap_or(current.billable))
     .bind(now_ms())
     .execute(&mut *tx)
     .await?;
@@ -295,7 +288,6 @@ mod tests {
             start,
             end,
             note: String::new(),
-            billable: true,
             tag_ids: Vec::new(),
         }
     }
@@ -316,7 +308,6 @@ mod tests {
             NewRecording {
                 note: "  wrote docs ".into(),
                 tag_ids: vec![zeta.id.clone(), alpha.id.clone()],
-                billable: false,
                 ..new(&p.id, 100, Some(200))
             },
         )
@@ -325,7 +316,7 @@ mod tests {
 
         assert_eq!(rec.tag_ids, [alpha.id, zeta.id]);
         assert_eq!(rec.note, "wrote docs");
-        assert_eq!((rec.start, rec.end, rec.billable), (100, Some(200), false));
+        assert_eq!((rec.start, rec.end), (100, Some(200)));
         assert_eq!(rec.created_at, rec.updated_at);
         assert_eq!(get(&db, &rec.id).await.unwrap(), rec);
         assert_eq!(count(&db).await.unwrap(), 1);
@@ -451,7 +442,6 @@ mod tests {
         let patch = RecordingPatch {
             project_id: Some(other.id.clone()),
             start: Some(150),
-            billable: Some(false),
             ..Default::default()
         };
         let updated = update(&db, &rec.id, patch).await.unwrap();
@@ -460,7 +450,6 @@ mod tests {
             Recording {
                 project_id: other.id,
                 start: 150,
-                billable: false,
                 updated_at: updated.updated_at,
                 ..rec.clone()
             },

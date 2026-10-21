@@ -61,19 +61,16 @@ describe("ProjectsPage", () => {
   });
 
   describe("project rows", () => {
-    it("shows when the project was last used, the recorded time of 30 days, billable mark and rate", () => {
-      const item = projectItem({ project: { name: "Retainer", billable: true, hourlyRate: 85 }, lastUsed: Date.now() - 2 * 86_400_000, recordedMs30d: 45_000_000 });
+    it("shows when the project was last used and the recorded time of 30 days", () => {
+      const item = projectItem({ project: { name: "Retainer" }, lastUsed: Date.now() - 2 * 86_400_000, recordedMs30d: 45_000_000 });
       renderPage({ projects: [item] });
       expect(screen.getByText("last used 2 d ago")).toBeInTheDocument();
       expect(screen.getByText("12:30 h / 30 d")).toBeInTheDocument();
-      expect(screen.getByTitle("Billable")).toBeInTheDocument();
-      expect(screen.getByText("85/h")).toBeInTheDocument();
     });
 
-    it("omits last used for a project that was never recorded and the mark for a non-billable one", () => {
-      renderPage({ projects: [projectItem({ project: { billable: false } })] });
+    it("omits last used for a project that was never recorded", () => {
+      renderPage({ projects: [projectItem()] });
       expect(screen.queryByText(/last used/)).not.toBeInTheDocument();
-      expect(screen.queryByTitle("Billable")).not.toBeInTheDocument();
       expect(screen.getByText("0:00 h / 30 d")).toBeInTheDocument();
     });
   });
@@ -117,6 +114,30 @@ describe("ProjectsPage", () => {
       renderPage({});
       await userEvent.click(screen.getByRole("button", { name: /New project/ }));
       expect(await screen.findByRole("dialog", { name: "New project" })).toBeInTheDocument();
+    });
+
+    it("opens the project sheet with the client preselected from a band's plus button, and saves with it", async () => {
+      renderPage({ projects: [site], clients: [acme] });
+      await userEvent.click(within(screen.getByRole("region", { name: "Acme" })).getByRole("button", { name: "New project for Acme" }));
+      const dialog = await screen.findByRole("dialog", { name: "New project" });
+      expect(within(dialog).getByLabelText("Client")).toHaveDisplayValue("Acme");
+      await userEvent.type(within(dialog).getByLabelText("Name"), "Intranet");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+      expect(mocked.projectsSave).toHaveBeenCalledWith(null, expect.objectContaining({ clientId: "c-acme", name: "Intranet" }));
+    });
+
+    it("opens the project sheet without a client from the No client band", async () => {
+      renderPage({ projects: [solo], clients: [acme] });
+      await userEvent.click(within(screen.getByRole("region", { name: "No client" })).getByRole("button", { name: "New project without a client" }));
+      const dialog = await screen.findByRole("dialog", { name: "New project" });
+      expect(within(dialog).getByLabelText("Client")).toHaveDisplayValue("No client");
+    });
+
+    it("offers no plus button on an archived client's band", async () => {
+      renderPage({ clients: [client({ id: "c-ret", name: "Retired", archivedAt: 5 })] });
+      await userEvent.click(screen.getByRole("switch", { name: "Show archived" }));
+      expect(screen.getByRole("region", { name: "Retired" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "New project for Retired" })).not.toBeInTheDocument();
     });
 
     it("opens an empty client sheet from New client", async () => {

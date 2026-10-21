@@ -147,8 +147,6 @@ mod tests {
                 client_id: Some(client_id.into()),
                 name: name.into(),
                 color: "blue".into(),
-                billable: true,
-                hourly_rate: None,
             },
         )
         .await
