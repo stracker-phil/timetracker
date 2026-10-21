@@ -7,6 +7,7 @@ use it, see the [project README](../README.md).
 |---|---|
 | [architecture.md](architecture.md) | Design rules, process model, repository map |
 | [backend.md](backend.md) | Rust core: startup, `AppState`, Tauri commands, events, CLI and single-instance IPC, window lifecycle, tray, persistence, errors, native menu, logging, content security policy |
+| [capture.md](capture.md) | Capture source (macOS APIs, fake), tracker state machine, pause, status text, permission onboarding |
 | [data.md](data.md) | SQLite data store: data folder, schema and data rules, time helpers, repositories, backup, migrations |
 | [frontend.md](frontend.md) | React app: boot, store, API boundary, command registry, components, styling, tests |
 | [ux.md](ux.md) | Design language: principles, surfaces, color schemes and tokens, type, inputs, overlays, keys |

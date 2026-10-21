@@ -33,7 +33,8 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
 
    Then `setup` runs: it logs the version, sets the native menu (`menu::build`), queues the initial launch
    message (`LaunchQueue::push`), calls `commands::apply_settings(app, None, &settings)`, installs the tray
-   (`tray::install`), applies `TIMETRACKER_WINDOW_FRAME` in debug builds (`apply_dev_frame`), binds and
+   (`tray::install`), starts the tracker (`start_tracker`: only with an open data store; see
+   [capture.md](capture.md)), applies `TIMETRACKER_WINDOW_FRAME` in debug builds (`apply_dev_frame`), binds and
    serves the socket (`start_ipc`; a bind error is logged and the app runs without handoff), registers
    `deep_link::listen`, and hides the window when started with `--hidden`.
 
@@ -82,6 +83,10 @@ itself. Panics unwind ([ADR 0014](adr/0014-panic-unwind.md)), so code takes `std
 | `config_dir` | `PathBuf` | the config dir |
 | `log_override` | `Option<LogLevel>` | the CLI `--log-level` |
 
+The tracker is managed beside `AppState` as `Arc<Tracker>` (`tracker/mod.rs`), and only when the data store
+opened. Its commands look it up with `try_state` and fail with `db` "The data store is not available"
+otherwise. `update_settings` hands the new `tracker` settings to `Tracker::set_settings`.
+
 ## Tauri commands
 
 Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives in its module.
@@ -103,6 +108,12 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `reveal_path` | `path: String` | – (Finder shows the enclosing folder with `path` selected) | `io` |
 | `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, available, error }` | – (errors are reported inside) |
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes }` | `db`, `io`, `invalid_input` |
+| `activity_list` / `away_list` (`db/commands.rs`) | `day: Day` | `ActivityRow[]` / `AwayRow[]` of the day, cut to its bounds; open rows end now | `db`, `invalid_input` |
+| `tracker_status` (`tracker/commands.rs`) | – | `TrackerStatus` (the last one sent) | `db` (tracker off) |
+| `tracker_pause` | `until: PauseUntil` | `TrackerStatus` | `db` |
+| `tracker_resume` | – | `TrackerStatus` | `db` |
+| `request_permission` | – | `PermissionStatus` (after the system prompt, shown once per run) | `db` |
+| `open_privacy_settings` | – | – (System Settings → Privacy & Security → Accessibility) | `io` |
 
 To add a command: write it in its module (or `commands.rs` for app-wide ones), register it in
 `generate_handler!`, export its types with ts-rs, add the wrapper to `src/api/index.ts` and a default to
@@ -118,6 +129,7 @@ To add a command: write it in its module (or `commands.rs` for app-wide ones), r
 | `COMMAND_EVENT` | `command` | a command id (menu or tray) |
 | `REMOTE_EVENT` | `remote` | `RemoteEvent { id, request }`, answered with `remote_reply` |
 | `DATA_CHANGED_EVENT` | `data_changed` | `DataChanged { kind, day }` |
+| `TRACKER_STATUS_EVENT` | `tracker_status` | `TrackerStatus` on every change and at least every 10 s ([capture.md](capture.md#status)) |
 
 `DataKind` is `activity | recordings | projects | tags | rules | settings`; `day` is a `Day` (`YYYY-MM-DD`)
 or `null` when every day may have changed. `events::data_changed(app, kind, day)` emits it. The page bumps
@@ -163,16 +175,22 @@ its `dataVersion` on every `data_changed`, so views keyed on it reload.
 
 ## Tray
 
-`tray.rs`: `tray::install(app)` builds the menu bar item `main` from `icons/tray/tray@2x.png` as a template
-image (macOS tints it for the menu bar), tooltip `TimeTracker`, menu on left click:
+`tray.rs`: `tray::install(app)` builds the menu bar item `main` as a template image (macOS tints it for the
+menu bar), tooltip `TimeTracker`, menu on left click:
 
 | Item | Id | Action |
 |---|---|---|
-| "Tracking not started" (disabled) | `status` | relabelled by `tray::set_status(app, text)` |
+| the tracker's status text (disabled) | `status` | relabelled on every status |
+| Pause Tracking ▸ For 15 Minutes, For 1 Hour, Until Tomorrow, Until Resumed | `pause-15`, `pause-60`, `pause-tomorrow`, `pause-resumed` | `Tracker::pause` (hidden while paused) |
+| Resume Tracking | `resume` | `Tracker::resume` (only while paused) |
 | Open TimeTracker | `open` | `window::show_main` |
 | Quit TimeTracker | `quit` | `app.exit(0)` |
 
-The status item is kept in managed state (`TrayStatus`), so `set_status` can relabel it.
+`tracker::start` passes every tracker status to `tray::sync(app, &status)`. The icon
+follows `TrayIcon::of(state)`: `icons/tray/tray@2x.png` (running or away), `paused@2x.png` (a pause sign in
+the clock) and `attention@2x.png` (an exclamation mark: the permission is missing). `sync` only relabels the
+status item while the icon stays the same, and rebuilds menu and icon when it changes, so an open menu is not
+replaced every few seconds.
 
 ## Persistence
 
@@ -279,7 +297,8 @@ To add a menu item: add the TypeScript command, add the id, label and default to
 | `tauri-plugin-dialog` | native panels |
 | `tauri-plugin-deep-link` | `timetracker://` links |
 | `tauri-plugin-autostart` | launch at login (LaunchAgent) |
-| `tokio` | runtime, IPC socket |
+| `tokio` | runtime, IPC socket, the tracker loop |
+| `objc2`, `block2`, `objc2-foundation`, `objc2-app-kit`, `objc2-core-foundation`, `objc2-core-graphics`, `objc2-application-services` (macOS only) | the capture source ([capture.md](capture.md#macos-apis)) |
 | `sqlx` (`sqlite` with bundled libsqlite3, `runtime-tokio`, `migrate`, `macros` for `migrate!` and `FromRow`) | the data store |
 | `serde`, `serde_json` (`preserve_order`) | IPC, stores |
 | `clap` | CLI |

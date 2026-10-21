@@ -13,14 +13,14 @@ The app's name and ids live in a few places. Change them together.
 | What | Value | Where |
 |---|---|---|
 | Product name | `TimeTracker` | `tauri.conf.json` `productName` and window `title`; `menu.rs` (app menu, `Quit TimeTracker`); `tray.rs` (tooltip, item labels); `index.html`; the toolbar; user-facing errors in `lib.rs` and `remote.rs`; the `TimeTracker.app` path in `scripts/install-app.sh`, `scripts/install-cli.sh`, `scripts/dev/launch.sh` and the `app` script of `package.json`; the window owner in `scripts/dev/screenshot.sh`; `Info.plist` usage strings |
-| Bundle identifier | `com.philippstracker.timetracker` | `tauri.conf.json` `identifier`; `lib.rs` `IDENTIFIER` (a test compares both); `scripts/dev/js.sh` (socket path). It also names the config dir and the log dir; changing it starts with empty settings and data |
+| Bundle identifier | `com.philippstracker.timetracker` | `tauri.conf.json` `identifier`; `lib.rs` `IDENTIFIER` (a test compares both); `scripts/dev/js.sh` (socket path); `scripts/dev/launch.sh` (signing identifier). It also names the config dir and the log dir; changing it starts with empty settings and data |
 | Binary and CLI command | `timetracker` | Cargo package `name` in `src-tauri/Cargo.toml`; `cli.rs` `name` and `after_help`; `scripts/install-cli.sh`; `scripts/dev/launch.sh`; `.claude/settings.json` (`pkill -x timetracker`) |
 | Rust lib | `timetracker_lib` | `Cargo.toml` `[lib]`; `main.rs`; `tests/` |
 | URL scheme | `timetracker://` | `tauri.conf.json` `plugins.deep-link.desktop.schemes` (the bundler writes it into `Info.plist`); `deep_link.rs` |
 | Socket, lock | `timetracker.sock`, `timetracker.lock` | `lib.rs` `SOCKET_NAME`, `LOCK_NAME`; `scripts/dev/js.sh` (the socket) |
 | Config dir | `~/Library/Application Support/com.philippstracker.timetracker/` | `lib.rs` `config_dir()` |
 | Logs dir | `~/Library/Logs/com.philippstracker.timetracker/` | Tauri's `app_log_dir`, from the identifier |
-| Env vars | `TIMETRACKER_WINDOW_FRAME`, `TIMETRACKER_BACKGROUND`, `TIMETRACKER_DEV_TERMINAL` | `dev.rs`, `window.rs`, `scripts/dev/launch.sh` |
+| Env vars | `TIMETRACKER_WINDOW_FRAME`, `TIMETRACKER_BACKGROUND`, `TIMETRACKER_DEV_TERMINAL`, `TIMETRACKER_SIGN_IDENTITY` | `dev.rs`, `window.rs`, `scripts/dev/launch.sh` |
 | Store on `window` | `window.timetracker` | `src/main.tsx`, `src/vite-env.d.ts`, the dev scripts |
 | Icons | clock glyph | `src-tauri/icons/` (regenerate with `bun tauri icon <1024px png or svg>`); tray template images in `src-tauri/icons/tray/` |
 | Author, license | Philipp Stracker, MIT | `Cargo.toml`, `package.json`, `LICENSE` |
@@ -35,6 +35,7 @@ The app's name and ids live in a few places. Change them together.
 | **Window chrome**: overlay title bar, `trafficLightPosition`, `transparent`, `windowEffects: ["sidebar"]`, `macOSPrivateApi` | `tauri.conf.json`; Cargo feature `macos-private-api` | Ignored; give `html`/`.app` an opaque `--chrome` | `windowEffects: ["mica"]`, or an opaque background |
 | **Traffic-light space** and drag regions | the toolbar's left inset (`--traffic-lights`); `data-tauri-drag-region` in the toolbar | Remove the inset | Same |
 | **Menu**: app menu with Services, Hide, Show All | `menu.rs` | Move Settings and Quit into a File menu | Same |
+| **Capture**: frontmost app, window titles (Accessibility), idle time, sleep and lock notifications, the permission prompt | `capture/macos.rs` behind the `Source` trait; `tracker/commands.rs` `PRIVACY_SETTINGS` | A new `Source`: X11/Wayland for the active window, `org.freedesktop.ScreenSaver` for idle and lock, logind for sleep | A new `Source`: `GetForegroundWindow` + `GetWindowText`, `GetLastInputInfo`, `WM_POWERBROADCAST` / `WTS_SESSION_LOCK` |
 | **Tray**: template image, menu on left click | `tray.rs` | Works with an `AppIndicator`; template tinting does not apply | Works; use a colored icon |
 | **Launch at login**: `MacosLauncher::LaunchAgent` | `lib.rs` (autostart plugin) | the plugin writes an XDG autostart entry | the plugin writes a registry key |
 | **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs | `src/commands/registry.ts`, `keybindings.rs` `key_label` | Map `Mod` to Ctrl | Same |

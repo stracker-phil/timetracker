@@ -1,3 +1,4 @@
+pub mod capture;
 pub mod cli;
 pub mod commands;
 pub mod db;
@@ -16,11 +17,13 @@ pub mod state;
 pub mod store;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_support;
+pub mod tracker;
 pub mod tray;
 pub mod window;
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
@@ -32,6 +35,7 @@ use crate::ipc::{Forward, IpcMessage};
 use crate::state::AppState;
 use crate::store::json_file::create_private_dir;
 use crate::store::settings::{LogLevel, Settings};
+use crate::tracker::Tracker;
 
 const IDENTIFIER: &str = "com.philippstracker.timetracker";
 const SOCKET_NAME: &str = "timetracker.sock";
@@ -139,6 +143,22 @@ fn start_ipc(handle: AppHandle, socket: &Path) {
     }));
 }
 
+/// Without a data store there is nothing to record into, so the tracker stays off.
+fn start_tracker(app: &AppHandle, state: &AppState) {
+    let Ok(db) = state.data.db() else {
+        log::warn!("The tracker is off: the data store is not available");
+        return;
+    };
+    let tracker = Tracker::new(
+        db,
+        capture::new_source(app),
+        state.settings.get().tracker,
+        db::time::now_ms(),
+    );
+    app.manage(Arc::clone(&tracker));
+    tracker::start(app, tracker);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let config_dir = config_dir();
@@ -223,6 +243,7 @@ fn start_app(
             state.launches.push(initial);
             commands::apply_settings(app.handle(), None, &state.settings.get());
             tray::install(app.handle())?;
+            start_tracker(app.handle(), &state);
             #[cfg(debug_assertions)]
             apply_dev_frame(app);
             start_ipc(app.handle().clone(), &socket);
@@ -249,6 +270,13 @@ fn start_app(
             commands::reveal_path,
             db::commands::data_info,
             db::commands::backup_export,
+            db::commands::activity_list,
+            db::commands::away_list,
+            tracker::commands::tracker_status,
+            tracker::commands::tracker_pause,
+            tracker::commands::tracker_resume,
+            tracker::commands::request_permission,
+            tracker::commands::open_privacy_settings,
             remote::remote_reply,
         ])
         .build(tauri::generate_context!())

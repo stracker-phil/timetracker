@@ -104,6 +104,13 @@ export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
  */
 export type Noise = "off" | "low" | "medium" | "high";
 
+export type PauseUntil = { "minutes": number } | "tomorrow" | "resumed";
+
+/**
+ * The Accessibility permission, which window titles need.
+ */
+export type PermissionStatus = "granted" | "denied" | "unknown";
+
 export type Project = { id: string, clientId: string | null, name: string, 
 /**
  * An accent name (`ACCENTS`).
@@ -197,6 +204,18 @@ idleMinutes: number, awayPromptEnabled: boolean,
  * Away spans at least this long trigger the away prompt.
  */
 awayPromptMinutes: number, pollSeconds: number, };
+
+export type TrackerState = { "kind": "running" } | { "kind": "paused", until: number | null, } | { "kind": "needsPermission" } | { "kind": "away", since: number, reason: AwayReason, };
+
+export type TrackerStatus = { state: TrackerState, 
+/**
+ * The open activity span, while running.
+ */
+current: ActivityRow | null, permission: PermissionStatus, 
+/**
+ * One line for the tray and the sidebar.
+ */
+text: string, };
 
 export type UiState = { sidebarHidden: boolean, 
 /**

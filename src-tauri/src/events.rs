@@ -12,6 +12,8 @@ pub const LAUNCH_EVENT: &str = "launch";
 pub const COMMAND_EVENT: &str = "command";
 /// Payload: a `RemoteEvent`.
 pub const REMOTE_EVENT: &str = "remote";
+/// Payload: a `TrackerStatus`.
+pub const TRACKER_STATUS_EVENT: &str = "tracker_status";
 /// Payload: a `DataChanged`; views that show the day reload.
 pub const DATA_CHANGED_EVENT: &str = "data_changed";
 

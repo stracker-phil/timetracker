@@ -4,9 +4,11 @@ use serde::Serialize;
 use tauri::State;
 use ts_rs::TS;
 
+use super::activities::ActivityRow;
+use super::away::AwayRow;
 use super::backup::{self, BackupWritten};
-use super::time::Ms;
-use super::{DataStore, Db, activities, projects, recordings};
+use super::time::{Day, Ms, now_ms};
+use super::{DataStore, Db, activities, away, projects, recordings};
 use crate::error::AppResult;
 use crate::state::AppState;
 
@@ -94,6 +96,20 @@ pub async fn data_info(state: State<'_, AppState>) -> AppResult<DataInfo> {
 #[tauri::command]
 pub async fn backup_export(state: State<'_, AppState>, path: String) -> AppResult<BackupWritten> {
     backup::write_to(&state.data.db()?, Path::new(&path)).await
+}
+
+/// The day's activity, cut to the day; open rows end now.
+#[tauri::command]
+pub async fn activity_list(state: State<'_, AppState>, day: Day) -> AppResult<Vec<ActivityRow>> {
+    let (from, to) = day.bounds();
+    activities::list_clipped(&state.data.db()?, from, to, now_ms()).await
+}
+
+/// The day's away spans, cut to the day; an open span ends now.
+#[tauri::command]
+pub async fn away_list(state: State<'_, AppState>, day: Day) -> AppResult<Vec<AwayRow>> {
+    let (from, to) = day.bounds();
+    away::list_clipped(&state.data.db()?, from, to, now_ms()).await
 }
 
 #[cfg(test)]

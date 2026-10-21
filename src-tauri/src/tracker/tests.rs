@@ -1,0 +1,605 @@
+use super::*;
+use crate::capture::fake::FakeSource;
+use crate::test_support::activity;
+
+const T: Ms = 1_800_000_000_000;
+const SECOND: Ms = 1_000;
+const MINUTE: Ms = 60_000;
+
+struct Fixture {
+    db: Db,
+    source: Arc<FakeSource>,
+    tracker: Arc<Tracker>,
+}
+
+async fn fixture() -> Fixture {
+    let db = Db::open_memory().await.unwrap();
+    let source = FakeSource::new();
+    let tracker = Tracker::new(db.clone(), source.clone(), TrackerSettings::default(), T);
+    Fixture {
+        db,
+        source,
+        tracker,
+    }
+}
+
+/// Activity rows as (start, end, title), by start.
+async fn spans(db: &Db) -> Vec<(Ms, Option<Ms>, String)> {
+    activities::list_for_range(db, 0, Ms::MAX)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r| (r.start, r.end, r.title))
+        .collect()
+}
+
+async fn aways(db: &Db) -> Vec<(Ms, Option<Ms>, AwayReason)> {
+    away::list_for_range(db, 0, Ms::MAX)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r| (r.start, r.end, r.reason))
+        .collect()
+}
+
+fn title(title: &str, start: Ms, end: Option<Ms>) -> (Ms, Option<Ms>, String) {
+    (start, end, title.into())
+}
+
+#[test]
+fn tracker_states_serialize_in_the_shape_the_page_uses() {
+    for (state, expected) in [
+        (
+            TrackerState::Running,
+            serde_json::json!({"kind": "running"}),
+        ),
+        (
+            TrackerState::NeedsPermission,
+            serde_json::json!({"kind": "needsPermission"}),
+        ),
+        (
+            TrackerState::Paused { until: Some(5) },
+            serde_json::json!({"kind": "paused", "until": 5}),
+        ),
+        (
+            TrackerState::Paused { until: None },
+            serde_json::json!({"kind": "paused", "until": null}),
+        ),
+        (
+            TrackerState::Away {
+                since: 7,
+                reason: AwayReason::Idle,
+            },
+            serde_json::json!({"kind": "away", "since": 7, "reason": "idle"}),
+        ),
+    ] {
+        assert_eq!(serde_json::to_value(&state).unwrap(), expected, "{state:?}");
+    }
+}
+
+#[test]
+fn pause_requests_deserialize_from_the_page_shape() {
+    for (json, expected) in [
+        (serde_json::json!({"minutes": 15}), PauseUntil::Minutes(15)),
+        (serde_json::json!("tomorrow"), PauseUntil::Tomorrow),
+        (serde_json::json!("resumed"), PauseUntil::Resumed),
+    ] {
+        assert_eq!(
+            serde_json::from_value::<PauseUntil>(json.clone()).unwrap(),
+            expected,
+            "{json}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_first_snapshot_opens_a_row_and_the_status_shows_it() {
+    let f = fixture().await;
+    f.source.show("Code", "main.rs");
+
+    f.tracker.tick(T).await.unwrap();
+
+    let rows = activities::list_for_range(&f.db, 0, Ms::MAX).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    let row = &rows[0];
+    assert_eq!(row.source, "tracker");
+    assert_eq!((row.start, row.end), (T, None));
+    assert_eq!(row.app, "Code");
+    assert_eq!(row.bundle_id.as_deref(), Some("test.code"));
+    assert_eq!(row.title, "main.rs");
+    let status = f.tracker.status();
+    assert_eq!(status.state, TrackerState::Running);
+    assert_eq!(status.current.as_ref(), Some(row));
+    assert_eq!(status.text, "Tracking · Code");
+}
+
+#[tokio::test]
+async fn a_title_change_closes_the_row_and_opens_the_next_at_the_same_instant() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+
+    f.source.show("Code", "b.rs");
+    f.tracker.tick(T + 5 * SECOND).await.unwrap();
+
+    assert_eq!(
+        spans(&f.db).await,
+        [
+            title("a.rs", T, Some(T + 5 * SECOND)),
+            title("b.rs", T + 5 * SECOND, None)
+        ]
+    );
+}
+
+#[tokio::test]
+async fn an_unchanged_snapshot_keeps_the_single_row_open() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+
+    for i in 0..4 {
+        f.tracker.tick(T + i * 2 * SECOND).await.unwrap();
+    }
+
+    assert_eq!(spans(&f.db).await, [title("a.rs", T, None)]);
+}
+
+#[tokio::test]
+async fn a_window_in_front_for_under_a_second_is_replaced_in_place() {
+    let f = fixture().await;
+    f.source.show("Safari", "Tab");
+    f.tracker.tick(T).await.unwrap();
+    let first = f.tracker.status().current.unwrap();
+
+    f.source.show("Code", "main.rs");
+    f.tracker.tick(T + 999).await.unwrap();
+
+    let rows = activities::list_for_range(&f.db, 0, Ms::MAX).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        (rows[0].id, rows[0].start, rows[0].end),
+        (first.id, T, None)
+    );
+    assert_eq!(
+        (
+            rows[0].app.as_str(),
+            rows[0].bundle_id.as_deref(),
+            rows[0].title.as_str()
+        ),
+        ("Code", Some("test.code"), "main.rs")
+    );
+    assert_eq!(f.tracker.status().current.as_ref(), Some(&rows[0]));
+}
+
+#[tokio::test]
+async fn a_change_after_exactly_a_second_is_kept_as_its_own_row() {
+    let f = fixture().await;
+    f.source.show("Safari", "Tab");
+    f.tracker.tick(T).await.unwrap();
+
+    f.source.show("Code", "main.rs");
+    f.tracker.tick(T + MIN_SPAN).await.unwrap();
+
+    assert_eq!(
+        spans(&f.db).await,
+        [
+            title("Tab", T, Some(T + MIN_SPAN)),
+            title("main.rs", T + MIN_SPAN, None)
+        ]
+    );
+}
+
+#[tokio::test]
+async fn nothing_frontmost_closes_the_row() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+
+    f.source.set_snapshot(None);
+    f.tracker.tick(T + 3 * SECOND).await.unwrap();
+
+    assert_eq!(spans(&f.db).await, [title("a.rs", T, Some(T + 3 * SECOND))]);
+    let status = f.tracker.status();
+    assert_eq!(status.current, None);
+    assert_eq!(status.text, "Tracking");
+}
+
+#[tokio::test]
+async fn idle_time_is_backdated_and_input_resumes_recording() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+
+    f.source.set_idle(300.0);
+    f.tracker.tick(T + 400 * SECOND).await.unwrap();
+
+    let since = T + 100 * SECOND;
+    assert_eq!(spans(&f.db).await, [title("a.rs", T, Some(since))]);
+    assert_eq!(aways(&f.db).await, [(since, None, AwayReason::Idle)]);
+    let status = f.tracker.status();
+    assert_eq!(
+        status.state,
+        TrackerState::Away {
+            since,
+            reason: AwayReason::Idle
+        }
+    );
+    assert_eq!(status.current, None);
+
+    f.source.set_idle(0.0);
+    let back = T + 410 * SECOND;
+    f.tracker.tick(back).await.unwrap();
+
+    assert_eq!(aways(&f.db).await, [(since, Some(back), AwayReason::Idle)]);
+    assert_eq!(
+        spans(&f.db).await,
+        [title("a.rs", T, Some(since)), title("a.rs", back, None)]
+    );
+    assert_eq!(f.tracker.status().state, TrackerState::Running);
+}
+
+#[tokio::test]
+async fn idle_just_below_the_threshold_keeps_recording() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.source.set_idle(299.0);
+
+    f.tracker.tick(T + 400 * SECOND).await.unwrap();
+
+    assert!(aways(&f.db).await.is_empty());
+    assert_eq!(spans(&f.db).await, [title("a.rs", T + 400 * SECOND, None)]);
+}
+
+#[tokio::test]
+async fn an_idle_span_never_starts_before_the_tracker_started_running() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+    f.tracker
+        .pause(PauseUntil::Resumed, T + MINUTE)
+        .await
+        .unwrap();
+
+    f.source.set_idle(1_000.0);
+    let resumed = T + 2 * MINUTE;
+    f.tracker.resume(resumed).await.unwrap();
+
+    assert_eq!(
+        aways(&f.db).await,
+        [
+            (T + MINUTE, Some(resumed), AwayReason::Paused),
+            (resumed, None, AwayReason::Idle)
+        ]
+    );
+}
+
+#[tokio::test]
+async fn changed_idle_minutes_change_the_threshold() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.source.set_idle(200.0);
+    let now = T + 250 * SECOND;
+    f.tracker.tick(now).await.unwrap();
+    assert_eq!(f.tracker.status().state, TrackerState::Running);
+
+    f.tracker.set_settings(TrackerSettings {
+        idle_minutes: 3,
+        ..TrackerSettings::default()
+    });
+    f.tracker.tick(now).await.unwrap();
+
+    assert_eq!(
+        f.tracker.status().state,
+        TrackerState::Away {
+            since: now - 200 * SECOND,
+            reason: AwayReason::Idle
+        }
+    );
+}
+
+#[tokio::test]
+async fn system_events_open_and_close_away_spans() {
+    let cases = [
+        (SystemEvent::Sleep, SystemEvent::Wake, AwayReason::Sleep),
+        (SystemEvent::Lock, SystemEvent::Unlock, AwayReason::Lock),
+        (
+            SystemEvent::SessionInactive,
+            SystemEvent::SessionActive,
+            AwayReason::Lock,
+        ),
+    ];
+    for (start_event, end_event, reason) in cases {
+        let f = fixture().await;
+        f.source.show("Code", "a.rs");
+        f.tracker.tick(T).await.unwrap();
+
+        f.tracker
+            .on_event(start_event, T + 10 * SECOND)
+            .await
+            .unwrap();
+
+        let started = T + 10 * SECOND;
+        assert_eq!(
+            spans(&f.db).await,
+            [title("a.rs", T, Some(started))],
+            "{reason:?}"
+        );
+        assert_eq!(aways(&f.db).await, [(started, None, reason)], "{reason:?}");
+        assert_eq!(
+            f.tracker.status().state,
+            TrackerState::Away {
+                since: started,
+                reason
+            },
+            "{reason:?}"
+        );
+
+        let ended = T + 20 * SECOND;
+        f.tracker.on_event(end_event, ended).await.unwrap();
+
+        assert_eq!(
+            aways(&f.db).await,
+            [(started, Some(ended), reason)],
+            "{reason:?}"
+        );
+        assert_eq!(
+            spans(&f.db).await,
+            [title("a.rs", T, Some(started)), title("a.rs", ended, None)],
+            "{reason:?}"
+        );
+        assert_eq!(
+            f.tracker.status().state,
+            TrackerState::Running,
+            "{reason:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn sleeping_while_idle_ends_the_idle_span_and_starts_a_sleep_span() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+    f.source.set_idle(300.0);
+    f.tracker.tick(T + 400 * SECOND).await.unwrap();
+
+    let slept = T + 500 * SECOND;
+    f.tracker.on_event(SystemEvent::Sleep, slept).await.unwrap();
+
+    assert_eq!(
+        aways(&f.db).await,
+        [
+            (T + 100 * SECOND, Some(slept), AwayReason::Idle),
+            (slept, None, AwayReason::Sleep)
+        ]
+    );
+}
+
+#[tokio::test]
+async fn pausing_closes_the_activity_and_ticks_record_nothing_until_the_end() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+
+    let paused = T + 5 * SECOND;
+    let until = paused + 15 * MINUTE;
+    let status = f
+        .tracker
+        .pause(PauseUntil::Minutes(15), paused)
+        .await
+        .unwrap();
+
+    assert_eq!(status.state, TrackerState::Paused { until: Some(until) });
+    assert!(status.text.starts_with("Paused until"), "{}", status.text);
+    assert_eq!(spans(&f.db).await, [title("a.rs", T, Some(paused))]);
+    assert_eq!(aways(&f.db).await, [(paused, None, AwayReason::Paused)]);
+
+    f.source.show("Code", "b.rs");
+    f.tracker.tick(until - 1).await.unwrap();
+    assert_eq!(spans(&f.db).await, [title("a.rs", T, Some(paused))]);
+    assert_eq!(
+        f.tracker.status().state,
+        TrackerState::Paused { until: Some(until) }
+    );
+
+    f.tracker.tick(until).await.unwrap();
+
+    assert_eq!(
+        aways(&f.db).await,
+        [(paused, Some(until), AwayReason::Paused)]
+    );
+    assert_eq!(
+        spans(&f.db).await,
+        [title("a.rs", T, Some(paused)), title("b.rs", until, None)]
+    );
+    assert_eq!(f.tracker.status().state, TrackerState::Running);
+}
+
+#[tokio::test]
+async fn pausing_again_only_moves_the_end() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+    f.tracker
+        .pause(PauseUntil::Minutes(10), T + SECOND)
+        .await
+        .unwrap();
+
+    let status = f
+        .tracker
+        .pause(PauseUntil::Minutes(30), T + MINUTE)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        status.state,
+        TrackerState::Paused {
+            until: Some(T + MINUTE + 30 * MINUTE)
+        }
+    );
+    assert_eq!(aways(&f.db).await, [(T + SECOND, None, AwayReason::Paused)]);
+}
+
+#[tokio::test]
+async fn resume_ends_the_pause_at_once_and_records_again() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+    f.tracker
+        .pause(PauseUntil::Minutes(15), T + SECOND)
+        .await
+        .unwrap();
+
+    let resumed = T + 5 * SECOND;
+    let status = f.tracker.resume(resumed).await.unwrap();
+
+    assert_eq!(status.state, TrackerState::Running);
+    assert_eq!(
+        aways(&f.db).await,
+        [(T + SECOND, Some(resumed), AwayReason::Paused)]
+    );
+    assert_eq!(
+        spans(&f.db).await,
+        [
+            title("a.rs", T, Some(T + SECOND)),
+            title("a.rs", resumed, None)
+        ]
+    );
+}
+
+#[tokio::test]
+async fn pausing_until_tomorrow_ends_at_the_next_local_midnight() {
+    let f = fixture().await;
+
+    let status = f.tracker.pause(PauseUntil::Tomorrow, T).await.unwrap();
+
+    assert_eq!(
+        status.state,
+        TrackerState::Paused {
+            until: Some(Day::of(T).next().bounds().0)
+        }
+    );
+    assert_eq!(status.text, "Paused until tomorrow");
+}
+
+#[tokio::test]
+async fn an_open_ended_pause_lasts_until_resumed() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+
+    let status = f.tracker.pause(PauseUntil::Resumed, T).await.unwrap();
+    assert_eq!(status.state, TrackerState::Paused { until: None });
+    assert_eq!(status.text, "Paused");
+
+    f.tracker.tick(T + 1_000 * MINUTE).await.unwrap();
+
+    assert_eq!(
+        f.tracker.status().state,
+        TrackerState::Paused { until: None }
+    );
+    assert!(spans(&f.db).await.is_empty());
+    assert_eq!(aways(&f.db).await, [(T, None, AwayReason::Paused)]);
+}
+
+#[tokio::test]
+async fn denied_permission_records_nothing_and_needs_permission() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.source.set_permission(PermissionStatus::Denied);
+
+    f.tracker.tick(T).await.unwrap();
+
+    assert!(spans(&f.db).await.is_empty());
+    let status = f.tracker.status();
+    assert_eq!(status.state, TrackerState::NeedsPermission);
+    assert_eq!(status.permission, PermissionStatus::Denied);
+    assert_eq!(status.text, "Needs permission");
+}
+
+#[tokio::test]
+async fn losing_the_permission_closes_the_open_activity() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.tracker.tick(T).await.unwrap();
+
+    f.source.set_permission(PermissionStatus::Denied);
+    f.tracker.tick(T + 5 * SECOND).await.unwrap();
+
+    assert_eq!(spans(&f.db).await, [title("a.rs", T, Some(T + 5 * SECOND))]);
+    assert_eq!(f.tracker.status().current, None);
+}
+
+#[tokio::test]
+async fn a_granted_permission_starts_recording_on_the_next_tick() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.source.set_permission(PermissionStatus::Denied);
+    f.tracker.tick(T).await.unwrap();
+
+    f.source.set_permission(PermissionStatus::Granted);
+    f.tracker.tick(T + 5 * SECOND).await.unwrap();
+
+    let status = f.tracker.status();
+    assert_eq!(status.state, TrackerState::Running);
+    assert_eq!(status.permission, PermissionStatus::Granted);
+    assert_eq!(spans(&f.db).await, [title("a.rs", T + 5 * SECOND, None)]);
+}
+
+#[tokio::test]
+async fn requesting_permission_returns_the_status_and_starts_recording_when_granted() {
+    let f = fixture().await;
+    f.source.show("Code", "a.rs");
+    f.source.set_permission(PermissionStatus::Denied);
+    f.tracker.tick(T).await.unwrap();
+    assert_eq!(
+        f.tracker.request_permission(T + SECOND).await.unwrap(),
+        PermissionStatus::Denied
+    );
+
+    f.source.set_permission(PermissionStatus::Granted);
+    let permission = f.tracker.request_permission(T + 5 * SECOND).await.unwrap();
+
+    assert_eq!(permission, PermissionStatus::Granted);
+    assert_eq!(f.tracker.status().state, TrackerState::Running);
+    assert_eq!(spans(&f.db).await, [title("a.rs", T + 5 * SECOND, None)]);
+}
+
+#[tokio::test]
+async fn recover_closes_stale_tracker_and_away_spans_only() {
+    let f = fixture().await;
+    let stale = activity(&f.db, T, None, "Code", "a.rs").await;
+    let external = activities::insert(
+        &f.db,
+        NewActivity {
+            source: "external:git".into(),
+            start: T,
+            app: "git".into(),
+            bundle_id: None,
+            title: "commit".into(),
+            url: None,
+            path: None,
+            private: false,
+        },
+    )
+    .await
+    .unwrap();
+    away::insert(
+        &f.db,
+        NewAway {
+            start: T,
+            reason: AwayReason::Idle,
+        },
+    )
+    .await
+    .unwrap();
+
+    f.tracker.recover(T + 10 * MINUTE).await.unwrap();
+
+    let rows = activities::list_for_range(&f.db, 0, Ms::MAX).await.unwrap();
+    let end_of = |id: i64| rows.iter().find(|r| r.id == id).unwrap().end;
+    assert_eq!(end_of(stale.id), Some(T + 2 * SECOND));
+    assert_eq!(end_of(external), None);
+    assert_eq!(
+        aways(&f.db).await,
+        [(T, Some(T + 10 * MINUTE), AwayReason::Idle)]
+    );
+}

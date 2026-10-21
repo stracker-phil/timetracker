@@ -49,6 +49,15 @@ launch and commit at the end of every step.
   dependency graph for network crates; a settings test compares `ACCENTS` and `SCHEMES` with
   `src/api/types.ts`.
 
+### The tracker
+
+Tracker tests build a `Tracker` on `Db::open_memory()` with `capture::fake::FakeSource` (granted, nothing
+frontmost, no idle time) and drive it directly with explicit times: `tick(now)`, `on_event(event, now)`,
+`pause(until, now)`, `resume(now)`, `recover(now)`. The test sets what the system shows with
+`show(app, title)` / `set_snapshot(None)`, `set_idle(seconds)` and `set_permission(..)`, then checks the rows
+(`activities::list_for_range`, `away::list_for_range`) and `status()`. The background loop and the macOS
+source are not unit-tested; they are checked in the running app.
+
 ## Frontend
 
 The setup, mocking and fixtures are described in [frontend.md](frontend.md#tests). In short:
@@ -77,6 +86,15 @@ The store is available as `window.timetracker` in the debug bundle: `bun run bui
 scripts/dev/js.sh 'timetracker.getState().openDialog({ type: "settings", page: "shortcuts" })'
 scripts/dev/js.sh 'timetracker.getState().setView("week")'
 ```
+
+### Accessibility in dev builds
+
+The tracker needs Accessibility for window titles. macOS keys the grant to the app's code signature. An ad
+hoc signature is a hash of the build, so every rebuild asks again: remove the old TimeTracker entry in
+System Settings → Privacy & Security → Accessibility and grant the new one. `launch.sh` signs the bundle
+before starting it, with the identifier `com.philippstracker.timetracker` and the keychain identity in
+`TIMETRACKER_SIGN_IDENTITY`, or ad hoc without it. With a certificate (for example a self-signed
+"Code Signing" certificate made in Keychain Access), the grant survives rebuilds.
 
 `launch.sh` sets `TIMETRACKER_WINDOW_FRAME` and `TIMETRACKER_BACKGROUND=1`. Rust reads both in `dev.rs`, a
 module compiled into debug builds only. JavaScript eval over the socket is compiled out of release builds

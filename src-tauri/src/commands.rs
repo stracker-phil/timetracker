@@ -10,6 +10,7 @@ use crate::state::AppState;
 use crate::store::keybindings::Keybindings;
 use crate::store::settings::{LogLevel, Settings, Theme};
 use crate::store::ui_state::UiState;
+use crate::tracker::Tracker;
 use crate::window;
 
 #[tauri::command]
@@ -93,6 +94,9 @@ pub async fn update_settings(
 ) -> AppResult<Settings> {
     let (previous, saved) = state.settings.update(settings).await?;
     apply_settings(&app, Some(&previous), &saved);
+    if let Some(tracker) = app.try_state::<std::sync::Arc<Tracker>>() {
+        tracker.set_settings(saved.tracker.clone());
+    }
     log::info!("Settings updated");
     Ok(saved)
 }

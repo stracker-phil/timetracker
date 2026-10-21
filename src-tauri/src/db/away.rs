@@ -6,7 +6,7 @@ use sqlx::SqliteConnection;
 use ts_rs::TS;
 
 use super::Db;
-use super::time::Ms;
+use super::time::{Ms, clip};
 use crate::error::AppResult;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, sqlx::Type)]
@@ -77,6 +77,22 @@ pub async fn list_for_range(db: &Db, from: Ms, to: Ms) -> AppResult<Vec<AwayRow>
     .bind(to)
     .fetch_all(db.pool())
     .await?)
+}
+
+/// The spans of `[from, to)` cut to it; an open span ends at `now`.
+pub async fn list_clipped(db: &Db, from: Ms, to: Ms, now: Ms) -> AppResult<Vec<AwayRow>> {
+    Ok(list_for_range(db, from, to)
+        .await?
+        .into_iter()
+        .filter_map(|row| {
+            let (start, end) = clip(row.start, row.end, (from, to), now)?;
+            Some(AwayRow {
+                start,
+                end: Some(end),
+                ..row
+            })
+        })
+        .collect())
 }
 
 /// Deletes every span that shares time with `[from, to)`, whole.
@@ -175,6 +191,75 @@ mod tests {
             (row.id, row.start, row.reason),
             (latest, 200, AwayReason::Sleep)
         );
+    }
+
+    #[tokio::test]
+    async fn list_clipped_cuts_spans_to_the_range() {
+        let db = Db::open_memory().await.unwrap();
+        let left = insert(&db, away(50, AwayReason::Idle)).await.unwrap();
+        close_open(&db, 150).await.unwrap();
+        let inside = insert(&db, away(120, AwayReason::Lock)).await.unwrap();
+        close_open(&db, 180).await.unwrap();
+        let right = insert(&db, away(170, AwayReason::Sleep)).await.unwrap();
+        close_open(&db, 250).await.unwrap();
+
+        let rows = list_clipped(&db, 100, 200, 5_000).await.unwrap();
+
+        assert_eq!(
+            rows,
+            [
+                AwayRow {
+                    id: left,
+                    start: 100,
+                    end: Some(150),
+                    reason: AwayReason::Idle
+                },
+                AwayRow {
+                    id: inside,
+                    start: 120,
+                    end: Some(180),
+                    reason: AwayReason::Lock
+                },
+                AwayRow {
+                    id: right,
+                    start: 170,
+                    end: Some(200),
+                    reason: AwayReason::Sleep
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn list_clipped_ends_an_open_span_at_now_but_not_after_the_range() {
+        let db = Db::open_memory().await.unwrap();
+        let id = insert(&db, away(120, AwayReason::Paused)).await.unwrap();
+
+        for (now, end) in [(150, 150), (500, 200)] {
+            let rows = list_clipped(&db, 100, 200, now).await.unwrap();
+            assert_eq!(
+                rows,
+                [AwayRow {
+                    id,
+                    start: 120,
+                    end: Some(end),
+                    reason: AwayReason::Paused
+                }],
+                "now {now}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn list_clipped_drops_spans_with_nothing_inside_the_range() {
+        let db = Db::open_memory().await.unwrap();
+        insert(&db, away(0, AwayReason::Idle)).await.unwrap();
+        close_open(&db, 100).await.unwrap();
+        insert(&db, away(200, AwayReason::Idle)).await.unwrap();
+        close_open(&db, 300).await.unwrap();
+        insert(&db, away(180, AwayReason::Lock)).await.unwrap();
+
+        assert!(list_clipped(&db, 100, 200, 150).await.unwrap().is_empty());
     }
 
     #[tokio::test]

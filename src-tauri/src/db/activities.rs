@@ -6,7 +6,7 @@ use sqlx::SqliteConnection;
 use ts_rs::TS;
 
 use super::Db;
-use super::time::Ms;
+use super::time::{Ms, clip};
 use crate::error::AppResult;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, sqlx::FromRow)]
@@ -70,6 +70,40 @@ pub async fn close_open(db: &Db, source: &str, end: Ms) -> AppResult<u64> {
     .rows_affected())
 }
 
+/// Ends every open span of `source` `duration` after its start; for spans left open by a crash,
+/// whose real end is unknown.
+pub async fn close_stale(db: &Db, source: &str, duration: Ms) -> AppResult<u64> {
+    Ok(sqlx::query(
+        r#"UPDATE activities SET "end" = start + ?2 WHERE source = ?1 AND "end" IS NULL"#,
+    )
+    .bind(source)
+    .bind(duration)
+    .execute(db.pool())
+    .await?
+    .rows_affected())
+}
+
+/// Gives the open span `id` new details, keeping its start; for a window that was in front for
+/// less than a moment. `false` when `id` is not an open span.
+pub async fn replace_open(db: &Db, id: i64, activity: NewActivity) -> AppResult<bool> {
+    Ok(sqlx::query(
+        r#"UPDATE activities SET source = ?2, app = ?3, bundle_id = ?4, title = ?5, url = ?6,
+           path = ?7, private = ?8 WHERE id = ?1 AND "end" IS NULL"#,
+    )
+    .bind(id)
+    .bind(activity.source)
+    .bind(activity.app)
+    .bind(activity.bundle_id)
+    .bind(activity.title)
+    .bind(activity.url)
+    .bind(activity.path)
+    .bind(activity.private)
+    .execute(db.pool())
+    .await?
+    .rows_affected()
+        > 0)
+}
+
 /// The latest open span of `source`.
 pub async fn open_by_source(db: &Db, source: &str) -> AppResult<Option<ActivityRow>> {
     Ok(sqlx::query_as(
@@ -102,6 +136,22 @@ pub async fn list_for_range(db: &Db, from: Ms, to: Ms) -> AppResult<Vec<Activity
     .bind(to)
     .fetch_all(db.pool())
     .await?)
+}
+
+/// The rows of `[from, to)` cut to it; an open row ends at `now`.
+pub async fn list_clipped(db: &Db, from: Ms, to: Ms, now: Ms) -> AppResult<Vec<ActivityRow>> {
+    Ok(list_for_range(db, from, to)
+        .await?
+        .into_iter()
+        .filter_map(|row| {
+            let (start, end) = clip(row.start, row.end, (from, to), now)?;
+            Some(ActivityRow {
+                start,
+                end: Some(end),
+                ..row
+            })
+        })
+        .collect())
 }
 
 /// The distinct sources of the rows in `[from, to)`, sorted.
@@ -204,6 +254,109 @@ mod tests {
         let rows = list_for_range(&db, 0, 1_000).await.unwrap();
         assert_eq!(rows[0].id, row.id);
         assert_eq!(rows[0].end, Some(500));
+    }
+
+    #[tokio::test]
+    async fn close_stale_ends_open_rows_of_the_source_after_their_start() {
+        let db = Db::open_memory().await.unwrap();
+        let closed = activity(&db, 100, Some(150), "Mail", "").await;
+        let open = activity(&db, 200, None, "Code", "").await;
+        let other = insert(&db, external("external:git", 200)).await.unwrap();
+
+        assert_eq!(close_stale(&db, "tracker", 2_000).await.unwrap(), 1);
+
+        let rows = list_for_range(&db, 0, 10_000).await.unwrap();
+        let end_of = |id: i64| rows.iter().find(|r| r.id == id).unwrap().end;
+        assert_eq!(end_of(closed.id), Some(150));
+        assert_eq!(end_of(open.id), Some(2_200));
+        assert_eq!(end_of(other), None);
+        assert_eq!(close_stale(&db, "tracker", 2_000).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn replace_open_changes_the_details_and_keeps_the_start() {
+        let db = Db::open_memory().await.unwrap();
+        let open = activity(&db, 100, None, "Mail", "Inbox").await;
+
+        assert!(
+            replace_open(&db, open.id, external("tracker", 999))
+                .await
+                .unwrap()
+        );
+
+        assert_eq!(
+            list_for_range(&db, 0, 1_000).await.unwrap(),
+            [ActivityRow {
+                app: "git".into(),
+                title: "commit".into(),
+                ..open
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn replace_open_leaves_closed_and_unknown_rows_alone() {
+        let db = Db::open_memory().await.unwrap();
+        let closed = activity(&db, 100, Some(200), "Mail", "Inbox").await;
+
+        assert!(
+            !replace_open(&db, closed.id, external("tracker", 100))
+                .await
+                .unwrap()
+        );
+        assert!(
+            !replace_open(&db, closed.id + 42, external("tracker", 100))
+                .await
+                .unwrap()
+        );
+
+        assert_eq!(list_for_range(&db, 0, 1_000).await.unwrap(), [closed]);
+    }
+
+    fn spans(rows: Vec<ActivityRow>) -> Vec<(Ms, Option<Ms>)> {
+        rows.into_iter().map(|r| (r.start, r.end)).collect()
+    }
+
+    #[tokio::test]
+    async fn list_clipped_cuts_rows_to_the_range() {
+        let db = Db::open_memory().await.unwrap();
+        activity(&db, 50, Some(150), "Left", "").await;
+        activity(&db, 120, Some(180), "Inside", "").await;
+        activity(&db, 170, Some(250), "Right", "").await;
+        activity(&db, 0, Some(1_000), "Spanning", "").await;
+
+        let rows = list_clipped(&db, 100, 200, 5_000).await.unwrap();
+
+        assert_eq!(
+            spans(rows),
+            [
+                (100, Some(200)),
+                (100, Some(150)),
+                (120, Some(180)),
+                (170, Some(200))
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn list_clipped_ends_open_rows_at_now_but_not_after_the_range() {
+        let db = Db::open_memory().await.unwrap();
+        activity(&db, 120, None, "Open", "").await;
+
+        for (now, expected) in [(150, (120, Some(150))), (500, (120, Some(200)))] {
+            let rows = list_clipped(&db, 100, 200, now).await.unwrap();
+            assert_eq!(spans(rows), [expected], "now {now}");
+        }
+    }
+
+    #[tokio::test]
+    async fn list_clipped_drops_rows_with_nothing_inside_the_range() {
+        let db = Db::open_memory().await.unwrap();
+        activity(&db, 0, Some(100), "Touching before", "").await;
+        activity(&db, 200, Some(300), "Touching after", "").await;
+        activity(&db, 180, None, "Open but not started yet", "").await;
+
+        assert!(list_clipped(&db, 100, 200, 150).await.unwrap().is_empty());
     }
 
     #[tokio::test]
