@@ -31,9 +31,13 @@ line number.
 ## Architecture
 - Rust owns all logic; React only renders. Only `api.ts` files call `invoke`/`listen` (`src/api/index.ts`
   for the core). Tests mock them.
-- `src-tauri/src/`: `lib.rs` (startup), `cli.rs` (argv), `ipc.rs` (single-instance socket), `launch.rs`,
-  `remote.rs`, `events.rs` (every event name and payload), `store/` (JSON files), `commands.rs`, `menu.rs`,
-  `tray.rs`, `window.rs`, `error.rs`, `lock.rs`; later `db/`, `capture/`, `tracker/` and the feature modules.
+- `src-tauri/src/`: `lib.rs` (startup), `cli/` (argv, replies, time and report words), `ipc.rs`
+  (single-instance socket), `pending.rs`, `launch.rs`, `remote.rs` (requests the page answers), `deep_link.rs`,
+  `events.rs` (every event name and payload), `state.rs` (`AppState`), `store/` (JSON files), `db/` (SQLite,
+  repositories, backup, `relocate.rs`), `capture/` (`Source`, `macos.rs`), `tracker/`, `activity/` (external
+  activity, deletion), `day/`, `calendar/` (week, month), `projects/`, `recordings/`, `timers/`, `rules/`,
+  `reports/`, `away_prompt/`, `mcp/`, `autostart.rs`, `commands.rs`, `menu.rs`, `tray.rs`, `window.rs`,
+  `error.rs`, `lock.rs`, `dev.rs` (debug builds), `test_support/` (fixtures, seed; tests and debug builds).
 - Errors cross the boundary as `{ kind, message, code }` (`error.rs`). IPC types are generated with ts-rs.
 - Timestamps are UTC milliseconds; days are local `YYYY-MM-DD`, computed in Rust.
 - No network crate, no HTTP; the CSP allows IPC only.
@@ -42,9 +46,13 @@ line number.
 ## Commands
 Test, lint and format-check commands run through the `ci` agent, never in the main context.
 - `bun run test`: Vitest and Rust unit tests
-- `bun run test:db`: `#[ignore]` integration tests on temp SQLite files (no Docker)
+- `bun run test:db`: `#[ignore]` integration tests on temp SQLite files (no Docker), including
+  `src-tauri/tests/performance.rs` (two seeded years, median limits per view)
 - `bun run lint`: IPC types drift check (`src/api/types.gen.ts`), tsc, ESLint and clippy on production code (warnings are errors)
-- `scripts/install-cli.sh` / `scripts/install-app.sh`: symlink the `timetracker` command and the app
+- `bun run release`: release `.app` and `.dmg` in `src-tauri/target/release/bundle/`, signed ad hoc
+- `scripts/install-cli.sh` / `scripts/install-app.sh` `[--debug]`: symlink the `timetracker` command into
+  `~/.local/bin` and the app into `~/Applications`; release build by default, `--debug` for the debug one
+- `timetracker dev seed --years N` (debug builds): sample history in the running app's database
 - `bun run build:app` + `scripts/dev/launch.sh`: debug build, restarted next to the terminal without stealing focus
 - `scripts/dev/js.sh` / `scripts/dev/screenshot.sh`: drive (store: `window.timetracker`) and capture the running window in the background
 

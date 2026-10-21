@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted (2026-10-21)
+Accepted (2026-10-21), implemented.
+
+Amended 2026-10-21: the function is `day::view(&DayInput, &ViewSettings) -> DayView`; `DayInput` holds the
+day, its bounds, now, the rows and the project and tag names. `day::commands` adds the rules' suggestions
+after layout.
 
 ## Context
 

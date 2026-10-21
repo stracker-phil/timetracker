@@ -72,11 +72,12 @@ app runs; a later launch or the tray shows it.
 `onboarding_done` sets it (`UiStateStore::finish_onboarding`); the page clears it with `set_ui_state` for
 "Show welcome again".
 
-The window is declared in `tauri.conf.json`: label `main`, 1200 × 800 (minimum 900 × 560), invisible until setup shows it, overlay title
-bar with hidden title, traffic lights at 16/20, transparent background with the `sidebar` vibrancy effect.
-No Rust code creates windows yet.
-
 ## Window lifecycle
+
+The main window is declared in `tauri.conf.json`: label `main`, 1200 × 800 (minimum 900 × 560), invisible
+until setup shows it, overlay title bar with hidden title, traffic lights at 16/20, transparent background with
+the `sidebar` vibrancy effect. The away prompt (`away_prompt/window.rs`) and the timer picker
+(`timers/picker.rs`) are built in Rust with `WebviewWindowBuilder`.
 
 | Event | Result |
 |---|---|

@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted (2026-10-21, inherited from DataBee ADR 0019)
+Accepted (2026-10-21), implemented. Inherited from DataBee ADR 0019.
+
+Amended 2026-10-21: `test_support` also compiles into debug builds, for `timetracker dev seed`
+(`cfg(any(test, feature = "test-util", debug_assertions))` in `lib.rs`). Release builds still contain no
+doubles.
 
 ## Context
 

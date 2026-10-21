@@ -44,10 +44,13 @@ link the release build, or the debug build with `--debug`.
 | `bun run test` | Vitest and Rust unit tests pass |
 | `bun run lint` | exits 0: types drift check, `tsc`, ESLint, `clippy -D warnings` |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml --check` | no differences |
-| `bun run test:db` | the `#[ignore]` integration tests on temp SQLite files pass (no Docker needed) |
+| `bun run test:db` | the `#[ignore]` integration tests on temp SQLite files pass (no Docker needed), including `src-tauri/tests/performance.rs`: two seeded years, the Day view under 50 ms, a month's report under 200 ms, week under 100 ms, month under 150 ms, the list under 50 ms (medians) |
+| `bun run release` | `TimeTracker.app` and a `.dmg` in `src-tauri/target/release/bundle/` |
 
 Try the app: `scripts/dev/launch.sh` starts the debug build next to the terminal without taking focus.
-Its data and settings live in `~/Library/Application Support/com.philippstracker.timetracker/`.
+Its data and settings live in `~/Library/Application Support/com.philippstracker.timetracker/`, shared with the
+release build. `timetracker dev seed --years 2` (debug builds) fills a dev data folder with sample history;
+never run it against real data.
 [docs/testing.md](docs/testing.md) covers the suites and the scripts that drive the running app.
 
 ## Adapt
@@ -62,5 +65,6 @@ Starting points for common requests:
 - **Windows 10/11:** as Linux, plus a named pipe instead of the Unix socket and `#[cfg(unix)]` around file
   permissions.
 - **Rename the app:** the Identity table in docs/adapting.md (bundle id, binary, URL scheme, socket, paths).
+- **Another capture source, no MCP server, no tray:** the recipes in docs/adapting.md.
 
 When done, run the Verify table on the target platform and update the docs pages your change affects.

@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted (2026-10-21, inherited from DataBee ADR 0017)
+Accepted (2026-10-21), implemented. Inherited from DataBee ADR 0017.
+
+Amended 2026-10-21: the supervisor is `tracker::supervise` (private, started by `tracker::start`); it restarts
+the loop after 5 s.
 
 ## Context
 

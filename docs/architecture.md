@@ -126,7 +126,9 @@ Recording an hour of activity:
 - **Window.** Closing the window hides it; the app keeps running and keeps its Dock icon. Quit only from the
   tray menu, ⌘Q, or `timetracker quit` ([backend: window lifecycle](backend.md#window-lifecycle),
   [ADR 0007](adr/0007-tracker-in-process-menu-bar-app.md)).
-- **Tray.** A template-image menu bar item with a status line, Open TimeTracker and Quit TimeTracker.
+- **Tray.** A template-image menu bar item with the tracker status line, Pause Tracking (or Resume Tracking),
+  Start Timer… (or Stop Timer), Recent Timers, Open TimeTracker and Quit TimeTracker
+  ([backend: tray](backend.md#tray)).
 - **Launch at login** through `tauri-plugin-autostart` (a LaunchAgent) with `--hidden`, so the app starts
   without showing the window.
 - **Launch requests are pulled, not pushed.** Rust queues launch events and emits a bare `launch` event;
@@ -137,9 +139,7 @@ Recording an hour of activity:
 
 ## Repository map
 
-The target shape. Each step of the implementation plan creates the folders it needs; the foundation
-(config dir, errors, JSON stores, logging, single instance, CLI, window lifecycle, tray, frontend shell)
-exists, the domain modules (`db/`, `capture/`, `tracker/` and everything after them) come with later steps.
+The shipped shape.
 
 ```
 src-tauri/
@@ -148,7 +148,7 @@ src-tauri/
   migrations/NNNN_*.sql      sqlx migrations
   src/lib.rs                 startup: config dir, CLI parse, socket handoff, lock, AppState, Tauri builder
   src/main.rs
-  src/cli/                   CLI: command tree (mod.rs), time words (time.rs), human replies (reply.rs)
+  src/cli/                   CLI: command tree (mod.rs), time words (time.rs), report words (report.rs), human replies (reply.rs)
   src/ipc.rs remote.rs pending.rs launch.rs   socket, dispatch and requests the page answers, launch queue
   src/events.rs              every event name and payload the backend emits
   src/state.rs               AppState
@@ -158,11 +158,12 @@ src-tauri/
   src/tray.rs menu.rs window.rs deep_link.rs   tray, native menu, window helpers, timetracker:// links
   src/dev.rs                 debug builds only: window frame, background launch, eval, dev seed
   src/test_support/          test helpers behind cfg(test) / feature test-util; seed.rs also in debug builds
-  src/db/                    Db (sqlx pool), migrations, time helpers, repositories
+  src/db/                    Db (sqlx pool), migrations, time helpers, repositories, backup, relocate.rs (moving the data folder)
   src/capture/               Source trait, Snapshot types, macos.rs (objc2), fake.rs (test-util)
   src/tracker/               state machine: spans, away, pause, status; the tokio task
-  src/activity/              external activity (rules, commands)
-  src/day/ calendar/ projects/ recordings/ rules/ reports/ timers/ away_prompt.rs mcp/
+  src/activity/              external activity (rules, commands), deletion with undo (delete.rs)
+  src/autostart.rs           launch at login
+  src/day/ calendar/ projects/ recordings/ rules/ reports/ timers/ away_prompt/ mcp/
   tests/                     integration tests on a temp SQLite file (performance.rs)
 src/
   main.tsx modules.ts App.tsx
@@ -173,7 +174,7 @@ src/
   registry/settingsPages.ts
   lib/ styles/ test/ assets/fonts/
 docs/                        this folder; adr/ holds the decision records
-scripts/dev/ scripts/install-*.sh
+scripts/dev/ scripts/install-*.sh   dev loop; links for the app and the command (release, or --debug)
 .claude/                     rules, agents, skills, settings
 ```
 
@@ -181,4 +182,5 @@ scripts/dev/ scripts/install-*.sh
 
 The code base targets **macOS on Apple Silicon** only. The platform-specific parts are listed in
 [adapting.md](adapting.md#platform-specific-code): the config path, Unix sockets, window vibrancy, the tray,
-the LaunchAgent and the dev scripts; later the capture module (objc2, Accessibility, Apple Events).
+the LaunchAgent, the global shortcut, the dev scripts and the capture module (objc2, Accessibility, Apple
+Events).

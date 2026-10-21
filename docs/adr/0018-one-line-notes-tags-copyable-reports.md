@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted (2026-10-21)
+Accepted (2026-10-21), implemented.
+
+Amended 2026-10-21: reports also group by day, week and month (`store::settings::Group`); project stays the
+default.
 
 ## Context
 

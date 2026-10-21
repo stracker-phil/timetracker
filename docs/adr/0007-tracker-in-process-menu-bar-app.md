@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted (2026-10-21)
+Accepted (2026-10-21), implemented.
+
+Amended 2026-10-21: the tracker is not a field of `AppState`; `lib.rs` hands it to Tauri as a managed
+`Arc<Tracker>` beside `AppState`, and `tracker::start` runs its loop.
 
 ## Context
 

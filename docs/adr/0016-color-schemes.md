@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-21, inherited from DataBee ADR 0024)
+Accepted (2026-10-21), implemented. Inherited from DataBee ADR 0024.
 
 ## Context
 

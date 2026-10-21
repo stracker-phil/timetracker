@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted (2026-10-21)
+Accepted (2026-10-21), implemented.
+
+Amended 2026-10-21: `capture::macos` also imports `objc2-core-foundation` (for `CFString` attribute names).
+The trait also has `permission()` and `request_permission()`, `snapshot` takes the `CaptureSettings`, and
+`Snapshot` carries its time `at`. `capture::fake` compiles under `cfg(test)` or `test-util`.
 
 ## Context
 

@@ -17,10 +17,12 @@ The app's name and ids live in a few places. Change them together.
 | Binary and CLI command | `timetracker` | Cargo package `name` in `src-tauri/Cargo.toml`; `cli/mod.rs` `name` and `EXAMPLES`; `cli/reply.rs` (`TimeTracker <version>` line); the README Scripting examples; `scripts/install-cli.sh`; `scripts/dev/launch.sh`; `.claude/settings.json` (`pkill -x timetracker`) |
 | Rust lib | `timetracker_lib` | `Cargo.toml` `[lib]`; `main.rs`; `tests/` |
 | URL scheme | `timetracker://` | `tauri.conf.json` `plugins.deep-link.desktop.schemes` (the bundler writes it into `Info.plist`); `deep_link.rs` (`link_message`, error text); the README Scripting examples |
-| Socket, lock | `timetracker.sock`, `timetracker.lock` | `lib.rs` `SOCKET_NAME`, `LOCK_NAME`; `scripts/dev/js.sh` (the socket) |
+| Socket, lock | `timetracker.sock`, `timetracker.lock` in the config dir | `lib.rs` `SOCKET_NAME`, `LOCK_NAME`; `scripts/dev/js.sh` (the socket) |
+| Data file | `timetracker.sqlite` in `<config dir>/data/` | `db/mod.rs` `DB_FILE`, `default_data_dir`; `db/relocate.rs` (the copy) |
+| LaunchAgent | `~/Library/LaunchAgents/TimeTracker.plist`, written by `tauri-plugin-autostart` and named after `productName` | `lib.rs` (`MacosLauncher::LaunchAgent`, `--hidden`), `autostart.rs` |
 | Config dir | `~/Library/Application Support/com.philippstracker.timetracker/` | `lib.rs` `config_dir()` |
 | Logs dir | `~/Library/Logs/com.philippstracker.timetracker/` | Tauri's `app_log_dir`, from the identifier |
-| Env vars | `TIMETRACKER_WINDOW_FRAME`, `TIMETRACKER_BACKGROUND`, `TIMETRACKER_DEV_TERMINAL`, `TIMETRACKER_SIGN_IDENTITY` | `dev.rs`, `window.rs`, `scripts/dev/launch.sh` |
+| Env vars | `TIMETRACKER_WINDOW_FRAME`, `TIMETRACKER_BACKGROUND` (debug builds), `TIMETRACKER_DEV_TERMINAL`, `TIMETRACKER_SIGN_IDENTITY`, `TIMETRACKER_CLI` | `dev.rs`, `window.rs`, `scripts/dev/launch.sh`, `scripts/dev/seed-day.sh` |
 | Store on `window` | `window.timetracker` | `src/main.tsx`, `src/vite-env.d.ts`, the dev scripts |
 | Icons | clock glyph | `design/icon.svg`, rasterized to `design/icon-1024.png` (`rsvg-convert -w 1024 -h 1024`); `src-tauri/icons/` regenerated with `bun tauri icon design/icon-1024.png` (only the desktop files are kept); tray template images in `src-tauri/icons/tray/` |
 | Author, license | Philipp Stracker, MIT | `Cargo.toml`, `package.json`, `LICENSE` |
@@ -29,26 +31,29 @@ The app's name and ids live in a few places. Change them together.
 
 | Piece | Where | Linux | Windows |
 |---|---|---|---|
+| **Capture**: frontmost app, window titles, document paths, idle time, sleep, lock and session notifications, the permission check and prompt | `capture/macos.rs`, the only module that imports `objc2`, `block2`, `objc2-foundation`, `objc2-app-kit`, `objc2-core-foundation`, `objc2-core-graphics`, `objc2-application-services` (macOS-only dependencies in `Cargo.toml`); `capture::new_source` | A new `Source`: X11/Wayland for the active window, `org.freedesktop.ScreenSaver` for idle and lock, logind for sleep | A new `Source`: `GetForegroundWindow` + `GetWindowText`, `GetLastInputInfo`, `WM_POWERBROADCAST` / `WTS_SESSION_LOCK` |
+| **Browser addresses**: AppleScript per browser through `NSAppleScript`; private-window detection | `capture/browsers.rs`, `capture/private.rs` (title rules, portable) | Not readable from outside; keep titles only, or a browser extension that sends `activity` over the socket | UI Automation on the address bar |
+| **Permissions**: Accessibility (window titles, document paths) and Automation per browser (the prompt shows `NSAppleEventsUsageDescription`) | `capture/macos.rs`; `src-tauri/Info.plist`; `tracker/commands.rs` `PRIVACY_SETTINGS` (the System Settings link); `PermissionDialog`, the welcome sheet | No prompts; `permission()` returns `granted` | Same |
+| **Tray**: template images (black with alpha, tinted by macOS), menu on left click, the timer picker placed under it | `tray.rs`, `src-tauri/icons/tray/`; `timers/picker.rs` (`Position::TrayCenter`, `tauri-plugin-positioner`) | Works with an `AppIndicator`; template tinting does not apply, ship colored icons | Works; colored icons |
+| **Launch at login**: `MacosLauncher::LaunchAgent` with `--hidden` | `lib.rs` (autostart plugin), `autostart.rs` | The plugin writes an XDG autostart entry | The plugin writes a registry key |
+| **Global shortcut** for the timer picker (`Settings.timerShortcut`, default `Mod+Shift+T`) | `timers/shortcut.rs` (`tauri-plugin-global-shortcut`), `store/keybindings.rs` `accelerator`, `is_global` | X11 works; Wayland needs the GlobalShortcuts portal | Works |
+| **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs | `src/commands/registry.ts`, `store/keybindings.rs` `key_label`, `menu.rs` | Map `Mod` to Ctrl | Same |
 | **Config dir** hard-coded to `~/Library/Application Support/<id>` | `lib.rs` `config_dir()`, `scripts/dev/js.sh` | `dirs::config_dir()`; it must resolve before Tauri starts, because the CLI and socket run first | `dirs::config_dir()` (`%APPDATA%\<id>`) |
-| **Unix socket** for the single-instance handoff | `ipc.rs` | Works as is; mind the ~108-byte path limit | A named pipe (`tokio::net::windows::named_pipe`) with the same line protocol |
-| **File permissions** (0600 files, 0700 dirs) | `ipc.rs`, `store/json_file.rs` | Works | Gate with `#[cfg(unix)]` |
-| **Window chrome**: overlay title bar, `trafficLightPosition`, `transparent`, `windowEffects: ["sidebar"]`, `macOSPrivateApi` | `tauri.conf.json`; Cargo feature `macos-private-api` | Ignored; give `html`/`.app` an opaque `--chrome` | `windowEffects: ["mica"]`, or an opaque background |
-| **Traffic-light space** and drag regions | the toolbar's left inset (`--traffic-lights`); `data-tauri-drag-region` in the toolbar | Remove the inset | Same |
+| **Unix socket** for the single-instance handoff, CLI and MCP `status`/`open_day` | `ipc.rs`, `mcp/ui.rs` | Works as is; mind the ~108-byte path limit | A named pipe (`tokio::net::windows::named_pipe`) with the same line protocol |
+| **File permissions** (0600 files, 0700 dirs) | `ipc.rs`, `store/json_file.rs`, `store/json_store.rs`, `db/mod.rs`, `db/relocate.rs` | Works | Gate with `#[cfg(unix)]` |
+| **Window chrome**: overlay title bar, `trafficLightPosition`, `transparent`, `windowEffects: ["sidebar"]`, `macOSPrivateApi` | `tauri.conf.json`; Cargo feature `macos-private-api`; `window.rs` `apply_window_theme` | Ignored; give `html`/`.app` an opaque `--chrome` | `windowEffects: ["mica"]`, or an opaque background |
+| **Traffic-light space** and drag regions | `--traffic-lights` in `theme.css`; `data-tauri-drag-region` in `Toolbar.tsx` | Remove the inset | Same |
 | **Menu**: app menu with Services, Hide, Show All | `menu.rs` | Move Settings and Quit into a File menu | Same |
-| **Permissions**: Accessibility (window titles, document paths) and Automation per browser (addresses; the prompt shows `NSAppleEventsUsageDescription` from `src-tauri/Info.plist`) | `capture/macos.rs`, `Info.plist` | No prompts; reading other windows needs X11 or compositor support | No prompts; browser addresses need UI Automation |
-| **Capture**: frontmost app, window titles (Accessibility), idle time, sleep and lock notifications, the permission prompt | `capture/macos.rs` behind the `Source` trait; `tracker/commands.rs` `PRIVACY_SETTINGS` | A new `Source`: X11/Wayland for the active window, `org.freedesktop.ScreenSaver` for idle and lock, logind for sleep | A new `Source`: `GetForegroundWindow` + `GetWindowText`, `GetLastInputInfo`, `WM_POWERBROADCAST` / `WTS_SESSION_LOCK` |
-| **Tray**: template image, menu on left click | `tray.rs` | Works with an `AppIndicator`; template tinting does not apply | Works; use a colored icon |
-| **Launch at login**: `MacosLauncher::LaunchAgent` | `lib.rs` (autostart plugin), `autostart.rs` | the plugin writes an XDG autostart entry | the plugin writes a registry key |
-| **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs | `src/commands/registry.ts`, `keybindings.rs` `key_label` | Map `Mod` to Ctrl | Same |
 | **Fonts**: bundled Geist and JetBrains Mono with `-apple-system` and `Menlo` fallbacks | `fonts.css`, `theme.css` | Works | Works |
-| **Bundle targets**: `app` and `dmg`, signed ad hoc (`bundle.macOS.signingIdentity: "-"`) | `tauri.conf.json` `bundle.targets`; `package.json` scripts | `deb`, `appimage` | `nsis`, `msi` |
-| **Dev and install scripts** (zsh, Swift, CoreGraphics, `screencapture`) | `scripts/` | Rewrite or use `bun tauri dev` | PowerShell |
-| **Capture** (later steps): objc2, Accessibility, Apple Events for browser URLs | `capture/macos.rs` | A new `Source` (X11/Wayland) | A new `Source` (Win32) |
+| **Bundle targets**: `app` and `dmg`, signed ad hoc (`bundle.macOS.signingIdentity: "-"`), `icon.icns` | `tauri.conf.json` `bundle`; `package.json` `release`, `build:app`, `app` | `deb`, `appimage` | `nsis`, `msi` (`icon.ico` is already generated) |
+| **Install and dev scripts** (zsh, `ln` into `~/Applications` and `~/.local/bin`, `codesign`, Swift, CoreGraphics, `screencapture`) | `scripts/install-app.sh`, `scripts/install-cli.sh`, `scripts/dev/` | Link into `~/.local/bin` and a `.desktop` file; rewrite the dev scripts or use `bun tauri dev` | PowerShell |
 | **Tests**: the setup pretends to be a Mac | `src/test-setup.ts` | Make the platform a parameter | Same |
 
-A port is done when `bun run test`, `bun run lint` and `bun run tauri build` pass on the target, and the app
-can: hand a second `timetracker` launch to the running window; hide on close and come back from the tray;
-start hidden at login; show its menus and shortcuts with the right modifier.
+A port is done when `bun run test`, `bun run lint`, `bun run test:db` and `bun run release` pass on the
+target, and the app can: track the frontmost app and its window title, and mark idle, sleep and lock as away;
+hand a second `timetracker` launch and every CLI command to the running instance; hide on close and come back
+from the tray; start hidden at login; open the timer picker with the global shortcut; show its menus and
+shortcuts with the right modifier; move the data folder.
 
 ## Common changes
 
@@ -58,8 +63,46 @@ start hidden at login; show its menus and shortcuts with the right modifier.
 | Add a menu item | [backend.md: native menu](backend.md#native-menu) |
 | Add a setting | [backend.md: persistence](backend.md#persistence) |
 | Add a Tauri command | [backend.md: Tauri commands](backend.md#tauri-commands) |
+| Add a CLI subcommand | [backend.md: command tree](backend.md#command-tree) |
 | Emit a new event | [backend.md: events](backend.md#events-to-the-page) |
 | Change colors or schemes | [frontend.md: styling](frontend.md#styling), [ux.md](ux.md#color-schemes-and-tokens) |
+| Add a capture source | [Another capture source](#another-capture-source) |
+| Feed activity from another app | [README: Scripting](../README.md#scripting); no code change |
+| Remove the MCP server | [Dropping the MCP server](#dropping-the-mcp-server) |
+| Remove the tray | [Dropping the tray](#dropping-the-tray) |
+
+### Another capture source
+
+A new platform implements `capture::Source` ([capture.md](capture.md#source)): `snapshot(capture)`,
+`idle_seconds`, `events` (a `broadcast` of `SystemEvent`s), `permission`, `request_permission`. Put it in
+`capture/<platform>.rs` behind `#[cfg(target_os = "…")]`, return it from a `capture::new_source` for that
+target, and keep `macos.rs` and the objc2 crates under `cfg(target_os = "macos")`. The tracker, exclusions,
+private-window redaction and every view are untouched. Test the tracker rules with `FakeSource`, the source
+by hand. Another *app* (a planner, a meeting tool) is not a source: it writes external activity through
+`timetracker activity` or the socket ([ADR 0009](adr/0009-external-activity-with-a-source.md)).
+
+### Dropping the MCP server
+
+`git rm -r src-tauri/src/mcp`; delete `pub mod mcp;` and the `CliOutcome::Mcp` arm in `lib.rs`; the `Mcp`
+variant of `Command` and of `CliOutcome` and its test in `cli/mod.rs` (and the `claude mcp add` line in
+`EXAMPLES`); `rmcp` in `Cargo.toml`; `McpSettings` and `Settings.mcp` in `store/settings.rs` (old files keep
+the key harmlessly); `binary_path` in `db/commands.rs` `DataInfo`; on the page, the MCP rows of the Data page
+in `src/components/settings/pages.tsx` (`mcpAddCommand`, "Expose activity to the MCP server") and their tests
+in `DataPage.test.tsx`, plus `mcp`/`binaryPath` in `src/test/settings.ts` and `src/test/data.ts`. Run
+`bun run types`, then `bun run lint && bun run test`, and drop the MCP sections of the README and
+[backend.md](backend.md#mcp-server).
+
+### Dropping the tray
+
+The tray is the only way back to a hidden window besides a second launch, so decide first: either quit on
+close (remove `prevent_close` in `lib.rs`'s `WindowEvent::CloseRequested` handler and the `ExitRequested`
+`prevent_exit`; tracking then stops with the window, against [ADR 0007](adr/0007-tracker-in-process-menu-bar-app.md)),
+or keep running and show the window on a Dock click (`RunEvent::Reopen` → `window::show_main`). Then delete
+`tray.rs`, `pub mod tray;` and `tray::install` in `lib.rs`, `tray::sync` in `tracker/mod.rs`, `tray::set_timer`
+in `timers/mod.rs`, `src-tauri/icons/tray/`, and the `tray-icon` features of `tauri` and
+`tauri-plugin-positioner` in `Cargo.toml`. The timer picker then opens at `Position::Center`
+(`timers/picker.rs`); pause, resume and timers stay in the window, the palette and the CLI. Update the Tray
+section of [backend.md](backend.md#tray).
 
 ## Conventions to keep
 
