@@ -1,8 +1,6 @@
 //! Fixtures for the Day view tests.
 
-use std::collections::HashMap;
-
-use super::{DayInput, DayView, Lane, ProjectRef, ViewSettings, view};
+use super::{DayInput, DayView, Lane, Names, ProjectRef, ViewSettings, view};
 use crate::db::activities::ActivityRow;
 use crate::db::away::{AwayReason, AwayRow};
 use crate::db::recordings::Recording;
@@ -168,8 +166,7 @@ pub fn input(activities: Vec<ActivityRow>, away: Vec<AwayRow>) -> DayInput {
         activities,
         away,
         recordings: Vec::new(),
-        projects: HashMap::new(),
-        tags: HashMap::new(),
+        names: Names::default(),
     }
 }
 

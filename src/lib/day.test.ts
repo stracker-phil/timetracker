@@ -1,6 +1,6 @@
 import process from "node:process";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { addDays, daysBetween, formatDayLabel, isToday, today } from "./day";
+import { addDays, addMonths, daysBetween, formatDayLabel, isToday, today } from "./day";
 
 describe("day helpers", () => {
   afterEach(() => vi.useRealTimers());
@@ -41,6 +41,21 @@ describe("day helpers", () => {
           restore();
         }
       });
+    });
+  });
+
+  describe("addMonths", () => {
+    it.each([
+      ["2026-10-21", 1, "2026-11-01"],
+      ["2026-10-21", -1, "2026-09-01"],
+      ["2026-12-31", 1, "2027-01-01"],
+      ["2026-01-15", -1, "2025-12-01"],
+      ["2026-01-31", 1, "2026-02-01"],
+      ["2026-03-31", -1, "2026-02-01"],
+      ["2026-10-21", 0, "2026-10-01"],
+      ["2026-10-21", 14, "2027-12-01"],
+    ])("%s plus %i months is %s", (day, by, expected) => {
+      expect(addMonths(day, by)).toBe(expected);
     });
   });
 

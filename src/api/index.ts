@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -60,6 +60,11 @@ export const api = {
   /** Apps the tracker recorded in the last `days` days, most time first. */
   appsSeen: (days: number) => invoke<AppSeen[]>("apps_seen", { days }),
   appsList: () => invoke<KnownApp[]>("apps_list"),
+  weekView: (day: string) => invoke<WeekView>("week_view", { day }),
+  monthView: (day: string) => invoke<MonthView>("month_view", { day }),
+  /** To `day` at the same time of day; Rust keeps the length. */
+  recordingMove: (id: string, day: string, overlap: Overlap) => invoke<Recording>("recording_move", { id, day, overlap }),
+  recordingCopy: (id: string, day: string, overlap: Overlap) => invoke<Recording>("recording_copy", { id, day, overlap }),
   reportRun: (filter: ReportFilter) => invoke<ReportResult>("report_run", { filter }),
   /** The report as the plain text the CLI prints. */
   reportText: (filter: ReportFilter) => invoke<string>("report_text", { filter }),

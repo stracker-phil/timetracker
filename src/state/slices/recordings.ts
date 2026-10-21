@@ -10,7 +10,8 @@ export interface Selection {
   blockIds: string[];
 }
 
-export type Editor = { mode: "create"; start: number; end: number } | { mode: "edit"; id: string };
+/** `at`: a span of the recording, to find it by; the shown day's block when absent. */
+export type Editor = { mode: "create"; start: number; end: number } | { mode: "edit"; id: string; at?: { start: number; end: number } };
 
 export interface RecordingsSlice {
   selection: Selection | null;
@@ -32,6 +33,10 @@ export interface RecordingsSlice {
   createRecording: (input: RecordingInput) => Promise<Recording | null>;
   updateRecording: (id: string, patch: RecordingPatch) => Promise<Recording | null>;
   deleteRecording: (id: string) => Promise<void>;
+  /** To `day` at the same time of day. */
+  moveRecording: (id: string, day: string) => Promise<void>;
+  /** A copy on `day` at the same time of day. */
+  copyRecording: (id: string, day: string) => Promise<void>;
   undo: () => Promise<void>;
   redo: () => Promise<void>;
 }
@@ -156,6 +161,16 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
         const saved = await writing("Could not change the recording", (overlap) => api.recordingUpdate(id, patch, overlap));
         if (saved) undoToast("Recording changed");
         return saved;
+      },
+
+      async moveRecording(id, day) {
+        const moved = await writing("Could not move the recording", (overlap) => api.recordingMove(id, day, overlap));
+        if (moved) undoToast("Recording moved");
+      },
+
+      async copyRecording(id, day) {
+        const copy = await writing("Could not copy the recording", (overlap) => api.recordingCopy(id, day, overlap));
+        if (copy) undoToast("Recording copied");
       },
 
       async deleteRecording(id) {

@@ -22,8 +22,8 @@ async function renderApp(patch: Parameters<typeof resetStore>[0] = {}) {
   await screen.findByRole("button", { name: "13 px" });
 }
 
-/** The Day and Reports views are regions, every other view a placeholder or page with a level-1 heading. */
-const mainHeading = (name: string) => (name === "Day" || name === "Reports" ? screen.getByRole("region", { name }) : screen.getByRole("heading", { level: 1, name }));
+/** The Day, Week, Month and Reports views are regions, the Projects page has a level-1 heading. */
+const mainHeading = (name: string) => (["Day", "Week", "Month", "Reports"].includes(name) ? screen.getByRole("region", { name }) : screen.getByRole("heading", { level: 1, name }));
 const sidebarEntry = (name: string) => within(screen.getByRole("navigation", { name: "Views" })).getByRole("button", { name: new RegExp(`^${name}`) });
 
 describe("App", () => {

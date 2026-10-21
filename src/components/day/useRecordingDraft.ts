@@ -20,7 +20,7 @@ export function useRecordingDraft(editor: Editor) {
 
   useEffect(() => {
     if (editor.mode !== "edit") return;
-    const block = useStore.getState().dayView?.recordings.find((r) => r.id === editor.id);
+    const block = editor.at ?? useStore.getState().dayView?.recordings.find((r) => r.id === editor.id);
     if (!block) return;
     // The block is cut to the day; the editor edits the whole recording.
     api.recordingsList(block.start, block.end).then(

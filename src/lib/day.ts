@@ -13,6 +13,13 @@ export function addDays(day: string, by: number): string {
   return formatDay(new Date(y, m, d + by).getTime());
 }
 
+/** The first day of the month `by` months from `day`'s. */
+export function addMonths(day: string, by: number): string {
+  const [y, m] = parts(day);
+  const first = new Date(y, m + by, 1);
+  return `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
 export function today(): string {
   return formatDay(Date.now());
 }

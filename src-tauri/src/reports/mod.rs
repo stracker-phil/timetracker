@@ -431,7 +431,7 @@ pub fn day_label(day: Day) -> String {
 }
 
 /// `Week 43 · 20 – 26 Oct 2026`; the month and year repeat only where the week crosses them.
-fn week_label(start: Day) -> String {
+pub(crate) fn week_label(start: Day) -> String {
     let (first, last) = (start.date(), add_days(start, 6).date());
     let span = if first.year() != last.year() {
         format!(

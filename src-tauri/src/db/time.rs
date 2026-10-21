@@ -99,6 +99,23 @@ impl Day {
     }
 }
 
+/// The instant on `day` with the local wall-clock time `ms` has; see `same_time_on_in`.
+pub fn same_time_on(ms: Ms, day: Day) -> Ms {
+    same_time_on_in(ms, day, &Local)
+}
+
+/// A time the clocks repeat takes its first pass; one they skip, the first valid minute after it.
+pub fn same_time_on_in<Tz: TimeZone>(ms: Ms, day: Day, tz: &Tz) -> Ms {
+    let utc = chrono::DateTime::from_timestamp_millis(ms).unwrap_or_default();
+    let mut local = day.0.and_time(utc.with_timezone(tz).time());
+    loop {
+        match tz.from_local_datetime(&local) {
+            LocalResult::Single(t) | LocalResult::Ambiguous(t, _) => return t.timestamp_millis(),
+            LocalResult::None => local += chrono::TimeDelta::minutes(1),
+        }
+    }
+}
+
 /// The first instant of a local date. An ambiguous midnight takes the earlier instant; a skipped one
 /// (a DST gap at midnight) takes the first valid local time after the gap.
 fn midnight<Tz: TimeZone>(date: NaiveDate, tz: &Tz) -> Ms {
@@ -265,6 +282,65 @@ mod tests {
         for (d, first) in [("2026-10-21", "2026-10-01"), ("2026-02-01", "2026-02-01")] {
             assert_eq!(day(d).month_start(), day(first), "{d}");
         }
+    }
+
+    #[test]
+    fn from_date_wraps_a_calendar_date() {
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 10, 21).unwrap();
+        assert_eq!(Day::from_date(date), day("2026-10-21"));
+        assert_eq!(day("2026-10-21").date(), date);
+    }
+
+    #[test]
+    fn same_time_on_an_ordinary_day_keeps_the_wall_clock_time() {
+        // 2026-10-21 09:30 Vienna (UTC+2) is 07:30 UTC.
+        let ms = utc_ms(2026, 10, 21, 7) + 30 * 60_000;
+        // 2026-11-10 09:30 Vienna (UTC+1) is 08:30 UTC.
+        assert_eq!(
+            same_time_on_in(ms, day("2026-11-10"), &Vienna),
+            utc_ms(2026, 11, 10, 8) + 30 * 60_000
+        );
+        assert_eq!(same_time_on_in(ms, day("2026-10-21"), &Vienna), ms);
+        assert_eq!(
+            same_time_on_in(ms, day("2026-10-22"), &UTC),
+            utc_ms(2026, 10, 22, 7) + 30 * 60_000
+        );
+    }
+
+    #[test]
+    fn same_time_on_a_skipped_time_takes_the_first_valid_minute_after_the_gap() {
+        // 2026-10-20 02:30 Vienna (UTC+2) is 00:30 UTC; 02:30 does not exist on 2026-03-29.
+        let ms = utc_ms(2026, 10, 20, 0) + 30 * 60_000;
+        assert_eq!(
+            same_time_on_in(ms, day("2026-03-29"), &Vienna),
+            utc_ms(2026, 3, 29, 1)
+        );
+    }
+
+    #[test]
+    fn same_time_on_a_repeated_time_takes_the_first_pass() {
+        // 2026-10-20 02:30 Vienna is 00:30 UTC; on 2026-10-25 02:30 happens at 00:30 UTC (CEST) and 01:30 UTC (CET).
+        let ms = utc_ms(2026, 10, 20, 0) + 30 * 60_000;
+        assert_eq!(
+            same_time_on_in(ms, day("2026-10-25"), &Vienna),
+            utc_ms(2026, 10, 25, 0) + 30 * 60_000
+        );
+    }
+
+    #[test]
+    fn same_time_from_a_dst_day_to_an_ordinary_day_keeps_the_wall_clock_time() {
+        // 2026-03-29 15:00 Vienna (UTC+2) is 13:00 UTC.
+        let ms = utc_ms(2026, 3, 29, 13);
+        assert_eq!(
+            same_time_on_in(ms, day("2026-03-30"), &Vienna),
+            utc_ms(2026, 3, 30, 13)
+        );
+        // 2026-10-25 15:00 Vienna (UTC+1) is 14:00 UTC; 2026-10-26 15:00 is also UTC+1.
+        let ms = utc_ms(2026, 10, 25, 14);
+        assert_eq!(
+            same_time_on_in(ms, day("2026-10-24"), &Vienna),
+            utc_ms(2026, 10, 24, 13)
+        );
     }
 
     #[test]

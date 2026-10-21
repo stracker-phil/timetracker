@@ -142,6 +142,12 @@ export type DataKind = "activity" | "recordings" | "projects" | "tags" | "rules"
  */
 export type Day = string;
 
+export type DayColumn = { day: Day, bounds: [number, number], 
+/**
+ * `Mon 20`.
+ */
+label: string, isToday: boolean, recordings: Array<RecordingBlock>, totalMs: number, trackedMs: number, };
+
 export type DayTotals = { 
 /**
  * The day's part of its recordings.
@@ -220,6 +226,26 @@ export type LaunchEvent = { "type": "error", message: string, } | { "type": "act
 
 export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
 
+export type MonthDay = { day: Day, inMonth: boolean, isToday: boolean, recordedMs: number, 
+/**
+ * The projects with the most time that day, most first.
+ */
+projects: Array<ProjectShare>, };
+
+export type MonthView = { monthStart: Day, 
+/**
+ * `October 2026`.
+ */
+label: string, 
+/**
+ * Monday to Sunday rows covering the month.
+ */
+weeks: Array<Array<MonthDay>>, 
+/**
+ * The month's own days only.
+ */
+totalMs: number, };
+
 /**
  * How short a block may be before the timeline hides it as noise.
  */
@@ -269,6 +295,8 @@ lastUsed: number | null,
  * Recorded time in the 30 days before now; a running recording counts until now.
  */
 recordedMs30d: number, };
+
+export type ProjectShare = { projectId: string, color: string, shade: number, ms: number, };
 
 /**
  * Presets stay relative, so a saved "this month" report shows the current month.
@@ -482,3 +510,9 @@ timelineZoom: number,
 paneSizes: { [key in string]: number }, };
 
 export type UndoStatus = { undoLabel: string | null, redoLabel: string | null, };
+
+export type WeekView = { weekStart: Day, 
+/**
+ * `Week 43 · 19 – 25 Oct 2026`.
+ */
+label: string, days: Array<DayColumn>, totalMs: number, trackedMs: number, };

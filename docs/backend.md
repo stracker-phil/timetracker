@@ -121,6 +121,9 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `recording_create` (`recordings/commands.rs`) | `input: RecordingInput { projectId, start, end, note, tagIds }, overlap: Overlap` | `Recording` (snapped) | `invalid_input` (`field`), `overlap` (`details`: the recordings in the way), `not_found`, `db` |
 | `recording_update` | `id, patch: RecordingPatch, overlap` | `Recording` | the same |
 | `recording_delete` | `id` | – | `not_found`, `db` |
+| `recording_move` / `recording_copy` | `id, day: Day, overlap` | `Recording`: moved, or a new copy, to `day` at the same local time (`same_time_on`, DST-safe) with the same length, through `update` / `create` (undoable; a recording over midnight moves with its start day) | `invalid_input` (the running timer), `overlap`, `not_found`, `db` |
+| `week_view` (`calendar/commands.rs`) | `day: Day` | `WeekView { weekStart, label, days: DayColumn[], totalMs, trackedMs }`; `DayColumn { day, bounds, label, isToday, recordings, totalMs, trackedMs }` | `invalid_input`, `db` |
+| `month_view` | `day: Day` | `MonthView { monthStart, label, weeks: MonthDay[][], totalMs }` (whole weeks Monday to Sunday; `totalMs` counts the month's own days); `MonthDay { day, inMonth, isToday, recordedMs, projects }` (the top three by time, with color and shade) | `invalid_input`, `db` |
 | `recordings_list` | `from: Ms, to: Ms` | `Recording[]` sharing time with the range | `db` |
 | `recording_snap` | `start: Ms, end: Ms` | `Span` as a write would snap it (the drag ghost) | – |
 | `undo` / `redo` | – | the label undone or redone, `null` when there was none | `overlap`, `db` |
@@ -218,6 +221,12 @@ The Day view gets the day's recordings too (`day::commands::load` reads them wit
 tags): `DayView.recordings` (`RecordingBlock`: clipped span, project, client, color and shade, note, tag
 names, `running`, `clippedStart`/`clippedEnd`), `ActivityBlock.covered` when at least half of a block lies
 inside recordings, and `totals.recordedMs`.
+
+## Week and month
+
+`calendar/mod.rs` reads the range's recordings (and, for the week, activity) once and cuts them per day with
+the Day view's own `day::recording_blocks` and `day::tracked_ms`, so a recording over midnight shows in both
+days' columns with its parts.
 
 ## Reports
 

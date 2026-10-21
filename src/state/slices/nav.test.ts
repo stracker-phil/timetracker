@@ -33,20 +33,48 @@ describe("nav slice", () => {
       expect(state().view).toBe("day");
     });
 
-    it("prevDay and nextDay step one calendar day, across month ends", () => {
+    it("step moves one calendar day in the Day view, across month ends", () => {
       resetStore({ day: "2026-03-01" });
-      state().prevDay();
+      state().step(-1);
       expect(state().day).toBe("2026-02-28");
-      state().nextDay();
-      state().nextDay();
+      state().step(1);
+      state().step(1);
       expect(state().day).toBe("2026-03-02");
     });
 
-    it("goToday returns to today", () => {
-      resetStore({ day: "2026-01-05", view: "month" });
+    it.each([
+      [1, "2026-03-17"],
+      [-1, "2026-03-03"],
+    ] as const)("step(%i) moves seven days in the Week view", (by, expected) => {
+      resetStore({ day: "2026-03-10", view: "week" });
+      state().step(by);
+      expect(state().day).toBe(expected);
+      expect(state().view).toBe("week");
+    });
+
+    it.each([
+      ["2026-03-10", 1, "2026-04-01"],
+      ["2026-03-10", -1, "2026-02-01"],
+      ["2026-12-20", 1, "2027-01-01"],
+      ["2026-01-31", -1, "2025-12-01"],
+    ] as const)("step from %s by %i goes to %s in the Month view", (from, by, expected) => {
+      resetStore({ day: from, view: "month" });
+      state().step(by);
+      expect(state().day).toBe(expected);
+      expect(state().view).toBe("month");
+    });
+
+    it("remembers the day a step arrives at", () => {
+      resetStore({ day: "2026-03-10", view: "week" });
+      state().step(1);
+      expect(state().uiState.lastDay).toBe("2026-03-17");
+    });
+
+    it.each(["day", "week", "month"] as const)("goToday returns to today and keeps the %s view", (view) => {
+      resetStore({ day: "2026-01-05", view });
       state().goToday();
       expect(state().day).toBe("2026-10-21");
-      expect(state().view).toBe("day");
+      expect(state().view).toBe(view);
     });
 
     it("remembers the shown day and writes it after the debounce", () => {

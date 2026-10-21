@@ -151,7 +151,7 @@ describe("DayPage", () => {
     it("disables Today on today and enables it on another day", async () => {
       renderDay(dayView({ day: today() }));
       expect(screen.getByRole("button", { name: "Today" })).toBeDisabled();
-      act(() => useStore.getState().prevDay());
+      act(() => useStore.getState().step(-1));
       expect(screen.getByRole("button", { name: "Today" })).toBeEnabled();
     });
   });
@@ -646,6 +646,7 @@ describe("DayPage", () => {
         fireEvent.pointerDown(lanesEl(), { button: 0, clientX: 300, clientY: px("09:02") });
         fireEvent.pointerMove(lanesEl(), { clientX: 300, clientY: px("10:28") });
         await screen.findByText("09:00–10:30");
+        await vi.waitFor(() => expect(useStore.getState().selectionSnap).toEqual({ start: at("09:00"), end: at("10:30") }));
         fireEvent.pointerUp(lanesEl(), { clientX, clientY: px("10:28") });
       }
 

@@ -2,9 +2,11 @@ import { api, TEXT_SIZES, type Settings } from "../api";
 import { copyReport, promptSaveReport } from "../components/reports/actions";
 import { VIEWS } from "../components/views";
 import { stepBlock, stepLane } from "../lib/blockFocus";
-import { TIMELINE_ZOOM, useStore } from "../state/store";
+import { TIMELINE_ZOOM, useStore, type View } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, isTextInput, registerCommands, resolveKeydown, setOverrides, type Command } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
+
+const CALENDAR_VIEWS: View[] = ["day", "week", "month"];
 
 export * from "./registry";
 export * from "./scopes";
@@ -12,8 +14,10 @@ export * from "./scopes";
 /** Registers the core scopes; safe to call again (tests and re-installs do). A view's scope is active while it shows. */
 export function registerCoreScopes() {
   registerScope({ id: "global", parent: null, label: "Everywhere", isActive: () => true });
+  registerScope({ id: "calendar", parent: "global", label: "Day, Week and Month", isActive: () => CALENDAR_VIEWS.includes(useStore.getState().view) });
   for (const { id, label } of VIEWS) {
-    registerScope({ id, parent: "global", label, isActive: () => useStore.getState().view === id });
+    const parent = CALENDAR_VIEWS.includes(id) ? "calendar" : "global";
+    registerScope({ id, parent, label, isActive: () => useStore.getState().view === id });
   }
 }
 
@@ -105,9 +109,9 @@ const APP_COMMANDS: Command[] = [
   { id: "window.hide", title: "Close window", scope: "global", defaultBinding: "Mod+W", menu: true, run: () => void api.hideWindow() },
   { id: "tracker.pause", title: "Pause tracking", scope: "global", when: () => isTracking(), run: () => void useStore.getState().pauseTracker("resumed") },
   { id: "tracker.resume", title: "Resume tracking", scope: "global", when: () => useStore.getState().tracker?.state.kind === "paused", run: () => void useStore.getState().resumeTracker() },
-  { id: "nav.prevDay", title: "Previous day", scope: "day", defaultBinding: "Mod+ArrowLeft", run: () => useStore.getState().prevDay() },
-  { id: "nav.nextDay", title: "Next day", scope: "day", defaultBinding: "Mod+ArrowRight", run: () => useStore.getState().nextDay() },
-  { id: "nav.today", title: "Go to today", scope: "day", defaultBinding: "T", run: () => useStore.getState().goToday() },
+  { id: "nav.prev", title: "Previous day, week or month", scope: "calendar", defaultBinding: "Mod+ArrowLeft", run: () => useStore.getState().step(-1) },
+  { id: "nav.next", title: "Next day, week or month", scope: "calendar", defaultBinding: "Mod+ArrowRight", run: () => useStore.getState().step(1) },
+  { id: "nav.today", title: "Go to today", scope: "calendar", defaultBinding: "T", run: () => useStore.getState().goToday() },
   { id: "day.nextBlock", title: "Next block", scope: "day", defaultBinding: "J", run: () => moveFocus(stepBlock, 1) },
   { id: "day.prevBlock", title: "Previous block", scope: "day", defaultBinding: "K", run: () => moveFocus(stepBlock, -1) },
   { id: "day.prevLane", title: "Block in the lane to the left", scope: "day", defaultBinding: "H", run: () => moveFocus(stepLane, -1) },

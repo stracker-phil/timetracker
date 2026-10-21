@@ -3,7 +3,7 @@ use tauri::{AppHandle, Manager, State};
 use super::undo::UndoStatus;
 use super::{Change, Overlap, RecordingInput, Recordings, Span, snap_span};
 use crate::db::recordings::{self, Recording, RecordingPatch};
-use crate::db::time::Ms;
+use crate::db::time::{Day, Ms};
 use crate::error::AppResult;
 use crate::events::{self, DataKind};
 use crate::state::AppState;
@@ -44,6 +44,28 @@ pub async fn recording_update(
     overlap: Overlap,
 ) -> AppResult<Recording> {
     changing(&app, async |s| s.update(&id, patch, overlap).await).await
+}
+
+/// Moves the recording to `day` at the same local time; it keeps its length.
+#[tauri::command]
+pub async fn recording_move(
+    app: AppHandle,
+    id: String,
+    day: Day,
+    overlap: Overlap,
+) -> AppResult<Recording> {
+    changing(&app, async |s| s.move_to_day(&id, day, overlap).await).await
+}
+
+/// A copy of the recording on `day` at the same local time.
+#[tauri::command]
+pub async fn recording_copy(
+    app: AppHandle,
+    id: String,
+    day: Day,
+    overlap: Overlap,
+) -> AppResult<Recording> {
+    changing(&app, async |s| s.copy_to_day(&id, day, overlap).await).await
 }
 
 #[tauri::command]

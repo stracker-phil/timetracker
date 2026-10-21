@@ -4,7 +4,7 @@ use std::time::Instant;
 use tauri::State;
 
 use super::apps::{KnownApp, known_apps};
-use super::{DayInput, DayView, ProjectRef, ViewSettings, view};
+use super::{DayInput, DayView, Names, ProjectRef, ViewSettings, view};
 use crate::db::time::{Day, Ms, now_ms};
 use crate::db::{Db, activities, away, clients, projects, recordings, tags};
 use crate::error::AppResult;
@@ -21,17 +21,23 @@ pub async fn load(db: &Db, day: Day, settings: &Settings, now: Ms) -> AppResult<
         activities: activities::list_for_range(db, bounds.0, bounds.1).await?,
         away: away::list_for_range(db, bounds.0, bounds.1).await?,
         recordings: recordings::list_for_range(db, bounds.0, bounds.1).await?,
+        names: names(db).await?,
+    };
+    Ok(view(&input, &ViewSettings::from(settings)))
+}
+
+/// Archived projects and clients included: old recordings still show their names.
+pub async fn names(db: &Db) -> AppResult<Names> {
+    Ok(Names {
         projects: project_refs(db).await?,
         tags: tags::list(db)
             .await?
             .into_iter()
             .map(|t| (t.id, t.name))
             .collect(),
-    };
-    Ok(view(&input, &ViewSettings::from(settings)))
+    })
 }
 
-/// Archived projects and clients included: old recordings still show their names.
 async fn project_refs(db: &Db) -> AppResult<HashMap<String, ProjectRef>> {
     let clients = clients::list(db, true).await?;
     Ok(projects::list(db, true)

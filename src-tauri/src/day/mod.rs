@@ -62,7 +62,13 @@ pub struct DayInput {
     pub activities: Vec<ActivityRow>,
     pub away: Vec<AwayRow>,
     pub recordings: Vec<Recording>,
-    /// By project id: what a recording block shows of its project.
+    pub names: Names,
+}
+
+/// What recording blocks show of their projects and tags.
+#[derive(Debug, Clone, Default)]
+pub struct Names {
+    /// By project id.
     pub projects: HashMap<String, ProjectRef>,
     /// Tag names by id.
     pub tags: HashMap<String, String>,
@@ -215,7 +221,7 @@ pub struct DayTotals {
 
 pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
     let rows = clipped_blocks(input);
-    let recordings = recording_blocks(input);
+    let recordings = recording_blocks(&input.recordings, &input.names, input.bounds, input.now);
     let away = away_blocks(input);
 
     // Totals and gaps describe what was captured, before any setting hides or merges it.
@@ -225,12 +231,7 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
     let recorded: Vec<(Ms, Ms)> = recordings.iter().map(|r| (r.start, r.end)).collect();
     let totals = DayTotals {
         recorded_ms: recorded.iter().map(|(start, end)| end - start).sum(),
-        tracked_ms: union_length(
-            rows.iter()
-                .filter(|b| b.source == TRACKER_SOURCE)
-                .map(span)
-                .collect(),
-        ),
+        tracked_ms: tracked_ms(&input.activities, input.bounds, input.now),
         away_ms: union_length(away_spans.clone()),
     };
     let gaps = gaps(&activity, &away_spans);
@@ -295,17 +296,22 @@ fn hidden_apps(rows: &[ActivityBlock], settings: &ViewSettings) -> Vec<HiddenApp
     hidden
 }
 
-fn recording_blocks(input: &DayInput) -> Vec<RecordingBlock> {
-    let mut blocks: Vec<RecordingBlock> = input
-        .recordings
+/// `recordings` cut to `bounds`, by start; a running one ends at `now`.
+pub fn recording_blocks(
+    recordings: &[Recording],
+    names: &Names,
+    bounds: (Ms, Ms),
+    now: Ms,
+) -> Vec<RecordingBlock> {
+    let mut blocks: Vec<RecordingBlock> = recordings
         .iter()
         .filter_map(|r| {
-            let (start, end) = clip(r.start, r.end, input.bounds, input.now)?;
-            let project = input.projects.get(&r.project_id);
+            let (start, end) = clip(r.start, r.end, bounds, now)?;
+            let project = names.projects.get(&r.project_id);
             let mut tags: Vec<String> = r
                 .tag_ids
                 .iter()
-                .filter_map(|id| input.tags.get(id).cloned())
+                .filter_map(|id| names.tags.get(id).cloned())
                 .collect();
             tags.sort_by_key(|t| t.to_lowercase());
             Some(RecordingBlock {
@@ -320,8 +326,8 @@ fn recording_blocks(input: &DayInput) -> Vec<RecordingBlock> {
                 note: r.note.clone(),
                 tags,
                 running: r.end.is_none(),
-                clipped_start: r.start < input.bounds.0,
-                clipped_end: r.end.unwrap_or(input.now) > input.bounds.1,
+                clipped_start: r.start < bounds.0,
+                clipped_end: r.end.unwrap_or(now) > bounds.1,
             })
         })
         .collect();
@@ -407,6 +413,17 @@ fn union(mut spans: Vec<(Ms, Ms)>) -> Vec<(Ms, Ms)> {
         }
     }
     merged
+}
+
+/// Tracker activity inside `bounds`, overlaps counted once; external sources are not tracked time.
+pub fn tracked_ms(activities: &[ActivityRow], bounds: (Ms, Ms), now: Ms) -> Ms {
+    union_length(
+        activities
+            .iter()
+            .filter(|a| a.source == TRACKER_SOURCE)
+            .filter_map(|a| clip(a.start, a.end, bounds, now))
+            .collect(),
+    )
 }
 
 fn union_length(spans: Vec<(Ms, Ms)>) -> Ms {
@@ -1140,7 +1157,7 @@ mod tests {
             },
             recording("early", mins(60), Some(mins(90))),
         ]);
-        input.projects.insert(
+        input.names.projects.insert(
             "p1".into(),
             ProjectRef {
                 client_name: Some("Acme".into()),
@@ -1149,8 +1166,8 @@ mod tests {
                 ..project_ref("Portal")
             },
         );
-        input.tags.insert("t-zeta".into(), "zeta".into());
-        input.tags.insert("t-alpha".into(), "Alpha".into());
+        input.names.tags.insert("t-zeta".into(), "zeta".into());
+        input.names.tags.insert("t-alpha".into(), "Alpha".into());
 
         let view = view(&input, &settings());
 
@@ -1228,14 +1245,80 @@ mod tests {
     }
 
     #[test]
+    fn tracked_ms_counts_overlapping_tracker_activity_once() {
+        let activities = rows(&[
+            (0, 60, "Code", "a"),
+            (30, 90, "Mail", "b"),
+            (120, 150, "Code", "c"),
+        ]);
+
+        assert_eq!(
+            tracked_ms(&activities, (0, DAY_LENGTH), NOW),
+            mins(90) + mins(30)
+        );
+    }
+
+    #[test]
+    fn tracked_ms_excludes_external_sources() {
+        let activities = vec![
+            activity(1, 0, Some(mins(60)), "Code", "a"),
+            from_source(
+                activity(2, mins(30), Some(mins(120)), "Cal", "m"),
+                "external:calendar",
+            ),
+        ];
+
+        assert_eq!(tracked_ms(&activities, (0, DAY_LENGTH), NOW), mins(60));
+    }
+
+    #[test]
+    fn tracked_ms_is_clipped_to_the_bounds() {
+        let activities = rows(&[
+            (0, 60, "Code", "a"),
+            (100, 200, "Code", "b"),
+            (300, 400, "Code", "c"),
+        ]);
+
+        assert_eq!(
+            tracked_ms(&activities, (mins(30), mins(150)), NOW),
+            mins(30) + mins(50)
+        );
+    }
+
+    #[test]
+    fn tracked_ms_of_an_open_span_runs_to_now_within_the_bounds() {
+        let activities = vec![activity(1, mins(60), None, "Code", "a")];
+
+        for (now, bounds_end, expected) in [
+            (mins(90), DAY_LENGTH, mins(30)),
+            (3 * DAY_LENGTH, DAY_LENGTH, DAY_LENGTH - mins(60)),
+            (mins(30), DAY_LENGTH, 0),
+        ] {
+            assert_eq!(
+                tracked_ms(&activities, (0, bounds_end), now),
+                expected,
+                "now {now}"
+            );
+        }
+    }
+
+    #[test]
+    fn tracked_ms_of_nothing_is_zero() {
+        assert_eq!(tracked_ms(&[], (0, DAY_LENGTH), NOW), 0);
+    }
+
+    #[test]
     fn a_recording_block_serializes_with_camel_case_keys() {
         let mut input = input_with_recordings(vec![Recording {
             note: "n".into(),
             tag_ids: vec!["t1".into()],
             ..recording("r1", HOUR, Some(2 * HOUR))
         }]);
-        input.projects.insert("p1".into(), project_ref("Portal"));
-        input.tags.insert("t1".into(), "admin".into());
+        input
+            .names
+            .projects
+            .insert("p1".into(), project_ref("Portal"));
+        input.names.tags.insert("t1".into(), "admin".into());
 
         let view = view(&input, &settings());
 

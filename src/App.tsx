@@ -7,6 +7,8 @@ import { EmptyView } from "./components/EmptyView";
 import { PermissionDialog } from "./components/PermissionDialog";
 import { ProjectsPage } from "./components/projects/ProjectsPage";
 import { ReportsView } from "./components/reports/ReportsView";
+import { MonthView } from "./components/calendar/MonthView";
+import { WeekView } from "./components/calendar/WeekView";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { Toasts } from "./components/Toasts";
@@ -78,6 +80,10 @@ function ViewContent({ view }: { view: View }) {
       return <ProjectsPage />;
     case "reports":
       return <ReportsView />;
+    case "week":
+      return <WeekView />;
+    case "month":
+      return <MonthView />;
     default:
       return <EmptyView />;
   }

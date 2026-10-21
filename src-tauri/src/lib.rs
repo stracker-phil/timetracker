@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod calendar;
 pub mod capture;
 pub mod cli;
 pub mod commands;
@@ -397,6 +398,10 @@ fn start_app(
             recordings::commands::undo,
             recordings::commands::redo,
             recordings::commands::undo_status,
+            recordings::commands::recording_move,
+            recordings::commands::recording_copy,
+            calendar::commands::week_view,
+            calendar::commands::month_view,
             reports::commands::report_run,
             reports::commands::report_text,
             reports::commands::saved_reports_list,

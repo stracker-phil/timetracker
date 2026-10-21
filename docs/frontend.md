@@ -48,7 +48,7 @@ error's message, returning the `AppError`.
 |---|---|
 | `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings`, `saveKeybindings` |
 | `ui` | `toasts` (an optional `action`, e.g. Undo), `dialog` (`settings { page? }`, `shortcuts`, `confirm`, `project { id?, clientId? }`, `client { id? }`), `paletteOpen`, `paletteSeed` |
-| `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`), `setView`, `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `goToday`, `prevDay`, `nextDay` (calendar steps in `lib/day.ts`); each remembers the day as `uiState.lastDay`, and `restoreDay` shows it again at boot when it is at most 30 days old |
+| `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`), `setView`, `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `goToday` (keeps the view), `step(±1)` (a day, a week or a month by the view; `addDays`, `addMonths` in `lib/day.ts`); each remembers the day as `uiState.lastDay`, and `restoreDay` shows it again at boot when it is at most 30 days old |
 | `day` | `dayView` (the shown day's `DayView`; the previous one stays while the next day loads), `dayError`, `loadDay` (drops answers for a day no longer shown), `focusedBlock`/`focusBlock`, `detailsBlock`/`toggleDetails` (the card opened by keyboard), `blockMenuRequest`/`requestBlockMenu`, `setAppSetting(appKey, patch)` (stores the returned settings; the Day view reloads on the `data_changed` it causes) |
 | `reports` | `reportFilter` (`null` follows `settings.reports` through `defaultFilter`), `setReportFilter(patch)`, `savedReports`/`loadSavedReports` (boot), `saveReport(name)` (the shown filter), `renameSavedReport`, `deleteSavedReport`, `openSavedReport` (its filter, and the Reports view) |
 | `data` | `dataVersion` (every day changed), `dayVersions` (per day), `changeCount` (every event, for views over many days), `dataChanged(event)` (called on every `data_changed` event); `selectDayVersion(day)` changes when that day's data may have changed |
@@ -94,7 +94,9 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   typed text; once something is typed, active projects follow as `Project: Client / Name` with their color
   dot (fuzzy, `lib/fuzzy.ts`), and Enter opens the project's sheet. `>` limits the list to commands, `p:` to
   projects.
-- **Day view.** `nav.prevDay` (⌘←), `nav.nextDay` (⌘→), `nav.today` (T), `day.nextBlock` (J),
+- **Day, Week and Month** (scope `calendar`, the parent of the three views' scopes). `nav.prev` (⌘←),
+  `nav.next` (⌘→) step by the view's unit; `nav.today` (T).
+- **Day view.** `day.nextBlock` (J),
   `day.prevBlock` (K), `day.prevLane` (H), `day.nextLane` (L), and with a focused block `day.details`
   (Space), `day.blockMenu` (⌃↵); `day.clearFocus` (Escape) clears the block focus, the selection and the
   focused recording.
@@ -150,6 +152,19 @@ Tracker components:
 
 `lib/blockFocus.ts`: `stepBlock` (time order across lanes) and `stepLane` (the nearest block in the next
 lane with blocks) for J/K/H/L. The status bar shows the selection as `09:00–10:30 · 1:30`.
+
+### Week and Month
+
+`components/calendar/`: `CalendarHeader` (‹ Today ›, the title, totals). `WeekView` runs `weekView(day)` keyed
+by the day and `changeCount`: day heads (label and total; a click opens the day) over a `TimeAxis` and seven
+columns that place each day's `RecordingBlock`s from the column's bounds. A block keeps its vertical move
+and resize; released over another column (`onDrop`, found with `elementFromPoint`) it moves there, with ⌥ it
+is copied (`moveRecording`/`copyRecording` in the `recordings` slice, which ask about overlaps like every
+write). A double-click on an empty spot opens the editor for an hour from there. `MonthView` runs
+`monthView(day)`: a seven-column grid of `DayCell`s (day number, recorded `h:mm`, a 3 px strip of the top
+three projects' shades by time); a click opens the day.
+
+The editor's `edit` request may carry `at` (a span of the recording), so views other than the Day view open it.
 
 ### Reports screen
 

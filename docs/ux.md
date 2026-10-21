@@ -196,6 +196,16 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   or deletes them.
 - Every change ends in a toast with Undo.
 
+## Week and Month
+
+- **Week**: the time axis and seven day columns (`--lane-min-w` like lanes); each head shows `Mon 20` and the
+  day's recorded hours, today's in accent text; today's column has a faint tint. Recordings look and drag
+  as in the Day view; dropped on another column they move there, with ⌥ they are copied. A double-click on
+  an empty spot records an hour there. The header totals read `recorded 32:10 · tracked 41:05`.
+- **Month**: a calendar of whole weeks; each day a cell with its number (`--o3` outside the month, accent
+  on today), the recorded hours in mono, and a 3 px strip along the bottom of the three projects with the
+  most time, as wide as their shares. A click opens the day.
+
 ## Reports
 
 The Reports screen: the range as title, Copy as text and Save report… on the right; below, the filter bar
@@ -235,7 +245,7 @@ in inputs or dialogs. `Tab` is never bound: it moves the keyboard focus.
 | ⌘⌃S | global | toggle the sidebar (`sidebar.toggle`) |
 | ⌘1 … ⌘5 | global | Day, Week, Month, Reports, Projects (`view.*`) |
 | ⌘= / ⌘- / ⌘0 | global | zoom in / out / reset (`zoom.*`): the timeline in the Day view, the text elsewhere |
-| ⌘← / ⌘→ / T | day | previous day, next day, today (`nav.*`) |
+| ⌘← / ⌘→ / T | calendar | previous / next day, week or month by the view, today (`nav.*`) |
 | J / K | day | next / previous block in time (`day.nextBlock`, `day.prevBlock`) |
 | H / L | day | the block in the lane to the left / right (`day.prevLane`, `day.nextLane`) |
 | Space / ⌃↵ | day | the focused block's details card, its menu |
@@ -249,4 +259,5 @@ in inputs or dialogs. `Tab` is never bound: it moves the keyboard focus.
 | ⌘Q | menu | quit (`app.quit`) |
 
 Scopes are the registry's (`src/commands/scopes.ts`): `global`, and under it one scope per view (`day`,
-`week`, `month`, `reports`, `projects`), active while that view shows.
+`week`, `month`, `reports`, `projects`), active while that view shows; `calendar` sits between `global` and
+the Day, Week and Month scopes, active in any of them.

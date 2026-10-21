@@ -2,6 +2,7 @@ import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
 import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type ProjectInput, type RecordingInput, type RecordingPatch, type ReportFilter, type Settings, type UiState } from "../api/types";
+import { mondayOf, monthView, weekView } from "./calendarFixtures";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
 import { client, DEFAULT_TAGS, project } from "./projectFixtures";
@@ -39,6 +40,10 @@ export function createApiMock(): typeof realApi {
     activityList: vi.fn().mockResolvedValue([]),
     awayList: vi.fn().mockResolvedValue([]),
     dayView: vi.fn(async (day: string) => dayView({ day })),
+    weekView: vi.fn(async (day: string) => weekView({ weekStart: mondayOf(day) })),
+    monthView: vi.fn(async (day: string) => monthView({ monthStart: `${day.slice(0, 7)}-01` })),
+    recordingMove: vi.fn(async (id: string) => recording({ id })),
+    recordingCopy: vi.fn(async () => recording({ id: "recording-copy" })),
     recordingCreate: vi.fn(async (input: RecordingInput) => recording({ ...input, id: "recording-new" })),
     recordingUpdate: vi.fn(async (id: string, patch: RecordingPatch) => recording({ ...patch, id })),
     recordingDelete: vi.fn().mockResolvedValue(undefined),

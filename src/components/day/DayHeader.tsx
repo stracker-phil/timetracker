@@ -9,20 +9,20 @@ const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` :
 
 /** Day navigation, the date and the day's totals. */
 export function DayHeader({ day, totals }: { day: string; totals: DayTotals | null }) {
-  const { prevDay, nextDay, goToday } = useStore.getState();
-  const prevKeys = useBindingLabel("nav.prevDay");
-  const nextKeys = useBindingLabel("nav.nextDay");
+  const { step, goToday } = useStore.getState();
+  const prevKeys = useBindingLabel("nav.prev");
+  const nextKeys = useBindingLabel("nav.next");
   const todayKeys = useBindingLabel("nav.today");
   const settingsKeys = useBindingLabel("day.settings");
   return (
     <header className="day-head">
-      <button type="button" className="icon-btn" aria-label="Previous day" title={withKeys("Previous day", prevKeys)} onClick={prevDay}>
+      <button type="button" className="icon-btn" aria-label="Previous day" title={withKeys("Previous day", prevKeys)} onClick={() => step(-1)}>
         <ChevronLeft size="1.077rem" />
       </button>
       <button type="button" className="btn" disabled={isToday(day)} title={withKeys("Today", todayKeys)} onClick={goToday}>
         Today
       </button>
-      <button type="button" className="icon-btn" aria-label="Next day" title={withKeys("Next day", nextKeys)} onClick={nextDay}>
+      <button type="button" className="icon-btn" aria-label="Next day" title={withKeys("Next day", nextKeys)} onClick={() => step(1)}>
         <ChevronRight size="1.077rem" />
       </button>
       <h1 className="day-title">{formatDayLabel(day)}</h1>

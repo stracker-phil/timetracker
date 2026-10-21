@@ -22,12 +22,12 @@ interface DragHandlers {
 /** Follows the pointer from a press until its release, with pointer capture so it never fights the scroll box. */
 export function pointerDrag(e: ReactPointerEvent<HTMLElement>, { move, end }: DragHandlers) {
   const el = e.currentTarget;
-  const y0 = e.clientY;
+  const [x0, y0] = [e.clientX, e.clientY];
   let dragged = false;
   capture(() => el.setPointerCapture(e.pointerId));
   const onMove = (ev: PointerEvent) => {
     const dy = ev.clientY - y0;
-    if (!dragged && Math.abs(dy) < DRAG_MIN_PX) return;
+    if (!dragged && Math.abs(dy) < DRAG_MIN_PX && Math.abs(ev.clientX - x0) < DRAG_MIN_PX) return;
     dragged = true;
     move(dy, ev);
   };
