@@ -44,7 +44,8 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
 
    The run loop prevents `RunEvent::ExitRequested { code: None }`, which macOS sends when the last window
    closes; an explicit `app.exit(0)` carries a code and passes. On `RunEvent::Exit` it closes the database
-   pool.
+   pool. On `RunEvent::Reopen` (a Dock icon click, or `open` on the running app) it calls
+   `window::show_main`.
 
 ### Settings side effects
 
@@ -83,7 +84,7 @@ the `sidebar` vibrancy effect. The away prompt (`away_prompt/window.rs`) and the
 |---|---|
 | close button / ⌘W (`window.hide`, `hide_window`) | the window hides; the app, the tray and the Dock icon stay |
 | last window closed (`ExitRequested { code: None }`) | prevented |
-| tray "Open TimeTracker", a second `timetracker` launch | `window::show_main`: show, unminimize, focus |
+| tray "Open TimeTracker", a second `timetracker` launch, Dock icon click (`RunEvent::Reopen`) | `window::show_main`: show, unminimize, focus |
 | `timetracker --hidden` (launch at login) | first instance: the window is never shown; running instance: nothing |
 | ⌘Q (`app.quit`), tray "Quit TimeTracker", `quit_app` | `app.exit(0)` |
 

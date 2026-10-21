@@ -463,6 +463,7 @@ fn start_app(
             RunEvent::Exit => {
                 tauri::async_runtime::block_on(app.state::<AppState>().data.close());
             }
+            RunEvent::Reopen { .. } => window::show_main(app),
             _ => {}
         });
 }

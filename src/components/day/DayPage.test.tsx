@@ -304,6 +304,82 @@ describe("DayPage", () => {
       await act(() => vi.advanceTimersByTimeAsync(60_000));
       expect(mocked.dayView).not.toHaveBeenCalled();
     });
+
+    it("reloads today after a tracker status change, at most every 10 seconds", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      renderDay(dayView({ day: today() }));
+      await screen.findByText("Nothing tracked on this day");
+      mocked.dayView.mockClear();
+      act(() => useStore.setState({ tracker: trackerStatus({ text: "Tracking · Mail" }) }));
+      await act(() => vi.advanceTimersByTimeAsync(5_000));
+      expect(mocked.dayView).not.toHaveBeenCalled();
+      await act(() => vi.advanceTimersByTimeAsync(5_200));
+      expect(mocked.dayView).toHaveBeenCalledTimes(1);
+    });
+
+    describe("while the window is hidden", () => {
+      const setVisibility = (state: "visible" | "hidden") => {
+        Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+        act(() => {
+          document.dispatchEvent(new Event("visibilitychange"));
+        });
+      };
+
+      afterEach(() => {
+        delete (document as { visibilityState?: string }).visibilityState;
+      });
+
+      async function renderTodayHidden() {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        renderDay(dayView({ day: today() }));
+        await screen.findByText("Nothing tracked on this day");
+        setVisibility("hidden");
+        mocked.dayView.mockClear();
+      }
+
+      it("does not reload today, however long it stays hidden", async () => {
+        await renderTodayHidden();
+        await act(() => vi.advanceTimersByTimeAsync(95_000));
+        expect(mocked.dayView).not.toHaveBeenCalled();
+      });
+
+      it("reloads once at once when shown again, then every 30 seconds", async () => {
+        await renderTodayHidden();
+        await act(() => vi.advanceTimersByTimeAsync(45_000));
+        setVisibility("visible");
+        await act(() => vi.advanceTimersByTimeAsync(0));
+        expect(mocked.dayView).toHaveBeenCalledTimes(1);
+        mocked.dayView.mockClear();
+        await act(() => vi.advanceTimersByTimeAsync(15_000));
+        expect(mocked.dayView).not.toHaveBeenCalled();
+        await act(() => vi.advanceTimersByTimeAsync(15_200));
+        expect(mocked.dayView).toHaveBeenCalledTimes(1);
+      });
+
+      it("catches up with one reload for a tracker change and adds none 10 seconds later", async () => {
+        await renderTodayHidden();
+        act(() => useStore.setState({ tracker: trackerStatus({ text: "Tracking · Mail" }) }));
+        await act(() => vi.advanceTimersByTimeAsync(15_000));
+        expect(mocked.dayView).not.toHaveBeenCalled();
+        setVisibility("visible");
+        await act(() => vi.advanceTimersByTimeAsync(0));
+        expect(mocked.dayView).toHaveBeenCalledTimes(1);
+        await act(() => vi.advanceTimersByTimeAsync(12_000));
+        expect(mocked.dayView).toHaveBeenCalledTimes(1);
+      });
+
+      it("does not reload a past day when shown again", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        renderDay(dayView());
+        await screen.findByText("Nothing tracked on this day");
+        mocked.dayView.mockClear();
+        setVisibility("hidden");
+        await act(() => vi.advanceTimersByTimeAsync(45_000));
+        setVisibility("visible");
+        await act(() => vi.advanceTimersByTimeAsync(60_000));
+        expect(mocked.dayView).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe("day shortcuts", () => {
