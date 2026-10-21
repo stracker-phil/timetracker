@@ -64,6 +64,20 @@ The Day view showing a day, the main path through every layer:
    and `cols` and computes nothing else.
 6. A change to the day's data (`data_changed`) bumps its version in the `data` slice, and the page asks again.
 
+## A write, end to end
+
+Recording an hour of activity:
+
+1. The user drags over the lanes (`selectionPress`); the ghost shows the span Rust will store
+   (`api.recordingSnap`, at most once per frame). Releasing it over the recordings column opens
+   `RecordingEditor`.
+2. Save calls the `recordings` slice's `createRecording`, which invokes `recording_create` with `overlap:
+   cancel`. An `overlap` error opens `OverlapDialog`; Replace sends the same input with `replace`.
+3. `recordings::Recordings::create` validates and snaps, builds an `Op` (a `Batch` when it replaces) and
+   applies it in one transaction that also proves no recordings overlap, then pushes it on the undo stack.
+4. `data_changed { kind: recordings, day }` goes out for every day the op touched; the Day view reloads them,
+   and the toast offers Undo, which applies the op's inverse.
+
 ## Process model
 
 ```

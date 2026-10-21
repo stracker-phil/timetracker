@@ -2,7 +2,7 @@ import { api, TEXT_SIZES, type Settings } from "../api";
 import { VIEWS } from "../components/views";
 import { stepBlock, stepLane } from "../lib/blockFocus";
 import { TIMELINE_ZOOM, useStore } from "../state/store";
-import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command } from "./registry";
+import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, isTextInput, registerCommands, resolveKeydown, setOverrides, type Command } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
 
 export * from "./registry";
@@ -38,6 +38,35 @@ function moveFocus(step: typeof stepBlock, by: 1 | -1) {
 }
 
 const hasFocusedBlock = () => useStore.getState().focusedBlock !== null;
+const hasSelection = () => useStore.getState().selection !== null;
+const hasFocusedRecording = () => useStore.getState().focusedRecording !== null;
+
+/** Edits the focused recording, else opens the editor for the selection. */
+function openRecording() {
+  const s = useStore.getState();
+  if (s.focusedRecording) return s.openEditor({ mode: "edit", id: s.focusedRecording });
+  const span = s.selectionSnap ?? s.selection;
+  if (span) s.openEditor({ mode: "create", start: span.start, end: span.end });
+}
+
+function clearDayFocus() {
+  const s = useStore.getState();
+  s.focusBlock(null);
+  s.setSelection(null);
+  s.focusRecording(null);
+}
+
+/** Moves the focused recording's start and end by whole snap steps. */
+function shiftRecording(startSteps: number, endSteps: number) {
+  const s = useStore.getState();
+  const block = s.dayView?.recordings.find((r) => r.id === s.focusedRecording);
+  if (!block || block.clippedStart || block.clippedEnd || block.running) return;
+  const step = (s.settings?.timeline.snapMinutes ?? 5) * 60_000;
+  void s.updateRecording(block.id, { start: block.start + startSteps * step, end: block.end + endSteps * step }).catch(() => {});
+}
+
+/** ⌘Z in a text field undoes typing, not a recording change. */
+const outsideTextField = () => !isTextInput(document.activeElement);
 
 function togglePalette() {
   const s = useStore.getState();
@@ -82,9 +111,19 @@ const APP_COMMANDS: Command[] = [
   { id: "day.prevBlock", title: "Previous block", scope: "day", defaultBinding: "K", run: () => moveFocus(stepBlock, -1) },
   { id: "day.prevLane", title: "Block in the lane to the left", scope: "day", defaultBinding: "H", run: () => moveFocus(stepLane, -1) },
   { id: "day.nextLane", title: "Block in the lane to the right", scope: "day", defaultBinding: "L", run: () => moveFocus(stepLane, 1) },
-  { id: "day.details", title: "Block details", scope: "day", defaultBinding: "Enter", when: hasFocusedBlock, run: () => useStore.getState().toggleDetails() },
+  { id: "day.details", title: "Block details", scope: "day", defaultBinding: "Space", when: hasFocusedBlock, run: () => useStore.getState().toggleDetails() },
   { id: "day.blockMenu", title: "Block actions…", scope: "day", defaultBinding: "Ctrl+Enter", when: hasFocusedBlock, run: () => useStore.getState().requestBlockMenu() },
-  { id: "day.clearFocus", title: "Clear block focus", scope: "day", defaultBinding: "Escape", when: hasFocusedBlock, run: () => useStore.getState().focusBlock(null) },
+  { id: "day.clearFocus", title: "Clear selection", scope: "day", defaultBinding: "Escape", when: () => hasFocusedBlock() || hasSelection() || hasFocusedRecording(), run: clearDayFocus },
+  { id: "recording.open", title: "Record selection or edit recording", scope: "day", defaultBinding: "Enter", when: () => hasSelection() || hasFocusedRecording(), run: openRecording },
+  { id: "recording.create", title: "New recording from selection", scope: "day", menu: true, when: hasSelection, run: () => (useStore.getState().focusRecording(null), openRecording()) },
+  { id: "recording.edit", title: "Edit recording", scope: "day", menu: true, when: hasFocusedRecording, run: openRecording },
+  { id: "recording.delete", title: "Delete recording", scope: "day", defaultBinding: "Backspace", menu: true, when: hasFocusedRecording, run: () => void useStore.getState().deleteRecording(useStore.getState().focusedRecording ?? "") },
+  { id: "recording.nudgeEarlier", title: "Move recording earlier", scope: "day", defaultBinding: "Alt+ArrowUp", when: hasFocusedRecording, run: () => shiftRecording(-1, -1) },
+  { id: "recording.nudgeLater", title: "Move recording later", scope: "day", defaultBinding: "Alt+ArrowDown", when: hasFocusedRecording, run: () => shiftRecording(1, 1) },
+  { id: "recording.extend", title: "Extend recording", scope: "day", defaultBinding: "Alt+Shift+ArrowDown", when: hasFocusedRecording, run: () => shiftRecording(0, 1) },
+  { id: "recording.shrink", title: "Shorten recording", scope: "day", defaultBinding: "Alt+Shift+ArrowUp", when: hasFocusedRecording, run: () => shiftRecording(0, -1) },
+  { id: "edit.undo", title: "Undo recording change", scope: "global", defaultBinding: "Mod+Z", when: outsideTextField, run: () => void useStore.getState().undo() },
+  { id: "edit.redo", title: "Redo recording change", scope: "global", defaultBinding: "Mod+Shift+Z", when: outsideTextField, run: () => void useStore.getState().redo() },
   { id: "projects.new", title: "New project…", scope: "projects", defaultBinding: "Mod+N", run: () => useStore.getState().openDialog({ type: "project" }) },
   { id: "clients.new", title: "New client…", scope: "projects", run: () => useStore.getState().openDialog({ type: "client" }) },
   { id: "logs.open", title: "Open log folder", scope: "global", menu: true, run: () => void api.openLogFolder() },
@@ -119,11 +158,11 @@ export function runCommand(id: string): boolean {
 const MODAL_ALLOWED = new Set(["settings.toggle", "shortcuts.show", "palette.toggle", "zoom.in", "zoom.out", "zoom.reset", "window.hide", "app.quit"]);
 
 /** Commands that keep firing while their key is held. */
-const REPEATABLE = new Set(["zoom.in", "zoom.out"]);
+const REPEATABLE = new Set(["zoom.in", "zoom.out", "recording.nudgeEarlier", "recording.nudgeLater", "recording.extend", "recording.shrink"]);
 
 function blockedByOverlay(id: string): boolean {
   const s = useStore.getState();
-  return (s.dialog !== null || s.paletteOpen) && !MODAL_ALLOWED.has(id);
+  return (s.dialog !== null || s.paletteOpen || s.editor !== null) && !MODAL_ALLOWED.has(id);
 }
 
 /** Runs a native menu or tray item's command in an active scope. */

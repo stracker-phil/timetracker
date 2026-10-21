@@ -64,6 +64,19 @@ describe("day slice", () => {
       expect(state().focusedBlock).toBeNull();
     });
 
+    it("keeps the selection when the same day reloads and clears it with the focused recording when another day arrives", async () => {
+      await state().loadDay();
+      state().setSelection({ start: 1, end: 2, blockIds: [] });
+      state().focusRecording("r1");
+      await state().loadDay();
+      expect(state().selection).not.toBeNull();
+      expect(state().focusedRecording).toBe("r1");
+      useStore.setState({ day: "2026-03-11" });
+      await state().loadDay();
+      expect(state().selection).toBeNull();
+      expect(state().focusedRecording).toBeNull();
+    });
+
     it("stores the error when the day cannot be loaded", async () => {
       mocked.dayView.mockRejectedValueOnce({ kind: "db", message: "Database locked", code: null });
       await state().loadDay();

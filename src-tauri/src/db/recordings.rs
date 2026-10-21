@@ -184,6 +184,15 @@ pub async fn overlapping(
     end: Ms,
     except: Option<&str>,
 ) -> AppResult<Vec<Recording>> {
+    overlapping_on(&mut *db.pool().acquire().await?, start, end, except).await
+}
+
+pub async fn overlapping_on(
+    conn: &mut SqliteConnection,
+    start: Ms,
+    end: Ms,
+    except: Option<&str>,
+) -> AppResult<Vec<Recording>> {
     Ok(sqlx::query_as(select!(
         r#"WHERE r.start < ?2 AND (r."end" IS NULL OR r."end" > ?1) AND (?3 IS NULL OR r.id != ?3)
            ORDER BY r.start, r.id"#
@@ -191,8 +200,45 @@ pub async fn overlapping(
     .bind(start)
     .bind(end)
     .bind(except)
-    .fetch_all(db.pool())
+    .fetch_all(conn)
     .await?)
+}
+
+/// Writes `recording` exactly as given (timestamps and tags included), creating or replacing the row,
+/// so an undo restores what was there. The caller validates.
+pub async fn put_on(conn: &mut SqliteConnection, recording: &Recording) -> AppResult<()> {
+    sqlx::query(
+        r#"INSERT INTO recordings (id, project_id, start, "end", note, created_at, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+           ON CONFLICT(id) DO UPDATE SET project_id = ?2, start = ?3, "end" = ?4, note = ?5,
+             created_at = ?6, updated_at = ?7"#,
+    )
+    .bind(&recording.id)
+    .bind(&recording.project_id)
+    .bind(recording.start)
+    .bind(recording.end)
+    .bind(&recording.note)
+    .bind(recording.created_at)
+    .bind(recording.updated_at)
+    .execute(&mut *conn)
+    .await?;
+    write_tags(conn, &recording.id, &recording.tag_ids).await
+}
+
+/// Deletes the row; `not_found` when there is none.
+pub async fn remove_on(conn: &mut SqliteConnection, id: &str) -> AppResult<()> {
+    let done = sqlx::query("DELETE FROM recordings WHERE id = ?1")
+        .bind(id)
+        .execute(conn)
+        .await?;
+    if done.rows_affected() == 0 {
+        return Err(AppError::NotFound(format!("No recording {id}")));
+    }
+    Ok(())
+}
+
+pub async fn get_on(conn: &mut SqliteConnection, id: &str) -> AppResult<Recording> {
+    fetch(conn, id).await
 }
 
 pub async fn count(db: &Db) -> AppResult<i64> {

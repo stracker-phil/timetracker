@@ -16,6 +16,8 @@ use crate::activity::ActivityInput;
 use crate::activity::external;
 use crate::db::time::Ms;
 use crate::ipc::{IpcMessage, MAX_MESSAGE_BYTES};
+use crate::recordings::Overlap;
+use crate::recordings::cli::RecordRequest;
 use crate::store::settings::LogLevel;
 
 const EXAMPLES: &str = "Examples:
@@ -26,7 +28,8 @@ const EXAMPLES: &str = "Examples:
   timetracker pause 1h            pause tracking for an hour
   timetracker activity add --source planner --title \"Weekly sync\" --start 10:00 --end 10:45
   timetracker activity start --source planner --title Break
-  timetracker activity stop --source planner";
+  timetracker activity stop --source planner
+  timetracker record --project acme --from 09:00 --to 09:30 --note standup --tag \"internal meeting\"";
 
 /// Items per request of a batch; the line limit may split it further.
 const MAX_BATCH_ITEMS: usize = 200;
@@ -79,6 +82,27 @@ enum Command {
     /// Write another app's activity (a planner, a meeting tool) into its own lane
     #[command(subcommand)]
     Activity(ActivityCommand),
+    /// Record time for a project
+    Record {
+        /// The project's id, name or a unique start of its name
+        #[arg(long)]
+        project: String,
+        /// 2026-10-21T09:30 (local, or with Z or ±hh:mm), 09:30 (today) or now
+        #[arg(long)]
+        from: String,
+        /// Like --from
+        #[arg(long)]
+        to: String,
+        /// One line
+        #[arg(long, default_value = "")]
+        note: String,
+        /// A tag by name; repeat for several
+        #[arg(long = "tag")]
+        tags: Vec<String>,
+        /// Trim or remove the recordings in the way instead of refusing
+        #[arg(long)]
+        replace: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -267,6 +291,27 @@ fn message<Tz: TimeZone>(
         },
         Command::Activity(ActivityCommand::Start { span }) => IpcMessage::ActivityStart {
             input: span.input(Some(now), None, now, tz)?,
+        },
+        Command::Record {
+            project,
+            from,
+            to,
+            note,
+            tags,
+            replace,
+        } => IpcMessage::Record {
+            request: RecordRequest {
+                project,
+                start: time::instant(&from, now, tz)?,
+                end: time::instant(&to, now, tz)?,
+                note,
+                tags,
+                overlap: if replace {
+                    Overlap::Replace
+                } else {
+                    Overlap::Cancel
+                },
+            },
         },
         Command::Activity(ActivityCommand::Stop { source, end }) => {
             external::validate_source(&source).map_err(|e| e.to_string())?;
@@ -461,7 +506,7 @@ mod tests {
             panic!("--help should exit");
         };
         for name in [
-            "show", "focus", "hide", "quit", "status", "pause", "resume", "activity",
+            "show", "focus", "hide", "quit", "status", "pause", "resume", "activity", "record",
         ] {
             assert!(message.contains(&format!("  {name} ")), "{name}");
         }
@@ -762,6 +807,148 @@ mod tests {
                 "{args:?}: {}",
                 err.message
             );
+        }
+    }
+
+    fn record_request(note: &str, tags: &[&str], end: &str, overlap: Overlap) -> IpcMessage {
+        IpcMessage::Record {
+            request: RecordRequest {
+                project: "ac".into(),
+                start: ms("2026-10-21T09:00:00+02:00"),
+                end: ms(end),
+                note: note.into(),
+                tags: tags.iter().map(|t| t.to_string()).collect(),
+                overlap,
+            },
+        }
+    }
+
+    #[test]
+    fn record_builds_a_request_with_the_times_in_the_local_zone() {
+        let (message, json, starts_app) = remote(&[
+            "record",
+            "--project",
+            "ac",
+            "--from",
+            "09:00",
+            "--to",
+            "2026-10-21T10:30",
+            "--note",
+            "fix login",
+            "--tag",
+            "development",
+            "--tag",
+            "internal meeting",
+        ]);
+
+        assert_eq!(
+            message,
+            record_request(
+                "fix login",
+                &["development", "internal meeting"],
+                "2026-10-21T10:30:00+02:00",
+                Overlap::Cancel
+            )
+        );
+        assert!(!json);
+        assert!(!starts_app);
+    }
+
+    #[test]
+    fn record_without_note_and_tags_sends_them_empty() {
+        let (message, ..) = remote(&[
+            "record",
+            "--project",
+            "ac",
+            "--from",
+            "09:00",
+            "--to",
+            "10:30",
+        ]);
+
+        assert_eq!(
+            message,
+            record_request("", &[], "2026-10-21T10:30:00+02:00", Overlap::Cancel)
+        );
+    }
+
+    #[test]
+    fn record_with_replace_overlaps_by_replacing() {
+        let (message, ..) = remote(&[
+            "record",
+            "--project",
+            "ac",
+            "--from",
+            "09:00",
+            "--to",
+            "10:30",
+            "--replace",
+        ]);
+
+        assert_eq!(
+            message,
+            record_request("", &[], "2026-10-21T10:30:00+02:00", Overlap::Replace)
+        );
+    }
+
+    #[test]
+    fn record_accepts_now_and_the_json_flag() {
+        let (message, json, _) = remote(&[
+            "record",
+            "--project",
+            "ac",
+            "--from",
+            "09:00",
+            "--to",
+            "now",
+            "--json",
+        ]);
+
+        assert_eq!(
+            message,
+            record_request("", &[], "2026-10-21T12:00:00+02:00", Overlap::Cancel)
+        );
+        assert!(json);
+    }
+
+    #[test]
+    fn record_errors_name_the_problem_and_stay_in_the_terminal() {
+        let cases: Vec<(Vec<&str>, &str)> = vec![
+            (
+                vec!["record", "--from", "09:00", "--to", "10:00"],
+                "--project",
+            ),
+            (vec!["record", "--project", "ac", "--to", "10:00"], "--from"),
+            (vec!["record", "--project", "ac", "--from", "09:00"], "--to"),
+            (
+                vec![
+                    "record",
+                    "--project",
+                    "ac",
+                    "--from",
+                    "nonsense",
+                    "--to",
+                    "10:00",
+                ],
+                "Not a time: `nonsense`",
+            ),
+            (
+                vec![
+                    "record",
+                    "--project",
+                    "ac",
+                    "--from",
+                    "09:00",
+                    "--to",
+                    "later",
+                ],
+                "Not a time: `later`",
+            ),
+        ];
+        for (args, expected) in cases {
+            let err = run(&args).unwrap_err();
+            assert!(!err.in_app, "{args:?}");
+            assert!(err.message.contains(expected), "{args:?}: {}", err.message);
         }
     }
 

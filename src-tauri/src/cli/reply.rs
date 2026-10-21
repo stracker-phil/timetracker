@@ -9,6 +9,7 @@ use crate::activity::external::SOURCE_PREFIX;
 use crate::db::activities::ActivityRow;
 use crate::db::time::{Day, Ms};
 use crate::ipc::IpcMessage;
+use crate::recordings::cli::Recorded;
 use crate::remote::StatusReport;
 use crate::tracker::{TrackerState, TrackerStatus};
 
@@ -57,8 +58,31 @@ pub fn render<Tz: TimeZone>(
                 None => format!("nothing to stop for {source}"),
             })
         }
+        IpcMessage::Record { .. } => {
+            let recorded = read::<Recorded>(result)?;
+            let r = &recorded.recording;
+            let end = r.end.unwrap_or(now);
+            let note = if r.note.is_empty() {
+                String::new()
+            } else {
+                format!(" · {}", r.note)
+            };
+            Some(format!(
+                "recorded {}–{} ({}) for {}{note}",
+                clock(r.start, tz),
+                clock(end, tz),
+                hours(end - r.start),
+                recorded.project_name
+            ))
+        }
         _ => None,
     })
+}
+
+/// `1:30`.
+fn hours(ms: Ms) -> String {
+    let minutes = ms.max(0) / 60_000;
+    format!("{}:{:02}", minutes / 60, minutes % 60)
 }
 
 fn read<T: DeserializeOwned>(value: &Value) -> Result<T, String> {
@@ -156,6 +180,9 @@ mod tests {
     use crate::activity::ActivityInput;
     use crate::capture::PermissionStatus;
     use crate::db::away::AwayReason;
+    use crate::db::recordings::Recording;
+    use crate::recordings::Overlap;
+    use crate::recordings::cli::RecordRequest;
     use crate::tracker::PauseUntil;
 
     const MINUTE: Ms = 60_000;
@@ -403,6 +430,80 @@ mod tests {
         );
     }
 
+    fn record_message() -> IpcMessage {
+        IpcMessage::Record {
+            request: RecordRequest {
+                project: "ac".into(),
+                start: 0,
+                end: 1,
+                note: String::new(),
+                tags: vec![],
+                overlap: Overlap::Cancel,
+            },
+        }
+    }
+
+    fn recorded(note: &str, start: &str, end: Option<&str>) -> Value {
+        serde_json::to_value(Recorded {
+            recording: Recording {
+                id: "r1".into(),
+                project_id: "p1".into(),
+                start: ms(start),
+                end: end.map(ms),
+                note: note.into(),
+                tag_ids: vec![],
+                created_at: 0,
+                updated_at: 0,
+            },
+            project_name: "Acme".into(),
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn record_prints_the_span_the_duration_the_project_and_the_note() {
+        let result = recorded(
+            "fix login",
+            "2026-10-21T09:00:00+02:00",
+            Some("2026-10-21T10:30:00+02:00"),
+        );
+
+        assert_eq!(
+            render_at_now(&record_message(), &result),
+            Ok(Some(
+                "recorded 09:00–10:30 (1:30) for Acme · fix login".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn record_without_a_note_prints_no_note_part() {
+        let result = recorded(
+            "",
+            "2026-10-21T09:00:00+02:00",
+            Some("2026-10-21T09:45:00+02:00"),
+        );
+
+        assert_eq!(
+            render_at_now(&record_message(), &result),
+            Ok(Some("recorded 09:00–09:45 (0:45) for Acme".into()))
+        );
+    }
+
+    #[test]
+    fn record_zero_pads_the_minutes_of_the_duration() {
+        let result = recorded(
+            "",
+            "2026-10-21T09:00:00+02:00",
+            Some("2026-10-21T11:05:00+02:00"),
+        );
+
+        assert_eq!(
+            render_at_now(&record_message(), &result),
+            Ok(Some("recorded 09:00–11:05 (2:05) for Acme".into()))
+        );
+    }
+
     #[test]
     fn commands_without_output_print_nothing() {
         for message in [
@@ -447,6 +548,7 @@ mod tests {
                 },
                 json!(5),
             ),
+            (record_message(), json!({ "projectName": "Acme" })),
         ];
         for (message, result) in cases {
             let err = render_at_now(&message, &result).unwrap_err();

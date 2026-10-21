@@ -15,6 +15,7 @@ pub mod lock;
 pub mod menu;
 pub mod pending;
 pub mod projects;
+pub mod recordings;
 pub mod remote;
 pub mod state;
 pub mod store;
@@ -386,6 +387,14 @@ fn start_app(
             projects::tags_list,
             projects::tags_save,
             projects::tags_delete,
+            recordings::commands::recording_create,
+            recordings::commands::recording_update,
+            recordings::commands::recording_delete,
+            recordings::commands::recordings_list,
+            recordings::commands::recording_snap,
+            recordings::commands::undo,
+            recordings::commands::redo,
+            recordings::commands::undo_status,
             remote::remote_reply,
         ])
         .build(tauri::generate_context!())

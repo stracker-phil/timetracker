@@ -35,7 +35,7 @@ export const daySlice: Slice<DaySlice> = {
         const view = await api.dayView(day);
         if (request !== latest) return;
         const otherDay = get().dayView?.day !== view.day;
-        set({ dayView: view, dayError: null, ...(otherDay && { focusedBlock: null, detailsBlock: null }) });
+        set({ dayView: view, dayError: null, ...(otherDay && { focusedBlock: null, detailsBlock: null, selection: null, focusedRecording: null }) });
       } catch (e) {
         if (request === latest) set({ dayError: toAppError(e) });
       }

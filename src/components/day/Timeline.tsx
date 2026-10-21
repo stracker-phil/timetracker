@@ -3,13 +3,17 @@ import type { ActivityBlock, DayView, Lane as LaneData } from "../../api";
 import { copyText } from "../../lib/clipboard";
 import { findBlock } from "../../lib/blockFocus";
 import { isToday } from "../../lib/day";
+import { formatClock } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { useContextMenu, type MenuEntry } from "../ContextMenu";
 import { HoverCard } from "./HoverCard";
 import { Lane } from "./Lane";
 import { LaneHeader } from "./LaneHeader";
 import { Spans } from "./Spans";
+import { RecordingsColumn } from "./RecordingsColumn";
 import { HALF_HOURS_FROM_PX, TimeAxis } from "./TimeAxis";
+import { selectionPress } from "./selectionPress";
+import { useSnappedSpan } from "./useSnappedSpan";
 import { useTimelineScroll } from "./useTimelineScroll";
 import { useVisibleRange } from "./useVisibleRange";
 
@@ -95,6 +99,15 @@ export function Timeline({ view }: { view: DayView }) {
   const element = (id: string | null) => (id === null ? null : (scrollRef.current?.querySelector(`[data-block-id="${id}"]`) ?? null));
 
   useTimelineScroll(scrollRef, view, focusedBlock, y, live ? now : null);
+  const columnRef = useRef<HTMLDivElement>(null);
+  const press = selectionPress({ origin, pxPerMinute, scrollRef, columnRef });
+  const selection = useSnappedSpan(useStore((s) => s.selection));
+  const selectionStart = selection?.start;
+  const selectionEnd = selection?.end;
+  useEffect(() => {
+    const { setSelectionSnap } = useStore.getState();
+    setSelectionSnap(selectionStart === undefined || selectionEnd === undefined ? null : { start: selectionStart, end: selectionEnd });
+  }, [selectionStart, selectionEnd]);
 
   const openMenu = (anchor: { x: number; y: number } | MouseEvent, id: string) => {
     const found = findBlock(view, id);
@@ -116,13 +129,13 @@ export function Timeline({ view }: { view: DayView }) {
     <div className="timeline" ref={scrollRef} onMouseLeave={hover.leave}>
       <LaneHeader lanes={view.lanes} />
       <div className="timeline-body" style={{ height: y(end) }}>
-        <div className="recordings-col" aria-label="Recordings" />
-        <TimeAxis bounds={view.bounds} pxPerMinute={pxPerMinute} />
+        <RecordingsColumn ref={columnRef} recordings={view.recordings} y={y} pxPerMinute={pxPerMinute} selection={selection} />
+        <TimeAxis bounds={view.bounds} pxPerMinute={pxPerMinute} onPointerDown={press} />
         <div
           className={pxPerMinute >= HALF_HOURS_FROM_PX ? "lanes half-hours" : "lanes"}
           style={{ "--hour-px": `${60 * pxPerMinute}px` } as CSSProperties}
           onMouseOver={(e) => hover.over(blockIdAt(e.target))}
-          onClick={(e) => useStore.getState().focusBlock(blockIdAt(e.target))}
+          onPointerDown={press}
           onContextMenu={(e) => {
             const id = blockIdAt(e.target);
             if (id) openMenu(e, id);
@@ -132,6 +145,13 @@ export function Timeline({ view }: { view: DayView }) {
           {view.lanes.map((lane) => (
             <Lane key={lane.id} lane={lane} origin={origin} pxPerMinute={pxPerMinute} range={range} focusedBlock={focusedBlock} />
           ))}
+          {selection && (
+            <div className="selection" style={{ top: y(selection.start), height: y(selection.end) - y(selection.start) }} aria-label="Selection">
+              <span className="selection-label mono">
+                {formatClock(selection.start)}–{formatClock(selection.end)}
+              </span>
+            </div>
+          )}
           {live && now >= origin && now < end && <div className="now-line" style={{ top: y(now) }} aria-hidden="true" />}
         </div>
       </div>

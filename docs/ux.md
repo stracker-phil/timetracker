@@ -150,7 +150,7 @@ lane, an external source's lane (its name in mono). Lane labels stick to the top
 - **Blocks** are flat: `--text` at 10% on `--bg`, a `--line` hairline, 4px radius. The app name in sans
   `--fs-small`, the title in mono `--o2`; short blocks put both on one line, tiny ones show none. Private
   blocks read "Private" in `--o3`. Overlapping blocks of one lane share its width side by side.
-- **Focus** (J/K/H/L or a click) is a 2px accent outline; ↵ opens the details card for it.
+- **Focus** (J/K/H/L or a click) is a 2px accent outline; Space opens the details card for it.
 - **Hover card** after 300 ms on `--pop` with `--shadow`: app, full title, URL or path (selectable; an
   http(s) URL opens in the browser), `09:12–09:40 · 28 min`, and the source when external.
 - **Away spans and gaps** are dashed `--line` outlines across all lanes; away spans read "Away · idle 25
@@ -159,6 +159,21 @@ lane, an external source's lane (its name in mono). Lane labels stick to the top
 - **Empty day:** "Nothing tracked on this day" with the tracker's status line; without the Accessibility
   permission "Tracking needs permission" with Allow….
 - **Zoom** is 1–8 px per minute (default 2.5), kept in `ui_state.json` as `timelineZoom`.
+
+## Recordings
+
+- **Selection.** Drag on the lanes or the axis, or click a block (⇧-click adds blocks): `--sel` fill with
+  accent hairlines and the snapped `09:00–10:30` in mono accent text; the status bar repeats it with the
+  duration. A dashed accent outline in the recordings column shows where the recording goes.
+- **Recording blocks** sit in the recordings column: the project's shade as a 3px bar on the left and a 22%
+  tint on `--bg`; project name (sans 500), note (mono), tags (mono `--o3`, ` · `-joined), duration bottom
+  right. A dashed top or bottom edge means the recording continues on another day. The top and bottom 6px
+  resize; the body moves. Activity under recordings (half or more) is dimmed; hover lifts it.
+- **Editor**: a sheet with project, From/To, duration, note, tags; Save, Cancel, Delete. Field errors show
+  under their field.
+- **Overlap**: a confirm sheet listing the recordings in the way; "Replace overlapped part" trims, splits
+  or deletes them.
+- Every change ends in a toast with Undo.
 
 ## Keys
 
@@ -176,7 +191,12 @@ in inputs or dialogs. `Tab` is never bound: it moves the keyboard focus.
 | ⌘← / ⌘→ / T | day | previous day, next day, today (`nav.*`) |
 | J / K | day | next / previous block in time (`day.nextBlock`, `day.prevBlock`) |
 | H / L | day | the block in the lane to the left / right (`day.prevLane`, `day.nextLane`) |
-| ↵ / ⌃↵ / Escape | day | the focused block's details card, its menu, clear the focus |
+| Space / ⌃↵ | day | the focused block's details card, its menu |
+| ↵ | day | record the selection, or edit the focused recording |
+| ⌫ | day | delete the focused recording (Undo in the toast) |
+| ⌥↑ / ⌥↓, ⌥⇧↓ / ⌥⇧↑ | day | move the focused recording, extend or shorten it, by one snap step |
+| Escape | day | clear the selection and the focus |
+| ⌘Z / ⌘⇧Z | global | undo / redo the last recording change (outside text fields) |
 | ⌘W | global | close (hide) the window (`window.hide`) |
 | ⌘Q | menu | quit (`app.quit`) |
 

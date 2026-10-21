@@ -1,8 +1,11 @@
 //! Fixtures for the Day view tests.
 
-use super::{DayInput, ViewSettings};
+use std::collections::HashMap;
+
+use super::{DayInput, ProjectRef, ViewSettings};
 use crate::db::activities::ActivityRow;
 use crate::db::away::{AwayReason, AwayRow};
+use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms};
 
 pub const MIN: Ms = 60_000;
@@ -99,7 +102,7 @@ pub fn hidden(mut settings: ViewSettings, bundle_id: &str) -> ViewSettings {
     settings
 }
 
-/// A day of `(0, 24 h)` seen at `NOW`.
+/// A day of `(0, 24 h)` seen at `NOW`, without recordings.
 pub fn input(activities: Vec<ActivityRow>, away: Vec<AwayRow>) -> DayInput {
     DayInput {
         day: day(),
@@ -107,5 +110,39 @@ pub fn input(activities: Vec<ActivityRow>, away: Vec<AwayRow>) -> DayInput {
         now: NOW,
         activities,
         away,
+        recordings: Vec::new(),
+        projects: HashMap::new(),
+        tags: HashMap::new(),
+    }
+}
+
+/// A day with only recordings.
+pub fn input_with_recordings(recordings: Vec<Recording>) -> DayInput {
+    DayInput {
+        recordings,
+        ..input(Vec::new(), Vec::new())
+    }
+}
+
+/// A recording of project `p1` without note or tags; `end: None` is the running timer.
+pub fn recording(id: &str, start: Ms, end: Option<Ms>) -> Recording {
+    Recording {
+        id: id.into(),
+        project_id: "p1".into(),
+        start,
+        end,
+        note: String::new(),
+        tag_ids: Vec::new(),
+        created_at: 0,
+        updated_at: 0,
+    }
+}
+
+pub fn project_ref(name: &str) -> ProjectRef {
+    ProjectRef {
+        name: name.into(),
+        client_name: None,
+        color: "blue".into(),
+        shade: 4,
     }
 }

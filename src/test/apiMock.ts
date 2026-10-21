@@ -1,10 +1,11 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type ProjectInput, type Settings, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ClientInput, type Keybindings, type ProjectInput, type RecordingInput, type RecordingPatch, type Settings, type UiState } from "../api/types";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
 import { client, DEFAULT_TAGS, project } from "./projectFixtures";
+import { recording } from "./recordingFixtures";
 import { settings } from "./settings";
 
 const noUnlisten = () => Promise.resolve(() => {});
@@ -37,6 +38,14 @@ export function createApiMock(): typeof realApi {
     activityList: vi.fn().mockResolvedValue([]),
     awayList: vi.fn().mockResolvedValue([]),
     dayView: vi.fn(async (day: string) => dayView({ day })),
+    recordingCreate: vi.fn(async (input: RecordingInput) => recording({ ...input, id: "recording-new" })),
+    recordingUpdate: vi.fn(async (id: string, patch: RecordingPatch) => recording({ ...patch, id })),
+    recordingDelete: vi.fn().mockResolvedValue(undefined),
+    recordingsList: vi.fn().mockResolvedValue([]),
+    recordingSnap: vi.fn(async (start: number, end: number) => ({ start, end })),
+    undo: vi.fn().mockResolvedValue(null),
+    redo: vi.fn().mockResolvedValue(null),
+    undoStatus: vi.fn().mockResolvedValue({ undoLabel: null, redoLabel: null }),
     setAppSetting: vi.fn(async () => settings()),
     appsSeen: vi.fn().mockResolvedValue([]),
     activityAdd: vi.fn().mockResolvedValue([]),

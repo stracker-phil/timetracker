@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityInput, ActivityRow, AppError, AppSeen, AppSettingPatch, DayView, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, PauseUntil, PermissionStatus, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -43,6 +43,18 @@ export const api = {
   awayList: (day: string) => invoke<AwayRow[]>("away_list", { day }),
   /** The Day view of a day (`YYYY-MM-DD`): lanes of packed blocks, away spans, gaps, totals. */
   dayView: (day: string) => invoke<DayView>("day_view", { day }),
+  /** Saves a new recording; Rust snaps its times. `overlap: "cancel"` rejects with kind `overlap` (`details`: the recordings in the way). */
+  recordingCreate: (input: RecordingInput, overlap: Overlap) => invoke<Recording>("recording_create", { input, overlap }),
+  recordingUpdate: (id: string, patch: RecordingPatch, overlap: Overlap) => invoke<Recording>("recording_update", { id, patch, overlap }),
+  recordingDelete: (id: string) => invoke<void>("recording_delete", { id }),
+  /** Recordings sharing time with `[from, to)`. */
+  recordingsList: (from: number, to: number) => invoke<Recording[]>("recordings_list", { from, to }),
+  /** The span as a write would store it, for a drag ghost. */
+  recordingSnap: (start: number, end: number) => invoke<Span>("recording_snap", { start, end }),
+  /** Undoes the last recording change; its label, or null when there was none. */
+  undo: () => invoke<string | null>("undo"),
+  redo: () => invoke<string | null>("redo"),
+  undoStatus: () => invoke<UndoStatus>("undo_status"),
   /** Changes one app's timeline override (own lane, hidden); returns the saved settings. */
   setAppSetting: (bundleId: string, patch: AppSettingPatch) => invoke<Settings>("app_settings_set", { bundleId, patch }),
   /** Apps the tracker recorded in the last `days` days, most time first. */

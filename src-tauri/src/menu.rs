@@ -36,6 +36,9 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("window.hide", "Close Window", "Mod+W"),
     item("shortcuts.show", "Keyboard Shortcuts", "Shift+?"),
     item("logs.open", "Open Log Folder", ""),
+    item("recording.create", "New Recording from Selection", ""),
+    item("recording.edit", "Edit Recording", ""),
+    item("recording.delete", "Delete Recording", "Backspace"),
 ];
 
 fn menu_item(id: &str) -> Option<&'static MenuItemDef> {
@@ -142,6 +145,12 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
             &["zoom.in", "zoom.out", "zoom.reset"],
         ],
     )?;
+    let recording = submenu(
+        app,
+        bindings,
+        "Recording",
+        &[&["recording.create", "recording.edit", "recording.delete"]],
+    )?;
     let window = SubmenuBuilder::new(app, "Window")
         .item(&build_item(app, bindings, "window.hide")?)
         .minimize()
@@ -156,7 +165,7 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
         "Help",
         &[&["shortcuts.show"], &["logs.open"]],
     )?;
-    Menu::with_items(app, &[&app_menu, &edit, &view, &window, &help])
+    Menu::with_items(app, &[&app_menu, &edit, &view, &recording, &window, &help])
 }
 
 /// Rebuilds the menu so changed key bindings show as accelerators.

@@ -2,9 +2,11 @@ use std::time::Instant;
 
 use tauri::State;
 
-use super::{DayInput, DayView, ViewSettings, view};
+use std::collections::HashMap;
+
+use super::{DayInput, DayView, ProjectRef, ViewSettings, view};
 use crate::db::time::{Day, Ms, now_ms};
-use crate::db::{Db, activities, away};
+use crate::db::{Db, activities, away, clients, projects, recordings, tags};
 use crate::error::AppResult;
 use crate::state::AppState;
 use crate::store::settings::Settings;
@@ -18,8 +20,38 @@ pub async fn load(db: &Db, day: Day, settings: &Settings, now: Ms) -> AppResult<
         now,
         activities: activities::list_for_range(db, bounds.0, bounds.1).await?,
         away: away::list_for_range(db, bounds.0, bounds.1).await?,
+        recordings: recordings::list_for_range(db, bounds.0, bounds.1).await?,
+        projects: project_refs(db).await?,
+        tags: tags::list(db)
+            .await?
+            .into_iter()
+            .map(|t| (t.id, t.name))
+            .collect(),
     };
     Ok(view(&input, &ViewSettings::from(settings)))
+}
+
+/// Archived projects and clients included: old recordings still show their names.
+async fn project_refs(db: &Db) -> AppResult<HashMap<String, ProjectRef>> {
+    let clients = clients::list(db, true).await?;
+    Ok(projects::list(db, true)
+        .await?
+        .into_iter()
+        .map(|p| {
+            let client_name = p
+                .client_id
+                .as_ref()
+                .and_then(|id| clients.iter().find(|c| &c.id == id))
+                .map(|c| c.name.clone());
+            let project = ProjectRef {
+                name: p.name,
+                client_name,
+                color: p.color,
+                shade: p.shade,
+            };
+            (p.id, project)
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -38,9 +70,10 @@ pub async fn day_view(state: State<'_, AppState>, day: String) -> AppResult<DayV
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::day::RecordingBlock;
     use crate::db::activities::NewActivity;
     use crate::db::away::{AwayReason, NewAway};
-    use crate::test_support::{activity, temp_db};
+    use crate::test_support::{activity, client_with_color, project, recording, temp_db};
 
     const HOUR: Ms = 3_600_000;
 
@@ -165,6 +198,116 @@ mod tests {
 
         let ids: Vec<&str> = view.lanes.iter().map(|l| l.id.as_str()).collect();
         assert_eq!(ids, ["activity", "app:com.apple.mail"]);
+    }
+
+    #[tokio::test]
+    async fn load_shows_recordings_with_their_project_client_and_tags() {
+        use crate::db::projects::ProjectInput;
+        use crate::db::recordings::{NewRecording, insert};
+
+        let db = Db::open_memory().await.unwrap();
+        let today = day("2026-01-05");
+        let start = today.bounds().0 + HOUR;
+        let acme = client_with_color(&db, "Acme", "teal").await;
+        let portal = projects::insert(
+            &db,
+            ProjectInput {
+                client_id: Some(acme.id),
+                name: "Portal".into(),
+                color: String::new(),
+                shade: Some(3),
+            },
+        )
+        .await
+        .unwrap();
+        let zeta = tags::insert(&db, "zeta").await.unwrap();
+        let alpha = tags::insert(&db, "Alpha").await.unwrap();
+        let saved = insert(
+            &db,
+            NewRecording {
+                id: "r1".into(),
+                project_id: portal.id.clone(),
+                start,
+                end: Some(start + HOUR),
+                note: "fix login".into(),
+                tag_ids: vec![zeta.id, alpha.id],
+            },
+        )
+        .await
+        .unwrap();
+
+        let view = load(&db, today, &Settings::default(), start + 5 * HOUR)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            view.recordings,
+            [RecordingBlock {
+                id: saved.id,
+                start,
+                end: start + HOUR,
+                project_id: portal.id,
+                project_name: "Portal".into(),
+                client_name: Some("Acme".into()),
+                color: "teal".into(),
+                shade: 3,
+                note: "fix login".into(),
+                tags: vec!["Alpha".into(), "zeta".into()],
+                running: false,
+                clipped_start: false,
+                clipped_end: false,
+            }]
+        );
+        assert_eq!(view.totals.recorded_ms, HOUR);
+    }
+
+    #[tokio::test]
+    async fn a_recording_across_midnight_shows_clipped_on_both_days_and_covers_activity() {
+        let db = Db::open_memory().await.unwrap();
+        let (monday, tuesday) = (day("2026-01-05"), day("2026-01-06"));
+        let midnight = tuesday.bounds().0;
+        let p = project(&db, "Portal").await;
+        recording(&db, &p.id, midnight - HOUR, Some(midnight + 2 * HOUR)).await;
+        activity(&db, midnight - HOUR, Some(midnight + HOUR), "Code", "").await;
+        let now = midnight + 10 * HOUR;
+
+        let first = load(&db, monday, &Settings::default(), now).await.unwrap();
+        let second = load(&db, tuesday, &Settings::default(), now).await.unwrap();
+
+        let shape = |view: &DayView| {
+            view.recordings
+                .iter()
+                .map(|b| (b.start, b.end, b.clipped_start, b.clipped_end))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(shape(&first), [(midnight - HOUR, midnight, false, true)]);
+        assert_eq!(
+            shape(&second),
+            [(midnight, midnight + 2 * HOUR, true, false)]
+        );
+        assert_eq!(
+            (first.totals.recorded_ms, second.totals.recorded_ms),
+            (HOUR, 2 * HOUR)
+        );
+        let covered = |view: &DayView| view.lanes[0].blocks.iter().all(|b| b.covered);
+        assert!(covered(&first) && covered(&second));
+    }
+
+    #[tokio::test]
+    async fn a_running_recording_shows_up_to_now() {
+        let db = Db::open_memory().await.unwrap();
+        let today = day("2026-01-05");
+        let start = today.bounds().0 + HOUR;
+        let p = project(&db, "Portal").await;
+        recording(&db, &p.id, start, None).await;
+
+        let view = load(&db, today, &Settings::default(), start + 2 * HOUR)
+            .await
+            .unwrap();
+
+        let block = &view.recordings[0];
+        assert_eq!((block.end, block.running), (start + 2 * HOUR, true));
+        assert_eq!(view.totals.recorded_ms, 2 * HOUR);
     }
 
     #[tokio::test]

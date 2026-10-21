@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::db::{self, DB_FILE, DataStore};
 use crate::launch::LaunchQueue;
+use crate::recordings::undo::UndoStack;
 use crate::store::keybindings::KeybindingsStore;
 use crate::store::settings::{LogLevel, SettingsStore};
 use crate::store::ui_state::UiStateStore;
@@ -12,6 +13,8 @@ pub struct AppState {
     pub ui_state: UiStateStore,
     pub launches: LaunchQueue,
     pub data: DataStore,
+    /// Recording changes of this run; also serializes recording writes.
+    pub undo: tokio::sync::Mutex<UndoStack>,
     pub config_dir: PathBuf,
     /// `--log-level` from the CLI; wins over the stored level until the app quits.
     pub log_override: Option<LogLevel>,
@@ -28,6 +31,7 @@ impl AppState {
             keybindings: KeybindingsStore::open(config_dir),
             ui_state: UiStateStore::open(config_dir),
             launches: LaunchQueue::default(),
+            undo: Default::default(),
             config_dir: config_dir.to_path_buf(),
             log_override: None,
         }

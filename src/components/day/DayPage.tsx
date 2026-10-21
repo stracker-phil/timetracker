@@ -3,10 +3,11 @@ import type { DayView } from "../../api";
 import { isToday } from "../../lib/day";
 import { selectDayVersion, useStore } from "../../state/store";
 import { DayHeader } from "./DayHeader";
+import { RecordingEditor } from "./RecordingEditor";
 import { Timeline } from "./Timeline";
 import { useLiveReload } from "./useLiveReload";
 
-const isEmpty = (view: DayView) => view.away.length === 0 && view.lanes.every((lane) => lane.blocks.length === 0);
+const isEmpty = (view: DayView) => view.away.length === 0 && view.recordings.length === 0 && view.lanes.every((lane) => lane.blocks.length === 0);
 
 function EmptyDay({ day }: { day: string }) {
   const tracker = useStore((s) => s.tracker);
@@ -36,6 +37,7 @@ export function DayPage() {
   const live = useLiveReload(isToday(day));
   const view = useStore((s) => (s.dayView?.day === day ? s.dayView : null));
   const error = useStore((s) => s.dayError);
+  const editor = useStore((s) => s.editor);
 
   useEffect(() => {
     void useStore.getState().loadDay();
@@ -46,6 +48,7 @@ export function DayPage() {
       <DayHeader day={day} totals={view?.totals ?? null} />
       {error && !view && <p className="settings-alert">{error.message}</p>}
       {view && (isEmpty(view) ? <EmptyDay day={day} /> : <Timeline view={view} />)}
+      {editor && <RecordingEditor key={editor.mode === "edit" ? editor.id : `${editor.start}`} editor={editor} />}
     </section>
   );
 }

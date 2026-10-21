@@ -6,7 +6,7 @@ export type ActivityBlock = {
  */
 id: string, start: number, end: number, app: string, bundleId: string | null, title: string, url: string | null, path: string | null, source: string, 
 /**
- * Under a recording.
+ * At least half of it lies inside recordings.
  */
 covered: boolean, 
 /**
@@ -137,7 +137,11 @@ export type DataKind = "activity" | "recordings" | "projects" | "tags" | "rules"
  */
 export type Day = string;
 
-export type DayTotals = { recordedMs: number, 
+export type DayTotals = { 
+/**
+ * The day's part of its recordings.
+ */
+recordedMs: number, 
 /**
  * Tracker activity, overlaps counted once; external sources are not tracked time.
  */
@@ -147,7 +151,11 @@ export type DayView = { day: Day, bounds: [number, number],
 /**
  * Activity lane first, then app lanes, then source lanes.
  */
-lanes: Array<Lane>, away: Array<AwayBlock>, gaps: Array<Gap>, totals: DayTotals, firstActivity: number | null, 
+lanes: Array<Lane>, 
+/**
+ * The recordings column, by start.
+ */
+recordings: Array<RecordingBlock>, away: Array<AwayBlock>, gaps: Array<Gap>, totals: DayTotals, firstActivity: number | null, 
 /**
  * Every source of the day's activity, sorted.
  */
@@ -182,6 +190,11 @@ export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
  * How short a block may be before the timeline hides it as noise.
  */
 export type Noise = "off" | "low" | "medium" | "high";
+
+/**
+ * What a write does when its span overlaps other recordings.
+ */
+export type Overlap = "replace" | "cancel";
 
 export type PauseUntil = { "minutes": number } | "tomorrow" | "resumed";
 
@@ -238,6 +251,29 @@ note: string,
 tagIds: Array<string>, createdAt: number, updatedAt: number, };
 
 /**
+ * A recording cut to the day.
+ */
+export type RecordingBlock = { id: string, start: number, end: number, projectId: string, projectName: string, clientName: string | null, 
+/**
+ * The project's accent and shade.
+ */
+color: string, shade: number, note: string, 
+/**
+ * Tag names, by name.
+ */
+tags: Array<string>, 
+/**
+ * The timer, still recording.
+ */
+running: boolean, 
+/**
+ * The recording starts on an earlier day or ends on a later one.
+ */
+clippedStart: boolean, clippedEnd: boolean, };
+
+export type RecordingInput = { projectId: string, start: number, end: number, note: string, tagIds: Array<string>, };
+
+/**
  * Absent fields stay as they are; `end: null` makes the recording running.
  */
 export type RecordingPatch = { projectId?: string, start?: number, end?: number | null, note?: string, tagIds?: Array<string>, };
@@ -275,6 +311,8 @@ fontMono: string | null, logLevel: LogLevel, launchAtLogin: boolean,
  * The data folder when moved away from the config dir.
  */
 dataDir: string | null, tracker: TrackerSettings, capture: CaptureSettings, timeline: TimelineSettings, apps: { [key in string]: AppOverride }, reports: ReportSettings, timerShortcut: string, };
+
+export type Span = { start: number, end: number, };
 
 /**
  * The reply to `status`. `tracker` is `None` while the data store is unavailable.
@@ -356,3 +394,5 @@ timelineZoom: number,
  * Splitter positions by pane id, in px.
  */
 paneSizes: { [key in string]: number }, };
+
+export type UndoStatus = { undoLabel: string | null, redoLabel: string | null, };

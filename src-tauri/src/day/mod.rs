@@ -12,6 +12,7 @@ use ts_rs::TS;
 
 use crate::db::activities::ActivityRow;
 use crate::db::away::{AwayReason, AwayRow};
+use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms, clip};
 use crate::store::settings::{AppOverride, Settings, TimelineSettings};
 
@@ -52,6 +53,19 @@ pub struct DayInput {
     pub now: Ms,
     pub activities: Vec<ActivityRow>,
     pub away: Vec<AwayRow>,
+    pub recordings: Vec<Recording>,
+    /// By project id: what a recording block shows of its project.
+    pub projects: HashMap<String, ProjectRef>,
+    /// Tag names by id.
+    pub tags: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectRef {
+    pub name: String,
+    pub client_name: Option<String>,
+    pub color: String,
+    pub shade: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -62,6 +76,8 @@ pub struct DayView {
     pub bounds: (Ms, Ms),
     /// Activity lane first, then app lanes, then source lanes.
     pub lanes: Vec<Lane>,
+    /// The recordings column, by start.
+    pub recordings: Vec<RecordingBlock>,
     pub away: Vec<AwayBlock>,
     pub gaps: Vec<Gap>,
     pub totals: DayTotals,
@@ -106,7 +122,7 @@ pub struct ActivityBlock {
     pub url: Option<String>,
     pub path: Option<String>,
     pub source: String,
-    /// Under a recording.
+    /// At least half of it lies inside recordings.
     pub covered: bool,
     /// The activity ids the block stands for.
     pub members: Vec<i64>,
@@ -114,6 +130,30 @@ pub struct ActivityBlock {
     pub col: u8,
     pub cols: u8,
     pub private: bool,
+}
+
+/// A recording cut to the day.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct RecordingBlock {
+    pub id: String,
+    pub start: Ms,
+    pub end: Ms,
+    pub project_id: String,
+    pub project_name: String,
+    pub client_name: Option<String>,
+    /// The project's accent and shade.
+    pub color: String,
+    pub shade: u8,
+    pub note: String,
+    /// Tag names, by name.
+    pub tags: Vec<String>,
+    /// The timer, still recording.
+    pub running: bool,
+    /// The recording starts on an earlier day or ends on a later one.
+    pub clipped_start: bool,
+    pub clipped_end: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -139,6 +179,7 @@ pub struct Gap {
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct DayTotals {
+    /// The day's part of its recordings.
     pub recorded_ms: i64,
     /// Tracker activity, overlaps counted once; external sources are not tracked time.
     pub tracked_ms: i64,
@@ -152,6 +193,9 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
     let blocks = bridge_gaps(blocks, settings);
     let blocks = drop_noise(blocks, settings);
     let blocks = choose_titles(blocks, settings);
+    let recordings = recording_blocks(input);
+    let recorded: Vec<(Ms, Ms)> = recordings.iter().map(|r| (r.start, r.end)).collect();
+    let blocks = marked_covered(blocks, &recorded);
 
     let away = away_blocks(input);
     let activity: Vec<(Ms, Ms)> = blocks.iter().map(|b| (b.start, b.end)).collect();
@@ -162,7 +206,7 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
         .map(|b| (b.start, b.end))
         .collect();
     let totals = DayTotals {
-        recorded_ms: 0,
+        recorded_ms: recorded.iter().map(|(start, end)| end - start).sum(),
         tracked_ms: union_length(tracked),
         away_ms: union_length(away_spans.clone()),
     };
@@ -178,12 +222,65 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
         day: input.day,
         bounds: input.bounds,
         lanes,
+        recordings,
         away,
         gaps,
         totals,
         first_activity,
         sources,
     }
+}
+
+fn recording_blocks(input: &DayInput) -> Vec<RecordingBlock> {
+    let mut blocks: Vec<RecordingBlock> = input
+        .recordings
+        .iter()
+        .filter_map(|r| {
+            let (start, end) = clip(r.start, r.end, input.bounds, input.now)?;
+            let project = input.projects.get(&r.project_id);
+            let mut tags: Vec<String> = r
+                .tag_ids
+                .iter()
+                .filter_map(|id| input.tags.get(id).cloned())
+                .collect();
+            tags.sort_by_key(|t| t.to_lowercase());
+            Some(RecordingBlock {
+                id: r.id.clone(),
+                start,
+                end,
+                project_id: r.project_id.clone(),
+                project_name: project.map_or_else(String::new, |p| p.name.clone()),
+                client_name: project.and_then(|p| p.client_name.clone()),
+                color: project.map_or_else(|| "graphite".into(), |p| p.color.clone()),
+                shade: project.map_or(4, |p| p.shade),
+                note: r.note.clone(),
+                tags,
+                running: r.end.is_none(),
+                clipped_start: r.start < input.bounds.0,
+                clipped_end: r.end.unwrap_or(input.now) > input.bounds.1,
+            })
+        })
+        .collect();
+    blocks.sort_by_key(|b| b.start);
+    blocks
+}
+
+/// A block is covered when at least half of it lies inside recordings.
+fn marked_covered(blocks: Vec<ActivityBlock>, recorded: &[(Ms, Ms)]) -> Vec<ActivityBlock> {
+    let recorded = union(recorded.to_vec());
+    blocks
+        .into_iter()
+        .map(|block| {
+            let inside: Ms = recorded
+                .iter()
+                .map(|&(start, end)| (end.min(block.end) - start.max(block.start)).max(0))
+                .sum();
+            ActivityBlock {
+                covered: 2 * inside >= block.end - block.start,
+                ..block
+            }
+        })
+        .collect()
 }
 
 fn away_blocks(input: &DayInput) -> Vec<AwayBlock> {
@@ -950,6 +1047,7 @@ mod tests {
                         "private": false
                     }]
                 }],
+                "recordings": [],
                 "away": [{"id": 3, "start": mins(30), "end": mins(40), "reason": "idle"}],
                 "gaps": [],
                 "totals": {"recordedMs": 0, "trackedMs": mins(10), "awayMs": mins(10)},
@@ -976,5 +1074,251 @@ mod tests {
         let view = view(&input(vec![code(1, 0, 10)], vec![]), &settings());
 
         assert!(view.lanes.iter().all(|l| l.kind != LaneKind::Summary));
+    }
+
+    fn covered_flags(rows: Vec<ActivityRow>, recordings: Vec<Recording>) -> Vec<bool> {
+        let input = DayInput {
+            recordings,
+            ..input(rows, vec![])
+        };
+        let view = view(&input, &settings());
+        activity_lane(&view)
+            .blocks
+            .iter()
+            .map(|b| b.covered)
+            .collect()
+    }
+
+    #[test]
+    fn a_block_is_covered_when_at_least_half_of_it_lies_inside_recordings() {
+        let block = || vec![activity(1, 0, Some(100_000), "Code", "")];
+        let cases: [(&str, Vec<Recording>, bool); 7] = [
+            ("49 percent", vec![recording("r", 0, Some(49_000))], false),
+            ("50 percent", vec![recording("r", 0, Some(50_000))], true),
+            ("100 percent", vec![recording("r", 0, Some(100_000))], true),
+            (
+                "50 percent from the middle",
+                vec![recording("r", 25_000, Some(75_000))],
+                true,
+            ),
+            (
+                "two recordings add up",
+                vec![
+                    recording("a", 0, Some(25_000)),
+                    recording("b", 30_000, Some(55_000)),
+                ],
+                true,
+            ),
+            (
+                "outside",
+                vec![recording("r", 200_000, Some(300_000))],
+                false,
+            ),
+            (
+                "a running recording counts until now",
+                vec![recording("r", 0, None)],
+                true,
+            ),
+        ];
+
+        for (name, recordings, expected) in cases {
+            assert_eq!(covered_flags(block(), recordings), [expected], "{name}");
+        }
+    }
+
+    #[test]
+    fn without_recordings_no_block_is_covered() {
+        let rows = vec![code(1, 0, 10), code(2, 20, 30)];
+
+        assert_eq!(covered_flags(rows, vec![]), [false, false]);
+    }
+
+    #[test]
+    fn coverage_is_judged_per_block() {
+        let rows = vec![code(1, 0, 10), code(2, 20, 30)];
+
+        let flags = covered_flags(rows, vec![recording("r", 0, Some(mins(10)))]);
+
+        assert_eq!(flags, [true, false]);
+    }
+
+    #[test]
+    fn recorded_time_sums_the_parts_of_recordings_inside_the_day() {
+        let input = DayInput {
+            bounds: (HOUR, 2 * HOUR),
+            now: mins(115),
+            ..input_with_recordings(vec![
+                recording("a", mins(30), Some(mins(90))),
+                recording("b", mins(100), Some(mins(200))),
+                recording("c", mins(110), None),
+                recording("d", 0, Some(HOUR)),
+                recording("e", 3 * HOUR, Some(4 * HOUR)),
+            ])
+        };
+
+        let view = view(&input, &settings());
+
+        assert_eq!(view.totals.recorded_ms, mins(30) + mins(20) + mins(5));
+        assert_eq!(view.recordings.len(), 3);
+    }
+
+    #[test]
+    fn a_recording_across_midnight_shows_clipped_on_both_days() {
+        let midnight = DAY_LENGTH;
+        let rows = vec![recording("r", midnight - HOUR, Some(midnight + 2 * HOUR))];
+        let first = DayInput {
+            bounds: (0, midnight),
+            ..input_with_recordings(rows.clone())
+        };
+        let second = DayInput {
+            bounds: (midnight, 2 * midnight),
+            ..input_with_recordings(rows)
+        };
+
+        let first = view(&first, &settings());
+        let second = view(&second, &settings());
+
+        let shape = |view: &DayView| {
+            view.recordings
+                .iter()
+                .map(|b| (b.start, b.end, b.clipped_start, b.clipped_end))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(shape(&first), [(midnight - HOUR, midnight, false, true)]);
+        assert_eq!(
+            shape(&second),
+            [(midnight, midnight + 2 * HOUR, true, false)]
+        );
+        assert_eq!(first.totals.recorded_ms, HOUR);
+        assert_eq!(second.totals.recorded_ms, 2 * HOUR);
+    }
+
+    #[test]
+    fn a_recording_block_carries_the_project_and_the_sorted_tag_names() {
+        let mut input = input_with_recordings(vec![
+            Recording {
+                note: "fix login".into(),
+                tag_ids: vec!["t-zeta".into(), "t-alpha".into(), "t-gone".into()],
+                ..recording("late", mins(120), Some(mins(150)))
+            },
+            recording("early", mins(60), Some(mins(90))),
+        ]);
+        input.projects.insert(
+            "p1".into(),
+            ProjectRef {
+                client_name: Some("Acme".into()),
+                color: "teal".into(),
+                shade: 7,
+                ..project_ref("Portal")
+            },
+        );
+        input.tags.insert("t-zeta".into(), "zeta".into());
+        input.tags.insert("t-alpha".into(), "Alpha".into());
+
+        let view = view(&input, &settings());
+
+        assert_eq!(
+            view.recordings,
+            [
+                RecordingBlock {
+                    id: "early".into(),
+                    start: mins(60),
+                    end: mins(90),
+                    project_id: "p1".into(),
+                    project_name: "Portal".into(),
+                    client_name: Some("Acme".into()),
+                    color: "teal".into(),
+                    shade: 7,
+                    note: String::new(),
+                    tags: vec![],
+                    running: false,
+                    clipped_start: false,
+                    clipped_end: false,
+                },
+                RecordingBlock {
+                    id: "late".into(),
+                    start: mins(120),
+                    end: mins(150),
+                    project_id: "p1".into(),
+                    project_name: "Portal".into(),
+                    client_name: Some("Acme".into()),
+                    color: "teal".into(),
+                    shade: 7,
+                    note: "fix login".into(),
+                    tags: vec!["Alpha".into(), "zeta".into()],
+                    running: false,
+                    clipped_start: false,
+                    clipped_end: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_running_recording_runs_to_now_and_is_clipped_at_the_end_of_the_day_when_now_is_later() {
+        for (now, expected_end, clipped_end) in [
+            (mins(90), mins(90), false),
+            (3 * DAY_LENGTH, DAY_LENGTH, true),
+        ] {
+            let input = DayInput {
+                now,
+                ..input_with_recordings(vec![recording("r", HOUR, None)])
+            };
+
+            let view = view(&input, &settings());
+
+            let block = &view.recordings[0];
+            assert_eq!(
+                (block.start, block.end, block.running, block.clipped_end),
+                (HOUR, expected_end, true, clipped_end),
+                "now {now}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_recording_of_an_unknown_project_falls_back_to_graphite() {
+        let input = input_with_recordings(vec![recording("r", HOUR, Some(2 * HOUR))]);
+
+        let view = view(&input, &settings());
+
+        let block = &view.recordings[0];
+        assert_eq!(
+            (block.project_name.as_str(), block.client_name.clone()),
+            ("", None)
+        );
+        assert_eq!((block.color.as_str(), block.shade), ("graphite", 4));
+    }
+
+    #[test]
+    fn a_recording_block_serializes_with_camel_case_keys() {
+        let mut input = input_with_recordings(vec![Recording {
+            note: "n".into(),
+            tag_ids: vec!["t1".into()],
+            ..recording("r1", HOUR, Some(2 * HOUR))
+        }]);
+        input.projects.insert("p1".into(), project_ref("Portal"));
+        input.tags.insert("t1".into(), "admin".into());
+
+        let view = view(&input, &settings());
+
+        assert_eq!(
+            serde_json::to_value(&view.recordings).unwrap(),
+            json!([{
+                "id": "r1",
+                "start": HOUR,
+                "end": 2 * HOUR,
+                "projectId": "p1",
+                "projectName": "Portal",
+                "clientName": null,
+                "color": "blue",
+                "shade": 4,
+                "note": "n",
+                "tags": ["admin"],
+                "running": false,
+                "clippedStart": false,
+                "clippedEnd": false
+            }])
+        );
     }
 }

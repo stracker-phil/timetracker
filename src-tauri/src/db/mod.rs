@@ -191,7 +191,7 @@ fn name_taken(what: &str) -> AppError {
     invalid_field("name", format!("{what} with this name already exists"))
 }
 
-fn new_id() -> String {
+pub(crate) fn new_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 

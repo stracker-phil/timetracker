@@ -16,7 +16,7 @@ const DARKEST = 0.36;
 const STEP = 0.06;
 
 /** The accent's chroma and hue at the lightness of `shade`. */
-function shadeColor(accent: string, shade: number): string {
+export function shadeColor(accent: string, shade: number): string {
   return `oklch(from var(--a-${accent}) ${(DARKEST + shade * STEP).toFixed(2)} c h)`;
 }
 

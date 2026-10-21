@@ -1,4 +1,4 @@
-import { api } from "../../api";
+import { api, type Recording } from "../../api";
 import type { Slice } from "../store";
 
 export interface Toast {
@@ -25,7 +25,9 @@ export type Dialog =
   /** Edit a project (`id`) or create one, for `clientId` when given. */
   | { type: "project"; id?: string; clientId?: string }
   /** Edit a client (`id`) or create one. */
-  | { type: "client"; id?: string };
+  | { type: "client"; id?: string }
+  /** A recording write overlaps `recordings`; replace their overlapped part, or cancel. */
+  | { type: "overlap"; recordings: Recording[]; onReplace: () => void; onCancel: () => void };
 
 export interface UiSlice {
   toasts: Toast[];

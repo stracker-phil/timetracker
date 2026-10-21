@@ -1,4 +1,4 @@
-import type { ActivityBlock, AwayBlock, DayTotals, DayView, Gap, Lane } from "../api/types";
+import type { ActivityBlock, AwayBlock, DayTotals, DayView, Gap, Lane, RecordingBlock } from "../api/types";
 
 /** A fixed past day, so tests never depend on the clock. */
 export const DAY = "2026-03-10";
@@ -33,6 +33,26 @@ export function block(patch: Partial<ActivityBlock> = {}): ActivityBlock {
     col: 0,
     cols: 1,
     private: false,
+    ...patch,
+  };
+}
+
+/** A recording of the default project from 09:00 to 09:45 of `DAY`; `patch` overrides fields. */
+export function recordingBlock(patch: Partial<RecordingBlock> = {}): RecordingBlock {
+  return {
+    id: "r1",
+    start: at("09:00"),
+    end: at("09:45"),
+    projectId: "project-1",
+    projectName: "Website",
+    clientName: null,
+    color: "blue",
+    shade: 0,
+    note: "",
+    tags: [],
+    running: false,
+    clippedStart: false,
+    clippedEnd: false,
     ...patch,
   };
 }
@@ -75,6 +95,7 @@ export function dayView(patch: Partial<DayView> = {}): DayView {
     lanes,
     away: [],
     gaps: [],
+    recordings: [],
     totals,
     firstActivity: starts.length > 0 ? Math.min(...starts) : null,
     sources: lanes.filter((l) => l.kind === "source").map((l) => l.label),

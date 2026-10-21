@@ -19,6 +19,7 @@ use tokio::net::unix::OwnedWriteHalf;
 use crate::activity::ActivityInput;
 use crate::db::time::{Day, Ms};
 use crate::error::{AppError, ErrorKind};
+use crate::recordings::cli::RecordRequest;
 use crate::tracker::PauseUntil;
 
 /// Every request another process can make. Each CLI subcommand is one message; `remote::handle`
@@ -58,6 +59,9 @@ pub enum IpcMessage {
         source: String,
         end: Option<Ms>,
     },
+    Record {
+        request: RecordRequest,
+    },
     /// Runs JavaScript in the window (used by scripts/dev to drive the UI).
     #[cfg(debug_assertions)]
     Eval {
@@ -80,6 +84,7 @@ impl IpcMessage {
             IpcMessage::ActivityAdd { .. } => "ActivityAdd",
             IpcMessage::ActivityStart { .. } => "ActivityStart",
             IpcMessage::ActivityStop { .. } => "ActivityStop",
+            IpcMessage::Record { .. } => "Record",
             #[cfg(debug_assertions)]
             IpcMessage::Eval { .. } => "Eval",
         }
@@ -347,6 +352,7 @@ fn same_user(stream: &tokio::net::UnixStream) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recordings::Overlap;
     use crate::test_support::temp_config_dir;
     use tokio::sync::mpsc;
 
@@ -487,7 +493,21 @@ mod tests {
                 source: "planner".into(),
                 end: Some(5_000),
             },
+            record_message(),
         ]
+    }
+
+    fn record_message() -> IpcMessage {
+        IpcMessage::Record {
+            request: RecordRequest {
+                project: "acme".into(),
+                start: 1_000,
+                end: 2_000,
+                note: "fix login".into(),
+                tags: vec!["admin".into(), "internal meeting".into()],
+                overlap: Overlap::Replace,
+            },
+        }
     }
 
     #[tokio::test]
@@ -564,6 +584,16 @@ mod tests {
                     end: None,
                 },
                 serde_json::json!({ "type": "activityStop", "source": "planner", "end": null }),
+            ),
+            (
+                record_message(),
+                serde_json::json!({
+                    "type": "record",
+                    "request": {
+                        "project": "acme", "start": 1000, "end": 2000, "note": "fix login",
+                        "tags": ["admin", "internal meeting"], "overlap": "replace"
+                    }
+                }),
             ),
             (
                 IpcMessage::ActivityStart {

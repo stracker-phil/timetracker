@@ -1,4 +1,5 @@
 import { useStore } from "../state/store";
+import { OverlapDialog } from "./day/OverlapDialog";
 import { Modal } from "./Modal";
 import { ClientSheet } from "./projects/ClientSheet";
 import { ProjectSheet } from "./projects/ProjectSheet";
@@ -39,6 +40,8 @@ export function Dialogs() {
       return <ConfirmDialog {...dialog} />;
     case "project":
       return <ProjectSheet key={dialog.id ?? ""} id={dialog.id} initialClientId={dialog.clientId} onClose={useStore.getState().closeDialog} />;
+    case "overlap":
+      return <OverlapDialog recordings={dialog.recordings} onReplace={dialog.onReplace} onCancel={dialog.onCancel} />;
     case "client":
       return <ClientSheet key={dialog.id ?? ""} id={dialog.id} onClose={useStore.getState().closeDialog} />;
     default:

@@ -111,6 +111,13 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes }` | `db`, `io`, `invalid_input` |
 | `day_view` (`day/commands.rs`) | `day: String` | `DayView` (see [Day view](#day-view)); logs the time it took at debug level | `invalid_input`, `db` |
 | `app_settings_set` (`commands.rs`) | `bundleId: String, patch: AppSettingPatch { ownLane?, hidden? }` | `Settings`; an override that ends up default is removed (`Settings::with_app`); emits `data_changed { kind: settings, day: null }` | `invalid_input` (blank bundle id), `io` |
+| `recording_create` (`recordings/commands.rs`) | `input: RecordingInput { projectId, start, end, note, tagIds }, overlap: Overlap` | `Recording` (snapped) | `invalid_input` (`field`), `overlap` (`details`: the recordings in the way), `not_found`, `db` |
+| `recording_update` | `id, patch: RecordingPatch, overlap` | `Recording` | the same |
+| `recording_delete` | `id` | – | `not_found`, `db` |
+| `recordings_list` | `from: Ms, to: Ms` | `Recording[]` sharing time with the range | `db` |
+| `recording_snap` | `start: Ms, end: Ms` | `Span` as a write would snap it (the drag ghost) | – |
+| `undo` / `redo` | – | the label undone or redone, `null` when there was none | `overlap`, `db` |
+| `undo_status` | – | `UndoStatus { undoLabel, redoLabel }` | – |
 | `activity_list` / `away_list` (`db/commands.rs`) | `day: Day` | `ActivityRow[]` / `AwayRow[]` of the day, cut to its bounds; open rows end now | `db`, `invalid_input` |
 | `apps_seen` (`db/commands.rs`) | `days: u16` | `AppSeen[] { bundleId, app, lastSeen, totalMs }`: tracker apps of the last `days` days, one per bundle id, most time first | `db` |
 | `tracker_status` (`tracker/commands.rs`) | – | `TrackerStatus` (the last one sent) | `db` (tracker off) |
@@ -157,6 +164,39 @@ from the day before included) and calls it. `ViewSettings` is a copy of `Setting
    one's end, without activity or away) and totals: `trackedMs` the union of tracker spans, `awayMs` the
    union of away spans, `recordedMs` 0 until recordings. `covered` is false until recordings.
 
+## Recordings
+
+`recordings/` turns spans into recordings ([ADR 0010](adr/0010-recordings-never-overlap-ops-with-undo.md)).
+`Recordings { db, undo, snap_minutes }` (`mod.rs`) is the service; each write takes the `AppState.undo` lock
+for its whole run, so writes never interleave. `create`, `update` and `delete` validate, snap, clear the span,
+build an `ops::Op`, apply it and push it on the undo stack; `commands.rs` then emits `data_changed { kind:
+recordings, day }` for every day the op touched, before and after (`Change.days`).
+
+- **Snapping** (`snap`, `snap_span`): to the nearest multiple of `timeline.snapMinutes` counted from local
+  midnight, read at call time; an end that snaps onto or before the start lands one step after it. `update`
+  snaps only the times it changes, so editing a note keeps the times.
+- **Validation** (`InvalidField`): `end` after `start` and at most 24 h later; `note` one line, at most 500
+  characters, trimmed; `projectId` not archived (unless the recording already belongs to it); `tagIds` known.
+  A missing project is `not_found`; a running recording is not edited here ("Stop the timer first").
+- **Overlap** (`Overlap::Cancel | Replace`): with `Cancel` a span sharing time with others is refused with
+  `overlap` and the recordings in `details`; with `Replace` each one in the way is deleted (inside), trimmed
+  (one side out) or split (both sides out; the right part is a new recording with the same project, note and
+  tags), all in one `Op::Batch` with the new recording last. A running recording in the way is
+  `invalid_input`.
+- **Operations** (`ops.rs`): `Op::Create | Update { before, after } | Delete | Batch`; `inverse()` swaps them
+  (a batch reversed). `apply` runs the op in one transaction through `db::recordings::put_on` (the row
+  exactly as given, timestamps and tags included) and `remove_on`, then refuses with `overlap` if any
+  recording it wrote shares time with another; then nothing is written.
+- **Undo** (`undo.rs`): `UndoStack` keeps the last 100 changes of this run with their labels (`Record 45 min
+  for Acme`, `Move recording`, `Resize recording`, `Edit recording`, `Delete recording`); a new change clears
+  the redo list. `undo` applies the inverse, `redo` the op again; one that would now overlap is refused and
+  the stack stays as it was.
+
+The Day view gets the day's recordings too (`day::commands::load` reads them with the projects, clients and
+tags): `DayView.recordings` (`RecordingBlock`: clipped span, project, client, color and shade, note, tag
+names, `running`, `clippedStart`/`clippedEnd`), `ActivityBlock.covered` when at least half of a block lies
+inside recordings, and `totals.recordedMs`.
+
 ## Events to the page
 
 `events.rs` names every event and its payload, so all emitting goes through one place.
@@ -199,6 +239,7 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `activity add --json` (no other flags) | `activityAdd`, items from a JSON array of `ActivityInput` on stdin (times in UTC ms) | `added 3 activities` |
 | `activity start --source S --title T [--start ISO] [--app A] [--url U] [--path P]` | `activityStart { input }`, start default now | `started planner at 10:00` |
 | `activity stop --source S [--end ISO]` | `activityStop { source, end }`, end default now | `stopped planner at 10:45 (45 min)` or `nothing to stop for planner` |
+| `record --project P --from ISO --to ISO [--note N] [--tag T]… [--replace]` | `record { request: RecordRequest }` (`overlap: replace` with `--replace`, else `cancel`); the app resolves the project (`projects::resolve`) and tags by name (`tags::resolve_names`, unknown → `not_found`) | `recorded 09:00–10:30 (1:30) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: the `Recording` plus `projectName` |
 
 `parse(args, now, tz, stdin) -> Result<CliOutcome, CliError>` is pure: `CliOutcome` is `Run { hidden,
 log_level }`, `Exit { message }` (help, version) or `Remote { message, json, starts_app }`. The CLI checks

@@ -33,6 +33,7 @@ bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/Tim
 | `timetracker status [--json]` | the tracker state, the current activity and whether the window shows |
 | `timetracker pause <15m\|1h\|tomorrow\|off>`, `resume` | pauses tracking (`off`: until resumed), resumes it |
 | `timetracker activity add\|start\|stop …` | writes another app's activity, see [Scripting](#scripting) |
+| `timetracker record --project P --from T --to T [--note N] [--tag T]… [--replace]` | records time for a project (by id, name or a unique start of its name; tags by name); refuses to overlap another recording unless `--replace` |
 
 Every command except `show` and `focus` needs TimeTracker running and exits 2 with "TimeTracker is not
 running" otherwise. Exit codes: 0 ok, 1 TimeTracker refused the request (the error is printed), 2 bad
