@@ -1,7 +1,8 @@
 import { api, TEXT_SIZES, type Settings } from "../api";
-import { copyReport, promptSaveReport } from "../components/reports/actions";
+import { copyReport, promptDeleteSavedReport, promptRenameSavedReport, promptSaveReport } from "../components/reports/actions";
 import { VIEWS } from "../components/views";
 import { stepBlock, stepLane } from "../lib/blockFocus";
+import { addDays } from "../lib/day";
 import { TIMELINE_ZOOM, useStore, type View } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, isTextInput, registerCommands, resolveKeydown, setOverrides, type Command } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
@@ -51,10 +52,55 @@ function openDeleteActivity(range: boolean) {
   if (view) useStore.getState().openDialog({ type: "deleteActivity", day: view.day, bounds: view.bounds, range });
 }
 
+/** Takes the focus off a Tabbed-to button, which would keep ↵ and Space (`activatesControl`). */
+function releaseControlFocus() {
+  const el = document.activeElement;
+  if (el instanceof HTMLElement && el !== document.body && !isTextInput(el)) el.blur();
+}
+
 /** Moves the block focus within the shown day's view. */
 function moveFocus(step: typeof stepBlock, by: 1 | -1) {
   const s = useStore.getState();
-  if (s.dayView?.day === s.day) s.focusBlock(step(s.dayView, s.focusedBlock, by));
+  if (s.dayView?.day !== s.day) return;
+  releaseControlFocus();
+  s.focusBlock(step(s.dayView, s.focusedBlock, by));
+}
+
+/** Selects the focused block's span, as a click on it does. */
+function selectFocusedBlock() {
+  const s = useStore.getState();
+  if (s.focusedBlock === null) return;
+  releaseControlFocus();
+  s.focusRecording(null);
+  s.setSelection(null);
+  s.extendSelection(s.focusedBlock);
+}
+
+/** Moves the block focus in time and grows the selection over it, as a ⇧-click does. */
+function extendToBlock(by: 1 | -1) {
+  const s = useStore.getState();
+  if (s.dayView?.day !== s.day) return;
+  const next = stepBlock(s.dayView, s.focusedBlock, by);
+  if (next === null) return;
+  releaseControlFocus();
+  s.focusRecording(null);
+  if (!s.selection && s.focusedBlock !== null) s.extendSelection(s.focusedBlock);
+  s.extendSelection(next);
+  s.focusBlock(next);
+}
+
+/** Focuses the next (1) or previous (-1) recording of the shown day by start; from none, the first or last. */
+function stepRecording(by: 1 | -1) {
+  const s = useStore.getState();
+  if (s.dayView?.day !== s.day) return;
+  const ids = [...s.dayView.recordings].sort((a, b) => a.start - b.start).map((r) => r.id);
+  if (ids.length === 0) return;
+  const at = s.focusedRecording === null ? -1 : ids.indexOf(s.focusedRecording);
+  const next = at === -1 ? (by === 1 ? ids[0] : ids[ids.length - 1]) : ids[Math.max(0, Math.min(ids.length - 1, at + by))];
+  releaseControlFocus();
+  s.focusBlock(null);
+  s.setSelection(null);
+  s.focusRecording(next);
 }
 
 const hasFocusedBlock = () => timelineShown() && useStore.getState().focusedBlock !== null;
@@ -88,6 +134,29 @@ function shiftRecording(startSteps: number, endSteps: number) {
   if (!block || block.clippedStart || block.clippedEnd || block.running) return;
   const step = (s.settings?.timeline.snapMinutes ?? 5) * 60_000;
   void s.updateRecording(block.id, { start: block.start + startSteps * step, end: block.end + endSteps * step }).catch(() => {});
+}
+
+/** Moves (or copies) the focused recording to the day before (-1) or after (1), at the same time of day. */
+function recordingToDay(by: 1 | -1, copy: boolean) {
+  const s = useStore.getState();
+  const id = s.focusedRecording;
+  if (id === null) return;
+  const day = addDays(s.day, by);
+  void (copy ? s.copyRecording(id, day) : s.moveRecording(id, day));
+}
+
+/** The rule whose row holds the keyboard focus on the Rules screen. */
+const focusedRule = () => (document.activeElement instanceof HTMLElement ? (document.activeElement.closest<HTMLElement>("[data-rule-id]")?.dataset.ruleId ?? null) : null);
+
+/** Moves the focused rule up (-1) or down (1) in priority; the focus stays on its row. */
+function moveFocusedRule(by: 1 | -1) {
+  const id = focusedRule();
+  const el = document.activeElement;
+  if (id === null) return;
+  void useStore
+    .getState()
+    .moveRule(id, by)
+    .then(() => el instanceof HTMLElement && el.isConnected && document.activeElement !== el && el.focus());
 }
 
 /** ⌘Z in a text field undoes typing, not a recording change. */
@@ -138,11 +207,16 @@ const APP_COMMANDS: Command[] = [
   { id: "day.nextLane", title: "Block in the lane to the right", scope: "day", defaultBinding: "L", when: timelineShown, run: () => moveFocus(stepLane, 1) },
   { id: "day.details", title: "Block details", scope: "day", defaultBinding: "Space", when: hasFocusedBlock, run: () => useStore.getState().toggleDetails() },
   { id: "day.blockMenu", title: "Block actions…", scope: "day", defaultBinding: "Ctrl+Enter", when: hasFocusedBlock, run: () => useStore.getState().requestBlockMenu() },
+  { id: "day.selectBlock", title: "Select block", scope: "day", defaultBinding: "V", when: hasFocusedBlock, run: selectFocusedBlock },
+  { id: "day.extendNext", title: "Extend selection to the next block", scope: "day", defaultBinding: "Shift+J", when: timelineShown, run: () => extendToBlock(1) },
+  { id: "day.extendPrev", title: "Extend selection to the previous block", scope: "day", defaultBinding: "Shift+K", when: timelineShown, run: () => extendToBlock(-1) },
   { id: "day.toggleList", title: "Toggle timeline and list", scope: "day", defaultBinding: "Mod+Shift+L", run: toggleList },
   { id: "day.settings", title: "Timeline settings", scope: "day", run: () => useStore.getState().openDialog({ type: "timelineSettings" }) },
   { id: "activity.deleteDay", title: "Delete activity for this day…", scope: "day", when: () => !!shownDayView(), run: () => openDeleteActivity(false) },
   { id: "activity.deleteRange", title: "Delete activity in a range…", scope: "day", when: () => !!shownDayView(), run: () => openDeleteActivity(true) },
   { id: "day.clearFocus", title: "Clear selection", scope: "day", defaultBinding: "Escape", when: () => hasFocusedBlock() || hasSelection() || hasFocusedRecording(), run: clearDayFocus },
+  { id: "recording.next", title: "Next recording", scope: "day", defaultBinding: "N", when: timelineShown, run: () => stepRecording(1) },
+  { id: "recording.prev", title: "Previous recording", scope: "day", defaultBinding: "Shift+N", when: timelineShown, run: () => stepRecording(-1) },
   { id: "recording.open", title: "Record selection or edit recording", scope: "day", defaultBinding: "Enter", when: () => hasSelection() || hasFocusedRecording(), run: openRecording },
   { id: "recording.create", title: "New recording from selection", scope: "day", menu: true, when: hasSelection, run: () => (useStore.getState().focusRecording(null), openRecording()) },
   { id: "recording.edit", title: "Edit recording", scope: "day", menu: true, when: hasFocusedRecording, run: openRecording },
@@ -151,6 +225,10 @@ const APP_COMMANDS: Command[] = [
   { id: "recording.nudgeLater", title: "Move recording later", scope: "day", defaultBinding: "Alt+ArrowDown", when: hasFocusedRecording, run: () => shiftRecording(1, 1) },
   { id: "recording.extend", title: "Extend recording", scope: "day", defaultBinding: "Alt+Shift+ArrowDown", when: hasFocusedRecording, run: () => shiftRecording(0, 1) },
   { id: "recording.shrink", title: "Shorten recording", scope: "day", defaultBinding: "Alt+Shift+ArrowUp", when: hasFocusedRecording, run: () => shiftRecording(0, -1) },
+  { id: "recording.moveToPrevDay", title: "Move recording to the previous day", scope: "day", defaultBinding: "Alt+ArrowLeft", when: hasFocusedRecording, run: () => recordingToDay(-1, false) },
+  { id: "recording.moveToNextDay", title: "Move recording to the next day", scope: "day", defaultBinding: "Alt+ArrowRight", when: hasFocusedRecording, run: () => recordingToDay(1, false) },
+  { id: "recording.copyToPrevDay", title: "Copy recording to the previous day", scope: "day", defaultBinding: "Alt+Shift+ArrowLeft", when: hasFocusedRecording, run: () => recordingToDay(-1, true) },
+  { id: "recording.copyToNextDay", title: "Copy recording to the next day", scope: "day", defaultBinding: "Alt+Shift+ArrowRight", when: hasFocusedRecording, run: () => recordingToDay(1, true) },
   { id: "timer.start", title: "Start timer…", scope: "global", defaultBinding: "Mod+T", menu: true, run: () => void api.timerPickerOpen() },
   { id: "timer.stop", title: "Stop timer", scope: "global", defaultBinding: "Mod+Shift+.", menu: true, when: timerRuns, run: () => void useStore.getState().stopTimer() },
   { id: "timer.toggle", title: "Start or stop timer", scope: "global", run: () => (timerRuns() ? void useStore.getState().stopTimer() : void api.timerPickerOpen()) },
@@ -158,9 +236,13 @@ const APP_COMMANDS: Command[] = [
   { id: "edit.redo", title: "Redo recording change", scope: "global", defaultBinding: "Mod+Shift+Z", when: outsideTextField, run: () => void useStore.getState().redo() },
   { id: "reports.copyText", title: "Copy report as text", scope: "reports", defaultBinding: "Mod+Shift+C", run: () => void copyReport() },
   { id: "reports.save", title: "Save report…", scope: "reports", run: promptSaveReport },
+  { id: "reports.rename", title: "Rename saved report…", scope: "reports", when: () => useStore.getState().openedReport !== null, run: promptRenameSavedReport },
+  { id: "reports.delete", title: "Delete saved report…", scope: "reports", when: () => useStore.getState().openedReport !== null, run: promptDeleteSavedReport },
   { id: "projects.new", title: "New project…", scope: "projects", defaultBinding: "Mod+N", run: () => useStore.getState().openDialog({ type: "project" }) },
   { id: "clients.new", title: "New client…", scope: "projects", run: () => useStore.getState().openDialog({ type: "client" }) },
   { id: "rules.new", title: "New rule…", scope: "rules", defaultBinding: "Mod+N", run: () => useStore.getState().openDialog({ type: "rule" }) },
+  { id: "rules.moveUp", title: "Move rule up", scope: "rules", defaultBinding: "Alt+ArrowUp", when: () => focusedRule() !== null, run: () => moveFocusedRule(-1) },
+  { id: "rules.moveDown", title: "Move rule down", scope: "rules", defaultBinding: "Alt+ArrowDown", when: () => focusedRule() !== null, run: () => moveFocusedRule(1) },
   { id: "logs.open", title: "Open log folder", scope: "global", menu: true, run: () => void api.openLogFolder() },
   { id: "app.quit", title: "Quit TimeTracker", scope: "global", defaultBinding: "Mod+Q", menu: true, run: () => void api.quitApp() },
 ];
@@ -208,11 +290,20 @@ export function runMenuCommand(id: string): boolean {
   return true;
 }
 
+/** A context menu takes its own keys, like a dialog. */
+const inMenu = (target: EventTarget | null) => target instanceof Element && !!target.closest('[role="menu"]');
+
+/** ↵ and Space activate the focused button or link rather than a command. */
+function activatesControl(e: KeyboardEvent): boolean {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || (e.key !== "Enter" && e.key !== " ")) return false;
+  return e.target instanceof Element && !!e.target.closest('button, a[href], [role="button"], [role="option"]');
+}
+
 /** Capture-phase keydown handler for the window. */
 export function handleKeydown(e: KeyboardEvent) {
-  if (isRecordingTarget(e.target)) return;
+  if (isRecordingTarget(e.target) || activatesControl(e)) return;
   const c = resolveKeydown(e, activeScopes());
-  if (!c || blockedByOverlay(c.id)) return;
+  if (!c || blockedByOverlay(c.id) || (inMenu(e.target) && !MODAL_ALLOWED.has(c.id))) return;
   e.preventDefault();
   e.stopPropagation();
   // A held key is swallowed rather than passed on, so the native menu accelerator does not repeat it either.

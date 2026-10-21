@@ -5,7 +5,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import { api } from "../api";
 import { resetStore, useStore } from "../state/store";
 import { at } from "../test/dayFixtures";
-import { getCommand, installCommands, runCommand, runMenuCommand } from "./index";
+import { conflicts, getCommand, installCommands, runCommand, runMenuCommand } from "./index";
 
 const mocked = vi.mocked(api, true);
 const state = () => useStore.getState();
@@ -21,12 +21,30 @@ describe("recording commands", () => {
     document.body.innerHTML = "";
   });
 
-  it.each(["edit.undo", "edit.redo", "recording.create", "recording.edit", "recording.delete", "recording.open", "recording.nudgeEarlier", "recording.nudgeLater", "recording.extend", "recording.shrink", "day.clearFocus"])(
-    "registers %s",
-    (id) => {
-      expect(getCommand(id)).toBeDefined();
-    },
-  );
+  it.each([
+    "edit.undo",
+    "edit.redo",
+    "recording.create",
+    "recording.edit",
+    "recording.delete",
+    "recording.open",
+    "recording.nudgeEarlier",
+    "recording.nudgeLater",
+    "recording.extend",
+    "recording.shrink",
+    "recording.next",
+    "recording.prev",
+    "recording.moveToPrevDay",
+    "recording.moveToNextDay",
+    "recording.copyToPrevDay",
+    "recording.copyToNextDay",
+    "day.clearFocus",
+    "day.selectBlock",
+    "day.extendNext",
+    "day.extendPrev",
+  ])("registers %s", (id) => {
+    expect(getCommand(id)).toBeDefined();
+  });
 
   it.each([
     ["edit.undo", "Mod+Z"],
@@ -35,8 +53,37 @@ describe("recording commands", () => {
     ["recording.open", "Enter"],
     ["day.details", "Space"],
     ["day.clearFocus", "Escape"],
+    ["day.selectBlock", "V"],
+    ["day.extendNext", "Shift+J"],
+    ["day.extendPrev", "Shift+K"],
+    ["recording.next", "N"],
+    ["recording.prev", "Shift+N"],
+    ["recording.moveToPrevDay", "Alt+ArrowLeft"],
+    ["recording.moveToNextDay", "Alt+ArrowRight"],
+    ["recording.copyToPrevDay", "Alt+Shift+ArrowLeft"],
+    ["recording.copyToNextDay", "Alt+Shift+ArrowRight"],
   ])("binds %s to %s", (id, binding) => {
     expect(getCommand(id)?.defaultBinding).toBe(binding);
+  });
+
+  it("has no default binding that two commands of overlapping scopes share", () => {
+    expect(conflicts().map((c) => [c.binding, c.a.id, c.b.id])).toEqual([]);
+  });
+
+  describe("availability", () => {
+    it.each(["day.selectBlock", "recording.moveToPrevDay", "recording.moveToNextDay", "recording.copyToPrevDay", "recording.copyToNextDay"])("%s needs a focused block or recording", (id) => {
+      expect(runCommand(id)).toBe(false);
+    });
+
+    it.each(["day.selectBlock", "day.extendNext", "day.extendPrev", "recording.next", "recording.prev"])("%s is unavailable in the List mode", (id) => {
+      state().focusBlock("a1");
+      state().setDayMode("list");
+      expect(runCommand(id)).toBe(false);
+    });
+
+    it.each(["day.extendNext", "day.extendPrev", "recording.next", "recording.prev"])("%s is available on the timeline without a focus", (id) => {
+      expect(runCommand(id)).toBe(true);
+    });
   });
 
   describe("edit.undo and edit.redo", () => {

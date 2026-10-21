@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api } from "../../api";
-import { resetStore } from "../../state/store";
+import { handleKeydown, installCommands } from "../../commands";
+import { resetStore, useStore } from "../../state/store";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
 import { rule } from "../../test/ruleFixtures";
 import { Dialogs } from "../Dialogs";
@@ -131,6 +132,60 @@ describe("RulesView", () => {
     ])("does nothing for %s", async (_name, dy) => {
       await renderView();
       dragGrip("Standup", dy);
+      expect(mocked.rulesReorder).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("reordering with ⌥↑ and ⌥↓", () => {
+    const rows = [slack, standup, docs];
+    const rowButton = (name: string) => within(screen.getByText(name).closest("li") as HTMLElement).getByRole("button");
+
+    async function renderRules() {
+      mocked.rulesReorder.mockImplementation(async (ids) => ids.map((id, position) => ({ ...rows.find((r) => r.id === id)!, position })));
+      await renderView();
+      useStore.setState({ view: "rules" });
+      installCommands();
+    }
+
+    beforeEach(() => window.addEventListener("keydown", handleKeydown, true));
+
+    afterEach(() => {
+      window.removeEventListener("keydown", handleKeydown, true);
+      mocked.rulesReorder.mockResolvedValue([]);
+    });
+
+    it.each([
+      ["⌥↓ moves the focused rule one place down", "Slack", "{Alt>}{ArrowDown}{/Alt}", ["r-standup", "r-slack", "r-docs"]],
+      ["⌥↑ moves the focused rule one place up", "Docs", "{Alt>}{ArrowUp}{/Alt}", ["r-slack", "r-docs", "r-standup"]],
+    ])("%s", async (_name, name, keys, expected) => {
+      await renderRules();
+      rowButton(name).focus();
+      await userEvent.keyboard(keys);
+      expect(mocked.rulesReorder).toHaveBeenCalledWith(expected);
+    });
+
+    it("keeps the focus in the moved rule's row", async () => {
+      await renderRules();
+      rowButton("Slack").focus();
+      await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+      await vi.waitFor(() => expect(names()).toEqual(["Standup", "Slack", "Docs"]));
+      expect(rowButton("Slack")).toHaveFocus();
+    });
+
+    it.each([
+      ["⌥↑ on the first rule", "Slack", "{Alt>}{ArrowUp}{/Alt}"],
+      ["⌥↓ on the last rule", "Docs", "{Alt>}{ArrowDown}{/Alt}"],
+    ])("%s changes nothing", async (_name, name, keys) => {
+      await renderRules();
+      rowButton(name).focus();
+      await userEvent.keyboard(keys);
+      expect(mocked.rulesReorder).not.toHaveBeenCalled();
+      expect(names()).toEqual(["Slack", "Standup", "Docs"]);
+    });
+
+    it("does nothing while the focus is outside the rows", async () => {
+      await renderRules();
+      await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
       expect(mocked.rulesReorder).not.toHaveBeenCalled();
     });
   });

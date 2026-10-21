@@ -2,6 +2,7 @@ import type { ActivityBlock, AppSettingPatch, Lane, Settings, Titles } from "../
 import { copyText } from "../../lib/clipboard";
 import { useStore } from "../../state/store";
 import type { MenuEntry } from "../ContextMenu";
+import { draftFromBlock } from "../rules/conditions";
 
 const set = (appKey: string, patch: AppSettingPatch) => useStore.getState().setAppSetting(appKey, patch);
 
@@ -37,6 +38,7 @@ export function blockMenu(block: ActivityBlock, lane: Lane, settings: Settings |
   if (!block.private) entries.push({ label: "Copy title", action: () => void copyText(block.title, "the title") });
   const { url } = block;
   if (url) entries.push({ label: "Copy URL", action: () => void copyText(url, "the URL") });
-  if (entries.at(-1) === "separator") entries.pop();
+  if (entries.length > 0 && entries.at(-1) !== "separator") entries.push("separator");
+  entries.push({ label: "Make a rule…", action: () => useStore.getState().openDialog({ type: "rule", draft: draftFromBlock(block, null) }) });
   return entries;
 }

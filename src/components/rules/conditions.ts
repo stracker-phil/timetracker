@@ -38,11 +38,11 @@ function domainOf(url: string): string | null {
   }
 }
 
-/** A rule for the block's activity: its app, and its domain or else its title. */
-export function draftFromBlock(block: ActivityBlock, project: { id: string; name: string }): RuleInput {
+/** A rule for the block's activity: its app, and its domain or else its title; without a project, the sheet asks for one. */
+export function draftFromBlock(block: ActivityBlock, project: { id: string; name: string } | null): RuleInput {
   const conditions: ConditionInput[] = [{ field: "app", op: "is", value: block.app }];
   const domain = block.url ? domainOf(block.url) : null;
   if (domain) conditions.push({ field: "domain", op: "is", value: domain });
   else if (block.title && !block.private) conditions.push({ field: "title", op: "contains", value: block.title });
-  return { ...emptyRule(), name: `${block.app} → ${project.name}`, projectId: project.id, conditions };
+  return { ...emptyRule(), name: project ? `${block.app} → ${project.name}` : block.app, projectId: project?.id ?? "", conditions };
 }

@@ -6,6 +6,8 @@ export interface ReportsSlice {
   /** `null` until changed: the report then follows `settings.reports`. */
   reportFilter: ReportFilter | null;
   savedReports: SavedReport[];
+  /** The saved report shown, until the filter changes. */
+  openedReport: string | null;
   /** Merges `patch` into the shown filter; the Reports view runs it again. */
   setReportFilter: (patch: Partial<ReportFilter>) => void;
   loadSavedReports: () => Promise<void>;
@@ -35,9 +37,10 @@ export const reportsSlice: Slice<ReportsSlice> = {
   create: (set, get) => ({
     reportFilter: null,
     savedReports: [],
+    openedReport: null,
 
     setReportFilter(patch) {
-      set({ reportFilter: { ...selectReportFilter(get()), ...patch } });
+      set({ reportFilter: { ...selectReportFilter(get()), ...patch }, openedReport: null });
     },
 
     async loadSavedReports() {
@@ -70,14 +73,14 @@ export const reportsSlice: Slice<ReportsSlice> = {
     async deleteSavedReport(id) {
       try {
         await api.savedReportDelete(id);
-        set((s) => ({ savedReports: s.savedReports.filter((r) => r.id !== id) }));
+        set((s) => ({ savedReports: s.savedReports.filter((r) => r.id !== id), openedReport: s.openedReport === id ? null : s.openedReport }));
       } catch (e) {
         fail(e, "Could not delete the report");
       }
     },
 
     openSavedReport(saved) {
-      set({ reportFilter: saved.filter });
+      set({ reportFilter: saved.filter, openedReport: saved.id });
       get().setView("reports");
     },
   }),

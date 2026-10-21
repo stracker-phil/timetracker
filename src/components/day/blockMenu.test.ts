@@ -35,13 +35,13 @@ describe("blockMenu", () => {
   });
 
   describe("of a tracker block", () => {
-    it("lists the app settings, a separator, then the copy entries", () => {
+    it("lists the app settings, a separator, the copy entries, a separator, then Make a rule", () => {
       const url = block({ url: "https://example.com" });
-      expect(labels(menu(settings(), url))).toEqual(["Group by app", "Titles: Document name", "Titles: App name", "Own lane", "Hide Safari", "---", "Copy title", "Copy URL"]);
+      expect(labels(menu(settings(), url))).toEqual(["Group by app", "Titles: Document name", "Titles: App name", "Own lane", "Hide Safari", "---", "Copy title", "Copy URL", "---", "Make a rule…"]);
     });
 
-    it("drops the separator when nothing follows it", () => {
-      expect(labels(menu(settings(), block({ private: true })))).toEqual(["Group by app", "Titles: Document name", "Titles: App name", "Own lane", "Hide Safari"]);
+    it("has a single separator before Make a rule when no copy entry follows the app settings", () => {
+      expect(labels(menu(settings(), block({ private: true })))).toEqual(["Group by app", "Titles: Document name", "Titles: App name", "Own lane", "Hide Safari", "---", "Make a rule…"]);
     });
 
     it("has no Copy title for a private block but keeps Copy URL", () => {
@@ -50,15 +50,42 @@ describe("blockMenu", () => {
       expect(labels(menu(settings(), secret))).toContain("Copy URL");
     });
 
-    it("offers only the copy entries while the settings are not loaded", () => {
-      expect(labels(menu(null))).toEqual(["Copy title"]);
+    it("offers only the copy entries and Make a rule while the settings are not loaded", () => {
+      expect(labels(menu(null))).toEqual(["Copy title", "---", "Make a rule…"]);
     });
   });
 
   describe("of an external block", () => {
-    it("offers only the copy entries", () => {
+    it("offers only the copy entries and Make a rule", () => {
       const [external] = sourceLane("planner", [block({ url: "https://example.com" })]).blocks;
-      expect(labels(menu(settings(), external))).toEqual(["Copy title", "Copy URL"]);
+      expect(labels(menu(settings(), external))).toEqual(["Copy title", "Copy URL", "---", "Make a rule…"]);
+    });
+
+    it("offers Make a rule alone, without a leading separator, when nothing else applies", () => {
+      const [external] = sourceLane("planner", [block({ private: true })]).blocks;
+      expect(labels(menu(settings(), external))).toEqual(["Make a rule…"]);
+    });
+  });
+
+  describe("Make a rule", () => {
+    it("opens the rule sheet with the block's app as the condition and no project", () => {
+      entry(menu(settings(), block({ app: "Notes", title: "" })), "Make a rule…").action();
+      expect(useStore.getState().dialog).toMatchObject({
+        type: "rule",
+        draft: { name: "Notes", projectId: "", enabled: true, conditions: [{ field: "app", op: "is", value: "Notes" }] },
+      });
+    });
+
+    it("adds the domain of a URL block to the conditions", () => {
+      entry(menu(settings(), block({ app: "Safari", url: "https://www.example.com/docs" })), "Make a rule…").action();
+      expect(useStore.getState().dialog).toMatchObject({
+        draft: {
+          conditions: [
+            { field: "app", op: "is", value: "Safari" },
+            { field: "domain", op: "is", value: "example.com" },
+          ],
+        },
+      });
     });
   });
 

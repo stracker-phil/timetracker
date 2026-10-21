@@ -183,7 +183,8 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 
 ## Recordings
 
-- **Selection.** Drag on the lanes or the axis, or click a block (⇧-click adds blocks): `--sel` fill with
+- **Selection.** Drag on the lanes or the axis, click a block (⇧-click adds blocks), or V on the focused
+  block (⇧J and ⇧K add the next or previous one): `--sel` fill with
   accent hairlines and the snapped `09:00–10:30` in mono accent text; the status bar repeats it with the
   duration. A dashed accent outline in the recordings column shows where the recording goes.
 - **Recording blocks** sit in the recordings column: the project's shade as a 3px bar on the left and a 22%
@@ -229,12 +230,13 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 - **Suggestions** sit in the recordings column under the recordings: a dashed outline in the project's shade
   on a 7% tint, a "+" top right, the project (sans 500) and the rule's name (`--o2`), the duration bottom
   right. The cursor is `copy`. A click records it; ⌥-click records every suggestion of that rule on the
-  day. Each is a button, so Tab reaches it and ↵ accepts. The tooltip names the rule, project, span and note.
+  day. Each is a button, so Tab reaches it, ↵ accepts it and ⌥↵ every suggestion of its rule. The tooltip names the rule, project, span and note.
 - **Drop strip**: ⌥-dragging an activity block shows the recent projects on `--pop` over the top of the
   recordings column; the one under the pointer gets a dashed accent outline. Dropping opens the rule sheet,
-  filled in; nothing is saved before Save.
+  filled in; nothing is saved before Save. From the keyboard, the block menu's Make a rule… (⌃↵) opens the
+  sheet with the block's conditions and no project.
 - **Rules screen**: rows with a grip, the enable switch, the name, the project's dot and name and the
-  conditions in mono `--o2`; a disabled rule is dimmed. The order is the priority.
+  conditions in mono `--o2`; a disabled rule is dimmed. The order is the priority; drag the grip, or ⌥↑ ⌥↓ with the focus in a row.
 - **Rule sheet**: the form on the left, "Last 7 days" on the right with the matching time and the hits
   (day and time in mono `--o2`, the app, the title). Below 720px the preview moves under the form.
 
@@ -294,34 +296,110 @@ under the Location row instead of a toast.
 
 ## Keys
 
-Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`). Bare keys never fire
-in inputs or dialogs. `Tab` is never bound: it moves the keyboard focus.
+Every action is a command (`APP_COMMANDS` in `src/commands/index.ts`) with a rebindable key (Settings →
+Shortcuts, `keybindings.json`) or, without a default key, an entry in the palette (⌘K, `>` lists the commands
+of the active scopes). `?` lists the bound commands of the scopes active when it opens, most specific first.
 
-| Key | Scope | Action |
-|---|---|---|
-| ⌘, | global | Settings (`settings.toggle`) |
-| ⌘K | global | command palette (`palette.toggle`); `>` lists commands, `p:` projects |
-| `?` | global | shortcut overview (`shortcuts.show`) |
-| ⌘⌃S | global | toggle the sidebar (`sidebar.toggle`) |
-| ⌘1 … ⌘6 | global | Day, Week, Month, Reports, Projects, Rules (`view.*`) |
-| ⌘N | projects, rules | new project (`projects.new`), new rule (`rules.new`) |
-| ⌘= / ⌘- / ⌘0 | global | zoom in / out / reset (`zoom.*`): the timeline in the Day view, the text elsewhere |
-| ⌘← / ⌘→ / T | calendar | previous / next day, week or month by the view, today (`nav.*`) |
-| J / K | day | next / previous block in time (`day.nextBlock`, `day.prevBlock`) |
-| H / L | day | the block in the lane to the left / right (`day.prevLane`, `day.nextLane`) |
-| Space / ⌃↵ | day | the focused block's details card, its menu |
-| ↵ | day | record the selection, or edit the focused recording |
-| ⌫ | day | delete the focused recording (Undo in the toast) |
-| ⌥↑ / ⌥↓, ⌥⇧↓ / ⌥⇧↑ | day | move the focused recording, extend or shorten it, by one snap step |
-| Escape | day | clear the selection and the focus |
-| ⌘⇧L | day | switch between Timeline and List (`day.toggleList`) |
-| – | day | delete the shown day's activity, or a range's (`activity.deleteDay`, `activity.deleteRange`; also in the Day header's ⋯ menu; Undo in the toast for 30 s) |
-| ⌘T / ⌘⇧. | global | open the timer picker / stop the running timer (`timer.start`, `timer.stop`); ⌘⇧T opens the picker from any app |
-| ⌘⇧C | reports | copy the report as text (`reports.copyText`) |
-| ⌘Z / ⌘⇧Z | global | undo / redo the last recording change (outside text fields) |
-| ⌘W | global | close (hide) the window (`window.hide`) |
-| ⌘Q | menu | quit (`app.quit`) |
+Rules of the keys (`handleKeydown`):
 
-Scopes are the registry's (`src/commands/scopes.ts`): `global`, and under it one scope per view (`day`,
-`week`, `month`, `reports`, `projects`, `rules`), active while that view shows; `calendar` sits between `global` and
-the Day, Week and Month scopes, active in any of them.
+- Bare keys never fire in text fields; there only ⌘ and ⌃ combinations and Escape do.
+- While a dialog, the palette, the recording editor or a context menu is open, only Settings, `?`, the
+  palette, zoom, Close window and Quit run; every other key belongs to the overlay.
+- ↵ and Space on a focused button or link activate it. J, K, H, L, V, ⇧J, ⇧K, N and ⇧N give the keys back to
+  the timeline: they take the focus off a Tabbed-to button.
+- `Tab` is never bound: it moves the keyboard focus. Dialogs keep it inside (`Modal`), in reading order:
+  fields first, then Cancel and the default button; the first control, or the one a dialog marks, has the
+  focus, and closing returns it to where it was.
+
+Scopes are the registry's (`src/commands/scopes.ts`): `global`; `calendar` under it, active in Day, Week and
+Month; and one scope per view (`day`, `week`, `month` under `calendar`; `reports`, `projects`, `rules` under
+`global`), active while that view shows.
+
+| Command | Label | Default key | Scope |
+|---|---|---|---|
+| `settings.toggle` | Settings… | ⌘, | global |
+| `shortcuts.show` | Keyboard shortcuts | ? | global |
+| `palette.toggle` | Command palette | ⌘K | global |
+| `sidebar.toggle` | Toggle sidebar | ⌘⌃S | global |
+| `view.day` … `view.rules` | Show Day, Week, Month, Reports, Projects, Rules | ⌘1 … ⌘6 | global |
+| `zoom.in` / `zoom.out` / `zoom.reset` | Zoom in / out / Reset zoom (the timeline in the Day view, the text elsewhere) | ⌘= / ⌘- / ⌘0 | global |
+| `window.hide` | Close window | ⌘W | global |
+| `tracker.pause` | Pause tracking (until resumed) | palette | global |
+| `tracker.resume` | Resume tracking | palette | global |
+| `timer.start` | Start timer… | ⌘T (⌘⇧T from any app) | global |
+| `timer.stop` | Stop timer | ⌘⇧. | global |
+| `timer.toggle` | Start or stop timer | palette | global |
+| `edit.undo` / `edit.redo` | Undo / Redo recording change (outside text fields) | ⌘Z / ⌘⇧Z | global |
+| `logs.open` | Open log folder | palette | global |
+| `app.quit` | Quit TimeTracker | ⌘Q | global |
+| `nav.prev` / `nav.next` | Previous / Next day, week or month | ⌘← / ⌘→ | calendar |
+| `nav.today` | Go to today | T | calendar |
+| `day.nextBlock` / `day.prevBlock` | Next / Previous block in time | J / K | day |
+| `day.prevLane` / `day.nextLane` | Block in the lane to the left / right | H / L | day |
+| `day.details` | Block details | Space | day |
+| `day.blockMenu` | Block actions… (app settings, copy, Make a rule…) | ⌃↵ | day |
+| `day.selectBlock` | Select block (the focused one, as a click does) | V | day |
+| `day.extendNext` / `day.extendPrev` | Extend selection to the next / previous block (as a ⇧-click does) | ⇧J / ⇧K | day |
+| `day.toggleList` | Toggle timeline and list | ⌘⇧L | day |
+| `activity.deleteDay` | Delete activity for this day… | – | day |
+| `activity.deleteRange` | Delete activity in a range… | – | day |
+| `day.settings` | Timeline settings | palette | day |
+| `day.clearFocus` | Clear selection (and the block and recording focus) | Escape | day |
+| `recording.next` / `recording.prev` | Next / Previous recording | N / ⇧N | day |
+| `recording.open` | Record selection or edit recording | ↵ | day |
+| `recording.create` | New recording from selection | palette, menu | day |
+| `recording.edit` | Edit recording | palette, menu | day |
+| `recording.delete` | Delete recording (Undo in the toast) | ⌫ | day |
+| `recording.nudgeEarlier` / `recording.nudgeLater` | Move recording earlier / later by one snap step | ⌥↑ / ⌥↓ | day |
+| `recording.extend` / `recording.shrink` | Extend / Shorten recording by one snap step | ⌥⇧↓ / ⌥⇧↑ | day |
+| `recording.moveToPrevDay` / `recording.moveToNextDay` | Move recording to the previous / next day | ⌥← / ⌥→ | day |
+| `recording.copyToPrevDay` / `recording.copyToNextDay` | Copy recording to the previous / next day | ⌥⇧← / ⌥⇧→ | day |
+| `reports.copyText` | Copy report as text | ⌘⇧C | reports |
+| `reports.save` | Save report… | palette | reports |
+| `reports.rename` / `reports.delete` | Rename / Delete saved report… (the one opened from the sidebar, until the filter changes) | palette | reports |
+| `projects.new` | New project… | ⌘N | projects |
+| `clients.new` | New client… | palette | projects |
+| `rules.new` | New rule… | ⌘N | rules |
+| `rules.moveUp` / `rules.moveDown` | Move rule up / down (the rule whose row has the focus) | ⌥↑ / ⌥↓ | rules |
+
+Keys of controls, not commands (they act on the focused control and are not rebindable):
+
+| Where | Keys |
+|---|---|
+| List mode | `/` search, ↑↓ rows, ↵ record the row (pick the project), Space show it on the timeline; Tab to a project chip and ↵ records the focused row |
+| Suggestion (Tab reaches it) | ↵ records it, ⌥↵ records every suggestion of its rule on the day |
+| Recording editor, away prompt, timer picker | project picker: type, ↑↓, ↵ picks (the last option creates a project); From and To: type `HH:MM` or ↑↓ by one snap step; ↵ saves, records or starts; in the editor also ⌘↵, and ⌘⌫ deletes; Escape cancels or skips |
+| Context menu (⌃↵ on a block) | ↑↓ items, ↵ runs, Escape closes |
+| Pickers in the Reports filter | type, ↑↓, ↵ adds, ⌫ on an empty field removes the last |
+| Week and Month | Tab to a day head (Week) or a day cell (Month), ↵ opens that day |
+| Settings → Shortcuts | a key field records the next key; Escape stops, ⌫ unbinds |
+
+Left to the pointer, each with a keyboard way to the same result: dragging a selection (V, ⇧J, ⇧K, or the
+List mode), dragging or resizing a recording (⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓), dragging a recording to another day in the
+Week view (⌥← ⌥→, ⌥⇧ to copy, in the Day view), double-clicking the Week view (select in the Day view and ↵),
+⌥-dragging a block onto a project (⌃↵ → Make a rule…), the rules' grip (⌥↑ ⌥↓), the hover card (Space), the
+saved reports' right-click menu (`reports.rename`, `reports.delete`), and the Projects screen's right-click
+menu (Edit and Archive are in the project sheet). Only the right-click "Copy id" of a project has no key; the
+CLI and the MCP server list the ids.
+
+### Record a day
+
+From any view, with the documented default keys only:
+
+1. ⌘1 shows the Day view, T today.
+2. J focuses the first block of the day (K, H and L move on); Space shows its details.
+3. V selects the focused block's span; ⇧J (or ⇧K) grows the selection over the next (or previous) block, as
+   far as the work went. The status bar shows the span and its length; Escape clears it.
+4. ↵ opens the editor for the selection, with the project field focused: type part of the name, ↑↓, ↵ picks
+   it (or the last option, `New project "x"…`, opens the project sheet).
+5. Tab to From and To: type `09:15` or press ↑↓ to move by one snap step; Tab to the note and the tags.
+6. ⌘↵ saves (↵ in a time or the note field does too). If it overlaps a recording, ↵ in the dialog replaces
+   the overlapped part and Escape goes back.
+7. The new recording has the focus: ⌥↑ ⌥↓ move it, ⌥⇧↓ ⌥⇧↑ change its end, ↵ edits it again, ⌫ deletes it,
+   ⌘Z undoes the last change. N and ⇧N step through the day's recordings.
+8. Back to step 2 for the next stretch (J moves on from the last focused block). Rule suggestions are
+   buttons in the recordings column: Tab to one, ↵ records it.
+9. ⌘← and ⌘→ step to other days. ⌘2 shows the week (⌘← ⌘→ by week; Tab to a day head and ↵ opens it), ⌘3
+   the month (by month; Tab to a day and ↵ opens it).
+10. ⌘4 shows Reports: Tab to the range (This week, Last week, …) and ↵, on to the client, project and tag
+    pickers, Group by and Rounding; ⌘⇧C copies the report as text, ⌘K `> save` saves it under a name.

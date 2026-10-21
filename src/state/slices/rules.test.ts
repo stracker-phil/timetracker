@@ -105,6 +105,28 @@ describe("rules slice", () => {
     });
   });
 
+  describe("moveRule", () => {
+    it.each([
+      ["down swaps a rule with the next", "a", 1, ["b", "a", "c"]],
+      ["up swaps a rule with the previous", "c", -1, ["a", "c", "b"]],
+    ] as const)("%s", async (_name, id, by, expected) => {
+      resetStore({ rules: [a, b, c] });
+      await state().moveRule(id, by);
+      expect(mocked.rulesReorder).toHaveBeenCalledWith(expected);
+    });
+
+    it.each([
+      ["up from the first rule", "a", -1],
+      ["down from the last rule", "c", 1],
+      ["an unknown rule", "x", 1],
+    ] as const)("does nothing for %s", async (_name, id, by) => {
+      resetStore({ rules: [a, b, c] });
+      await state().moveRule(id, by);
+      expect(mocked.rulesReorder).not.toHaveBeenCalled();
+      expect(ids()).toEqual(["a", "b", "c"]);
+    });
+  });
+
   describe("setRuleEnabled", () => {
     it("replaces the rule with the saved one", async () => {
       resetStore({ rules: [a, b] });

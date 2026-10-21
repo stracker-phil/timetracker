@@ -4,6 +4,7 @@ import { useBindingLabel } from "../commands";
 import { useStore } from "../state/store";
 import { useContextMenu, type MenuEntry } from "./ContextMenu";
 import { KeyCap } from "./Field";
+import { confirmDeleteReport, renameReport } from "./reports/actions";
 import { TrackerStatus } from "./TrackerStatus";
 import { VIEWS } from "./views";
 
@@ -19,29 +20,6 @@ function NavEntry({ view }: { view: (typeof VIEWS)[number] }) {
       <KeyCap keys={keys} />
     </button>
   );
-}
-
-function renameReport(report: SavedReport) {
-  const { openDialog, renameSavedReport } = useStore.getState();
-  openDialog({
-    type: "prompt",
-    title: "Rename report",
-    label: "Name",
-    initial: report.name,
-    confirmLabel: "Rename",
-    onSubmit: (name) => void renameSavedReport(report.id, name),
-  });
-}
-
-function confirmDeleteReport(report: SavedReport) {
-  const { openDialog, deleteSavedReport } = useStore.getState();
-  openDialog({
-    type: "confirm",
-    title: "Delete report",
-    message: `Delete the saved report "${report.name}"? The recordings stay.`,
-    confirmLabel: "Delete",
-    onConfirm: () => void deleteSavedReport(report.id),
-  });
 }
 
 const savedReportMenu = (report: SavedReport): MenuEntry[] => [

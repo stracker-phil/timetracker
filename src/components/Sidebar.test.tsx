@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,7 @@ import { defaultFilter } from "../state/slices/reports";
 import { resetStore, useStore } from "../state/store";
 import { savedReport } from "../test/reportFixtures";
 import { settings } from "../test/settings";
+import { CommandPalette } from "./CommandPalette";
 import { Dialogs } from "./Dialogs";
 import { Sidebar } from "./Sidebar";
 
@@ -24,12 +25,18 @@ function renderSidebar(patch: Parameters<typeof resetStore>[0] = {}) {
   render(
     <>
       <Sidebar />
+      <CommandPalette />
       <Dialogs />
     </>,
   );
 }
 
 const saved = () => screen.getByRole("group", { name: "Saved reports" });
+
+const openPalette = () => act(() => useStore.getState().setPaletteOpen(true));
+const savedReportCommand = (name: RegExp) => screen.queryByRole("option", { name });
+const RENAME = /Rename saved report…/;
+const DELETE = /Delete saved report…/;
 
 describe("Sidebar saved reports", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -49,6 +56,56 @@ describe("Sidebar saved reports", () => {
     await userEvent.click(within(saved()).getByRole("button", { name: "Weekly" }));
     expect(useStore.getState().view).toBe("reports");
     expect(useStore.getState().reportFilter).toEqual(weekly.filter);
+  });
+
+  describe("palette commands for the opened report", () => {
+    it("offers no rename or delete before a saved report is opened", () => {
+      renderSidebar({ view: "reports" });
+      openPalette();
+      expect(savedReportCommand(RENAME)).not.toBeInTheDocument();
+      expect(savedReportCommand(DELETE)).not.toBeInTheDocument();
+    });
+
+    it("offers rename and delete after a saved report is opened from the sidebar", async () => {
+      renderSidebar({ view: "day" });
+      await userEvent.click(within(saved()).getByRole("button", { name: "Weekly" }));
+      openPalette();
+      expect(savedReportCommand(RENAME)).toBeInTheDocument();
+      expect(savedReportCommand(DELETE)).toBeInTheDocument();
+    });
+
+    it("stops offering them once the filter changes", async () => {
+      renderSidebar({ view: "day" });
+      await userEvent.click(within(saved()).getByRole("button", { name: "Weekly" }));
+      act(() => useStore.getState().setReportFilter({ groupBy: "project" }));
+      openPalette();
+      expect(savedReportCommand(RENAME)).not.toBeInTheDocument();
+      expect(savedReportCommand(DELETE)).not.toBeInTheDocument();
+    });
+
+    it("renames the opened report through a prefilled prompt", async () => {
+      mocked.savedReportRename.mockResolvedValue(savedReport({ id: "s1", name: "Last week" }));
+      renderSidebar({ view: "day" });
+      await userEvent.click(within(saved()).getByRole("button", { name: "Weekly" }));
+      openPalette();
+      await userEvent.click(screen.getByRole("option", { name: RENAME }));
+      const input = await screen.findByRole("textbox", { name: "Name" });
+      expect(input).toHaveValue("Weekly");
+      await userEvent.clear(input);
+      await userEvent.type(input, "Last week{Enter}");
+      expect(mocked.savedReportRename).toHaveBeenCalledWith("s1", "Last week");
+    });
+
+    it("deletes the opened report after confirming", async () => {
+      renderSidebar({ view: "day" });
+      await userEvent.click(within(saved()).getByRole("button", { name: "Weekly" }));
+      openPalette();
+      await userEvent.click(screen.getByRole("option", { name: DELETE }));
+      expect(await screen.findByText(/Delete the saved report "Weekly"/)).toBeInTheDocument();
+      expect(mocked.savedReportDelete).not.toHaveBeenCalled();
+      await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
+      expect(mocked.savedReportDelete).toHaveBeenCalledWith("s1");
+    });
   });
 
   describe("context menu", () => {

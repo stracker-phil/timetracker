@@ -27,6 +27,11 @@ describe("draftFromBlock", () => {
     expect(draft).toMatchObject({ name: "Notes → Website", projectId: "p-site", enabled: true, note: "", tagIds: [] });
   });
 
+  it("names the rule after the app and leaves the project empty without one", () => {
+    const draft = draftFromBlock(block({ app: "Notes", title: "" }), null);
+    expect(draft).toMatchObject({ name: "Notes", projectId: "", enabled: true });
+  });
+
   it("matches the app and a title that contains the block's title", () => {
     expect(draftFromBlock(block({ app: "Notes", title: "Todo" }), website).conditions).toEqual([
       { field: "app", op: "is", value: "Notes" },

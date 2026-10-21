@@ -489,10 +489,10 @@ describe("DayPage", () => {
       return screen.findByRole("menu");
     }
 
-    it("offers the app settings, hide and copy for a tracker block with a url", async () => {
+    it("offers the app settings, hide, copy and Make a rule for a tracker block with a url", async () => {
       renderDay(busyDay());
       const menu = within(await openMenu("Safari: Docs"));
-      expect(menu.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Hide Safari", "Copy title", "Copy URL"]);
+      expect(menu.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Hide Safari", "Copy title", "Copy URL", "Make a rule…"]);
       expect(menu.getAllByRole("menuitemcheckbox").map((i) => i.textContent)).toEqual(["Group by app", "Titles: Document name", "Titles: App name", "Own lane"]);
     });
 
@@ -507,10 +507,21 @@ describe("DayPage", () => {
       expect(menu.queryByRole("menuitem", { name: "Copy URL" })).not.toBeInTheDocument();
     });
 
-    it("offers only copying for an external block", async () => {
+    it("offers only copying and Make a rule for an external block", async () => {
       renderDay(busyDay());
       const menu = within(await openMenu("Planner: Standup"));
-      expect(menu.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Copy title"]);
+      expect(menu.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Copy title", "Make a rule…"]);
+    });
+
+    it("ends with Make a rule…, which opens the rule sheet for the block's app without a project", async () => {
+      renderDay(busyDay(), withProject);
+      await userEvent.click(within(await openMenu("Notes: Todo")).getByRole("menuitem", { name: "Make a rule…" }));
+      const sheet = within(await screen.findByRole("dialog", { name: "New rule" }));
+      expect(sheet.getByLabelText("Name")).toHaveValue("Notes");
+      expect(sheet.getByRole("combobox", { name: "Project" })).toHaveValue("");
+      expect(sheet.getByLabelText("Condition 1 field")).toHaveValue("app");
+      expect(sheet.getByLabelText("Condition 1 value")).toHaveValue("Notes");
+      expect(mocked.ruleSave).not.toHaveBeenCalled();
     });
 
     it("moves the app to its own lane", async () => {
@@ -877,6 +888,241 @@ describe("DayPage", () => {
       renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
       await userEvent.click(await suggestionEl());
       expect(await screen.findByRole("alert")).toHaveTextContent("Could not accept the suggestion: Suggestion not found");
+    });
+
+    it("records every suggestion of the rule with ⌥↵ on the focused suggestion", async () => {
+      mocked.suggestionsAcceptRule.mockResolvedValue([recording({ id: "r1" })]);
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
+      (await suggestionEl()).focus();
+      await userEvent.keyboard("{Alt>}{Enter}{/Alt}");
+      await vi.waitFor(() => expect(mocked.suggestionsAcceptRule).toHaveBeenCalledWith(DAY, "rule-slack"));
+      expect(mocked.suggestionAccept).not.toHaveBeenCalled();
+      expect(await screen.findByText("Recorded 1 suggestion")).toBeInTheDocument();
+    });
+
+    it("records the focused suggestion with ↵ even while a selection exists, without opening the editor", async () => {
+      mocked.suggestionAccept.mockResolvedValue(recording({ start: at("09:00"), end: at("09:45") }));
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
+      await userEvent.click(await blockEl("Safari: Docs"));
+      await screen.findByLabelText("Selection");
+      (await suggestionEl()).focus();
+      await userEvent.keyboard("{Enter}");
+      await vi.waitFor(() => expect(mocked.suggestionAccept).toHaveBeenCalledWith(DAY, proposed.id));
+      expect(mocked.suggestionsAcceptRule).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog", { name: "New recording" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("keyboard", () => {
+    const review = recordingBlock({ id: "r2", projectId: "p-site", projectName: "Website", note: "review", start: at("13:00"), end: at("13:30") });
+    const twoRecordings = () => dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [review, meeting] });
+    const focusedIn = (labels: string[]) => labels.filter((label) => screen.queryByLabelText(label)?.classList.contains("focused"));
+    const focusedBlocks = () => focusedIn(["Safari: Docs", "Notes: Todo", "Planner: Standup"]);
+    const focusedRecordings = () => focusedIn(["Website: standup", "Website: review"]);
+    const editorFields = async (name: string) => within(await screen.findByRole("dialog", { name }));
+
+    describe("V selects the focused block", () => {
+      it("shows the block's span as the selection and opens the editor with it on ↵", async () => {
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        await userEvent.keyboard("jv");
+        expect(await screen.findByLabelText("Selection")).toHaveTextContent("09:00–09:30");
+        await userEvent.keyboard("{Enter}");
+        const dialog = await editorFields("New recording");
+        expect(dialog.getByLabelText("From")).toHaveValue("09:00");
+        expect(dialog.getByLabelText("To")).toHaveValue("09:30");
+      });
+
+      it("does nothing without a focused block", async () => {
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        await userEvent.keyboard("v{Enter}");
+        expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+    });
+
+    describe("⇧J and ⇧K extend the selection", () => {
+      it("grows the selection over the next block and moves the focus to it", async () => {
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        await userEvent.keyboard("j{Shift>}j{/Shift}");
+        expect(await screen.findByLabelText("Selection")).toHaveTextContent("09:00–10:30");
+        expect(focusedBlocks()).toEqual(["Notes: Todo"]);
+        await userEvent.keyboard("{Enter}");
+        const dialog = await editorFields("New recording");
+        expect(dialog.getByLabelText("From")).toHaveValue("09:00");
+        expect(dialog.getByLabelText("To")).toHaveValue("10:30");
+      });
+
+      it("grows the selection over the previous block and moves the focus to it", async () => {
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        await userEvent.keyboard("jj{Shift>}k{/Shift}");
+        expect(await screen.findByLabelText("Selection")).toHaveTextContent("09:00–10:30");
+        expect(focusedBlocks()).toEqual(["Safari: Docs"]);
+      });
+
+      it("selects the first block when nothing is focused", async () => {
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        await userEvent.keyboard("{Shift>}j{/Shift}");
+        expect(await screen.findByLabelText("Selection")).toHaveTextContent("09:00–09:30");
+        expect(focusedBlocks()).toEqual(["Safari: Docs"]);
+      });
+
+      it("clears the focused recording", async () => {
+        renderDay(recordedDay(), withProject);
+        await userEvent.click(await blockEl("Website: standup"));
+        await userEvent.keyboard("{Shift>}j{/Shift}{Backspace}");
+        expect(await screen.findByLabelText("Selection")).toBeInTheDocument();
+        expect(mocked.recordingDelete).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("N and ⇧N focus recordings", () => {
+      it("N focuses the first recording by start, then the next, and stops at the last", async () => {
+        renderDay(twoRecordings(), withProject);
+        await blockEl("Website: standup");
+        await userEvent.keyboard("n");
+        expect(focusedRecordings()).toEqual(["Website: standup"]);
+        await userEvent.keyboard("n");
+        expect(focusedRecordings()).toEqual(["Website: review"]);
+        await userEvent.keyboard("n");
+        expect(focusedRecordings()).toEqual(["Website: review"]);
+      });
+
+      it("⇧N goes back to the previous recording and stops at the first", async () => {
+        renderDay(twoRecordings(), withProject);
+        await blockEl("Website: standup");
+        await userEvent.keyboard("nn{Shift>}n{/Shift}");
+        expect(focusedRecordings()).toEqual(["Website: standup"]);
+        await userEvent.keyboard("{Shift>}n{/Shift}");
+        expect(focusedRecordings()).toEqual(["Website: standup"]);
+      });
+
+      it("⇧N starts from the last recording", async () => {
+        renderDay(twoRecordings(), withProject);
+        await blockEl("Website: standup");
+        await userEvent.keyboard("{Shift>}n{/Shift}");
+        expect(focusedRecordings()).toEqual(["Website: review"]);
+      });
+
+      it("↵ opens the editor of the focused recording", async () => {
+        mocked.recordingsList.mockResolvedValue([meetingRow]);
+        renderDay(twoRecordings(), withProject);
+        await blockEl("Website: standup");
+        await userEvent.keyboard("n{Enter}");
+        expect(await screen.findByRole("dialog", { name: "Edit recording" })).toBeInTheDocument();
+      });
+
+      it("clears the selection and the block focus, so ↵ edits the recording instead of creating one", async () => {
+        mocked.recordingsList.mockResolvedValue([meetingRow]);
+        renderDay(twoRecordings(), withProject);
+        await userEvent.click(await blockEl("Safari: Docs"));
+        await screen.findByLabelText("Selection");
+        await userEvent.keyboard("n");
+        expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
+        expect(focusedBlocks()).toEqual([]);
+        await userEvent.keyboard("{Enter}");
+        expect(await screen.findByRole("dialog", { name: "Edit recording" })).toBeInTheDocument();
+        expect(screen.queryByRole("dialog", { name: "New recording" })).not.toBeInTheDocument();
+      });
+
+      it("does nothing on a day without recordings", async () => {
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        await userEvent.keyboard("n{Enter}");
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+    });
+
+    describe("⌥← and ⌥→ move the focused recording to another day", () => {
+      it.each([
+        ["⌥← moves it to the previous day", "{Alt>}{ArrowLeft}{/Alt}", "recordingMove", "recordingCopy", "2026-03-09"],
+        ["⌥→ moves it to the next day", "{Alt>}{ArrowRight}{/Alt}", "recordingMove", "recordingCopy", "2026-03-11"],
+        ["⌥⇧← copies it to the previous day", "{Alt>}{Shift>}{ArrowLeft}{/Shift}{/Alt}", "recordingCopy", "recordingMove", "2026-03-09"],
+        ["⌥⇧→ copies it to the next day", "{Alt>}{Shift>}{ArrowRight}{/Shift}{/Alt}", "recordingCopy", "recordingMove", "2026-03-11"],
+      ] as const)("%s", async (_name, keys, call, other, day) => {
+        renderDay(recordedDay(), withProject);
+        await userEvent.click(await blockEl("Website: standup"));
+        await userEvent.keyboard(keys);
+        await vi.waitFor(() => expect(mocked[call]).toHaveBeenCalledWith("r1", day, "cancel"));
+        expect(mocked[other]).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ["⌥←", "{Alt>}{ArrowLeft}{/Alt}"],
+        ["⌥⇧→", "{Alt>}{Shift>}{ArrowRight}{/Shift}{/Alt}"],
+      ])("%s does nothing without a focused recording", async (_name, keys) => {
+        renderDay(recordedDay(), withProject);
+        await blockEl("Website: standup");
+        await userEvent.keyboard(keys);
+        expect(mocked.recordingMove).not.toHaveBeenCalled();
+        expect(mocked.recordingCopy).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("the block menu opened with ⌃↵", () => {
+      const openBlockMenu = async (keys: string) => {
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        await userEvent.keyboard(`${keys}{Control>}{Enter}{/Control}`);
+        await screen.findByRole("menu");
+      };
+
+      it("closes with Escape and leaves the block focused", async () => {
+        await openBlockMenu("j");
+        await userEvent.keyboard("{Escape}");
+        expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+        expect(focusedBlocks()).toEqual(["Safari: Docs"]);
+      });
+
+      it("runs its focused item on ↵ rather than a command, even while a selection exists", async () => {
+        await openBlockMenu("jv");
+        await userEvent.keyboard("{Enter}");
+        expect(mocked.setAppSetting).toHaveBeenCalledWith("com.apple.Safari", { groupByApp: false });
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+    });
+
+    describe("↵ and Space on a focused button", () => {
+      it.each([
+        ["↵", "{Enter}"],
+        ["Space", " "],
+      ])("%s activates Today instead of opening the editor or the details", async (_name, keys) => {
+        renderDay(busyDay());
+        await userEvent.click(await blockEl("Safari: Docs"));
+        await screen.findByLabelText("Selection");
+        screen.getByRole("button", { name: "Today" }).focus();
+        await userEvent.keyboard(keys);
+        await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith(today()));
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+    });
+
+    describe("the shortcuts overview", () => {
+      it("lists the bound day commands with their keys", async () => {
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        act(() => {
+          runCommand("shortcuts.show");
+        });
+        const day = within(within(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).getByRole("region", { name: "Day" }));
+        for (const [title, keys] of [
+          ["Select block", "V"],
+          ["Extend selection to the next block", "⇧J"],
+          ["Extend selection to the previous block", "⇧K"],
+          ["Next recording", "N"],
+          ["Previous recording", "⇧N"],
+          ["Move recording to the previous day", "⌥←"],
+          ["Move recording to the next day", "⌥→"],
+          ["Copy recording to the previous day", "⌥⇧←"],
+          ["Copy recording to the next day", "⌥⇧→"],
+        ]) {
+          expect(within(day.getByText(title).parentElement as HTMLElement).getByText(keys)).toBeInTheDocument();
+        }
+      });
     });
   });
 

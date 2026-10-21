@@ -84,11 +84,14 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 
 - **Bindings** are strings like `Mod+Shift+K` (`Mod` is ⌘), normalized to `Mod, Ctrl, Alt, Shift` and shown
   as `⌘⇧K`. User overrides come from `keybindings.json`.
-- **Scopes** (`commands/scopes.ts`) form a tree: `global`, and under it `day`, `week`, `month`, `reports`
-  and `projects`, each active while `view` matches. The most specific active scope wins a key.
+- **Scopes** (`commands/scopes.ts`) form a tree: `global`; under it `calendar` (with `day`, `week` and
+  `month`), `reports`, `projects` and `rules`, each active while `view` matches. The most specific active scope wins a key.
 - **Keys.** `handleKeydown` runs in the capture phase. Inside text inputs only `Mod`/`Ctrl` combinations and
-  Escape fire. While a dialog or the palette is open only `MODAL_ALLOWED` commands run. Auto-repeat is
-  swallowed unless the command is in `REPEATABLE` (zoom).
+  Escape fire. While a dialog, the palette, the editor or a context menu (`[role="menu"]`) has the keys only
+  `MODAL_ALLOWED` commands run. Bare ↵ and Space on a focused button or link stay with it
+  (`activatesControl`); the timeline's focus commands blur such a button first (`releaseControlFocus`), so
+  the keys return to the timeline. Auto-repeat is swallowed unless the command is in `REPEATABLE` (zoom,
+  nudging).
 - **Menu.** Native menu and tray items emit `command`; `runMenuCommand` runs the id under the same rules.
   A command shown in the menu has the same id and default as its `MENU_ITEMS` entry in `menu.rs`.
 - **Palette.** `CommandPalette` lists the commands of the active scopes with their key caps, filtered by the
@@ -99,17 +102,25 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   `nav.next` (⌘→) step by the view's unit; `nav.today` (T).
 - **Day view.** `day.nextBlock` (J),
   `day.prevBlock` (K), `day.prevLane` (H), `day.nextLane` (L), and with a focused block `day.details`
-  (Space), `day.blockMenu` (⌃↵); `day.clearFocus` (Escape) clears the block focus, the selection and the
-  focused recording. `activity.deleteDay` and `activity.deleteRange` (no default keys; also in the Day
-  header's ⋯ menu) open `DeleteActivityDialog` once the shown day's view has loaded.
-- **Recordings.** `recording.open` (Enter) edits the focused recording or records the selection;
+  (Space), `day.blockMenu` (⌃↵, which also offers Make a rule…), `day.selectBlock` (V, its span as the
+  selection); `day.extendNext`/`extendPrev` (⇧J ⇧K) move the focus and grow the selection over the block;
+  `day.clearFocus` (Escape) clears the block focus, the selection and the focused recording.
+  `activity.deleteDay` and `activity.deleteRange` (no default keys; also in the Day header's ⋯ menu) open
+  `DeleteActivityDialog` once the shown day's view has loaded.
+- **Recordings.** `recording.next`/`prev` (N ⇧N) focus the shown day's recordings by start;
+  `recording.open` (Enter) edits the focused recording or records the selection;
   `recording.create` and `recording.edit` (menu and palette) do one of the two; `recording.delete` (⌫);
   `recording.nudgeEarlier`/`nudgeLater` (⌥↑ ⌥↓) move the focused recording and `recording.extend`/`shrink`
-  (⌥⇧↓ ⌥⇧↑) change its end, by one snap step. `edit.undo` (⌘Z) and `edit.redo` (⌘⇧Z) are global and leave
+  (⌥⇧↓ ⌥⇧↑) change its end, by one snap step; `recording.moveToPrevDay`/`moveToNextDay` (⌥← ⌥→) and
+  `recording.copyToPrevDay`/`copyToNextDay` (⌥⇧← ⌥⇧→) take it to the adjacent day at the same time. `edit.undo` (⌘Z) and `edit.redo` (⌘⇧Z) are global and leave
   text fields to their own undo. While the editor is open, only `MODAL_ALLOWED` commands run. `zoom.in`/`zoom.out`/`zoom.reset` (⌘= ⌘- ⌘0)
   zoom the timeline (`TIMELINE_STEPS`) while the Day view shows and the text everywhere else.
 - **Projects.** `projects.new` (⌘N) and `clients.new` (no default) open the sheets while the Projects view
   shows; `view.projects` (⌘5) shows it.
+- **Reports.** `reports.copyText` (⌘⇧C), `reports.save`; `reports.rename`/`reports.delete` act on the saved
+  report opened from the sidebar (`openedReport`, cleared when the filter changes).
+- **Rules.** `rules.new` (⌘N); `rules.moveUp`/`moveDown` (⌥↑ ⌥↓) move the rule whose row has the focus
+  (`moveRule` in the rules slice).
 - **Tracker.** `tracker.pause` (until resumed; while tracking) and `tracker.resume` (while paused), no default
   bindings.
 - **Window.** `window.hide` calls `api.hideWindow`; `app.quit` is handled by Rust when it comes from the menu.

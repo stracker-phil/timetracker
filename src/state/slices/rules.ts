@@ -12,6 +12,8 @@ export interface RulesSlice {
   deleteRule: (id: string) => Promise<void>;
   /** `ids`: every rule, in the new order. */
   reorderRules: (ids: string[]) => Promise<void>;
+  /** One place up (-1) or down (1); at either end nothing happens. */
+  moveRule: (id: string, by: 1 | -1) => Promise<void>;
   setRuleEnabled: (id: string, enabled: boolean) => Promise<void>;
   /** Records the suggestion on the shown day. */
   acceptSuggestion: (suggestion: Suggestion) => Promise<void>;
@@ -64,6 +66,15 @@ export const rulesSlice: Slice<RulesSlice> = {
           set({ rules: before });
           fail(e, "Could not reorder the rules");
         }
+      },
+
+      async moveRule(id, by) {
+        const ids = get().rules.map((r) => r.id);
+        const from = ids.indexOf(id);
+        const to = from + by;
+        if (from === -1 || to < 0 || to >= ids.length) return;
+        [ids[from], ids[to]] = [ids[to], ids[from]];
+        await get().reorderRules(ids);
       },
 
       async setRuleEnabled(id, enabled) {

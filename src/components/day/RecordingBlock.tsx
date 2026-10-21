@@ -1,4 +1,4 @@
-import { memo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { RecordingBlock as Block } from "../../api";
 import { formatHm } from "../../lib/format";
 import { fail, useStore } from "../../state/store";
@@ -30,6 +30,10 @@ interface Props {
 /** A recording in the column: click focuses, double-click edits; drag the body to move it, an edge to resize it. */
 export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinute, focused, onDrop }: Props) {
   const [drag, setDrag] = useState<{ start: number; end: number } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focused) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [focused]);
   const ghost = useSnappedSpan(drag);
   const shown = ghost ?? block;
   const top = y(shown.start);
@@ -60,6 +64,7 @@ export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinu
   return (
     <div
       className={classes.filter(Boolean).join(" ")}
+      ref={ref}
       data-recording-id={block.id}
       aria-label={`${block.projectName}${block.note ? `: ${block.note}` : ""}`}
       style={{ top, height, "--rec": color } as CSSProperties}
