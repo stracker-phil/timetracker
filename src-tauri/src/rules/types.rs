@@ -51,7 +51,7 @@ pub struct Rule {
     pub position: i64,
     pub enabled: bool,
     pub note: String,
-    pub tag_ids: Vec<String>,
+    pub tag_id: Option<String>,
     pub conditions: Vec<Condition>,
 }
 
@@ -72,7 +72,7 @@ pub struct RuleInput {
     pub project_id: String,
     pub enabled: bool,
     pub note: String,
-    pub tag_ids: Vec<String>,
+    pub tag_id: Option<String>,
     pub conditions: Vec<ConditionInput>,
 }
 
@@ -92,7 +92,7 @@ pub struct Suggestion {
     pub start: Ms,
     pub end: Ms,
     pub note: String,
-    pub tag_ids: Vec<String>,
+    pub tag_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]

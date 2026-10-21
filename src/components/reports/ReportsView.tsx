@@ -50,7 +50,6 @@ export function ReportsView() {
             <span className="mono report-hours">{formatHm(result.totalRoundedMs)} h</span>
           </footer>
         )}
-        {result?.tagOverlap && <p className="o3 report-caveat">Tags overlap: a recording with several tags counts in each.</p>}
       </div>
     </section>
   );

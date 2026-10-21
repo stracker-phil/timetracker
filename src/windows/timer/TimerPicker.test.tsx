@@ -44,14 +44,14 @@ describe("TimerPicker", () => {
       expect(startButton()).toBeEnabled();
     });
 
-    it("starts the timer with project, trimmed note and tags, then closes", async () => {
+    it("starts the timer with project, trimmed note and tag, then closes", async () => {
       renderPicker();
       await chooseProject();
       await userEvent.type(noteField(), "  standup ");
-      await userEvent.click(screen.getByRole("combobox", { name: "Tags" }));
+      await userEvent.click(screen.getByRole("combobox", { name: "Tag" }));
       await userEvent.click(screen.getByRole("option", { name: "support" }));
       await userEvent.click(startButton());
-      expect(mocked.timerStart).toHaveBeenCalledWith("p-site", "standup", ["tag-support"]);
+      expect(mocked.timerStart).toHaveBeenCalledWith("p-site", "standup", "tag-support");
       await vi.waitFor(() => expect(mocked.timerPickerClose).toHaveBeenCalled());
     });
 
@@ -59,7 +59,7 @@ describe("TimerPicker", () => {
       renderPicker();
       await chooseProject();
       await userEvent.type(noteField(), "review{Enter}");
-      expect(mocked.timerStart).toHaveBeenCalledWith("p-site", "review", []);
+      expect(mocked.timerStart).toHaveBeenCalledWith("p-site", "review", null);
       await vi.waitFor(() => expect(mocked.timerPickerClose).toHaveBeenCalled());
     });
 
@@ -94,12 +94,12 @@ describe("TimerPicker", () => {
       expect(mocked.timerPickerClose).toHaveBeenCalled();
     });
 
-    it("starts a recent timer with its project, note and tags when clicked", async () => {
-      mocked.timersRecent.mockResolvedValue([recentTimer({ projectId: "p-site", note: "standup", tagIds: ["tag-admin"] }), recentTimer({ projectId: "p-docs", projectName: "Docs" })]);
+    it("starts a recent timer with its project, note and tag when clicked", async () => {
+      mocked.timersRecent.mockResolvedValue([recentTimer({ projectId: "p-site", note: "standup", tagId: "tag-admin" }), recentTimer({ projectId: "p-docs", projectName: "Docs" })]);
       renderPicker();
       expect(await screen.findByRole("button", { name: "Docs" })).toBeInTheDocument();
       await userEvent.click(screen.getByRole("button", { name: "Website · standup" }));
-      expect(mocked.timerStart).toHaveBeenCalledWith("p-site", "standup", ["tag-admin"]);
+      expect(mocked.timerStart).toHaveBeenCalledWith("p-site", "standup", "tag-admin");
       await vi.waitFor(() => expect(mocked.timerPickerClose).toHaveBeenCalled());
     });
 

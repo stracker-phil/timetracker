@@ -766,6 +766,11 @@ describe("DayPage", () => {
       expect(screen.getByLabelText("Recordings")).toContainElement(screen.getByLabelText("Website: standup"));
     });
 
+    it("shows the tag of a recording on its block", async () => {
+      renderDay(dayView({ recordings: [{ ...meeting, tag: "support" }] }));
+      expect(within(await recordingEl()).getByText("support")).toBeInTheDocument();
+    });
+
     it("shows a day with only recordings as a timeline", async () => {
       renderDay(dayView({ recordings: [meeting] }));
       expect(await recordingEl()).toBeInTheDocument();

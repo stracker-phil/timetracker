@@ -104,9 +104,9 @@ enum Command {
         /// One line
         #[arg(long, default_value = "")]
         note: String,
-        /// A tag by name; repeat for several
-        #[arg(long = "tag")]
-        tags: Vec<String>,
+        /// A tag by name (at most one)
+        #[arg(long)]
+        tag: Option<String>,
         /// Trim or remove the recordings in the way instead of refusing
         #[arg(long)]
         replace: bool,
@@ -120,9 +120,9 @@ enum Command {
         /// One line
         #[arg(long, default_value = "")]
         note: String,
-        /// A tag by name; repeat for several
-        #[arg(long = "tag")]
-        tags: Vec<String>,
+        /// A tag by name (at most one)
+        #[arg(long)]
+        tag: Option<String>,
     },
     /// Stop the running timer
     Stop,
@@ -356,7 +356,7 @@ fn message<Tz: TimeZone>(
             from,
             to,
             note,
-            tags,
+            tag,
             replace,
         } => IpcMessage::Record {
             request: RecordRequest {
@@ -364,7 +364,7 @@ fn message<Tz: TimeZone>(
                 start: time::instant(&from, now, tz)?,
                 end: time::instant(&to, now, tz)?,
                 note,
-                tags,
+                tag,
                 overlap: if replace {
                     Overlap::Replace
                 } else {
@@ -372,16 +372,8 @@ fn message<Tz: TimeZone>(
                 },
             },
         },
-        Command::Start {
-            project,
-            note,
-            tags,
-        } => IpcMessage::TimerStart {
-            request: TimerStartRequest {
-                project,
-                note,
-                tags,
-            },
+        Command::Start { project, note, tag } => IpcMessage::TimerStart {
+            request: TimerStartRequest { project, note, tag },
         },
         Command::Stop => IpcMessage::TimerStop,
         #[cfg(debug_assertions)]
@@ -981,14 +973,14 @@ mod tests {
         }
     }
 
-    fn record_request(note: &str, tags: &[&str], end: &str, overlap: Overlap) -> IpcMessage {
+    fn record_request(note: &str, tag: Option<&str>, end: &str, overlap: Overlap) -> IpcMessage {
         IpcMessage::Record {
             request: RecordRequest {
                 project: "ac".into(),
                 start: ms("2026-10-21T09:00:00+02:00"),
                 end: ms(end),
                 note: note.into(),
-                tags: tags.iter().map(|t| t.to_string()).collect(),
+                tag: tag.map(str::to_string),
                 overlap,
             },
         }
@@ -1007,8 +999,6 @@ mod tests {
             "--note",
             "fix login",
             "--tag",
-            "development",
-            "--tag",
             "internal meeting",
         ]);
 
@@ -1016,7 +1006,7 @@ mod tests {
             message,
             record_request(
                 "fix login",
-                &["development", "internal meeting"],
+                Some("internal meeting"),
                 "2026-10-21T10:30:00+02:00",
                 Overlap::Cancel
             )
@@ -1026,7 +1016,31 @@ mod tests {
     }
 
     #[test]
-    fn record_without_note_and_tags_sends_them_empty() {
+    fn a_second_tag_on_record_or_start_is_a_parse_error() {
+        for args in [
+            vec![
+                "record",
+                "--project",
+                "ac",
+                "--from",
+                "09:00",
+                "--to",
+                "10:30",
+                "--tag",
+                "a",
+                "--tag",
+                "b",
+            ],
+            vec!["start", "acme", "--tag", "a", "--tag", "b"],
+        ] {
+            let err = run(&args).unwrap_err();
+            assert!(!err.in_app, "{args:?}");
+            assert!(err.message.contains("--tag"), "{args:?}: {}", err.message);
+        }
+    }
+
+    #[test]
+    fn record_without_note_and_tag_sends_them_empty() {
         let (message, ..) = remote(&[
             "record",
             "--project",
@@ -1039,7 +1053,7 @@ mod tests {
 
         assert_eq!(
             message,
-            record_request("", &[], "2026-10-21T10:30:00+02:00", Overlap::Cancel)
+            record_request("", None, "2026-10-21T10:30:00+02:00", Overlap::Cancel)
         );
     }
 
@@ -1058,7 +1072,7 @@ mod tests {
 
         assert_eq!(
             message,
-            record_request("", &[], "2026-10-21T10:30:00+02:00", Overlap::Replace)
+            record_request("", None, "2026-10-21T10:30:00+02:00", Overlap::Replace)
         );
     }
 
@@ -1077,15 +1091,14 @@ mod tests {
 
         assert_eq!(
             message,
-            record_request("", &[], "2026-10-21T12:00:00+02:00", Overlap::Cancel)
+            record_request("", None, "2026-10-21T12:00:00+02:00", Overlap::Cancel)
         );
         assert!(json);
     }
 
     #[test]
-    fn start_builds_a_timer_request_with_note_and_tags() {
-        let (message, json, starts_app) =
-            remote(&["start", "acme", "--note", "x", "--tag", "a", "--tag", "b"]);
+    fn start_builds_a_timer_request_with_note_and_tag() {
+        let (message, json, starts_app) = remote(&["start", "acme", "--note", "x", "--tag", "a"]);
 
         assert_eq!(
             message,
@@ -1093,7 +1106,7 @@ mod tests {
                 request: TimerStartRequest {
                     project: "acme".into(),
                     note: "x".into(),
-                    tags: vec!["a".into(), "b".into()],
+                    tag: Some("a".into()),
                 }
             }
         );
@@ -1102,7 +1115,7 @@ mod tests {
     }
 
     #[test]
-    fn start_without_note_and_tags_sends_them_empty() {
+    fn start_without_note_and_tag_sends_them_empty() {
         assert_eq!(
             remote(&["start", "acme", "--json"]),
             (
@@ -1110,7 +1123,7 @@ mod tests {
                     request: TimerStartRequest {
                         project: "acme".into(),
                         note: String::new(),
-                        tags: Vec::new(),
+                        tag: None,
                     }
                 },
                 true,

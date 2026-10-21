@@ -12,7 +12,7 @@ const mocked = vi.mocked(api, true);
 const state = () => useStore.getState();
 const toastMessages = () => state().toasts.map((t) => t.message);
 
-const input = { projectId: "p-site", start: at("09:00"), end: at("09:45"), note: "", tagIds: [] };
+const input = { projectId: "p-site", start: at("09:00"), end: at("09:45"), note: "", tagId: null };
 const inTheWay = recording({ id: "r9", start: at("09:15"), end: at("09:30") });
 const overlapError = { kind: "overlap", message: "Overlaps", code: null, details: [inTheWay] };
 

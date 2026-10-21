@@ -156,7 +156,7 @@ mod tests {
     }
 
     /// Stored through the repository, so its timestamps are the database's.
-    async fn saved(w: &World, tag_ids: Vec<String>, start: i64, end: i64) -> Recording {
+    async fn saved(w: &World, tag_id: Option<String>, start: i64, end: i64) -> Recording {
         recordings::insert(
             &w.db,
             NewRecording {
@@ -165,7 +165,7 @@ mod tests {
                 start,
                 end: Some(end),
                 note: "note".into(),
-                tag_ids,
+                tag_id,
             },
         )
         .await
@@ -225,7 +225,7 @@ mod tests {
         let w = World::new().await;
         let recording = Recording {
             project_id: w.project.id.clone(),
-            tag_ids: vec![w.alpha.id.clone(), w.beta.id.clone()],
+            tag_id: Some(w.alpha.id.clone()),
             ..row("r", at(10, 0), at(11, 0))
         };
         let op = create(&recording);
@@ -240,13 +240,13 @@ mod tests {
     #[tokio::test]
     async fn applying_an_update_and_then_its_inverse_restores_the_exact_row() {
         let w = World::new().await;
-        let before = saved(&w, vec![w.alpha.id.clone()], at(10, 0), at(11, 0)).await;
+        let before = saved(&w, Some(w.alpha.id.clone()), at(10, 0), at(11, 0)).await;
         let after = Recording {
             project_id: w.other.id.clone(),
             start: at(10, 30),
             end: Some(at(11, 30)),
             note: "changed".into(),
-            tag_ids: vec![w.beta.id.clone()],
+            tag_id: Some(w.beta.id.clone()),
             created_at: before.created_at + 1,
             updated_at: before.updated_at + 1_000,
             ..before.clone()
@@ -263,13 +263,7 @@ mod tests {
     #[tokio::test]
     async fn applying_a_delete_and_then_its_inverse_restores_the_exact_row() {
         let w = World::new().await;
-        let before = saved(
-            &w,
-            vec![w.beta.id.clone(), w.alpha.id.clone()],
-            at(10, 0),
-            at(11, 0),
-        )
-        .await;
+        let before = saved(&w, Some(w.beta.id.clone()), at(10, 0), at(11, 0)).await;
         let op = delete(&before);
 
         apply(&w.db, &op).await.unwrap();
@@ -282,8 +276,8 @@ mod tests {
     #[tokio::test]
     async fn applying_a_batch_and_then_its_inverse_restores_every_row() {
         let w = World::new().await;
-        let trimmed = saved(&w, vec![w.alpha.id.clone()], at(10, 0), at(11, 0)).await;
-        let removed = saved(&w, vec![w.beta.id.clone()], at(11, 0), at(12, 0)).await;
+        let trimmed = saved(&w, Some(w.alpha.id.clone()), at(10, 0), at(11, 0)).await;
+        let removed = saved(&w, Some(w.beta.id.clone()), at(11, 0), at(12, 0)).await;
         let before = w.rows().await;
         let shorter = Recording {
             end: Some(at(10, 30)),
@@ -294,7 +288,7 @@ mod tests {
             id: "added".into(),
             start: at(10, 30),
             end: Some(at(12, 0)),
-            tag_ids: vec![],
+            tag_id: None,
             ..shorter.clone()
         };
         let op = batch(vec![
@@ -313,7 +307,7 @@ mod tests {
     #[tokio::test]
     async fn a_batch_with_a_failing_step_applies_nothing() {
         let w = World::new().await;
-        let existing = saved(&w, vec![], at(10, 0), at(11, 0)).await;
+        let existing = saved(&w, None, at(10, 0), at(11, 0)).await;
         let new = unsaved(&w, "new", at(12, 0), at(13, 0));
         let missing = row("missing", at(14, 0), at(15, 0));
         let ops = [
@@ -332,13 +326,13 @@ mod tests {
     #[tokio::test]
     async fn an_op_that_would_overlap_is_refused_listing_the_recordings_and_changes_nothing() {
         let w = World::new().await;
-        let first = saved(&w, vec![], at(10, 0), at(11, 0)).await;
-        let second = saved(&w, vec![], at(12, 0), at(13, 0)).await;
+        let first = saved(&w, None, at(10, 0), at(11, 0)).await;
+        let second = saved(&w, None, at(12, 0), at(13, 0)).await;
         let overlapping = Recording {
             id: "new".into(),
             start: at(10, 30),
             end: Some(at(12, 30)),
-            tag_ids: vec![],
+            tag_id: None,
             ..first.clone()
         };
         let ops = [
@@ -367,7 +361,7 @@ mod tests {
     #[tokio::test]
     async fn the_overlap_error_lists_the_recordings_in_the_way() {
         let w = World::new().await;
-        let first = saved(&w, vec![w.alpha.id.clone()], at(10, 0), at(11, 0)).await;
+        let first = saved(&w, Some(w.alpha.id.clone()), at(10, 0), at(11, 0)).await;
         let overlapping = Recording {
             id: "new".into(),
             start: at(10, 30),
@@ -389,7 +383,7 @@ mod tests {
     #[tokio::test]
     async fn a_batch_may_overlap_in_between_when_it_ends_clear() {
         let w = World::new().await;
-        let existing = saved(&w, vec![], at(10, 0), at(11, 0)).await;
+        let existing = saved(&w, None, at(10, 0), at(11, 0)).await;
         let new = Recording {
             id: "new".into(),
             start: at(10, 30),
@@ -444,7 +438,7 @@ mod tests {
                 "start": 0,
                 "end": 10,
                 "note": "",
-                "tagIds": [],
+                "tagId": null,
                 "createdAt": 1_000,
                 "updatedAt": 2_000
             }]))

@@ -74,7 +74,7 @@ export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinu
       {movable && <span className="grip start" aria-label="Drag to change the start" onPointerDown={press("start")} />}
       <span className="recording-project">{block.projectName}</span>
       {block.note && <span className="recording-note mono">{block.note}</span>}
-      {block.tags.length > 0 && <span className="recording-tags mono">{block.tags.join(" · ")}</span>}
+      {block.tag && <span className="recording-tag mono">{block.tag}</span>}
       <span className="recording-duration mono">{formatHm(shown.end - shown.start)}</span>
       {movable && <span className="grip end" aria-label="Drag to change the end" onPointerDown={press("end")} />}
     </div>

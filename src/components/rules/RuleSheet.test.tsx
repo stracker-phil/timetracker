@@ -26,7 +26,7 @@ const draft: RuleInput = {
   projectId: "project-1",
   enabled: true,
   note: "",
-  tagIds: [],
+  tagId: null,
   conditions: [
     { field: "app", op: "is", value: "Safari" },
     { field: "title", op: "contains", value: "docs" },
@@ -63,8 +63,16 @@ describe("RuleSheet", () => {
       await userEvent.click(await screen.findByRole("option", { name: "Website" }));
       await userEvent.type(screen.getByLabelText("Condition 1 value"), "Slack");
       await save();
-      expect(mocked.ruleSave).toHaveBeenCalledWith(null, { name: "Chat", projectId: "project-1", enabled: true, note: "", tagIds: [], conditions: [{ field: "app", op: "is", value: "Slack" }] });
+      expect(mocked.ruleSave).toHaveBeenCalledWith(null, { name: "Chat", projectId: "project-1", enabled: true, note: "", tagId: null, conditions: [{ field: "app", op: "is", value: "Slack" }] });
       expect(onClose).toHaveBeenCalled();
+    });
+
+    it("saves the picked tag", async () => {
+      renderSheet({ draft });
+      await userEvent.click(screen.getByRole("combobox", { name: "Tag" }));
+      await userEvent.click(screen.getByRole("option", { name: "support" }));
+      await save();
+      expect(mocked.ruleSave).toHaveBeenCalledWith(null, expect.objectContaining({ tagId: "tag-support" }));
     });
 
     it("adds a condition, with the field and comparison the user picks", async () => {
@@ -109,8 +117,14 @@ describe("RuleSheet", () => {
       await userEvent.type(screen.getByLabelText("Condition 1 value"), "Teams");
       await userEvent.click(screen.getByRole("switch", { name: "Suggest recordings" }));
       await save();
-      expect(mocked.ruleSave).toHaveBeenCalledWith("r-slack", { name: "Slack", projectId: "project-1", enabled: false, note: "chat", tagIds: [], conditions: [{ field: "app", op: "is", value: "Teams" }] });
+      expect(mocked.ruleSave).toHaveBeenCalledWith("r-slack", { name: "Slack", projectId: "project-1", enabled: false, note: "chat", tagId: null, conditions: [{ field: "app", op: "is", value: "Teams" }] });
       expect(onClose).toHaveBeenCalled();
+    });
+
+    it("shows the tag of the rule", () => {
+      resetStore({ ...projectsStore({ projects: [website] }), rules: [rule({ ...slack, tagId: "tag-research" })] });
+      render(<RuleSheet id="r-slack" onClose={vi.fn()} />);
+      expect(screen.getByRole("combobox", { name: "Tag" })).toHaveValue("research");
     });
 
     it("closes without saving on Cancel", async () => {

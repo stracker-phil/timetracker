@@ -17,6 +17,8 @@ Settings, keybindings and UI state stay in JSON files ([backend.md](backend.md#p
 `Db::open(path)` creates the folder (mode 0700) and the file when missing, then connects with WAL journaling,
 `synchronous = NORMAL`, a 5 s busy timeout and foreign keys on, through a pool of 4 connections (SQLite has one
 writer; readers run beside it in WAL). Then it runs the migrations and seeds the default tags.
+`Db::open_migrating` does the same and also returns what a migration dropped (`db::one_tag::TagsDropped`,
+see [Migrations](#migrations)); `DataStore::open` uses it and keeps the message for the launch toast.
 
 `Db::open_read_only(path)` is for `timetracker mcp` ([backend.md](backend.md#mcp-server)), a second process
 beside the app: `read_only(true)`, `create_if_missing(false)`, a 2 s busy timeout, 2 connections, and the
@@ -74,10 +76,9 @@ A backup is the JSON export below, or a copy of the folder while the app is not 
 | `tags` | `id` (UUID), `name` (unique, ignoring case), `created_at` |
 | `activities` | one span in one app and window: `id` (AUTOINCREMENT), `source` (`tracker` or `external:<name>`), `start`, `end` (NULL while open), `app`, `bundle_id`, `title`, `url`, `path`, `private`; indexed on `start` and `(source, start)` |
 | `away_spans` | no input, sleep, lock or pause: `id` (AUTOINCREMENT), `start`, `end`, `reason` (`idle`, `sleep`, `lock`, `paused`); indexed on `start` |
-| `recordings` | time confirmed for a project: `id` (UUID), `project_id`, `start`, `end` (NULL only for the running timer), `note`, `created_at`, `updated_at`; indexed on `start` |
-| `recording_tags` | `(recording_id, tag_id)`; deleting either side deletes the link |
+| `recordings` | time confirmed for a project: `id` (UUID), `project_id`, `start`, `end` (NULL only for the running timer), `note`, `tag_id` (NULL without a tag; deleting the tag sets it NULL), `created_at`, `updated_at`; indexed on `start` |
 | `saved_reports` | `id`, `name`, `filter` (a `ReportFilter` as JSON), `position` |
-| `rules` | `id`, `name`, `project_id`, `position` (the lowest wins), `enabled`, `note`, `tag_ids` (a JSON array) |
+| `rules` | `id`, `name`, `project_id`, `position` (the lowest wins), `enabled`, `note`, `tag_id` (as for recordings) |
 | `rule_conditions` | `id`, `rule_id` (deleting the rule deletes them), `position`, `field`, `op`, `value` (the serde names of `RuleField` and `RuleOp`) |
 
 `end` is a SQL keyword, so queries quote it (`"end"`). `activities` and `away_spans` use AUTOINCREMENT so a
@@ -100,6 +101,7 @@ deleted id is never reused and an undo can restore rows by id.
   a minute after the start. The recordings
   feature enforces this; the repository only offers the `overlapping` query.
 - A note is one line ([ADR 0018](adr/0018-one-line-notes-tags-copyable-reports.md)).
+- A recording or rule has at most one tag ([ADR 0019](adr/0019-one-tag-per-recording.md)).
 
 ### External activity
 
@@ -155,13 +157,15 @@ there are no `query!` macros (they need a database at compile time).
 |---|---|---|
 | `clients.rs` | `list(include_archived)`, `get`, `insert(name)`, `update(id, name)`, `set_archived(id, bool)` | names unique (archived clients count); lists by name ignoring case; archiving keeps the first `archived_at` and archives the client's projects in the same transaction; restoring restores the client only |
 | `projects.rs` | `list`, `list_items(include_archived, now)`, `get`, `insert(ProjectInput)`, `update(id, ProjectInput)`, `set_archived`, `recent(limit)`, `resolve(name_or_id)`, `count` | see [Projects, clients and tags](#projects-clients-and-tags) |
-| `tags.rs` | `list`, `list_with_usage`, `insert(name)`, `rename(id, name)`, `delete(id)`, `resolve_names(names)`, `seed_defaults` | names unique ignoring case: `insert` of a taken name returns the existing tag, `rename` to it is `invalid_input`; `DEFAULT_TAGS` are seeded once per data store (`meta.tags_seeded`), so deleting them all does not bring them back |
+| `tags.rs` | `list`, `list_with_usage`, `insert(name)`, `rename(id, name)`, `delete(id)`, `resolve_name(name)`, `resolve_optional_name(name?)` (the id, or `None` without a name), `seed_defaults` | names unique ignoring case: `insert` of a taken name returns the existing tag, `rename` to it is `invalid_input`; `DEFAULT_TAGS` are seeded once per data store (`meta.tags_seeded`), so deleting them all does not bring them back |
 | `activities.rs` | `apps_seen(from, now)`, `list_clipped(from, to, now)`, `close_stale(source, duration)`, `replace_open(id, NewActivity)`, `insert(NewActivity) -> id`, `close_open(source, end)`, `open_by_source`, `overlapping(source, start, end)`, `sources_with_prefix(prefix)` (latest first); `insert_on`, `get_on`, `close_open_on`, `open_by_source_on`, `overlapping_on` take a connection so a caller can combine them in a transaction; `list_for_range(from, to)`, `list_sources(from, to)`, `delete_range(from, to)`, `count_range(from, to)`, `count`, `first_start`; `take_range_on(from, to)` deletes and returns the rows, `restore_on(row)` inserts one under its id | ranges are `[from, to)` and include open spans; touching edges do not overlap; results are not clipped; `close_open` never sets an end before the start |
 | `away.rs` | `insert(NewAway) -> id`, `close_open(end)`, `open`, `list_for_range`, `delete_range`, `count_range`, `take_range_on`, `restore_on` | as for activities; `AwayReason` is stored and sent as `idle`, `sleep`, `lock`, `paused` |
-| `recordings.rs` | `insert(NewRecording)`, `get`, `update(id, RecordingPatch)`, `delete(id) -> Recording`, `list_for_range`, `running`, `overlapping(start, end, except)`, `count` | one transaction per write, tags included; `tag_ids` ordered by tag name; the project and every tag must exist (`not_found`); a note with a line break is `invalid_input`, notes are stored trimmed; `end` must be after `start`; `delete` returns the row so it can be restored under its id |
+| `recordings.rs` | `insert(NewRecording)`, `get`, `update(id, RecordingPatch)`, `delete(id) -> Recording`, `list_for_range`, `running`, `overlapping(start, end, except)`, `count` | one transaction per write; the project and the tag (`tag_id`, optional) must exist (`not_found`); a note with a line break is `invalid_input`, notes are stored trimmed; `end` must be after `start`; `delete` returns the row so it can be restored under its id |
 | `backup.rs` | `export(db) -> Backup`, `write_to(db, path)` | every table, read in one transaction |
+| `one_tag.rs` | `back_up(migrator, pool, dir) -> Option<TagsDropped>`, `TagsDropped::message` | see [Migrations](#migrations) |
 
-`RecordingPatch` leaves absent fields as they are; `end: null` makes a recording running (`Option<Option<Ms>>`).
+`RecordingPatch` leaves absent fields as they are; `end: null` makes a recording running and `tagId: null`
+removes the tag (both `Option<Option<…>>`).
 
 Errors: `From<sqlx::Error>` maps a database error to `db` with SQLite's extended result code as `code`
 (`2067` unique, `787` foreign key), `RowNotFound` to `not_found`, anything else to `db`; a failed migration is
@@ -191,9 +195,9 @@ the field:
   with exactly that name, ignoring case; else the active projects whose name starts with it. One match wins;
   none is `not_found`; several are `invalid_input` listing `name (id)`.
 - Tags: `insert` of a taken name returns that tag; `list_with_usage` gives `TagListItem` (a `Tag` plus
-  `recordings`, the number of recordings that carry it); `delete` removes it from every recording;
-  `resolve_names` finds tags by name ignoring case, `not_found` naming the first missing one. Seven tags are
-  seeded once per data store when it opens (`seed_defaults`).
+  `recordings`, the number of recordings that carry it); `delete` removes it from every recording and rule;
+  `resolve_name` finds a tag by name ignoring case, `not_found` naming it. Seven tags are seeded once per
+  data store when it opens (`seed_defaults`).
 - `projects/mod.rs` holds the Tauri commands; every write emits `data_changed { kind: projects | tags, day: null }`.
 
 ## Backup
@@ -203,17 +207,19 @@ the field:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "exportedAt": 1792540800000,
   "clients": [], "projects": [], "tags": [],
   "activities": [], "awaySpans": [],
-  "recordings": [{ "id": "…", "projectId": "…", "start": 0, "end": 0, "note": "", "tagIds": [], "createdAt": 0, "updatedAt": 0 }],
-  "rules": [{ "id": "…", "name": "Slack → Acme", "projectId": "…", "position": 0, "enabled": true, "note": "", "tagIds": [], "conditions": [{ "id": "…", "field": "app", "op": "is", "value": "Slack" }] }], "savedReports": [{ "id": "…", "name": "This month", "filter": { "range": { "kind": "thisMonth" }, "…": "…" }, "position": 0 }]
+  "recordings": [{ "id": "…", "projectId": "…", "start": 0, "end": 0, "note": "", "tagId": null, "createdAt": 0, "updatedAt": 0 }],
+  "rules": [{ "id": "…", "name": "Slack → Acme", "projectId": "…", "position": 0, "enabled": true, "note": "", "tagId": null, "conditions": [{ "id": "…", "field": "app", "op": "is", "value": "Slack" }] }], "savedReports": [{ "id": "…", "name": "This month", "filter": { "range": { "kind": "thisMonth" }, "…": "…" }, "position": 0 }]
 }
 ```
 
 Rows have the shape of their IPC types (`Client`, `Project`, `Tag`, `ActivityRow`, `AwayRow`, `Recording`,
-`Rule`, `SavedReport`). There is no import yet.
+`Rule`, `SavedReport`). Version 1 (before migration 0006) had `tagIds` arrays on recordings and rules
+instead of `tagId`; the pre-0006 backup is written in it. There is no import yet; one would map a version 1
+row to its first tag by name.
 
 ## Migrations
 
@@ -224,6 +230,16 @@ columns (`projects.billable`, `projects.hourly_rate`, `recordings.billable`): Ti
 `0003_client_colors.sql` gave clients the color most of their projects had and spread shades over each
 client's projects. `0004_saved_reports.sql` adds `saved_reports (id, name, filter, position)`; `0005_rules.sql` adds `rules` and
 `rule_conditions`.
+
+`0006_one_tag.sql` ([ADR 0019](adr/0019-one-tag-per-recording.md)) adds `recordings.tag_id` and `rules.tag_id`,
+fills each with the first of the row's tags by name (ignoring case: the order Settings shows), and drops
+`recording_tags` and `rules.tag_ids`. Before it, `Db::init` (for a file, not in memory) calls
+`one_tag::back_up`: it runs the migrations up to 0005 (`Migrator::run_to`); when `recording_tags` still exists
+and a recording or a rule has more than one existing tag, it writes a version 1 backup (`tagIds` arrays) to
+`pre-0006-<YYYY-MM-DD>.json` in the data folder, through a temp file. A failed backup fails the open, so
+no tag is dropped without one. `TagsDropped { recordings, rules, backup }` comes back through
+`Db::open_migrating`; `AppState::open` queues its `message()` as a `LaunchEvent::Notice`, which the page shows
+as an info toast: "One tag per recording: 3 recordings lost tags (each kept its first by name). Backup: …".
 
 ## Tests
 
@@ -238,8 +254,8 @@ end)`. Repository tests use `Db::open_memory()` (one connection that never close
 last, seed)` fills every workday of the range, `seed_years(db, years, seed)` the `years` up to yesterday.
 Per workday, 08:00–18:00 local: `ACTIVITIES_PER_DAY` (500) back-to-back `tracker` spans over 12 apps and 40
 titles, `AWAY_PER_DAY` (3) away spans (two short `idle`, a `lock` lunch; activity ends where they start) and
-`RECORDINGS_PER_DAY` (6) non-overlapping recordings over 5 projects of 2 clients, with notes and 0–2 of 5
-tags. Clients, projects and tags are reused by name. A small splitmix64 generator keeps it free of `rand`;
+`RECORDINGS_PER_DAY` (6) non-overlapping recordings over 5 projects of 2 clients, with notes and none or one
+of 5 tags. Clients, projects and tags are reused by name. A small splitmix64 generator keeps it free of `rand`;
 the same seed writes the same rows except the random recording ids. Each day is one multi-row transaction:
 two years (522 workdays, 261 000 activity spans, 3 132 recordings) seed in about 1.5 s in a debug build,
 0.7 s in release.

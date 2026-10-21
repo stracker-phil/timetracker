@@ -4,6 +4,8 @@
 
 Accepted (2026-10-21), implemented.
 
+Superseded in part by [0019](0019-one-tag-per-recording.md): a recording has at most one tag.
+
 Amended 2026-10-21: reports also group by day, week and month (`store::settings::Group`); project stays the
 default.
 

@@ -77,7 +77,7 @@ export const api = {
   appsSeen: (days: number) => invoke<AppSeen[]>("apps_seen", { days }),
   appsList: () => invoke<KnownApp[]>("apps_list"),
   /** A running timer stops where the new one starts. */
-  timerStart: (projectId: string, note: string, tagIds: string[]) => invoke<Recording>("timer_start", { projectId, note, tagIds }),
+  timerStart: (projectId: string, note: string, tagId: string | null) => invoke<Recording>("timer_start", { projectId, note, tagId }),
   /** `null` when no timer ran. */
   timerStop: () => invoke<Recording | null>("timer_stop"),
   timerStatus: () => invoke<TimerStatus>("timer_status"),
@@ -146,7 +146,7 @@ export const api = {
 
   /** In position order: the first matching rule wins. */
   rulesList: () => invoke<Rule[]>("rules_list"),
-  /** `id: null` creates; validation errors name the field (`name`, `projectId`, `note`, `tagIds`, `conditions`, `conditions.<i>.value`). */
+  /** `id: null` creates; validation errors name the field (`name`, `projectId`, `note`, `tagId`, `conditions`, `conditions.<i>.value`). */
   ruleSave: (id: string | null, input: RuleInput) => invoke<Rule>("rule_save", { id, input }),
   ruleDelete: (id: string) => invoke<void>("rule_delete", { id }),
   /** `ids`: every rule, in the new order. */

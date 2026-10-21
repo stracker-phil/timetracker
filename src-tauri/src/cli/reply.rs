@@ -551,7 +551,7 @@ mod tests {
                 start: 0,
                 end: 1,
                 note: String::new(),
-                tags: vec![],
+                tag: None,
                 overlap: Overlap::Cancel,
             },
         }
@@ -565,7 +565,7 @@ mod tests {
                 start: ms(start),
                 end: end.map(ms),
                 note: note.into(),
-                tag_ids: vec![],
+                tag_id: None,
                 created_at: 0,
                 updated_at: 0,
             },
@@ -625,7 +625,7 @@ mod tests {
             start: ms(start),
             end: end.map(ms),
             note: note.into(),
-            tag_ids: vec![],
+            tag_id: None,
             created_at: 0,
             updated_at: 0,
         }
@@ -636,7 +636,7 @@ mod tests {
             request: crate::timers::commands::TimerStartRequest {
                 project: "ac".into(),
                 note: String::new(),
-                tags: vec![],
+                tag: None,
             },
         }
     }

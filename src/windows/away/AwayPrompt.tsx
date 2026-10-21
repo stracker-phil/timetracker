@@ -72,7 +72,7 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
   const [start, setStart] = useState(prompt.suggested.start);
   const [endValue, setEndValue] = useState(prompt.suggested.end);
   const [note, setNote] = useState("");
-  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [tagId, setTagId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -91,7 +91,7 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
     setFailure(null);
     setSaving(true);
     try {
-      await api.awayPromptAnswer({ projectId, start, end, note: note.trim(), tagIds });
+      await api.awayPromptAnswer({ projectId, start, end, note: note.trim(), tagId });
     } catch (e) {
       const failed = answerFailure(toAppError(e), projects);
       if (failed.kind === "gone") onGone();
@@ -128,8 +128,8 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
       <FormField label="Note" htmlFor={ids.note} error={errors.note}>
         <NoteInput id={ids.note} maxLength={500} value={note} onChange={setNote} />
       </FormField>
-      <FormField label="Tags" error={errors.tagIds}>
-        <TagPicker value={tagIds} onChange={setTagIds} />
+      <FormField label="Tag" error={errors.tagId}>
+        <TagPicker value={tagId} onChange={setTagId} />
       </FormField>
       {failure && (
         <p className="away-failure" role="alert">

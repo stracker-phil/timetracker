@@ -83,7 +83,7 @@ impl World {
             start,
             end,
             note: String::new(),
-            tag_ids: Vec::new(),
+            tag_id: None,
         }
     }
 
@@ -136,7 +136,7 @@ pub fn row(id: &str, start: Ms, end: Ms) -> Recording {
         start,
         end: Some(end),
         note: String::new(),
-        tag_ids: Vec::new(),
+        tag_id: None,
         created_at: 1_000,
         updated_at: 2_000,
     }

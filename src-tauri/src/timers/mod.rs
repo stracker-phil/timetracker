@@ -46,7 +46,7 @@ pub struct TimerStatus {
     pub running: Option<RunningTimer>,
 }
 
-/// A project, note and tags recently recorded together, to time again in one click.
+/// A project, note and tag recently recorded together, to time again in one click.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -56,7 +56,7 @@ pub struct RecentTimer {
     pub color: String,
     pub shade: u8,
     pub note: String,
-    pub tag_ids: Vec<String>,
+    pub tag_id: Option<String>,
     pub last_used: Ms,
 }
 
@@ -65,7 +65,7 @@ impl From<RecentTimer> for TimerInput {
         TimerInput {
             project_id: recent.project_id,
             note: recent.note,
-            tag_ids: recent.tag_ids,
+            tag_id: recent.tag_id,
         }
     }
 }
@@ -86,7 +86,7 @@ pub async fn status(db: &Db, now: Ms) -> AppResult<TimerStatus> {
     })
 }
 
-/// The latest distinct project, note and tags combinations, newest first; archived projects left out.
+/// The latest distinct project, note and tag combinations, newest first; archived projects left out.
 pub async fn recent(db: &Db, limit: usize) -> AppResult<Vec<RecentTimer>> {
     let active = projects::list(db, false).await?;
     let mut recent: Vec<RecentTimer> = Vec::new();
@@ -99,7 +99,7 @@ pub async fn recent(db: &Db, limit: usize) -> AppResult<Vec<RecentTimer>> {
         };
         let seen = recent
             .iter()
-            .any(|t| t.project_id == r.project_id && t.note == r.note && t.tag_ids == r.tag_ids);
+            .any(|t| t.project_id == r.project_id && t.note == r.note && t.tag_id == r.tag_id);
         if !seen {
             recent.push(RecentTimer {
                 project_id: project.id.clone(),
@@ -107,7 +107,7 @@ pub async fn recent(db: &Db, limit: usize) -> AppResult<Vec<RecentTimer>> {
                 color: project.color.clone(),
                 shade: project.shade,
                 note: r.note,
-                tag_ids: r.tag_ids,
+                tag_id: r.tag_id,
                 last_used: r.start,
             });
         }
@@ -182,7 +182,7 @@ mod tests {
         start: Ms,
         end: Option<Ms>,
         note: &str,
-        tag_ids: &[&str],
+        tag_id: Option<&str>,
     ) {
         recordings::insert(
             db,
@@ -192,7 +192,7 @@ mod tests {
                 start,
                 end,
                 note: note.into(),
-                tag_ids: tag_ids.iter().map(|t| t.to_string()).collect(),
+                tag_id: tag_id.map(str::to_string),
             },
         )
         .await
@@ -283,7 +283,7 @@ mod tests {
                 T0 + i * HOUR,
                 Some(T0 + i * HOUR + MIN),
                 &format!("n{i}"),
-                &[],
+                None,
             )
             .await;
         }
@@ -300,14 +300,14 @@ mod tests {
         let acme = project(&db, "Acme").await;
         let beta = project(&db, "Beta").await;
         let alpha = tags::insert(&db, "alpha").await.unwrap();
-        record(&db, &acme, T0, Some(T0 + MIN), "x", &[&alpha.id]).await;
+        record(&db, &acme, T0, Some(T0 + MIN), "x", Some(&alpha.id[..])).await;
         record(
             &db,
             &acme,
             T0 + HOUR,
             Some(T0 + HOUR + MIN),
             "x",
-            &[&alpha.id],
+            Some(&alpha.id[..]),
         )
         .await;
         record(
@@ -316,7 +316,7 @@ mod tests {
             T0 + 2 * HOUR,
             Some(T0 + 2 * HOUR + MIN),
             "x",
-            &[],
+            None,
         )
         .await;
         record(
@@ -325,28 +325,65 @@ mod tests {
             T0 + 3 * HOUR,
             Some(T0 + 3 * HOUR + MIN),
             "y",
-            &[],
+            None,
         )
         .await;
-        record(&db, &acme, T0 + 4 * HOUR, None, "running", &[]).await;
+        record(&db, &acme, T0 + 4 * HOUR, None, "running", None).await;
         projects::set_archived(&db, &beta.id, true).await.unwrap();
 
         let recent = recent(&db, RECENT).await.unwrap();
 
-        let timer = |note: &str, tag_ids: Vec<String>, last_used: Ms| RecentTimer {
+        let timer = |note: &str, tag_id: Option<String>, last_used: Ms| RecentTimer {
             project_id: acme.id.clone(),
             project_name: "Acme".into(),
             color: acme.color.clone(),
             shade: acme.shade,
             note: note.into(),
-            tag_ids,
+            tag_id,
             last_used,
         };
         assert_eq!(
             recent,
             vec![
-                timer("x", vec![], T0 + 2 * HOUR),
-                timer("x", vec![alpha.id.clone()], T0 + HOUR),
+                timer("x", None, T0 + 2 * HOUR),
+                timer("x", Some(alpha.id.clone()), T0 + HOUR),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn recent_keeps_same_project_and_note_apart_when_the_tag_differs() {
+        let db = db().await;
+        let acme = project(&db, "Acme").await;
+        let alpha = tags::insert(&db, "alpha").await.unwrap();
+        let beta = tags::insert(&db, "beta").await.unwrap();
+        for (i, tag) in [Some(&alpha.id), Some(&beta.id), Some(&alpha.id)]
+            .into_iter()
+            .enumerate()
+        {
+            let start = T0 + i as Ms * HOUR;
+            record(
+                &db,
+                &acme,
+                start,
+                Some(start + MIN),
+                "x",
+                tag.map(String::as_str),
+            )
+            .await;
+        }
+
+        let recent = recent(&db, RECENT).await.unwrap();
+
+        let entries: Vec<(Option<&str>, Ms)> = recent
+            .iter()
+            .map(|t| (t.tag_id.as_deref(), t.last_used))
+            .collect();
+        assert_eq!(
+            entries,
+            [
+                (Some(alpha.id.as_str()), T0 + 2 * HOUR),
+                (Some(beta.id.as_str()), T0 + HOUR),
             ]
         );
     }
@@ -362,7 +399,7 @@ mod tests {
                 T0 + i * HOUR,
                 Some(T0 + i * HOUR + MIN),
                 &format!("n{i}"),
-                &[],
+                None,
             )
             .await;
         }

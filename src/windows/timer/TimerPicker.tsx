@@ -9,7 +9,7 @@ import { formatHm } from "../../lib/format";
 import { applyAppearance } from "../../lib/theme";
 import { useStore } from "../../state/store";
 
-type Start = (projectId: string, note: string, tagIds: string[]) => void;
+type Start = (projectId: string, note: string, tagId: string | null) => void;
 
 const close = () => void api.timerPickerClose();
 
@@ -68,19 +68,19 @@ function RunningTimer({ running, onAnother, onStop }: { running: Running; onAnot
 function StartForm({ onStart }: { onStart: Start }) {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [tagId, setTagId] = useState<string | null>(null);
   return (
     <form
       className="timer-form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (projectId) onStart(projectId, note.trim(), tagIds);
+        if (projectId) onStart(projectId, note.trim(), tagId);
       }}
     >
       <h1>Start timer</h1>
       <ProjectPicker value={projectId} onChange={setProjectId} autoFocus />
       <NoteInput aria-label="Note" placeholder="Note" maxLength={500} value={note} onChange={setNote} />
-      <TagPicker value={tagIds} onChange={setTagIds} />
+      <TagPicker value={tagId} onChange={setTagId} />
       <div className="actions">
         <button type="button" className="btn" onClick={close}>
           Cancel
@@ -97,8 +97,8 @@ function RecentTimers({ recent, onStart }: { recent: RecentTimer[]; onStart: Sta
   return (
     <ul className="timer-recent" aria-label="Recent timers">
       {recent.map((t) => (
-        <li key={`${t.projectId}:${t.note}:${t.tagIds.join(",")}`}>
-          <button type="button" onClick={() => onStart(t.projectId, t.note, t.tagIds)}>
+        <li key={`${t.projectId}:${t.note}:${t.tagId ?? ""}`}>
+          <button type="button" onClick={() => onStart(t.projectId, t.note, t.tagId)}>
             <AccentDot accent={t.color} shade={t.shade} />
             <span className="grow-text">{t.note ? `${t.projectName} · ${t.note}` : t.projectName}</span>
           </button>
@@ -108,7 +108,7 @@ function RecentTimers({ recent, onStart }: { recent: RecentTimer[]; onStart: Sta
   );
 }
 
-/** The small window under the tray icon: start a timer (project, note, tags), or stop the running one. */
+/** The small window under the tray icon: start a timer (project, note, tag), or stop the running one. */
 export function TimerPicker() {
   const recent = useRecentTimers();
   const running = useStore((s) => s.timer?.running);
@@ -116,10 +116,10 @@ export function TimerPicker() {
   const [formKey, setFormKey] = useState(0);
   const [another, setAnother] = useState(false);
 
-  const start: Start = (projectId, note, tagIds) =>
+  const start: Start = (projectId, note, tagId) =>
     void useStore
       .getState()
-      .startTimer(projectId, note, tagIds)
+      .startTimer(projectId, note, tagId)
       .then((started) => {
         if (!started) return;
         setFormKey((k) => k + 1);

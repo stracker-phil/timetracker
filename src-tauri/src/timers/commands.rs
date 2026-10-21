@@ -22,12 +22,12 @@ pub async fn stop(app: &AppHandle) -> AppResult<Option<Recording>> {
     Ok(stopped)
 }
 
-/// `timetracker start`: the project by id, name or unique prefix, the tags by name.
+/// `timetracker start`: the project by id, name or unique prefix, the tag by name.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TimerStartRequest {
     pub project: String,
     pub note: String,
-    pub tags: Vec<String>,
+    pub tag: Option<String>,
 }
 
 /// The started recording with the project name the CLI prints.
@@ -42,15 +42,11 @@ pub struct TimerStarted {
 pub async fn start_by_name(app: &AppHandle, request: TimerStartRequest) -> AppResult<TimerStarted> {
     let db = app.state::<AppState>().data.db()?;
     let project = projects::resolve(&db, &request.project).await?;
-    let tag_ids = tags::resolve_names(&db, &request.tags)
-        .await?
-        .into_iter()
-        .map(|t| t.id)
-        .collect();
+    let tag_id = tags::resolve_optional_name(&db, request.tag.as_deref()).await?;
     let input = TimerInput {
         project_id: project.id,
         note: request.note,
-        tag_ids,
+        tag_id,
     };
     Ok(TimerStarted {
         recording: start(app, input).await?,
@@ -73,7 +69,7 @@ mod tests {
                 start: 1_000,
                 end: None,
                 note: "n".into(),
-                tag_ids: vec!["t1".into()],
+                tag_id: Some("t1".into()),
                 created_at: 1_000,
                 updated_at: 1_000,
             },
@@ -88,7 +84,7 @@ mod tests {
                 "start": 1000,
                 "end": null,
                 "note": "n",
-                "tagIds": ["t1"],
+                "tagId": "t1",
                 "createdAt": 1000,
                 "updatedAt": 1000,
                 "projectName": "Acme",
@@ -106,12 +102,12 @@ mod tests {
         let request = TimerStartRequest {
             project: "acme".into(),
             note: "x".into(),
-            tags: vec!["a".into(), "b".into()],
+            tag: Some("a".into()),
         };
 
         assert_eq!(
             serde_json::to_value(&request).unwrap(),
-            json!({ "project": "acme", "note": "x", "tags": ["a", "b"] })
+            json!({ "project": "acme", "note": "x", "tag": "a" })
         );
     }
 }
@@ -121,12 +117,12 @@ pub async fn timer_start(
     app: AppHandle,
     project_id: String,
     note: String,
-    tag_ids: Vec<String>,
+    tag_id: Option<String>,
 ) -> AppResult<Recording> {
     let input = TimerInput {
         project_id,
         note,
-        tag_ids,
+        tag_id,
     };
     start(&app, input).await
 }

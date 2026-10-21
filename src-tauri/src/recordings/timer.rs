@@ -1,7 +1,7 @@
 //! Timers: a recording without an end, started and stopped now. Both are ordinary undoable changes.
 
 use super::ops::Op;
-use super::{Change, MINUTE_MS, Recordings, check_tags, checked_note, snap, usable_project};
+use super::{Change, MINUTE_MS, Recordings, check_tag, checked_note, snap, usable_project};
 use crate::db::new_id;
 use crate::db::recordings::{self, Recording};
 use crate::db::time::Ms;
@@ -11,7 +11,7 @@ use crate::error::AppResult;
 pub struct TimerInput {
     pub project_id: String,
     pub note: String,
-    pub tag_ids: Vec<String>,
+    pub tag_id: Option<String>,
 }
 
 /// Where a timer started at `start` ends when stopped at `now`: on the snap grid, and at least a minute
@@ -26,7 +26,7 @@ impl Recordings<'_> {
         let mut undo = self.undo.lock().await;
         let note = checked_note(&input.note)?;
         let project = usable_project(self.db, &input.project_id, None).await?;
-        check_tags(self.db, &input.tag_ids).await?;
+        check_tag(self.db, input.tag_id.as_deref()).await?;
         let running = recordings::running(self.db).await?;
         let start = match &running {
             Some(r) => stop_time(r.start, now, self.snap_minutes),
@@ -38,7 +38,7 @@ impl Recordings<'_> {
             start,
             end: None,
             note,
-            tag_ids: input.tag_ids,
+            tag_id: input.tag_id,
             created_at: now,
             updated_at: now,
         };
@@ -114,7 +114,7 @@ mod tests {
         TimerInput {
             project_id: w.project.id.clone(),
             note: String::new(),
-            tag_ids: Vec::new(),
+            tag_id: None,
         }
     }
 
@@ -148,7 +148,7 @@ mod tests {
         let w = World::new().await;
         let input = TimerInput {
             note: "  Review  ".into(),
-            tag_ids: vec![w.alpha.id.clone(), w.beta.id.clone()],
+            tag_id: Some(w.alpha.id.clone()),
             ..timer(&w)
         };
 
@@ -158,7 +158,7 @@ mod tests {
         assert_eq!(started.project_id, w.project.id);
         assert_eq!((started.start, started.end), (at(10, 5), None));
         assert_eq!(started.note, "Review");
-        assert_eq!(started.tag_ids, vec![w.alpha.id.clone(), w.beta.id.clone()]);
+        assert_eq!(started.tag_id, Some(w.alpha.id.clone()));
         assert_eq!(
             (started.created_at, started.updated_at),
             (at(10, 3), at(10, 3))
@@ -364,11 +364,11 @@ mod tests {
             (
                 "unknown tag",
                 TimerInput {
-                    tag_ids: vec!["nope".into()],
+                    tag_id: Some("nope".into()),
                     ..timer(&w)
                 },
                 ErrorKind::InvalidInput,
-                Some("tagIds".to_string()),
+                Some("tagId".to_string()),
             ),
         ];
         for (name, input, kind, field) in cases {

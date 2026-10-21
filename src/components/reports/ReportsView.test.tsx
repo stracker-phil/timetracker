@@ -77,13 +77,7 @@ describe("ReportsView", () => {
       expect(screen.queryByText("Total")).not.toBeInTheDocument();
     });
 
-    it("shows the tag overlap caveat only when tags overlap", async () => {
-      mocked.reportRun.mockResolvedValue(reportResult({ tagOverlap: true }));
-      await renderView();
-      expect(await screen.findByText("Tags overlap: a recording with several tags counts in each.")).toBeInTheDocument();
-    });
-
-    it("leaves out the tag overlap caveat otherwise", async () => {
+    it("shows no tag overlap caveat, as a recording has at most one tag", async () => {
       await renderView();
       await screen.findByText("Total");
       expect(screen.queryByText(/Tags overlap/)).not.toBeInTheDocument();
@@ -110,7 +104,7 @@ describe("ReportsView", () => {
     });
 
     it("reveals the recordings of a group on request", async () => {
-      mocked.reportRun.mockResolvedValue(reportResult({ groups: [reportGroup({ rows: [reportRow({ note: "Fixed the header", client: "Acme", tags: ["admin", "support"] })] })] }));
+      mocked.reportRun.mockResolvedValue(reportResult({ groups: [reportGroup({ rows: [reportRow({ note: "Fixed the header", client: "Acme", tag: "support" })] })] }));
       await renderView();
       const toggle = await screen.findByRole("button", { name: "1 recording" });
       expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -120,7 +114,7 @@ describe("ReportsView", () => {
       const table = screen.getByRole("table");
       expect(within(table).getByText("09:00–09:45")).toBeInTheDocument();
       expect(within(table).getByText("Acme / Website")).toBeInTheDocument();
-      expect(within(table).getByText("admin · support")).toBeInTheDocument();
+      expect(within(table).getByText("support")).toBeInTheDocument();
       expect(within(table).getByText("Fixed the header")).toBeInTheDocument();
     });
 

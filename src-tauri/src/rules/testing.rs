@@ -67,7 +67,7 @@ pub fn rule(id: &str, project_id: &str, conditions: &[Spec]) -> Rule {
         position: 0,
         enabled: true,
         note: String::new(),
-        tag_ids: Vec::new(),
+        tag_id: None,
         conditions: conditions
             .iter()
             .enumerate()
@@ -119,7 +119,7 @@ pub fn recorded(start: i64, end: i64) -> RecordingBlock {
         color: "blue".into(),
         shade: 4,
         note: String::new(),
-        tags: Vec::new(),
+        tag: None,
         running: false,
         clipped_start: false,
         clipped_end: false,
@@ -132,7 +132,7 @@ pub fn rule_input(name: &str, project_id: &str, conditions: &[Spec]) -> RuleInpu
         project_id: project_id.into(),
         enabled: true,
         note: String::new(),
-        tag_ids: Vec::new(),
+        tag_id: None,
         conditions: conditions
             .iter()
             .map(|&(field, op, value)| ConditionInput {

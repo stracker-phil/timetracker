@@ -34,7 +34,7 @@ pub struct RecordingInput {
     pub start: Ms,
     pub end: Ms,
     pub note: String,
-    pub tag_ids: Vec<String>,
+    pub tag_id: Option<String>,
 }
 
 /// What a write does when its span overlaps other recordings.
@@ -175,12 +175,12 @@ async fn usable_project(db: &Db, id: &str, current: Option<&str>) -> AppResult<P
     Ok(project)
 }
 
-async fn check_tags(db: &Db, tag_ids: &[String]) -> AppResult<()> {
-    let known = tags::list(db).await?;
-    if tag_ids.iter().all(|id| known.iter().any(|t| &t.id == id)) {
+async fn check_tag(db: &Db, tag_id: Option<&str>) -> AppResult<()> {
+    let Some(id) = tag_id else { return Ok(()) };
+    if tags::list(db).await?.iter().any(|t| t.id == id) {
         Ok(())
     } else {
-        Err(invalid("tagIds", "has an unknown tag"))
+        Err(invalid("tagId", "is an unknown tag"))
     }
 }
 
@@ -322,7 +322,7 @@ fn patched(current: &Recording, patch: RecordingPatch, snap_minutes: u32) -> App
         start: span.start,
         end: Some(span.end),
         note,
-        tag_ids: patch.tag_ids.unwrap_or_else(|| current.tag_ids.clone()),
+        tag_id: patch.tag_id.unwrap_or_else(|| current.tag_id.clone()),
         updated_at: now_ms(),
         ..current.clone()
     })
@@ -436,7 +436,7 @@ impl Recordings<'_> {
         check_length(span)?;
         let note = checked_note(&input.note)?;
         let project = usable_project(self.db, &input.project_id, None).await?;
-        check_tags(self.db, &input.tag_ids).await?;
+        check_tag(self.db, input.tag_id.as_deref()).await?;
         let now = now_ms();
         let recording = Recording {
             id: new_id(),
@@ -444,7 +444,7 @@ impl Recordings<'_> {
             start: span.start,
             end: Some(span.end),
             note,
-            tag_ids: input.tag_ids,
+            tag_id: input.tag_id,
             created_at: now,
             updated_at: now,
         };
@@ -459,11 +459,11 @@ impl Recordings<'_> {
     ) -> AppResult<Change<Recording>> {
         let mut undo = self.undo.lock().await;
         let current = recordings::get(self.db, id).await?;
-        let tags_changed = patch.tag_ids.is_some();
+        let tag_changed = patch.tag_id.is_some();
         let after = patched(&current, patch, self.snap_minutes)?;
         usable_project(self.db, &after.project_id, Some(&current.project_id)).await?;
-        if tags_changed {
-            check_tags(self.db, &after.tag_ids).await?;
+        if tag_changed {
+            check_tag(self.db, after.tag_id.as_deref()).await?;
         }
         let label = update_label(&current, &after);
         let base = Op::Update {
@@ -505,7 +505,7 @@ impl Recordings<'_> {
             start,
             end,
             note: original.note,
-            tag_ids: original.tag_ids,
+            tag_id: original.tag_id,
         };
         self.create(input, overlap).await
     }
@@ -801,11 +801,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_trims_the_note_snaps_the_times_and_saves_the_tags_by_name() {
+    async fn create_trims_the_note_snaps_the_times_and_saves_the_tag() {
         let w = World::new().await;
         let input = RecordingInput {
             note: "  fix login  ".into(),
-            tag_ids: vec![w.beta.id.clone(), w.alpha.id.clone()],
+            tag_id: Some(w.alpha.id.clone()),
             ..w.input(at(10, 2), at(10, 58))
         };
 
@@ -824,7 +824,7 @@ mod tests {
                 start: at(10, 0),
                 end: Some(at(11, 0)),
                 note: "fix login".into(),
-                tag_ids: vec![w.alpha.id.clone(), w.beta.id.clone()],
+                tag_id: Some(w.alpha.id.clone()),
                 created_at: saved.created_at,
                 updated_at: saved.updated_at,
             }
@@ -942,10 +942,10 @@ mod tests {
             (
                 "an unknown tag",
                 RecordingInput {
-                    tag_ids: vec!["nope".into()],
+                    tag_id: Some("nope".into()),
                     ..valid.clone()
                 },
-                "tagIds",
+                "tagId",
             ),
         ];
 
@@ -1111,10 +1111,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_replaces_the_tags_and_keeps_them_when_the_patch_has_none() {
+    async fn update_replaces_clears_and_keeps_the_tag_depending_on_the_patch() {
         let w = World::new().await;
         let input = RecordingInput {
-            tag_ids: vec![w.alpha.id.clone()],
+            tag_id: Some(w.alpha.id.clone()),
             ..w.input(at(10, 0), at(11, 0))
         };
         let saved = w
@@ -1138,15 +1138,55 @@ mod tests {
             .service()
             .update(
                 &saved.id,
-                patch(|p| p.tag_ids = Some(vec![w.beta.id.clone()])),
+                patch(|p| p.tag_id = Some(Some(w.beta.id.clone()))),
                 Overlap::Cancel,
             )
             .await
             .unwrap()
             .value;
+        let cleared = w
+            .service()
+            .update(&saved.id, patch(|p| p.tag_id = Some(None)), Overlap::Cancel)
+            .await
+            .unwrap()
+            .value;
 
-        assert_eq!(kept.tag_ids, [w.alpha.id.clone()]);
-        assert_eq!(replaced.tag_ids, [w.beta.id.clone()]);
+        assert_eq!(kept.tag_id, Some(w.alpha.id.clone()));
+        assert_eq!(replaced.tag_id, Some(w.beta.id.clone()));
+        assert_eq!(cleared.tag_id, None);
+        assert_eq!(w.rows().await, [cleared]);
+    }
+
+    #[tokio::test]
+    async fn an_unknown_tag_is_refused_on_the_tag_id_field() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+        let created = w
+            .service()
+            .create(
+                RecordingInput {
+                    tag_id: Some("nope".into()),
+                    ..w.input(at(12, 0), at(13, 0))
+                },
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap_err();
+        let updated = w
+            .service()
+            .update(
+                &saved.id,
+                patch(|p| p.tag_id = Some(Some("nope".into()))),
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap_err();
+
+        for err in [created, updated] {
+            let field = err.field().unwrap();
+            assert_eq!((field.path, field.message), ("tagId", "is an unknown tag"));
+        }
+        assert_eq!(w.rows().await, [saved]);
     }
 
     #[tokio::test]
@@ -1201,8 +1241,8 @@ mod tests {
             ),
             (
                 "an unknown tag",
-                patch(|p| p.tag_ids = Some(vec!["nope".into()])),
-                "tagIds",
+                patch(|p| p.tag_id = Some(Some("nope".into()))),
+                "tagId",
             ),
             (
                 "a span longer than 24 h",
@@ -1404,7 +1444,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_right_part_of_a_split_keeps_project_note_and_tags_under_a_new_id() {
+    async fn the_right_part_of_a_split_keeps_project_note_and_tag_under_a_new_id() {
         let w = World::new().await;
         let original = w
             .service()
@@ -1412,7 +1452,7 @@ mod tests {
                 RecordingInput {
                     project_id: w.other.id.clone(),
                     note: "keep".into(),
-                    tag_ids: vec![w.alpha.id.clone()],
+                    tag_id: Some(w.alpha.id.clone()),
                     ..w.input(at(10, 0), at(11, 0))
                 },
                 Overlap::Cancel,
@@ -1439,6 +1479,7 @@ mod tests {
         );
         assert_eq!(middle.project_id, w.project.id);
         assert_ne!(right.id, original.id);
+        assert_eq!(right.tag_id, Some(w.alpha.id.clone()));
         assert_eq!(
             *right,
             Recording {
@@ -1458,7 +1499,7 @@ mod tests {
             .create(
                 RecordingInput {
                     note: "keep".into(),
-                    tag_ids: vec![w.alpha.id.clone(), w.beta.id.clone()],
+                    tag_id: Some(w.alpha.id.clone()),
                     ..w.input(at(10, 0), at(11, 0))
                 },
                 Overlap::Cancel,
@@ -1606,7 +1647,7 @@ mod tests {
             .create(
                 RecordingInput {
                     note: "before".into(),
-                    tag_ids: vec![w.alpha.id.clone()],
+                    tag_id: Some(w.alpha.id.clone()),
                     ..w.input(at(10, 0), at(11, 0))
                 },
                 Overlap::Cancel,
@@ -1617,7 +1658,7 @@ mod tests {
         let change = patch(|p| {
             p.note = Some("after".into());
             p.start = Some(at(10, 30));
-            p.tag_ids = Some(vec![w.beta.id.clone()]);
+            p.tag_id = Some(Some(w.beta.id.clone()));
             p.project_id = Some(w.other.id.clone());
         });
         w.service()
@@ -1631,14 +1672,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn undo_restores_a_deleted_recording_with_its_tags_and_timestamps() {
+    async fn undo_restores_a_deleted_recording_with_its_tag_and_timestamps() {
         let w = World::new().await;
         let saved = w
             .service()
             .create(
                 RecordingInput {
                     note: "n".into(),
-                    tag_ids: vec![w.alpha.id.clone(), w.beta.id.clone()],
+                    tag_id: Some(w.alpha.id.clone()),
                     ..w.input(at(10, 0), at(11, 0))
                 },
                 Overlap::Cancel,
@@ -1651,7 +1692,8 @@ mod tests {
         let undone = w.service().undo().await.unwrap();
 
         assert_eq!(undone.value.as_deref(), Some("Delete recording"));
-        assert_eq!(w.rows().await, [saved]);
+        assert_eq!(w.rows().await, [saved.clone()]);
+        assert_eq!(saved.tag_id, Some(w.alpha.id.clone()));
     }
 
     #[tokio::test]
@@ -1809,14 +1851,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn move_to_day_keeps_note_project_and_tags() {
+    async fn move_to_day_keeps_note_project_and_tag() {
         let w = World::new().await;
         let saved = w
             .service()
             .create(
                 RecordingInput {
                     note: "keep me".into(),
-                    tag_ids: vec![w.alpha.id.clone()],
+                    tag_id: Some(w.alpha.id.clone()),
                     ..w.input(at(12, 0), at(13, 0))
                 },
                 Overlap::Cancel,
@@ -1833,8 +1875,8 @@ mod tests {
             .value;
 
         assert_eq!(
-            (moved.project_id, moved.note, moved.tag_ids),
-            (saved.project_id, saved.note, saved.tag_ids)
+            (moved.project_id, moved.note, moved.tag_id),
+            (saved.project_id, saved.note, saved.tag_id)
         );
     }
 
@@ -1923,7 +1965,7 @@ mod tests {
             .create(
                 RecordingInput {
                     note: "copy me".into(),
-                    tag_ids: vec![w.alpha.id.clone(), w.beta.id.clone()],
+                    tag_id: Some(w.alpha.id.clone()),
                     ..w.input(at(12, 0), at(13, 30))
                 },
                 Overlap::Cancel,
@@ -1945,8 +1987,8 @@ mod tests {
             (at(12, 0) + NEXT_DAY, Some(at(13, 30) + NEXT_DAY))
         );
         assert_eq!(
-            (&copy.project_id, &copy.note, &copy.tag_ids),
-            (&original.project_id, &original.note, &original.tag_ids)
+            (&copy.project_id, &copy.note, &copy.tag_id),
+            (&original.project_id, &original.note, &original.tag_id)
         );
         assert_eq!(copied.days, [next_day()]);
         assert_eq!(w.rows().await, [original, copy.clone()]);
@@ -2023,7 +2065,7 @@ mod tests {
         let inputs = vec![
             RecordingInput {
                 note: " standup ".into(),
-                tag_ids: vec![w.alpha.id.clone()],
+                tag_id: Some(w.alpha.id.clone()),
                 ..w.input(at(10, 2), at(10, 58))
             },
             w.input(at(12, 0), at(13, 0)),
@@ -2040,8 +2082,8 @@ mod tests {
             [(at(10, 0), at(11, 0)), (at(12, 0), at(13, 0))]
         );
         assert_eq!(
-            (change.value[0].note.as_str(), &change.value[0].tag_ids),
-            ("standup", &vec![w.alpha.id.clone()])
+            (change.value[0].note.as_str(), &change.value[0].tag_id),
+            ("standup", &Some(w.alpha.id.clone()))
         );
         assert!(change.days.contains(&Day::of(at(12, 0))));
         assert_eq!(w.rows().await, change.value);

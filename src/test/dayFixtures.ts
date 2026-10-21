@@ -51,7 +51,7 @@ export function recordingBlock(patch: Partial<RecordingBlock> = {}): RecordingBl
     color: "blue",
     shade: 0,
     note: "",
-    tags: [],
+    tag: null,
     running: false,
     clippedStart: false,
     clippedEnd: false,

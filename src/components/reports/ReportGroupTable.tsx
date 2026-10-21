@@ -35,7 +35,7 @@ export function ReportGroupTable({ group, rounded }: { group: ReportGroup; round
               <th>Time</th>
               <th>Duration</th>
               <th>Project</th>
-              <th>Tags</th>
+              <th>Tag</th>
               <th>Note</th>
             </tr>
           </thead>
@@ -48,7 +48,7 @@ export function ReportGroupTable({ group, rounded }: { group: ReportGroup; round
                 </td>
                 <td className="mono">{formatHm(rounded ? row.roundedMs : row.durationMs)}</td>
                 <td>{row.client ? `${row.client} / ${row.project}` : row.project}</td>
-                <td className="mono o2">{row.tags.join(" · ")}</td>
+                <td className="mono o2">{row.tag}</td>
                 <td>{row.note}</td>
               </tr>
             ))}

@@ -113,12 +113,7 @@ pub fn suggest(
         let Some(project) = names.projects.get(&rule.project_id) else {
             continue;
         };
-        let tag_ids: Vec<String> = rule
-            .tag_ids
-            .iter()
-            .filter(|id| names.tags.contains_key(*id))
-            .cloned()
-            .collect();
+        let tag_id = rule.tag_id.clone().filter(|id| names.tags.contains_key(id));
         let spans = subtract(&pieces, &recorded);
         suggestions.extend(
             spans
@@ -135,7 +130,7 @@ pub fn suggest(
                     start,
                     end,
                     note: rule.note.clone(),
-                    tag_ids: tag_ids.clone(),
+                    tag_id: tag_id.clone(),
                 }),
         );
     }
@@ -382,10 +377,10 @@ mod tests {
     }
 
     #[test]
-    fn a_suggestion_carries_the_rules_project_note_and_known_tags() {
+    fn a_suggestion_carries_the_rules_project_note_and_tag() {
         let rule = Rule {
             note: "standup".into(),
-            tag_ids: vec!["t1".into(), "gone".into()],
+            tag_id: Some("t1".into()),
             ..app_is("r1", "p1", "Slack")
         };
         let blocks = [slack(10, 20)];
@@ -413,9 +408,31 @@ mod tests {
                 start: 10 * MIN,
                 end: 20 * MIN,
                 note: "standup".into(),
-                tag_ids: vec!["t1".into()],
+                tag_id: Some("t1".into()),
             }]
         );
+    }
+
+    #[test]
+    fn a_suggestion_drops_a_tag_that_no_longer_exists() {
+        let rule = Rule {
+            tag_id: Some("gone".into()),
+            ..app_is("r1", "p1", "Slack")
+        };
+        let blocks = [slack(10, 20)];
+        let refs: Vec<&ActivityBlock> = blocks.iter().collect();
+
+        let found = suggest(
+            &refs,
+            &[],
+            &[],
+            &compile(&[rule]),
+            &names(&["p1"], &["t1"]),
+            0,
+        );
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].tag_id, None);
     }
 
     #[test]

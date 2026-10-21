@@ -105,7 +105,7 @@ function projectItem(p: ProjectListItem, section: string, rank: number): Item {
     shade: p.project.shade,
     rank,
     go: closeThen(() => showReport({ clientIds: [], projectIds: [p.project.id] })),
-    goAlt: closeThen(() => void useStore.getState().startTimer(p.project.id, "", [])),
+    goAlt: closeThen(() => void useStore.getState().startTimer(p.project.id, "", null)),
     altLabel: "start timer",
   };
 }

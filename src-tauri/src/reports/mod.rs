@@ -25,7 +25,7 @@ use crate::store::settings::{Group, Rounding};
 
 const MINUTE: Ms = 60_000;
 const NO_TAG_KEY: &str = "untagged";
-const NO_TAG_LABEL: &str = "No tag";
+const NO_TAG_LABEL: &str = "Untagged";
 
 /// Presets stay relative, so a saved "this month" report shows the current month.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -85,12 +85,10 @@ pub struct ReportRow {
     pub client: Option<String>,
     pub color: String,
     pub shade: u8,
-    /// Sorted by name.
-    pub tags: Vec<String>,
-    /// The ids of `tags`, in their order.
+    pub tag: Option<String>,
     #[serde(skip)]
     #[ts(skip)]
-    pub tag_ids: Vec<String>,
+    pub tag_id: Option<String>,
     pub note: String,
 }
 
@@ -128,11 +126,8 @@ pub struct ReportResult {
     pub from: Day,
     pub to: Day,
     pub groups: Vec<ReportGroup>,
-    /// Every row once, also when tags overlap.
     pub total_ms: i64,
     pub total_rounded_ms: i64,
-    /// Grouped by tag and a recording has several tags, so it counts in each of their groups.
-    pub tag_overlap: bool,
 }
 
 /// The first and last day of `range`; weeks start on Monday.
@@ -271,12 +266,10 @@ pub fn build(
 ) -> ReportResult {
     let rows = rows(filter, (from, to), data, now);
     let groups = groups(filter, &rows);
-    let counted: usize = groups.iter().map(|g| g.rows.len()).sum();
     ReportResult {
         filter: filter.clone(),
         from,
         to,
-        tag_overlap: counted > rows.len(),
         total_ms: rows.iter().map(|r| r.duration_ms).sum(),
         total_rounded_ms: rows.iter().map(|r| r.rounded_ms).sum(),
         groups,
@@ -292,7 +285,10 @@ fn wanted(filter: &ReportFilter, project: &Project, recording: &Recording) -> bo
                 .as_ref()
                 .is_some_and(|c| filter.client_ids.contains(c)))
         && (filter.tag_ids.is_empty()
-            || recording.tag_ids.iter().any(|t| filter.tag_ids.contains(t)))
+            || recording
+                .tag_id
+                .as_ref()
+                .is_some_and(|t| filter.tag_ids.contains(t)))
         && (filter.include_archived || project.archived_at.is_none())
 }
 
@@ -318,12 +314,10 @@ fn rows(
         let Some((start, end)) = clip(recording.start, recording.end, range, now) else {
             continue;
         };
-        let mut tags: Vec<&Tag> = data
-            .tags
-            .iter()
-            .filter(|t| recording.tag_ids.contains(&t.id))
-            .collect();
-        tags.sort_by_key(|t| t.name.to_lowercase());
+        let tag: Option<&Tag> = recording
+            .tag_id
+            .as_ref()
+            .and_then(|id| data.tags.iter().find(|t| &t.id == id));
         let mut day = Day::of(start);
         while day.bounds().0 < end {
             let (part_start, part_end) = (start.max(day.bounds().0), end.min(day.bounds().1));
@@ -343,8 +337,8 @@ fn rows(
                     .map(|c| c.name.clone()),
                 color: project.color.clone(),
                 shade: project.shade,
-                tags: tags.iter().map(|t| t.name.clone()).collect(),
-                tag_ids: tags.iter().map(|t| t.id.clone()).collect(),
+                tag: tag.map(|t| t.name.clone()),
+                tag_id: tag.map(|t| t.id.clone()),
                 note: recording.note.trim().to_string(),
             });
             day = day.next();
@@ -396,22 +390,14 @@ struct GroupKey {
     color: Option<(String, u8)>,
 }
 
-/// A tag filter also limits the tag groups to the chosen tags.
-fn shown(filter: &ReportFilter, key: &GroupKey) -> bool {
-    filter.group_by != Group::Tag || filter.tag_ids.is_empty() || filter.tag_ids.contains(&key.key)
-}
-
+/// Each row counts in exactly one group, so the groups add up to the total.
 fn groups(filter: &ReportFilter, rows: &[ReportRow]) -> Vec<ReportGroup> {
     let mut groups: Vec<(GroupKey, Vec<ReportRow>)> = Vec::new();
     for row in rows {
-        for key in keys(filter.group_by, row)
-            .into_iter()
-            .filter(|k| shown(filter, k))
-        {
-            match groups.iter_mut().find(|(k, _)| k.key == key.key) {
-                Some((_, rows)) => rows.push(row.clone()),
-                None => groups.push((key, vec![row.clone()])),
-            }
+        let key = key(filter.group_by, row);
+        match groups.iter_mut().find(|(k, _)| k.key == key.key) {
+            Some((_, rows)) => rows.push(row.clone()),
+            None => groups.push((key, vec![row.clone()])),
         }
     }
     groups.sort_by(|(a, _), (b, _)| a.order.cmp(&b.order).then_with(|| a.key.cmp(&b.key)));
@@ -430,15 +416,14 @@ fn groups(filter: &ReportFilter, rows: &[ReportRow]) -> Vec<ReportGroup> {
         .collect()
 }
 
-/// The groups a row counts in: one, or one per tag when grouped by tag.
-fn keys(group_by: Group, row: &ReportRow) -> Vec<GroupKey> {
+fn key(group_by: Group, row: &ReportRow) -> GroupKey {
     match group_by {
         Group::Project => {
             let label = match &row.client {
                 Some(client) => format!("{client} / {}", row.project),
                 None => row.project.clone(),
             };
-            vec![GroupKey {
+            GroupKey {
                 key: row.project_id.clone(),
                 order: (
                     row.client.is_none(),
@@ -447,48 +432,45 @@ fn keys(group_by: Group, row: &ReportRow) -> Vec<GroupKey> {
                 ),
                 label,
                 color: Some((row.color.clone(), row.shade)),
-            }]
+            }
         }
-        Group::Tag if row.tags.is_empty() => vec![GroupKey {
-            key: NO_TAG_KEY.into(),
-            label: NO_TAG_LABEL.into(),
-            order: (true, String::new(), String::new()),
-            color: None,
-        }],
-        Group::Tag => row
-            .tags
-            .iter()
-            .zip(&row.tag_ids)
-            .map(|(name, id)| GroupKey {
+        Group::Tag => match (&row.tag_id, &row.tag) {
+            (Some(id), Some(name)) => GroupKey {
                 key: id.clone(),
                 label: name.clone(),
                 order: (false, name.to_lowercase(), String::new()),
                 color: None,
-            })
-            .collect(),
-        Group::Day => vec![GroupKey {
+            },
+            _ => GroupKey {
+                key: NO_TAG_KEY.into(),
+                label: NO_TAG_LABEL.into(),
+                order: (true, String::new(), String::new()),
+                color: None,
+            },
+        },
+        Group::Day => GroupKey {
             key: row.day.to_string(),
             label: day_label(row.day),
             order: (false, row.day.to_string(), String::new()),
             color: None,
-        }],
+        },
         Group::Week => {
             let start = row.day.week_start();
-            vec![GroupKey {
+            GroupKey {
                 key: start.to_string(),
                 label: week_label(start),
                 order: (false, start.to_string(), String::new()),
                 color: None,
-            }]
+            }
         }
         Group::Month => {
             let start = row.day.month_start();
-            vec![GroupKey {
+            GroupKey {
                 key: start.date().format("%Y-%m").to_string(),
                 label: start.date().format("%B %Y").to_string(),
                 order: (false, start.to_string(), String::new()),
                 color: None,
-            }]
+            }
         }
     }
 }
@@ -565,7 +547,7 @@ mod tests {
         start: Ms,
         end: Option<Ms>,
         note: &str,
-        tag_ids: &[&str],
+        tag_id: Option<&str>,
     ) -> Recording {
         Recording {
             id: id.into(),
@@ -573,7 +555,7 @@ mod tests {
             start,
             end,
             note: note.into(),
-            tag_ids: tag_ids.iter().map(|t| t.to_string()).collect(),
+            tag_id: tag_id.map(String::from),
             created_at: 0,
             updated_at: 0,
         }
@@ -582,7 +564,7 @@ mod tests {
     /// `id` on project `project` for `len` minutes from 09:00 on `d`.
     fn on(id: &str, project: &str, d: &str, len: i64) -> Recording {
         let start = at(d, 9, 0);
-        rec(id, project, start, Some(start + minutes(len)), "", &[])
+        rec(id, project, start, Some(start + minutes(len)), "", None)
     }
 
     fn with_note(mut r: Recording, note: &str) -> Recording {
@@ -590,8 +572,8 @@ mod tests {
         r
     }
 
-    fn with_tags(mut r: Recording, tag_ids: &[&str]) -> Recording {
-        r.tag_ids = tag_ids.iter().map(|t| t.to_string()).collect();
+    fn with_tag(mut r: Recording, tag_id: &str) -> Recording {
+        r.tag_id = Some(tag_id.into());
         r
     }
 
@@ -814,7 +796,7 @@ mod tests {
         assert_eq!(wire["to"], D);
         assert_eq!(wire["totalMs"], minutes(90));
         assert_eq!(wire["totalRoundedMs"], minutes(90));
-        assert_eq!(wire["tagOverlap"], false);
+        assert!(wire.get("tagOverlap").is_none());
         assert_eq!(
             wire["groups"][0],
             json!({
@@ -837,7 +819,7 @@ mod tests {
                     "client": "Acme",
                     "color": "blue",
                     "shade": 4,
-                    "tags": [],
+                    "tag": null,
                     "note": "fix login",
                 }],
             })
@@ -890,9 +872,16 @@ mod tests {
             D,
             D,
             vec![
-                rec("r1", "p-portal", at(D, 9, 0), Some(at(D, 10, 0)), "", &[]),
-                rec("r2", "p-portal", at(D, 11, 0), Some(at(D, 11, 30)), "", &[]),
-                rec("r3", "p-site", at(D, 13, 0), Some(at(D, 13, 45)), "", &[]),
+                rec("r1", "p-portal", at(D, 9, 0), Some(at(D, 10, 0)), "", None),
+                rec(
+                    "r2",
+                    "p-portal",
+                    at(D, 11, 0),
+                    Some(at(D, 11, 30)),
+                    "",
+                    None,
+                ),
+                rec("r3", "p-site", at(D, 13, 0), Some(at(D, 13, 45)), "", None),
             ],
         );
 
@@ -915,9 +904,16 @@ mod tests {
                     at(D, 14, 0),
                     Some(at(D, 15, 0)),
                     "",
-                    &[],
+                    None,
                 ),
-                rec("early", "p-portal", at(D, 8, 0), Some(at(D, 9, 0)), "", &[]),
+                rec(
+                    "early",
+                    "p-portal",
+                    at(D, 8, 0),
+                    Some(at(D, 9, 0)),
+                    "",
+                    None,
+                ),
             ],
         );
 
@@ -938,7 +934,7 @@ mod tests {
             midnight - minutes(120),
             Some(midnight + minutes(180)),
             "",
-            &[],
+            None,
         );
 
         let result = report(&by(Group::Project), D, D, vec![r]);
@@ -959,7 +955,7 @@ mod tests {
             end_of_day - minutes(60),
             Some(end_of_day + minutes(120)),
             "",
-            &[],
+            None,
         );
 
         let result = report(&by(Group::Project), D, D, vec![r]);
@@ -979,7 +975,7 @@ mod tests {
                 midnight - minutes(60),
                 Some(midnight + minutes(30)),
                 "",
-                &[],
+                None,
             ),
             "night shift",
         );
@@ -1012,7 +1008,7 @@ mod tests {
     #[test]
     fn a_running_recording_ends_at_now() {
         let start = at("2026-10-21", 9, 0);
-        let r = rec("r1", "p-portal", start, None, "", &[]);
+        let r = rec("r1", "p-portal", start, None, "", None);
 
         let result = build(
             &by(Group::Project),
@@ -1027,7 +1023,7 @@ mod tests {
 
     #[test]
     fn a_running_recording_stops_at_the_end_of_a_past_range() {
-        let r = rec("r1", "p-portal", at(D, 22, 0), None, "", &[]);
+        let r = rec("r1", "p-portal", at(D, 22, 0), None, "", None);
 
         let result = report(&by(Group::Project), D, D, vec![r]);
 
@@ -1050,7 +1046,7 @@ mod tests {
                     bounds.0 - minutes(60),
                     Some(bounds.0),
                     "",
-                    &[],
+                    None,
                 ),
                 rec(
                     "starts-at-end",
@@ -1058,7 +1054,7 @@ mod tests {
                     bounds.1,
                     Some(bounds.1 + minutes(60)),
                     "",
-                    &[],
+                    None,
                 ),
             ],
         );
@@ -1082,7 +1078,6 @@ mod tests {
                 groups: vec![],
                 total_ms: 0,
                 total_rounded_ms: 0,
-                tag_overlap: false,
             }
         );
     }
@@ -1101,7 +1096,7 @@ mod tests {
                         at("2026-10-19", 9, 0),
                         Some(at("2026-10-19", 10, 0)),
                         "",
-                        &[],
+                        None,
                     ),
                     "  fix login ",
                 ),
@@ -1112,7 +1107,7 @@ mod tests {
                         at("2026-10-19", 10, 0),
                         Some(at("2026-10-19", 11, 0)),
                         "",
-                        &[],
+                        None,
                     ),
                     "review",
                 ),
@@ -1123,7 +1118,7 @@ mod tests {
                         at("2026-10-19", 11, 0),
                         Some(at("2026-10-19", 12, 0)),
                         "",
-                        &[],
+                        None,
                     ),
                     "",
                 ),
@@ -1134,7 +1129,7 @@ mod tests {
                         at("2026-10-19", 12, 0),
                         Some(at("2026-10-19", 13, 0)),
                         "",
-                        &[],
+                        None,
                     ),
                     "   ",
                 ),
@@ -1145,7 +1140,7 @@ mod tests {
                         at("2026-10-19", 13, 0),
                         Some(at("2026-10-19", 14, 0)),
                         "",
-                        &[],
+                        None,
                     ),
                     "Fix login",
                 ),
@@ -1194,97 +1189,126 @@ mod tests {
     }
 
     #[test]
-    fn a_row_lists_its_tag_names_by_name() {
+    fn a_row_carries_its_tag_name_and_none_when_the_tag_is_gone() {
         let result = report(
             &by(Group::Project),
             D,
             D,
-            vec![with_tags(
-                on("r1", "p-portal", D, 30),
-                &["t-sup", "t-admin", "t-unknown"],
-            )],
+            vec![
+                with_tag(on("r1", "p-portal", D, 30), "t-sup"),
+                with_tag(
+                    rec(
+                        "r2",
+                        "p-portal",
+                        at(D, 11, 0),
+                        Some(at(D, 11, 30)),
+                        "",
+                        None,
+                    ),
+                    "t-unknown",
+                ),
+            ],
         );
 
-        assert_eq!(result.groups[0].rows[0].tags, ["admin", "support"]);
+        let tags: Vec<_> = result.groups[0]
+            .rows
+            .iter()
+            .map(|r| r.tag.as_deref())
+            .collect();
+        assert_eq!(tags, [Some("support"), None]);
     }
 
     #[test]
-    fn grouping_by_tag_counts_a_multi_tag_recording_in_each_group_and_once_in_the_total() {
+    fn grouping_by_tag_counts_each_recording_once_and_the_groups_sum_to_the_total() {
         let result = report(
             &by(Group::Tag),
             D,
             D,
             vec![
-                with_tags(on("r1", "p-portal", D, 60), &["t-admin", "t-sup"]),
-                with_tags(
-                    rec("r2", "p-portal", at(D, 11, 0), Some(at(D, 11, 30)), "", &[]),
-                    &["t-admin"],
+                with_tag(on("r1", "p-portal", D, 60), "t-sup"),
+                with_tag(
+                    rec(
+                        "r2",
+                        "p-portal",
+                        at(D, 11, 0),
+                        Some(at(D, 11, 30)),
+                        "",
+                        None,
+                    ),
+                    "t-admin",
+                ),
+                with_tag(
+                    rec(
+                        "r3",
+                        "p-portal",
+                        at(D, 12, 0),
+                        Some(at(D, 12, 30)),
+                        "",
+                        None,
+                    ),
+                    "t-admin",
                 ),
             ],
         );
 
         assert_eq!(labels(&result), ["admin", "support"]);
         assert_eq!(keys(&result), ["t-admin", "t-sup"]);
-        assert_eq!(durations(&result), [90, 60]);
-        assert!(result.tag_overlap);
-        assert_eq!(result.total_ms, minutes(90));
-        assert_eq!(result.total_rounded_ms, minutes(90));
+        assert_eq!(durations(&result), [60, 60]);
+        assert_eq!(result.total_ms, minutes(120));
+        assert_eq!(result.total_rounded_ms, minutes(120));
     }
 
     #[test]
-    fn untagged_recordings_form_a_no_tag_group_at_the_end() {
+    fn untagged_recordings_form_an_untagged_group_at_the_end() {
         let result = report(
             &by(Group::Tag),
             D,
             D,
             vec![
                 on("r1", "p-portal", D, 20),
-                with_tags(
-                    rec("r2", "p-portal", at(D, 11, 0), Some(at(D, 11, 40)), "", &[]),
-                    &["t-sup"],
+                with_tag(
+                    rec(
+                        "r2",
+                        "p-portal",
+                        at(D, 11, 0),
+                        Some(at(D, 11, 40)),
+                        "",
+                        None,
+                    ),
+                    "t-sup",
                 ),
-                with_tags(
-                    rec("r3", "p-portal", at(D, 12, 0), Some(at(D, 12, 10)), "", &[]),
-                    &["t-admin"],
+                with_tag(
+                    rec(
+                        "r3",
+                        "p-portal",
+                        at(D, 12, 0),
+                        Some(at(D, 12, 10)),
+                        "",
+                        None,
+                    ),
+                    "t-admin",
                 ),
             ],
         );
 
-        assert_eq!(labels(&result), ["admin", "support", "No tag"]);
+        assert_eq!(labels(&result), ["admin", "support", "Untagged"]);
         assert_eq!(result.groups[2].key, "untagged");
         assert_eq!(durations(&result), [10, 40, 20]);
-        assert!(!result.tag_overlap);
         assert_eq!(result.groups[2].color, None);
+        assert_eq!(result.total_ms, minutes(70));
     }
 
     #[test]
-    fn tags_do_not_overlap_when_each_recording_has_at_most_one() {
+    fn a_recording_whose_tag_is_gone_counts_as_untagged() {
         let result = report(
             &by(Group::Tag),
             D,
             D,
-            vec![
-                with_tags(on("r1", "p-portal", D, 20), &["t-admin"]),
-                with_tags(
-                    rec("r2", "p-portal", at(D, 11, 0), Some(at(D, 11, 30)), "", &[]),
-                    &["t-sup"],
-                ),
-            ],
+            vec![with_tag(on("r1", "p-portal", D, 20), "t-unknown")],
         );
 
-        assert!(!result.tag_overlap);
-    }
-
-    #[test]
-    fn other_groupings_never_report_a_tag_overlap() {
-        let recordings = vec![with_tags(
-            on("r1", "p-portal", D, 60),
-            &["t-admin", "t-sup"],
-        )];
-        for group_by in [Group::Project, Group::Day, Group::Week, Group::Month] {
-            let result = report(&by(group_by), D, D, recordings.clone());
-            assert!(!result.tag_overlap, "{group_by:?}");
-        }
+        assert_eq!(labels(&result), ["Untagged"]);
+        assert_eq!(durations(&result), [20]);
     }
 
     #[test]
@@ -1299,16 +1323,37 @@ mod tests {
             D,
             D,
             vec![
-                with_tags(on("r1", "p-portal", D, 10), &["t-admin", "t-sup"]),
-                with_tags(
-                    rec("r2", "p-portal", at(D, 11, 0), Some(at(D, 11, 20)), "", &[]),
-                    &["t-dev"],
+                with_tag(on("r1", "p-portal", D, 10), "t-sup"),
+                with_tag(
+                    rec(
+                        "r2",
+                        "p-portal",
+                        at(D, 11, 0),
+                        Some(at(D, 11, 20)),
+                        "",
+                        None,
+                    ),
+                    "t-dev",
                 ),
-                with_tags(
-                    rec("r3", "p-portal", at(D, 12, 0), Some(at(D, 12, 40)), "", &[]),
-                    &["t-admin"],
+                with_tag(
+                    rec(
+                        "r3",
+                        "p-portal",
+                        at(D, 12, 0),
+                        Some(at(D, 12, 40)),
+                        "",
+                        None,
+                    ),
+                    "t-admin",
                 ),
-                rec("r4", "p-portal", at(D, 13, 0), Some(at(D, 13, 50)), "", &[]),
+                rec(
+                    "r4",
+                    "p-portal",
+                    at(D, 13, 0),
+                    Some(at(D, 13, 50)),
+                    "",
+                    None,
+                ),
             ],
         );
 
@@ -1328,17 +1373,31 @@ mod tests {
             D,
             D,
             vec![
-                with_tags(on("r1", "p-portal", D, 60), &["t-admin", "t-sup"]),
-                with_tags(
-                    rec("r2", "p-portal", at(D, 11, 0), Some(at(D, 11, 30)), "", &[]),
-                    &["t-admin"],
+                with_tag(on("r1", "p-portal", D, 60), "t-sup"),
+                with_tag(
+                    rec(
+                        "r2",
+                        "p-portal",
+                        at(D, 11, 0),
+                        Some(at(D, 11, 30)),
+                        "",
+                        None,
+                    ),
+                    "t-admin",
+                ),
+                rec(
+                    "r3",
+                    "p-portal",
+                    at(D, 13, 0),
+                    Some(at(D, 13, 30)),
+                    "",
+                    None,
                 ),
             ],
         );
 
         assert_eq!(keys(&result), ["t-sup"]);
         assert_eq!(durations(&result), [60]);
-        assert!(!result.tag_overlap);
         assert_eq!(result.total_ms, minutes(60));
     }
 
@@ -1419,29 +1478,29 @@ mod tests {
             D,
             D,
             vec![
-                with_tags(on("keep", "p-portal", D, 10), &["t-admin"]),
+                with_tag(on("keep", "p-portal", D, 10), "t-admin"),
                 on("no-tag", "p-portal", D, 10),
-                with_tags(
+                with_tag(
                     rec(
                         "other-client",
                         "p-site",
                         at(D, 11, 0),
                         Some(at(D, 12, 0)),
                         "",
-                        &[],
+                        None,
                     ),
-                    &["t-admin"],
+                    "t-admin",
                 ),
-                with_tags(
+                with_tag(
                     rec(
                         "other-project",
                         "p-api",
                         at(D, 13, 0),
                         Some(at(D, 14, 0)),
                         "",
-                        &[],
+                        None,
                     ),
-                    &["t-admin"],
+                    "t-admin",
                 ),
             ],
         );
@@ -1567,7 +1626,7 @@ mod tests {
             &filter,
             D,
             D,
-            vec![rec("r1", "p-portal", start, Some(start + len), "", &[])],
+            vec![rec("r1", "p-portal", start, Some(start + len), "", None)],
         );
         assert_eq!(result.groups[0].rows[0].duration_ms, len);
         result.groups[0].rows[0].rounded_ms
@@ -1625,8 +1684,8 @@ mod tests {
             D,
             vec![
                 on("r1", "p-portal", D, 7),
-                rec("r2", "p-portal", at(D, 10, 0), Some(at(D, 10, 7)), "", &[]),
-                rec("r3", "p-site", at(D, 11, 0), Some(at(D, 11, 40)), "", &[]),
+                rec("r2", "p-portal", at(D, 10, 0), Some(at(D, 10, 7)), "", None),
+                rec("r3", "p-site", at(D, 11, 0), Some(at(D, 11, 40)), "", None),
             ],
         );
 
@@ -1638,7 +1697,7 @@ mod tests {
     }
 
     #[test]
-    fn a_multi_tag_recording_is_rounded_once_in_the_total() {
+    fn tag_groups_round_their_recordings_and_sum_to_the_rounded_total() {
         let filter = ReportFilter {
             rounding: Rounding::Up15,
             ..by(Group::Tag)
@@ -1647,15 +1706,25 @@ mod tests {
             &filter,
             D,
             D,
-            vec![with_tags(
-                on("r1", "p-portal", D, 10),
-                &["t-admin", "t-sup"],
-            )],
+            vec![
+                with_tag(on("r1", "p-portal", D, 10), "t-admin"),
+                with_tag(
+                    rec(
+                        "r2",
+                        "p-portal",
+                        at(D, 11, 0),
+                        Some(at(D, 11, 20)),
+                        "",
+                        None,
+                    ),
+                    "t-sup",
+                ),
+            ],
         );
 
         assert_eq!(result.groups[0].rounded_ms, minutes(15));
-        assert_eq!(result.groups[1].rounded_ms, minutes(15));
-        assert_eq!(result.total_rounded_ms, minutes(15));
+        assert_eq!(result.groups[1].rounded_ms, minutes(30));
+        assert_eq!(result.total_rounded_ms, minutes(45));
     }
 
     #[test]
@@ -1667,7 +1736,7 @@ mod tests {
             midnight - minutes(600),
             Some(midnight + minutes(7)),
             "",
-            &[],
+            None,
         );
         let filter = ReportFilter {
             rounding: Rounding::Nearest15,
@@ -1702,7 +1771,7 @@ mod tests {
     #[test]
     fn durations_are_exact_to_the_millisecond() {
         let start = at(D, 9, 0) + 17;
-        let r = rec("r1", "p-portal", start, Some(start + 3_723_456), "", &[]);
+        let r = rec("r1", "p-portal", start, Some(start + 3_723_456), "", None);
 
         let result = report(&by(Group::Project), D, D, vec![r]);
 
@@ -1743,7 +1812,7 @@ mod tests {
                 start,
                 end: Some(start + minutes(90)),
                 note: " fix login ".into(),
-                tag_ids: vec![admin.id.clone()],
+                tag_id: Some(admin.id.clone()),
             },
         )
         .await
@@ -1756,7 +1825,7 @@ mod tests {
                 start: at("2026-10-20", 9, 0),
                 end: Some(at("2026-10-20", 10, 0)),
                 note: String::new(),
-                tag_ids: vec![],
+                tag_id: None,
             },
         )
         .await
@@ -1773,7 +1842,7 @@ mod tests {
         assert_eq!(keys(&result), [portal.id.as_str()]);
         assert_eq!(labels(&result), ["Acme / Portal"]);
         assert_eq!(result.total_ms, minutes(90));
-        assert_eq!(result.groups[0].rows[0].tags, ["admin"]);
+        assert_eq!(result.groups[0].rows[0].tag.as_deref(), Some("admin"));
         assert_eq!(result.groups[0].notes[0].text, "fix login");
     }
 

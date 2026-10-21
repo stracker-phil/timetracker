@@ -112,7 +112,7 @@ fn input_of(suggestion: Suggestion) -> RecordingInput {
         start: suggestion.start,
         end: suggestion.end,
         note: suggestion.note,
-        tag_ids: suggestion.tag_ids,
+        tag_id: suggestion.tag_id,
     }
 }
 
@@ -208,7 +208,7 @@ mod tests {
         async fn app_rule(&self, app: &str) -> Rule {
             let input = RuleInput {
                 note: format!("{app} work"),
-                tag_ids: vec![self.tag_id.clone()],
+                tag_id: Some(self.tag_id.clone()),
                 ..rule_input(app, &self.project.id, &[(App, RuleOp::Is, app)])
             };
             store::save(&self.db, None, &input).await.unwrap()
@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn accepting_a_suggestion_records_it_with_the_rules_project_note_and_tags() {
+    async fn accepting_a_suggestion_records_it_with_the_rules_project_note_and_tag() {
         let w = World::new().await;
         let today = day("2026-01-05");
         let rule = w.app_rule("Slack").await;
@@ -249,14 +249,14 @@ mod tests {
                 recording.start,
                 recording.end,
                 recording.note.as_str(),
-                recording.tag_ids.clone(),
+                recording.tag_id.clone(),
             ),
             (
                 w.project.id.as_str(),
                 on(today, 9, 0),
                 Some(on(today, 10, 0)),
                 "Slack work",
-                vec![w.tag_id.clone()],
+                Some(w.tag_id.clone()),
             )
         );
         assert_eq!(suggestion.rule_id, rule.id);

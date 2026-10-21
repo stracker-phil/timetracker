@@ -84,7 +84,7 @@ pub struct Compiled {
     pub rule_name: String,
     pub project_id: String,
     pub note: String,
-    pub tag_ids: Vec<String>,
+    pub tag_id: Option<String>,
     matchers: Vec<(RuleField, Matcher)>,
 }
 
@@ -95,7 +95,7 @@ impl Compiled {
             rule_name: rule.name.clone(),
             project_id: rule.project_id.clone(),
             note: rule.note.clone(),
-            tag_ids: rule.tag_ids.clone(),
+            tag_id: rule.tag_id.clone(),
             matchers: rule
                 .conditions
                 .iter()
@@ -111,7 +111,7 @@ impl Compiled {
             rule_name: String::new(),
             project_id: String::new(),
             note: String::new(),
-            tag_ids: Vec::new(),
+            tag_id: None,
             matchers: conditions
                 .iter()
                 .map(|c| (c.field, Matcher::new(c.op, &c.value)))

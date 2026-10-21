@@ -16,7 +16,7 @@ export function reportRow(patch: Partial<ReportRow> = {}): ReportRow {
     client: null,
     color: "blue",
     shade: 0,
-    tags: [],
+    tag: null,
     note: "",
     ...patch,
   };
@@ -36,7 +36,6 @@ export function reportResult(patch: Partial<ReportResult> = {}): ReportResult {
     groups: [reportGroup()],
     totalMs: 2_700_000,
     totalRoundedMs: 2_700_000,
-    tagOverlap: false,
     ...patch,
   };
 }

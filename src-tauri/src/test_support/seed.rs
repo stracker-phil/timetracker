@@ -183,7 +183,7 @@ struct Recording {
     end: Ms,
     project_id: String,
     note: &'static str,
-    tag_ids: Vec<String>,
+    tag_id: Option<String>,
 }
 
 struct DayPlan {
@@ -251,21 +251,14 @@ fn recordings(
         .map(|slot| {
             let start = open + (slot * 100 + rng.between(0, 10)) * MINUTE;
             let end = start + rng.between(60, 90) * MINUTE;
-            let first_tag = rng.below(tag_ids.len());
-            let tag_ids = match rng.below(3) {
-                0 => Vec::new(),
-                1 => vec![tag_ids[first_tag].clone()],
-                _ => vec![
-                    tag_ids[first_tag].clone(),
-                    tag_ids[(first_tag + 1) % tag_ids.len()].clone(),
-                ],
-            };
+            let tag = rng.below(tag_ids.len());
+            let tag_id = (rng.below(3) > 0).then(|| tag_ids[tag].clone());
             Recording {
                 start,
                 end,
                 project_id: project_ids[rng.below(project_ids.len())].clone(),
                 note: NOTES[rng.below(NOTES.len())],
-                tag_ids,
+                tag_id,
             }
         })
         .collect()
@@ -313,23 +306,17 @@ async fn write(db: &Db, plan: &DayPlan) -> AppResult<()> {
     for r in &plan.recordings {
         let id = uuid::Uuid::new_v4().to_string();
         sqlx::query(
-            r#"INSERT INTO recordings (id, project_id, start, "end", note, created_at, updated_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?4, ?4)"#,
+            r#"INSERT INTO recordings (id, project_id, start, "end", note, tag_id, created_at, updated_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?4, ?4)"#,
         )
         .bind(&id)
         .bind(&r.project_id)
         .bind(r.start)
         .bind(r.end)
         .bind(r.note)
+        .bind(&r.tag_id)
         .execute(&mut *tx)
         .await?;
-        for tag_id in &r.tag_ids {
-            sqlx::query("INSERT INTO recording_tags (recording_id, tag_id) VALUES (?1, ?2)")
-                .bind(&id)
-                .bind(tag_id)
-                .execute(&mut *tx)
-                .await?;
-        }
     }
     tx.commit().await?;
     Ok(())
@@ -596,20 +583,19 @@ mod tests {
 
     #[tokio::test]
     async fn seeding_the_same_range_and_seed_twice_gives_the_same_recordings_apart_from_ids() {
-        async fn shape(db: &Db) -> Vec<(String, Ms, Option<Ms>, String, usize)> {
+        async fn shape(db: &Db) -> Vec<(String, Ms, Option<Ms>, String, Option<String>)> {
             let projects = projects::list(db, true).await.unwrap();
+            let all_tags = tags::list(db).await.unwrap();
             recordings_of(db)
                 .await
                 .into_iter()
                 .map(|r| {
                     let project = projects.iter().find(|p| p.id == r.project_id).unwrap();
-                    (
-                        project.name.clone(),
-                        r.start,
-                        r.end,
-                        r.note,
-                        r.tag_ids.len(),
-                    )
+                    let tag = r
+                        .tag_id
+                        .and_then(|id| all_tags.iter().find(|t| t.id == id))
+                        .map(|t| t.name.clone());
+                    (project.name.clone(), r.start, r.end, r.note, tag)
                 })
                 .collect()
         }

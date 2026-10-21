@@ -88,7 +88,7 @@ pub async fn project(db: &Db, name: &str) -> Project {
     .expect("insert project")
 }
 
-/// A recording without note or tags; `end: None` is the running timer.
+/// A recording without note or tag; `end: None` is the running timer.
 pub async fn recording(db: &Db, project_id: &str, start: Ms, end: Option<Ms>) -> Recording {
     recordings::insert(
         db,
@@ -98,7 +98,7 @@ pub async fn recording(db: &Db, project_id: &str, start: Ms, end: Option<Ms>) ->
             start,
             end,
             note: String::new(),
-            tag_ids: Vec::new(),
+            tag_id: None,
         },
     )
     .await

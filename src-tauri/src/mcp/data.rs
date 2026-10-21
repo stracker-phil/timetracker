@@ -51,8 +51,6 @@ pub struct ReportOut {
     pub rounding: Rounding,
     pub total_min: f64,
     pub total_rounded_min: f64,
-    /// Grouped by tag, a recording with several tags counts in each of their groups.
-    pub tag_overlap: bool,
     pub groups: Vec<ReportGroupOut>,
 }
 
@@ -81,7 +79,8 @@ pub struct RecordingOut {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client: Option<String>,
     pub note: String,
-    pub tags: Vec<String>,
+    /// `null` when untagged.
+    pub tag: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -305,7 +304,7 @@ impl Core {
                 project: row.project,
                 client: row.client,
                 note: row.note,
-                tags: row.tags,
+                tag: row.tag,
             })
             .collect())
     }
@@ -431,7 +430,6 @@ pub fn report_out(result: &ReportResult) -> ReportOut {
         rounding: result.filter.rounding,
         total_min: minutes(result.total_ms),
         total_rounded_min: minutes(result.total_rounded_ms),
-        tag_overlap: result.tag_overlap,
         groups: result
             .groups
             .iter()
@@ -520,7 +518,7 @@ mod tests {
         project: &Project,
         (start, end): (Ms, Ms),
         note: &str,
-        tags: &[&Tag],
+        tag: Option<&Tag>,
     ) -> Recording {
         recordings::insert(
             db,
@@ -530,7 +528,7 @@ mod tests {
                 start,
                 end: Some(end),
                 note: note.into(),
-                tag_ids: tags.iter().map(|t| t.id.clone()).collect(),
+                tag_id: tag.map(|t| t.id.clone()),
             },
         )
         .await
@@ -594,13 +592,13 @@ mod tests {
             .into_iter()
             .find(|t| t.name == "development")
             .unwrap();
-        add_recording(&db, &podcast, (at(11, 0), at(11, 30)), "edit episode", &[]).await;
+        add_recording(&db, &podcast, (at(11, 0), at(11, 30)), "edit episode", None).await;
         let login = add_recording(
             &db,
             &portal,
             (at(9, 0), at(10, 30)),
             "fix login",
-            &[&development],
+            Some(&development),
         )
         .await;
         add_recording(
@@ -608,10 +606,10 @@ mod tests {
             &portal,
             (at(13, 0), at(14, 0)),
             "review",
-            &[&development],
+            Some(&development),
         )
         .await;
-        add_recording(&db, &podcast, (at(8, 0), at(8, 25)), "outline", &[]).await;
+        add_recording(&db, &podcast, (at(8, 0), at(8, 25)), "outline", None).await;
 
         add_span(
             &db,
@@ -718,7 +716,7 @@ mod tests {
             &seed.portal,
             (today + 3_600_000, today + 7_200_000),
             "today work",
-            &[],
+            None,
         )
         .await;
 
@@ -760,7 +758,6 @@ mod tests {
                 "group_by",
                 "groups",
                 "rounding",
-                "tag_overlap",
                 "to",
                 "total_min",
                 "total_rounded_min",
@@ -772,7 +769,6 @@ mod tests {
         assert_eq!(out["rounding"], "nearest30");
         assert_eq!(out["total_min"], 205.0);
         assert_eq!(out["total_rounded_min"], 210.0);
-        assert_eq!(out["tag_overlap"], false);
         assert_eq!(out["groups"].as_array().unwrap().len(), 2);
         assert_eq!(
             named(&out["groups"], "label", "Acme / Portal"),
@@ -926,13 +922,27 @@ mod tests {
                 "project": "Portal",
                 "client": "Acme",
                 "note": "fix login",
-                "tags": ["development"],
+                "tag": "development",
             })
         );
         assert_eq!(
             serde_json::to_value(&rows[0]).unwrap()["duration_min"],
             25.0
         );
+    }
+
+    #[tokio::test]
+    async fn an_untagged_recording_has_a_null_tag() {
+        let seed = seeded().await;
+
+        let rows = seed
+            .core
+            .recordings(recordings_query(None, None, None))
+            .await
+            .unwrap();
+
+        assert_eq!(rows[0].note, "outline");
+        assert_eq!(serde_json::to_value(&rows[0]).unwrap()["tag"], Value::Null);
     }
 
     #[tokio::test]
@@ -1138,8 +1148,8 @@ mod tests {
             &json!({"name": "development", "minutes": 150.0, "notes": ["fix login", "review"]})
         );
         assert_eq!(
-            named(&out["by_tag"], "name", "No tag"),
-            &json!({"name": "No tag", "minutes": 55.0, "notes": ["outline", "edit episode"]})
+            named(&out["by_tag"], "name", "Untagged"),
+            &json!({"name": "Untagged", "minutes": 55.0, "notes": ["outline", "edit episode"]})
         );
     }
 

@@ -17,7 +17,8 @@ use crate::error::{AppError, AppResult};
 use crate::reports::saved::{self, SavedReport};
 use crate::rules::{self, types::Rule};
 
-pub const BACKUP_VERSION: u32 = 1;
+/// 2: recordings and rules carry `tagId` instead of `tagIds` (ADR 0019).
+pub const BACKUP_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -71,16 +72,21 @@ pub async fn write_to(db: &Db, path: &Path) -> AppResult<BackupWritten> {
         )));
     }
     let backup = export(db).await?;
-    let json = serde_json::to_vec_pretty(&backup)?;
+    Ok(BackupWritten {
+        bytes: write_json(&backup, path).await?,
+        recordings: backup.recordings.len(),
+        activities: backup.activities.len(),
+    })
+}
+
+/// Pretty JSON through a temp file beside `path`; returns the bytes written.
+pub(super) async fn write_json(value: &impl Serialize, path: &Path) -> AppResult<u64> {
+    let json = serde_json::to_vec_pretty(value)?;
     let mut temp = path.as_os_str().to_owned();
     temp.push(".tmp");
     tokio::fs::write(&temp, &json).await?;
     tokio::fs::rename(&temp, path).await?;
-    Ok(BackupWritten {
-        bytes: json.len() as u64,
-        recordings: backup.recordings.len(),
-        activities: backup.activities.len(),
-    })
+    Ok(json.len() as u64)
 }
 
 #[cfg(test)]
@@ -114,7 +120,7 @@ mod tests {
                 start: 1_000,
                 end: Some(2_000),
                 note: "work".into(),
-                tag_ids: vec![tag.id.clone()],
+                tag_id: Some(tag.id.clone()),
             },
         )
         .await
@@ -146,7 +152,7 @@ mod tests {
                 "version",
             ]
         );
-        assert_eq!(backup["version"], 1);
+        assert_eq!(backup["version"], 2);
         assert!(backup["exportedAt"].as_i64().unwrap() > 0);
         assert_eq!(backup["rules"], json!([]));
         assert_eq!(backup["savedReports"], json!([]));
@@ -185,8 +191,52 @@ mod tests {
             backup["awaySpans"][0],
             json!({ "id": 1, "start": 3_000, "end": null, "reason": "idle" })
         );
-        assert_eq!(backup["recordings"][0]["tagIds"], json!([tag_id]));
+        assert_eq!(backup["recordings"][0]["tagId"], json!(tag_id));
+        assert_eq!(backup["recordings"][0].get("tagIds"), None);
         assert_eq!(backup["recordings"][0]["id"], "rec-1");
+    }
+
+    #[tokio::test]
+    async fn export_has_a_null_tag_id_for_untagged_recordings() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "Website").await;
+        crate::test_support::recording(&db, &p.id, 1_000, Some(2_000)).await;
+
+        let backup = serde_json::to_value(export(&db).await.unwrap()).unwrap();
+
+        assert_eq!(backup["recordings"][0]["tagId"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn export_carries_a_rules_tag_as_tag_id() {
+        use crate::rules::types::{ConditionInput, RuleField, RuleInput, RuleOp};
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "Website").await;
+        let tag = tags::list(&db).await.unwrap().remove(0);
+        let rule = rules::store::save(
+            &db,
+            None,
+            &RuleInput {
+                name: "Slack".into(),
+                project_id: p.id,
+                enabled: true,
+                note: String::new(),
+                tag_id: Some(tag.id.clone()),
+                conditions: vec![ConditionInput {
+                    field: RuleField::App,
+                    op: RuleOp::Is,
+                    value: "Slack".into(),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+        let backup = serde_json::to_value(export(&db).await.unwrap()).unwrap();
+
+        assert_eq!(backup["rules"][0]["id"], json!(rule.id));
+        assert_eq!(backup["rules"][0]["tagId"], json!(tag.id));
+        assert_eq!(backup["rules"][0].get("tagIds"), None);
     }
 
     #[tokio::test]
@@ -212,7 +262,7 @@ mod tests {
         let bytes = std::fs::read(&target).unwrap();
         assert_eq!(written.bytes, bytes.len() as u64);
         let json: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["version"], 1);
+        assert_eq!(json["version"], 2);
         assert!(!dir.path().join("backup.json.tmp").exists());
     }
 
@@ -252,7 +302,7 @@ mod tests {
                     "position": 0,
                     "enabled": true,
                     "note": "",
-                    "tagIds": [],
+                    "tagId": null,
                     "conditions": [
                         { "id": first.conditions[0].id, "field": "app", "op": "is", "value": "Slack" },
                         { "id": first.conditions[1].id, "field": "title", "op": "contains", "value": "standup" },
@@ -265,7 +315,7 @@ mod tests {
                     "position": 1,
                     "enabled": true,
                     "note": "",
-                    "tagIds": [],
+                    "tagId": null,
                     "conditions": [
                         { "id": second.conditions[0].id, "field": "domain", "op": "is", "value": "docs.rs" },
                     ],

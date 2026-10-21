@@ -131,8 +131,8 @@ Lists grouped under a heading (the clients on the Projects screen) use a section
 background, small semibold `--o2` text, 5px radius. Archived rows are dimmed (55% opacity) and keep a
 Restore action. A client band and a project row start with a color dot (`AccentDot`, a project's in its shade).
 Colors are chosen with nine round swatches (`AccentSwatches` for a hue, `ShadeSwatches` for a shade), the
-chosen one ringed. Tags are plain mono text, joined with ` · `
-where several show in one place; never pills.
+chosen one ringed. A tag is plain mono text, never a pill; a recording has at most one
+([ADR 0019](adr/0019-one-tag-per-recording.md)).
 
 ## Inputs
 
@@ -158,8 +158,9 @@ and command shortcuts show as key caps. Context menus use the UI font; the hover
 `--accent` with `--on-accent` text, disabled items `--o3`, separators a 1px `--line`. The native WebKit
 context menu is suppressed outside text fields (`lib/nativeMenu.ts`).
 
-Pickers (project, tags) are a field with a list below it on `--pop`, using the palette's row anatomy and
-small `--o3` section labels; the last option creates what was typed (`New project "x"…`).
+Pickers (project, tag) are a field with a list below it on `--pop`, using the palette's row anatomy and
+small `--o3` section labels; the last option creates what was typed (`New project "x"…`). The tag picker
+picks one tag; its first option is "No tag".
 
 ## Palette
 
@@ -230,10 +231,10 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   accent hairlines and the snapped `09:00–10:30` in mono accent text; the status bar repeats it with the
   duration. A dashed accent outline in the recordings column shows where the recording goes.
 - **Recording blocks** sit in the recordings column: the project's shade as a 3px bar on the left and a 22%
-  tint on `--bg`; project name (sans 500), note (mono), tags (mono `--o3`, ` · `-joined), duration bottom
+  tint on `--bg`; project name (sans 500), note (mono), tag (mono `--o3`), duration bottom
   right. A dashed top or bottom edge means the recording continues on another day. The top and bottom 6px
   resize; the body moves. Activity under recordings (half or more) is dimmed; hover lifts it.
-- **Editor**: a sheet with project, From/To, duration, note, tags; Save, Cancel, Delete. Field errors show
+- **Editor**: a sheet with project, From/To, duration, note, tag; Save, Cancel, Delete. Field errors show
   under their field.
 - **Overlap**: a confirm sheet listing the recordings in the way; "Replace overlapped part" trims, splits
   or deletes them.
@@ -253,7 +254,7 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 
 - After an away span of at least the set minutes (Settings → Tracker; not after a pause), a small sheet on
   `--pop` opens on top of everything: `You were away 42 min`, `12:03–12:45 · idle` (asleep, locked), then
-  project (the last used one), From and To (snapped), note, tags, and Record (↵) / Skip (Escape).
+  project (the last used one), From and To (snapped), note, tag, and Record (↵) / Skip (Escape).
 - A recording in the way reads `A recording already covers 12:10–12:30 (Project)` above the buttons; the
   form stays, so the times can change. The sheet stays open when another app takes focus.
 
@@ -288,7 +289,7 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   reduced motion); it has no grips. The menu bar item's title reads `⏱ 1:23 Acme` while it runs, and the
   status bar shows `⏱ Acme 1:23` (a click stops it).
 - The picker (⌘⇧T from any app, ⌘T in the window, Start Timer… in the tray) is a small floating panel on
-  `--pop` under the tray icon: project, note, tags, Start (↵), Cancel (Escape), and the recent timers below.
+  `--pop` under the tray icon: project, note, tag, Start (↵), Cancel (Escape), and the recent timers below.
   While a timer runs it shows the timer with Stop and "Start another…". It hides when it loses focus.
 
 ## Week and Month
@@ -324,8 +325,8 @@ Total  4:45 h
 ```
 
 Notes carry their weekdays when the range is longer than a day (dates beyond a week), except by day.
-Grouped by tag, `Tags overlap: a recording with several tags counts in each.` follows the total when it
-applies. No recordings: the header, then `No recordings.`
+Grouped by tag, each recording counts once and recordings without a tag form `Untagged`, last. No
+recordings: the header, then `No recordings.`
 
 ## Data folder
 
@@ -445,7 +446,7 @@ From any view, with the documented default keys only:
    far as the work went. The status bar shows the span and its length; Escape clears it.
 4. ↵ opens the editor for the selection, with the project field focused: type part of the name, ↑↓, ↵ picks
    it (or the last option, `New project "x"…`, opens the project sheet).
-5. Tab to From and To: type `09:15` or press ↑↓ to move by one snap step; Tab to the note and the tags.
+5. Tab to From and To: type `09:15` or press ↑↓ to move by one snap step; Tab to the note and the tag.
 6. ⌘↵ saves (↵ in a time or the note field does too). If it overlaps a recording, ↵ in the dialog replaces
    the overlapped part and Escape goes back.
 7. The new recording has the focus: ⌥↑ ⌥↓ move it, ⌥⇧↓ ⌥⇧↑ change its end, ↵ edits it again, ⌫ deletes it,

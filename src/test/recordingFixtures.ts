@@ -10,7 +10,7 @@ export function recording(patch: Partial<Recording> = {}): Recording {
     start: at("09:00"),
     end: at("09:45"),
     note: "",
-    tagIds: [],
+    tagId: null,
     createdAt: 0,
     updatedAt: 0,
     ...patch,

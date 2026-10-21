@@ -253,7 +253,7 @@ mod tests {
                 start: 1_000,
                 end: None,
                 note: "standup".into(),
-                tag_ids: vec![],
+                tag_id: None,
                 created_at: 1_000,
                 updated_at: 1_000,
             },
@@ -274,7 +274,7 @@ mod tests {
             serde_json::json!({
                 "recording": {
                     "id": "r1", "projectId": "p1", "start": 1000, "end": null,
-                    "note": "standup", "tagIds": [], "createdAt": 1000, "updatedAt": 1000
+                    "note": "standup", "tagId": null, "createdAt": 1000, "updatedAt": 1000
                 },
                 "projectName": "Acme",
                 "color": "blue",

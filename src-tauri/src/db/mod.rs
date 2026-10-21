@@ -6,6 +6,7 @@ pub mod away;
 pub mod backup;
 pub mod clients;
 pub mod commands;
+pub mod one_tag;
 pub mod projects;
 pub mod recordings;
 pub mod relocate;
@@ -24,6 +25,7 @@ use crate::error::{AppError, AppResult};
 use crate::lock::RwLockExt;
 use crate::store::json_file::create_private_dir;
 use crate::store::settings::Settings;
+use one_tag::TagsDropped;
 
 pub const DB_FILE: &str = "timetracker.sqlite";
 /// SQLite has one writer; WAL lets readers run next to it.
@@ -42,7 +44,14 @@ pub struct Db {
 impl Db {
     /// Creates the file and its private parent folder when missing, then migrates.
     pub async fn open(path: &Path) -> AppResult<Db> {
-        if let Some(dir) = path.parent() {
+        Ok(Db::open_migrating(path).await?.0)
+    }
+
+    /// `open`, also saying which tags migration 0006 dropped (`db::one_tag`), after backing up the
+    /// data beside the file.
+    pub async fn open_migrating(path: &Path) -> AppResult<(Db, Option<TagsDropped>)> {
+        let dir = path.parent();
+        if let Some(dir) = dir {
             create_private_dir(dir)?;
         }
         let options = SqliteConnectOptions::new()
@@ -56,7 +65,7 @@ impl Db {
             .max_connections(MAX_CONNECTIONS)
             .connect_with(options)
             .await?;
-        Db::init(pool).await
+        Db::init(pool, dir).await
     }
 
     /// An existing file for reading only, beside the app that writes it: the journal mode stays as
@@ -114,14 +123,23 @@ impl Db {
             .max_lifetime(None)
             .connect_with(options)
             .await?;
-        Db::init(pool).await
+        Ok(Db::init(pool, None).await?.0)
     }
 
-    async fn init(pool: SqlitePool) -> AppResult<Db> {
-        sqlx::migrate!("./migrations").run(&pool).await?;
+    /// Migrates; with `backup_dir`, backs up the data there first when a migration drops some.
+    async fn init(
+        pool: SqlitePool,
+        backup_dir: Option<&Path>,
+    ) -> AppResult<(Db, Option<TagsDropped>)> {
+        let migrator = sqlx::migrate!("./migrations");
+        let dropped = match backup_dir {
+            Some(dir) => one_tag::back_up(&migrator, &pool, dir).await?,
+            None => None,
+        };
+        migrator.run(&pool).await?;
         let db = Db { pool };
         tags::seed_defaults(&db).await?;
-        Ok(db)
+        Ok((db, dropped))
     }
 
     pub fn pool(&self) -> &SqlitePool {
@@ -152,19 +170,35 @@ pub struct DataStore {
     db: RwLock<Result<Db, String>>,
     /// Held for a whole move, so two moves never overlap.
     moving: tokio::sync::Mutex<()>,
+    /// What opening dropped from the data, for the launch toast.
+    migration_notice: Option<String>,
 }
 
 impl DataStore {
     pub async fn open(file: PathBuf) -> DataStore {
-        let db = Db::open(&file).await.map_err(|e| {
-            log::error!("Cannot open the data store at {}: {e}", file.display());
-            e.to_string()
-        });
+        let (db, migration_notice) = match Db::open_migrating(&file).await {
+            Ok((db, dropped)) => {
+                let notice = dropped.map(|d| d.message());
+                if let Some(notice) = &notice {
+                    log::warn!("{notice}");
+                }
+                (Ok(db), notice)
+            }
+            Err(e) => {
+                log::error!("Cannot open the data store at {}: {e}", file.display());
+                (Err(e.to_string()), None)
+            }
+        };
         DataStore {
             file: RwLock::new(file),
             db: RwLock::new(db),
             moving: tokio::sync::Mutex::new(()),
+            migration_notice,
         }
+    }
+
+    pub fn migration_notice(&self) -> Option<&str> {
+        self.migration_notice.as_deref()
     }
 
     pub fn file(&self) -> PathBuf {
@@ -329,9 +363,24 @@ mod tests {
             "activities",
             "away_spans",
             "recordings",
-            "recording_tags",
         ] {
             assert!(tables.iter().any(|t| t == table), "{table} in {tables:?}");
+        }
+        assert!(!tables.iter().any(|t| t == "recording_tags"), "{tables:?}");
+        for table in ["recordings", "rules"] {
+            let columns: Vec<String> = sqlx::query_scalar("SELECT name FROM pragma_table_info(?1)")
+                .bind(table)
+                .fetch_all(db.pool())
+                .await
+                .unwrap();
+            assert!(
+                columns.iter().any(|c| c == "tag_id"),
+                "{table}: {columns:?}"
+            );
+            assert!(
+                !columns.iter().any(|c| c == "tag_ids"),
+                "{table}: {columns:?}"
+            );
         }
     }
 

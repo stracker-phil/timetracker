@@ -19,8 +19,8 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
    `useBackendEvents()` once:
    1. `loadUiState()` loads the window layout, then `restoreDay()` shows the last viewed day (within 30
       days). `loadSettings()` loads settings and keybindings; `installCommands()` runs again to apply the user's
-      bindings, then `drainLaunches()` pulls the queued launch events (`take_launch_events`): `error` shows a toast, `showDay`
-      calls `goToDay`.
+      bindings, then `drainLaunches()` pulls the queued launch events (`take_launch_events`): `error` shows an error toast,
+      `notice` an info toast (a migration that dropped tags), `showDay` calls `goToDay`.
    2. It subscribes to `launch` (drain again), `command` (menu and tray → `runMenuCommand`), `remote`
       (→ `answerRemote`, which always replies with `remoteReply`), `data_changed` (→ `dataChanged`) and
       `tracker_status` (→ `setTracker`); `loadTracker()` fetches the current status once.
@@ -213,8 +213,8 @@ Tracker components:
 | `RecordingsColumn` | the day's `SuggestionBlock`s under its `RecordingBlock`s and, while a span is selected, a dashed outline where its recording would go |
 | `SuggestionBlock` | a rule's suggestion: a button, dashed in the project's shade, with the project, the rule and the duration; click sends `acceptSuggestion`, ⌥-click `acceptRuleSuggestions` (the `rules` slice; Rust's `data_changed` reloads the day) |
 | `useRuleDrag` | ⌥-pressing an activity block (in `Timeline`) shows the recent projects over the top of the recordings column; releasing over one opens the `rule` dialog with `draftFromBlock`: `<app> → <project>`, `app is <app>` and `domain is <host>` for a URL block, else `title contains <title>` |
-| `RecordingBlock` | the project's shade as a 3px bar and a 22% tint, project, note, tags and duration; dashed top or bottom edge when clipped to the day. Click focuses, double-click edits; dragging the body moves it and an edge resizes it (`pointerDrag`, pointer capture), with the ghost from `useSnappedSpan`; release sends `updateRecording` |
-| `RecordingEditor` | an optional warning (the List view's gaps), project (`ProjectPicker`; focus starts on the note when one is given), From and To (`HH:MM`, ↑↓ step by the snap interval; an end before the start is on the next day), duration, note (one line; pasted line breaks become spaces), tags (`TagPicker`); Save (↵ or ⌘↵), Cancel, Delete (⌘⌫) when editing. It edits the whole recording, also when the day shows a part of it |
+| `RecordingBlock` | the project's shade as a 3px bar and a 22% tint, project, note, tag and duration; dashed top or bottom edge when clipped to the day. Click focuses, double-click edits; dragging the body moves it and an edge resizes it (`pointerDrag`, pointer capture), with the ghost from `useSnappedSpan`; release sends `updateRecording` |
+| `RecordingEditor` | an optional warning (the List view's gaps), project (`ProjectPicker`; focus starts on the note when one is given), From and To (`HH:MM`, ↑↓ step by the snap interval; an end before the start is on the next day), duration, note (one line; pasted line breaks become spaces), tag (`TagPicker`); Save (↵ or ⌘↵), Cancel, Delete (⌘⌫) when editing. It edits the whole recording, also when the day shows a part of it |
 | `OverlapDialog` | the recordings in the way, "Replace overlapped part" or Cancel |
 | `selectionPress` | the press on the lanes and the axis: a drag selects a span (auto-scrolling near the edges) and dropped on the recordings column opens the editor; a click selects a block's span, ⇧-click extends the selection, a click on nothing clears it |
 | `useSnappedSpan` | a span as Rust will snap it (`api.recordingSnap`, at most once per frame; the raw span stands in until the answer) |
@@ -297,7 +297,7 @@ The editor's `edit` request may carry `at` (a span of the recording), so views o
 clipboard) and Save report… (`reports.save`: the `prompt` dialog, then `saveReport`); `ReportFilters`
 (range presets and Custom dates, `MultiSelect` for clients, projects and tags, Group by, Rounding, Archived
 projects); one `ReportGroupTable` per group (color dot, label, `h:mm h`, the notes, the recordings on
-request); the total, and the tag overlap caveat. `actions.ts` holds the two commands' actions. The sidebar
+request); the total. `actions.ts` holds the two commands' actions. The sidebar
 lists saved reports under Reports: a click opens one, right-click renames (prompt) or deletes (confirm).
 
 `PromptDialog` (`dialog: prompt { title, label, initial, confirmLabel, onSubmit }`) asks for one line.
@@ -330,7 +330,7 @@ Enter picks, Esc closes the list without closing the sheet around it; the list c
 | Picker | Props | Behavior |
 |---|---|---|
 | `ProjectPicker` | `value: string \| null`, `onChange(projectId)`, `autoFocus?` | shows the chosen project as color dot + `Client / Name`; empty query: "Recent" (up to 5) then all active projects by client; typed: fuzzy matches, best first; the last option is always `New project "<query>"…`, which opens `ProjectSheet` prefilled and picks the saved project. Archived projects never show |
-| `TagPicker` | `value: string[]`, `onChange(tagIds)` | chosen tags as mono `a · b` in the field; typing filters the unchosen tags; Enter adds the highlighted one or creates `New tag "<query>"` (`saveTag`) and adds it; ⌫ on an empty query removes the last tag |
+| `TagPicker` | `value: string \| null`, `onChange(tagId \| null)` | one tag or none ([ADR 0019](adr/0019-one-tag-per-recording.md)): the chosen tag in mono in the field, "No tag" as placeholder; the open list starts with "No tag", then every tag; typing filters; Enter picks the highlighted one or creates `New tag "<query>"` (`saveTag`) and picks it; ⌫ on an empty query removes the tag. The editor, `RuleSheet`, the timer picker and the away window use it |
 
 ### Settings pages
 

@@ -16,7 +16,7 @@ struct RuleRow {
     position: i64,
     enabled: bool,
     note: String,
-    tag_ids: Vec<String>,
+    tag_id: Option<String>,
 }
 
 impl FromRow<'_, SqliteRow> for RuleRow {
@@ -28,24 +28,15 @@ impl FromRow<'_, SqliteRow> for RuleRow {
             position: row.try_get("position")?,
             enabled: row.try_get("enabled")?,
             note: row.try_get("note")?,
-            tag_ids: decoded(row, "tag_ids", true)?,
+            tag_id: row.try_get("tag_id")?,
         })
     }
 }
 
-/// A JSON column, or an enum stored as its serde name.
-fn decoded<T: serde::de::DeserializeOwned>(
-    row: &SqliteRow,
-    column: &str,
-    json: bool,
-) -> sqlx::Result<T> {
+/// An enum stored as its serde name.
+fn decoded<T: serde::de::DeserializeOwned>(row: &SqliteRow, column: &str) -> sqlx::Result<T> {
     let text: String = row.try_get(column)?;
-    let value = if json {
-        serde_json::from_str(&text)
-    } else {
-        serde_json::from_value(serde_json::Value::String(text))
-    };
-    value.map_err(|e| sqlx::Error::ColumnDecode {
+    serde_json::from_value(serde_json::Value::String(text)).map_err(|e| sqlx::Error::ColumnDecode {
         index: column.into(),
         source: Box::new(e),
     })
@@ -55,8 +46,8 @@ impl FromRow<'_, SqliteRow> for Condition {
     fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
         Ok(Self {
             id: row.try_get("id")?,
-            field: decoded(row, "field", false)?,
-            op: decoded(row, "op", false)?,
+            field: decoded(row, "field")?,
+            op: decoded(row, "op")?,
             value: row.try_get("value")?,
         })
     }
@@ -115,7 +106,7 @@ pub async fn all(conn: &mut SqliteConnection) -> AppResult<Vec<Rule>> {
             position: row.position,
             enabled: row.enabled,
             note: row.note,
-            tag_ids: row.tag_ids,
+            tag_id: row.tag_id,
         })
         .collect())
 }
@@ -161,13 +152,10 @@ async fn validated(db: &Db, input: &RuleInput) -> AppResult<RuleInput> {
     if project.archived_at.is_some() {
         return Err(invalid("projectId", "is archived"));
     }
-    let known = tags::list(db).await?;
-    if !input
-        .tag_ids
-        .iter()
-        .all(|id| known.iter().any(|t| &t.id == id))
+    if let Some(tag_id) = &input.tag_id
+        && !tags::list(db).await?.iter().any(|t| &t.id == tag_id)
     {
-        return Err(invalid("tagIds", "has an unknown tag"));
+        return Err(invalid("tagId", "is an unknown tag"));
     }
     check_conditions(&input.conditions)?;
     Ok(RuleInput {
@@ -209,11 +197,10 @@ async fn write_rule(
     id: Option<&str>,
     input: &RuleInput,
 ) -> AppResult<String> {
-    let tag_ids = serde_json::to_string(&input.tag_ids)?;
     let Some(id) = id else {
         let id = new_id();
         sqlx::query(
-            "INSERT INTO rules (id, name, project_id, position, enabled, note, tag_ids)
+            "INSERT INTO rules (id, name, project_id, position, enabled, note, tag_id)
              VALUES (?1, ?2, ?3, (SELECT coalesce(max(position), -1) + 1 FROM rules), ?4, ?5, ?6)",
         )
         .bind(&id)
@@ -221,20 +208,20 @@ async fn write_rule(
         .bind(&input.project_id)
         .bind(input.enabled)
         .bind(&input.note)
-        .bind(&tag_ids)
+        .bind(&input.tag_id)
         .execute(&mut *conn)
         .await?;
         return Ok(id);
     };
     let changed = sqlx::query(
-        "UPDATE rules SET name = ?2, project_id = ?3, enabled = ?4, note = ?5, tag_ids = ?6 WHERE id = ?1",
+        "UPDATE rules SET name = ?2, project_id = ?3, enabled = ?4, note = ?5, tag_id = ?6 WHERE id = ?1",
     )
     .bind(id)
     .bind(&input.name)
     .bind(&input.project_id)
     .bind(input.enabled)
     .bind(&input.note)
-    .bind(&tag_ids)
+    .bind(&input.tag_id)
     .execute(&mut *conn)
     .await?
     .rows_affected();
@@ -379,7 +366,7 @@ mod tests {
         let w = World::new().await;
         let input = RuleInput {
             note: "standup".into(),
-            tag_ids: vec![w.tag.id.clone()],
+            tag_id: Some(w.tag.id.clone()),
             ..rule_input(
                 "Slack standup",
                 &w.project.id,
@@ -400,7 +387,7 @@ mod tests {
                 saved.position,
                 saved.enabled,
                 saved.note.as_str(),
-                saved.tag_ids.clone(),
+                saved.tag_id.clone(),
             ),
             (
                 "Slack standup",
@@ -408,7 +395,7 @@ mod tests {
                 0,
                 true,
                 "standup",
-                vec![w.tag.id.clone()]
+                Some(w.tag.id.clone())
             )
         );
         assert_eq!(
@@ -540,8 +527,8 @@ mod tests {
             ),
             (
                 "an unknown tag",
-                w.edited(|i| i.tag_ids = vec!["nope".into()]),
-                "tagIds",
+                w.edited(|i| i.tag_id = Some("nope".into())),
+                "tagId",
             ),
             (
                 "no conditions",

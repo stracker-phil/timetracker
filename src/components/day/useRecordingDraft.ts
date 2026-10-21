@@ -8,14 +8,14 @@ export interface Draft {
   start: number;
   end: number;
   note: string;
-  tagIds: string[];
+  tagId: string | null;
 }
 
 /** The editor's fields: empty for a new span, or loaded from the whole recording being edited. */
 export function useRecordingDraft(editor: Editor) {
   const [existing, setExisting] = useState<Recording | null>(null);
   const [draft, setDraft] = useState<Draft | null>(() =>
-    editor.mode === "create" ? { projectId: editor.projectId ?? null, start: editor.start, end: editor.end, note: "", tagIds: [] } : null,
+    editor.mode === "create" ? { projectId: editor.projectId ?? null, start: editor.start, end: editor.end, note: "", tagId: null } : null,
   );
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export function useRecordingDraft(editor: Editor) {
         const recording = found.find((r) => r.id === editor.id);
         if (!recording) return;
         setExisting(recording);
-        setDraft({ projectId: recording.projectId, start: recording.start, end: recording.end ?? recording.start, note: recording.note, tagIds: recording.tagIds });
+        setDraft({ projectId: recording.projectId, start: recording.start, end: recording.end ?? recording.start, note: recording.note, tagId: recording.tagId });
       },
       (e: unknown) => fail(e, "Could not load the recording"),
     );

@@ -18,12 +18,12 @@ interface Props {
   onClose: () => void;
 }
 
-const inputOf = ({ name, projectId, enabled, note, tagIds, conditions }: Rule): RuleInput => ({
+const inputOf = ({ name, projectId, enabled, note, tagId, conditions }: Rule): RuleInput => ({
   name,
   projectId,
   enabled,
   note,
-  tagIds,
+  tagId,
   conditions: conditions.map(({ field, op, value }) => ({ field, op, value })),
 });
 
@@ -84,8 +84,8 @@ export function RuleSheet({ id, draft, onClose }: Props) {
         <FormField label="Note" htmlFor={ids.note} error={errors.note}>
           <NoteInput id={ids.note} maxLength={500} value={input.note} onChange={(note) => patch({ note })} />
         </FormField>
-        <FormField label="Tags" error={errors.tagIds}>
-          <TagPicker value={input.tagIds} onChange={(tagIds) => patch({ tagIds })} />
+        <FormField label="Tag" error={errors.tagId}>
+          <TagPicker value={input.tagId} onChange={(tagId) => patch({ tagId })} />
         </FormField>
         <FormField label="Activity where all of these hold" error={errors.conditions}>
           <div className="conditions">

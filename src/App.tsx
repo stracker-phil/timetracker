@@ -26,6 +26,7 @@ function handleLaunchEvents(events: LaunchEvent[]) {
   const { toast, goToDay } = useStore.getState();
   for (const event of events) {
     if (event.type === "error") toast("error", event.message);
+    if (event.type === "notice") toast("info", event.message);
     if (event.type === "showDay") goToDay(event.day);
   }
 }

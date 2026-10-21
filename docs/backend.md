@@ -131,7 +131,7 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `open_log_folder` | – | – | `io` |
 | `open_url` | `url: String` | – | `invalid_input` unless `http(s)` without credentials (`is_web_url`) |
 | `log_frontend_error` | `message: String` | – | – |
-| `take_launch_events` | – | `LaunchEvent[]` | – |
+| `take_launch_events` | – | `LaunchEvent[]` (`error`, `notice`, `activate`, `showDay`) | – |
 | `remote_reply` | `id, result, error` | – | – |
 | `hide_window` | – | – | – |
 | `quit_app` | – | never returns | – |
@@ -156,8 +156,8 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `away_prompt_current` (`away_prompt/commands.rs`) | – | `AwayPrompt \| null` | – |
 | `away_prompt_answer` | `input: RecordingInput` | `Recording`, created with `overlap: cancel` (undoable); closes the window | `not_found` (no prompt), `invalid_input` (`field`: `start` outside the last 7 days, or the recording's own fields), `overlap` (the prompt stays open) |
 | `away_prompt_skip` | – | – (clears the prompt, closes the window; nothing is recorded) | – |
-| `rules_list` (`rules/commands.rs`) | – | `Rule[] { id, name, projectId, position, enabled, note, tagIds, conditions }`, by position | `db` |
-| `rule_save` | `id: string \| null, input: RuleInput` | `Rule`; `null` appends a new rule; an existing one keeps its position and gets the new conditions | `invalid_input` (`field`: `name`, `projectId`, `note`, `tagIds`, `conditions`, `conditions.<i>.value`), `not_found`, `db` |
+| `rules_list` (`rules/commands.rs`) | – | `Rule[] { id, name, projectId, position, enabled, note, tagId, conditions }`, by position | `db` |
+| `rule_save` | `id: string \| null, input: RuleInput` | `Rule`; `null` appends a new rule; an existing one keeps its position and gets the new conditions | `invalid_input` (`field`: `name`, `projectId`, `note`, `tagId`, `conditions`, `conditions.<i>.value`), `not_found`, `db` |
 | `rule_delete` | `id` | – (its conditions go with it) | `not_found` |
 | `rules_reorder` | `ids: string[]` (every rule once) | `Rule[]` in the new order | `invalid_input` |
 | `rule_set_enabled` | `id, enabled: bool` | `Rule` | `not_found` |
@@ -167,7 +167,7 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `suggestions_accept_rule` | `day: Day, ruleId` | `Recording[]`: every suggestion of the rule on the day, one undo entry (`Recordings::create_all`; one that would overlap is left out) | `not_found` (no suggestions), `db` |
 | `app_settings_set` (`commands.rs`) | `bundleId: String` (the app key: bundle id, else the app name), `patch: AppSettingPatch { groupByApp?, titles?, ownLane?, hidden? }` (`null` returns `groupByApp`/`titles` to the timeline's setting) | `Settings`; applied under the settings store's lock (`SettingsStore::update_app`), so concurrent changes never undo each other; an override that ends up default is removed (`Settings::with_app`) | `invalid_input` (blank key), `io` |
 | `apps_list` (`day/commands.rs`) | – | `KnownApp[] { appKey, app, totalMs, lastSeen }` (`day::apps::known_apps`): every tracker app and every app with an override, by name | `db` |
-| `recording_create` (`recordings/commands.rs`) | `input: RecordingInput { projectId, start, end, note, tagIds }, overlap: Overlap` | `Recording` (snapped) | `invalid_input` (`field`), `overlap` (`details`: the recordings in the way), `not_found`, `db` |
+| `recording_create` (`recordings/commands.rs`) | `input: RecordingInput { projectId, start, end, note, tagId }, overlap: Overlap` | `Recording` (snapped) | `invalid_input` (`field`), `overlap` (`details`: the recordings in the way), `not_found`, `db` |
 | `recording_update` | `id, patch: RecordingPatch, overlap` | `Recording` | the same |
 | `recording_delete` | `id` | – | `not_found`, `db` |
 | `recording_move` / `recording_copy` | `id, day: Day, overlap` | `Recording`: moved, or a new copy, to `day` at the same local time (`same_time_on`, DST-safe) with the same length, through `update` / `create` (undoable; a recording over midnight moves with its start day) | `invalid_input` (the running timer), `overlap`, `not_found`, `db` |
@@ -276,16 +276,17 @@ recordings, day }` for every day the op touched, before and after (`Change.days`
   midnight, read at call time; an end that snaps onto or before the start lands one step after it. `update`
   snaps only the times it changes, so editing a note keeps the times.
 - **Validation** (`InvalidField`): `end` after `start` and at most 24 h later; `note` one line, at most 500
-  characters, trimmed; `projectId` not archived (unless the recording already belongs to it); `tagIds` known.
+  characters, trimmed; `projectId` not archived (unless the recording already belongs to it); `tagId` (one
+  tag or `null`, [ADR 0019](adr/0019-one-tag-per-recording.md)) known.
   A missing project is `not_found`; a running recording is not edited here ("Stop the timer first").
 - **Overlap** (`Overlap::Cancel | Replace`): with `Cancel` a span sharing time with others is refused with
   `overlap` and the recordings in `details`; with `Replace` each one in the way is deleted (inside), trimmed
   (one side out) or split (both sides out; the right part is a new recording with the same project, note and
-  tags), all in one `Op::Batch` with the new recording last. A running recording in the way is
+  tag), all in one `Op::Batch` with the new recording last. A running recording in the way is
   `invalid_input`.
 - **Operations** (`ops.rs`): `Op::Create | Update { before, after } | Delete | Batch`; `inverse()` swaps them
   (a batch reversed). `apply` runs the op in one transaction through `db::recordings::put_on` (the row
-  exactly as given, timestamps and tags included) and `remove_on`, then refuses with `overlap` if any
+  exactly as given, timestamps and tag included) and `remove_on`, then refuses with `overlap` if any
   recording it wrote shares time with another; then nothing is written.
 - **Undo** (`undo.rs`): `UndoStack` keeps the last 100 changes of this run with their labels (`Record 45 min
   for Acme`, `Move recording`, `Resize recording`, `Edit recording`, `Delete recording`); a new change clears
@@ -293,8 +294,8 @@ recordings, day }` for every day the op touched, before and after (`Change.days`
   the stack stays as it was.
 
 The Day view gets the day's recordings too (`day::commands::load` reads them with the projects, clients and
-tags): `DayView.recordings` (`RecordingBlock`: clipped span, project, client, color and shade, note, tag
-names, `running`, `clippedStart`/`clippedEnd`), `ActivityBlock.covered` when at least half of a block lies
+tags): `DayView.recordings` (`RecordingBlock`: clipped span, project, client, color and shade, note, `tag`
+name, `running`, `clippedStart`/`clippedEnd`), `ActivityBlock.covered` when at least half of a block lies
 inside recordings, and `totals.recordedMs`.
 
 ## Week and month
@@ -323,8 +324,8 @@ back from This week is Last week), anything else `Custom`.
 - Rounding is per recording (`rounding_step`: nearest, half up, or up), at least one step for a recording
   longer than zero; totals sum the rounded rows, each recording once.
 - Groups: by project (`Client / Project`, ordered by client then project, client-less last, with color and
-  shade), by tag (by name, "No tag" last; a recording with several tags counts in each, which sets
-  `tagOverlap`; a tag filter limits the groups to the chosen tags), by day (`Mon 2026-10-20`), week
+  shade), by tag (by name, "Untagged" last; each recording counts once, so the groups add up to the
+  total), by day (`Mon 2026-10-20`), week
   (`Week 43 · 20 – 26 Oct 2026`) or month (`October 2026`). A group lists its distinct notes in the order
   they first occur, each with its days, and its rows by start.
 - `reports/text.rs` renders the text the screen copies and the CLI prints (format in [ux.md](ux.md#reports)).
@@ -363,7 +364,7 @@ suggestions (`day::commands::view_of`).
 fill `DayView.suggestions`, and accepting one is an ordinary undoable create.
 
 - `store.rs`: `rules` and `rule_conditions` (migration `0005_rules.sql`), in position order. `validated`
-  checks the name, note, project (existing, not archived), tags and conditions (at least one; a value
+  checks the name, note, project (existing, not archived), tag (`tagId`, one or `null`) and conditions (at least one; a value
   unless the op is `is`). `active` is what the Day view uses: enabled rules whose project isn't archived.
 - `matching.rs`: `compile` turns enabled rules into `Compiled` matchers once per view; `matches` holds when
   every condition does (case-insensitive; `contains`, `is`, `begins_with`, or `pattern`: a glob with `*` and
@@ -376,8 +377,8 @@ fill `DayView.suggestions`, and accepting one is an ordinary undoable create.
   belongs to its rule first; a run's bridged gaps only take time no rule matched (earlier rules first), so
   suggestions never overlap. Recorded time is cut away; pieces under `MIN_SUGGESTION_MS` (5 min) are
   dropped. Ids are `<rule id>:<start>:<end>`, so a suggestion keeps its id across reloads; `accept` and
-  `accept_rule` (`rules/mod.rs`) rebuild the day's suggestions and find it again. Tags deleted since the
-  rule was saved are left out.
+  `accept_rule` (`rules/mod.rs`) rebuild the day's suggestions and find it again. A tag deleted since the
+  rule was saved is left out.
 - `preview` builds the views of the last days (`day::commands::view_of`, without suggestions) and lists the
   blocks the input's conditions match on their own, most recent first (`PREVIEW_HITS`, 200), with the time
   of every hit and the number of days with one.
@@ -432,10 +433,10 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `activity delete DAY` / `activity delete FROM TO` | `activityDelete { from, to }`: `DAY` (`YYYY-MM-DD`, `today`, `yesterday`) is its local bounds; `FROM`/`TO` as `instant` | `deleted 412 activity spans and 3 away spans` and `undo within 30 s: timetracker activity undo` |
 | `activity undo` | `activityDeleteUndo` | `restored 412 activity spans and 3 away spans`; nothing to undo exits 1 with `Nothing to undo` |
 | `report [today\|yesterday\|week\|last-week\|month\|last-month\|DAY\|FROM TO] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30] [--up]` | `report { request: ReportRequest }` (`cli/report.rs` parses the range and flags); the app resolves names (`reports::cli`: an id, an exact name ignoring case, or a unique start; several matches list them) and runs the report | the report text; `--json`: the `ReportResult` plus `text` |
-| `start PROJECT [--note N] [--tag T]…` | `timerStart { request: TimerStartRequest }`; the app resolves the project and tags like `record` | `started Acme at 09:15`; `--json`: the `Recording` plus `projectName` |
+| `start PROJECT [--note N] [--tag T]` | `timerStart { request: TimerStartRequest }`; the app resolves the project and tag like `record` | `started Acme at 09:15`; `--json`: the `Recording` plus `projectName` |
 | `stop` | `timerStop` | `stopped 09:15–10:40 (1:25)` or `no timer running` (exit 0) |
 | `mcp` | none: serves MCP on stdin/stdout (`CliOutcome::Mcp`) | only JSON-RPC on stdout |
-| `record --project P --from ISO --to ISO [--note N] [--tag T]… [--replace]` | `record { request: RecordRequest }` (`overlap: replace` with `--replace`, else `cancel`); the app resolves the project (`projects::resolve`) and tags by name (`tags::resolve_names`, unknown → `not_found`) | `recorded 09:00–10:30 (1:30) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: the `Recording` plus `projectName` |
+| `record --project P --from ISO --to ISO [--note N] [--tag T] [--replace]` | `record { request: RecordRequest }` (`overlap: replace` with `--replace`, else `cancel`; one `--tag`, a second is a parse error); the app resolves the project (`projects::resolve`) and the tag by name (`tags::resolve_name`, unknown → `not_found`) | `recorded 09:00–10:30 (1:30) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: the `Recording` plus `projectName` |
 
 `parse(args, now, tz, stdin) -> Result<CliOutcome, CliError>` is pure: `CliOutcome` is `Run { hidden,
 log_level }`, `Exit { message }` (help, version), `Mcp` or `Remote { message, json, starts_app }`. The CLI checks
@@ -522,7 +523,9 @@ Every message is logged by type (`IpcMessage::kind`, never the contents).
 | `eval { js }` | runs in the window | `null` |
 | `devSeed { years, yes }` | `dev::seed`: refused unless `yes` when activity before today exists, then `test_support::seed::seed_years` (seed 42) and `data_changed` for activity, recordings, projects and tags | `SeedStats` |
 
-Messages that start the app are pushed to `LaunchQueue` in `setup` instead: `show` becomes
+`AppState::open` queues `LaunchEvent::Notice` (`LaunchQueue::notice`) when opening the data dropped tags
+(migration 0006, [data.md](data.md#migrations)). Messages that start the app are pushed to `LaunchQueue` in
+`setup` instead: `show` becomes
 `LaunchEvent::ShowDay { day }`, so the page navigates once it has loaded.
 
 ### Requests the page answers
@@ -570,8 +573,8 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
 
 | Tool | Args | Returns |
 |---|---|---|
-| `report` | `range` (`today` default, `yesterday`, `week`, `last-week`, `month`, `last-month`, a day) or `from`/`to`; `group_by` (`project` default, `tag`, `day`, `week`, `month`); `client`, `project`, `tag`; `format` (`text` default, `json`) | `reports::text`, or `{ from, to, group_by, rounding, total_min, total_rounded_min, tag_overlap, groups: [{ label, minutes, rounded_min, notes }] }`; rounding from `settings.reports.rounding` |
-| `recordings` | `from`, `to` (days, inclusive), `project`, `tag`, `limit` (default 500, at most 5000) | `[{ id, day, start_iso, end_iso, duration_min, project, client?, note, tags }]` by start, one row per recording and day, archived projects included |
+| `report` | `range` (`today` default, `yesterday`, `week`, `last-week`, `month`, `last-month`, a day) or `from`/`to`; `group_by` (`project` default, `tag`, `day`, `week`, `month`); `client`, `project`, `tag`; `format` (`text` default, `json`) | `reports::text`, or `{ from, to, group_by, rounding, total_min, total_rounded_min, groups: [{ label, minutes, rounded_min, notes }] }`; rounding from `settings.reports.rounding` |
+| `recordings` | `from`, `to` (days, inclusive), `project`, `tag`, `limit` (default 500, at most 5000) | `[{ id, day, start_iso, end_iso, duration_min, project, client?, note, tag }]` (`tag`: the name or `null`) by start, one row per recording and day, archived projects included |
 | `projects` | – | `[{ id, name, color, client?, archived }]` |
 | `tags` | – | `[{ id, name }]` |
 | `day_summary` | `day` | `{ day, recorded_min, tracked_min, away_min, by_project, by_tag }`; totals from `day::commands::view_of`, the groups `[{ name, minutes, notes }]` from `reports::run` for that day |
@@ -623,10 +626,10 @@ A timer is a recording without an end, so the overlap rule, undo and reports nee
   least a minute long. Both go through `apply`'s overlap check and onto the undo stack; undoing a stop makes
   the timer run again.
 - `timers/mod.rs`: `status(db, now) -> TimerStatus { running: Option<RunningTimer { recording, projectName,
-  color, shade, elapsedMs }> }`, `recent(db, 8) -> RecentTimer[]` (distinct project, note and tags of finished
+  color, shade, elapsedMs }> }`, `recent(db, 8) -> RecentTimer[]` (distinct project, note and tag of finished
   recordings, newest first, archived projects left out), `publish(app)` (the `timer_status` event and the tray),
   `start_ticking(app)` (publishes at startup and every minute while a timer runs).
-- `timers/commands.rs`: `timer_start(projectId, note, tagIds)`, `timer_stop` (`null` without a timer),
+- `timers/commands.rs`: `timer_start(projectId, note, tagId)`, `timer_stop` (`null` without a timer),
   `timer_status`, `timers_recent`, `timer_picker_open`, `timer_picker_close`; `start_by_name` serves the CLI.
 - `timers/picker.rs`: the `timer` window (`src/windows/timer/index.html`, 380×320, no decorations, transparent,
   always on top, hidden on blur), under the tray icon or centered; capability `capabilities/timer.json`.

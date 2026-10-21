@@ -89,7 +89,7 @@ describe("AwayPrompt", () => {
     it("answers with the last used project, the suggested times and the trimmed note on Enter", async () => {
       await renderPrompt();
       await userEvent.type(field("Note"), "  lunch {Enter}");
-      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", start: at("12:05"), end: at("12:45"), note: "lunch", tagIds: [] });
+      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", start: at("12:05"), end: at("12:45"), note: "lunch", tagId: null });
     });
 
     it("answers with the edited times and the chosen tag when Record is clicked", async () => {
@@ -98,9 +98,9 @@ describe("AwayPrompt", () => {
       await userEvent.type(field("From"), "12:10");
       await userEvent.clear(field("To"));
       await userEvent.type(field("To"), "12:40");
-      await userEvent.type(screen.getByRole("combobox", { name: "Tags" }), "res{Enter}");
+      await userEvent.type(screen.getByRole("combobox", { name: "Tag" }), "res{Enter}");
       await userEvent.click(recordButton());
-      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", start: at("12:10"), end: at("12:40"), note: "", tagIds: ["tag-research"] });
+      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", start: at("12:10"), end: at("12:40"), note: "", tagId: "tag-research" });
     });
 
     it("takes an end before the start as the next day", async () => {

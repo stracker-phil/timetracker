@@ -183,8 +183,7 @@ pub struct RecordingBlock {
     pub color: String,
     pub shade: u8,
     pub note: String,
-    /// Tag names, by name.
-    pub tags: Vec<String>,
+    pub tag: Option<String>,
     /// The timer, still recording.
     pub running: bool,
     /// The recording starts on an earlier day or ends on a later one.
@@ -330,12 +329,6 @@ pub fn recording_blocks(
         .filter_map(|r| {
             let (start, end) = clip(r.start, r.end, bounds, now)?;
             let project = names.projects.get(&r.project_id);
-            let mut tags: Vec<String> = r
-                .tag_ids
-                .iter()
-                .filter_map(|id| names.tags.get(id).cloned())
-                .collect();
-            tags.sort_by_key(|t| t.to_lowercase());
             Some(RecordingBlock {
                 id: r.id.clone(),
                 start,
@@ -346,7 +339,7 @@ pub fn recording_blocks(
                 color: project.map_or_else(|| "graphite".into(), |p| p.color.clone()),
                 shade: project.map_or(4, |p| p.shade),
                 note: r.note.clone(),
-                tags,
+                tag: r.tag_id.as_ref().and_then(|id| names.tags.get(id).cloned()),
                 running: r.end.is_none(),
                 clipped_start: r.start < bounds.0,
                 clipped_end: r.end.unwrap_or(now) > bounds.1,
@@ -1171,11 +1164,11 @@ mod tests {
     }
 
     #[test]
-    fn a_recording_block_carries_the_project_and_the_sorted_tag_names() {
+    fn a_recording_block_carries_the_project_and_the_tag_name() {
         let mut input = input_with_recordings(vec![
             Recording {
                 note: "fix login".into(),
-                tag_ids: vec!["t-zeta".into(), "t-alpha".into(), "t-gone".into()],
+                tag_id: Some("t-alpha".into()),
                 ..recording("late", mins(120), Some(mins(150)))
             },
             recording("early", mins(60), Some(mins(90))),
@@ -1189,7 +1182,6 @@ mod tests {
                 ..project_ref("Portal")
             },
         );
-        input.names.tags.insert("t-zeta".into(), "zeta".into());
         input.names.tags.insert("t-alpha".into(), "Alpha".into());
 
         let view = view(&input, &settings());
@@ -1207,7 +1199,7 @@ mod tests {
                     color: "teal".into(),
                     shade: 7,
                     note: String::new(),
-                    tags: vec![],
+                    tag: None,
                     running: false,
                     clipped_start: false,
                     clipped_end: false,
@@ -1222,13 +1214,25 @@ mod tests {
                     color: "teal".into(),
                     shade: 7,
                     note: "fix login".into(),
-                    tags: vec!["Alpha".into(), "zeta".into()],
+                    tag: Some("Alpha".into()),
                     running: false,
                     clipped_start: false,
                     clipped_end: false,
                 },
             ]
         );
+    }
+
+    #[test]
+    fn a_recording_block_has_no_tag_when_its_tag_is_gone() {
+        let input = input_with_recordings(vec![Recording {
+            tag_id: Some("t-gone".into()),
+            ..recording("r1", mins(60), Some(mins(90)))
+        }]);
+
+        let view = view(&input, &settings());
+
+        assert_eq!(view.recordings[0].tag, None);
     }
 
     #[test]
@@ -1334,7 +1338,7 @@ mod tests {
     fn a_recording_block_serializes_with_camel_case_keys() {
         let mut input = input_with_recordings(vec![Recording {
             note: "n".into(),
-            tag_ids: vec!["t1".into()],
+            tag_id: Some("t1".into()),
             ..recording("r1", HOUR, Some(2 * HOUR))
         }]);
         input
@@ -1357,7 +1361,7 @@ mod tests {
                 "color": "blue",
                 "shade": 4,
                 "note": "n",
-                "tags": ["admin"],
+                "tag": "admin",
                 "running": false,
                 "clippedStart": false,
                 "clippedEnd": false

@@ -1,16 +1,15 @@
-//! Recordings and their tags. Every write is one transaction. The rule that recordings never overlap
-//! lives in the recordings feature; `overlapping` is only the query.
+//! Recordings, each with at most one tag (ADR 0019). Every write is one transaction. The rule that
+//! recordings never overlap lives in the recordings feature; `overlapping` is only the query.
 
 use serde::{Deserialize, Deserializer, Serialize};
-use sqlx::sqlite::SqliteRow;
-use sqlx::{FromRow, Row, SqliteConnection};
+use sqlx::SqliteConnection;
 use ts_rs::TS;
 
 use super::Db;
 use super::time::{Ms, now_ms};
 use crate::error::{AppError, AppResult};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct Recording {
@@ -21,8 +20,7 @@ pub struct Recording {
     pub end: Option<Ms>,
     /// One line (ADR 0018).
     pub note: String,
-    /// Ordered by tag name.
-    pub tag_ids: Vec<String>,
+    pub tag_id: Option<String>,
     pub created_at: Ms,
     pub updated_at: Ms,
 }
@@ -35,10 +33,10 @@ pub struct NewRecording {
     pub start: Ms,
     pub end: Option<Ms>,
     pub note: String,
-    pub tag_ids: Vec<String>,
+    pub tag_id: Option<String>,
 }
 
-/// Absent fields stay as they are; `end: null` makes the recording running.
+/// Absent fields stay as they are; `end: null` makes the recording running, `tagId: null` removes the tag.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -52,8 +50,9 @@ pub struct RecordingPatch {
     pub end: Option<Option<Ms>>,
     #[ts(optional)]
     pub note: Option<String>,
+    #[serde(default, deserialize_with = "present")]
     #[ts(optional)]
-    pub tag_ids: Option<Vec<String>>,
+    pub tag_id: Option<Option<String>>,
 }
 
 /// A field that is present, even as `null`, is `Some`.
@@ -61,57 +60,26 @@ fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Optio
     T::deserialize(d).map(Some)
 }
 
-/// Selects every recording column plus `tag_ids`, a JSON array ordered by tag name.
-macro_rules! select {
-    ($tail:literal) => {
-        concat!(
-            r#"SELECT r.*, (SELECT json_group_array(tag_id) FROM (
-                 SELECT rt.tag_id FROM recording_tags rt JOIN tags t ON t.id = rt.tag_id
-                 WHERE rt.recording_id = r.id ORDER BY t.name COLLATE NOCASE)) AS tag_ids
-               FROM recordings r "#,
-            $tail
-        )
-    };
-}
-
-impl FromRow<'_, SqliteRow> for Recording {
-    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
-        let tag_ids: String = row.try_get("tag_ids")?;
-        Ok(Recording {
-            id: row.try_get("id")?,
-            project_id: row.try_get("project_id")?,
-            start: row.try_get("start")?,
-            end: row.try_get("end")?,
-            note: row.try_get("note")?,
-            tag_ids: serde_json::from_str(&tag_ids).map_err(|e| sqlx::Error::ColumnDecode {
-                index: "tag_ids".into(),
-                source: Box::new(e),
-            })?,
-            created_at: row.try_get("created_at")?,
-            updated_at: row.try_get("updated_at")?,
-        })
-    }
-}
-
 pub async fn insert(db: &Db, new: NewRecording) -> AppResult<Recording> {
     let note = checked_note(&new.note)?;
     check_span(new.start, new.end)?;
     let mut tx = db.pool().begin().await?;
     check_project(&mut tx, &new.project_id).await?;
+    ensure_tag(&mut tx, new.tag_id.as_deref()).await?;
     let now = now_ms();
     sqlx::query(
-        r#"INSERT INTO recordings (id, project_id, start, "end", note, created_at, updated_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)"#,
+        r#"INSERT INTO recordings (id, project_id, start, "end", note, tag_id, created_at, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)"#,
     )
     .bind(&new.id)
     .bind(&new.project_id)
     .bind(new.start)
     .bind(new.end)
     .bind(note)
+    .bind(&new.tag_id)
     .bind(now)
     .execute(&mut *tx)
     .await?;
-    write_tags(&mut tx, &new.id, &new.tag_ids).await?;
     let recording = fetch(&mut tx, &new.id).await?;
     tx.commit().await?;
     Ok(recording)
@@ -128,10 +96,13 @@ pub async fn update(db: &Db, id: &str, patch: RecordingPatch) -> AppResult<Recor
     let start = patch.start.unwrap_or(current.start);
     let end = patch.end.unwrap_or(current.end);
     let note = checked_note(patch.note.as_deref().unwrap_or(&current.note))?;
+    let tag_id = patch.tag_id.unwrap_or(current.tag_id);
     check_span(start, end)?;
     check_project(&mut tx, &project_id).await?;
+    ensure_tag(&mut tx, tag_id.as_deref()).await?;
     sqlx::query(
-        r#"UPDATE recordings SET project_id = ?2, start = ?3, "end" = ?4, note = ?5, updated_at = ?6
+        r#"UPDATE recordings SET project_id = ?2, start = ?3, "end" = ?4, note = ?5, tag_id = ?6,
+             updated_at = ?7
            WHERE id = ?1"#,
     )
     .bind(id)
@@ -139,12 +110,10 @@ pub async fn update(db: &Db, id: &str, patch: RecordingPatch) -> AppResult<Recor
     .bind(start)
     .bind(end)
     .bind(note)
+    .bind(&tag_id)
     .bind(now_ms())
     .execute(&mut *tx)
     .await?;
-    if let Some(tag_ids) = &patch.tag_ids {
-        write_tags(&mut tx, id, tag_ids).await?;
-    }
     let recording = fetch(&mut tx, id).await?;
     tx.commit().await?;
     Ok(recording)
@@ -169,18 +138,18 @@ pub async fn list_for_range(db: &Db, from: Ms, to: Ms) -> AppResult<Vec<Recordin
 
 /// The running timer: the recording without an end.
 pub async fn running(db: &Db) -> AppResult<Option<Recording>> {
-    Ok(sqlx::query_as(select!(
-        r#"WHERE r."end" IS NULL ORDER BY r.start DESC LIMIT 1"#
-    ))
+    Ok(sqlx::query_as(
+        r#"SELECT r.* FROM recordings r WHERE r."end" IS NULL ORDER BY r.start DESC LIMIT 1"#,
+    )
     .fetch_optional(db.pool())
     .await?)
 }
 
 /// Finished recordings, the latest first.
 pub async fn latest(db: &Db, limit: u32) -> AppResult<Vec<Recording>> {
-    Ok(sqlx::query_as(select!(
-        r#"WHERE r."end" IS NOT NULL ORDER BY r.start DESC LIMIT ?1"#
-    ))
+    Ok(sqlx::query_as(
+        r#"SELECT r.* FROM recordings r WHERE r."end" IS NOT NULL ORDER BY r.start DESC LIMIT ?1"#,
+    )
     .bind(limit)
     .fetch_all(db.pool())
     .await?)
@@ -203,10 +172,11 @@ pub async fn overlapping_on(
     end: Ms,
     except: Option<&str>,
 ) -> AppResult<Vec<Recording>> {
-    Ok(sqlx::query_as(select!(
-        r#"WHERE r.start < ?2 AND (r."end" IS NULL OR r."end" > ?1) AND (?3 IS NULL OR r.id != ?3)
-           ORDER BY r.start, r.id"#
-    ))
+    Ok(sqlx::query_as(
+        r#"SELECT r.* FROM recordings r
+           WHERE r.start < ?2 AND (r."end" IS NULL OR r."end" > ?1) AND (?3 IS NULL OR r.id != ?3)
+           ORDER BY r.start, r.id"#,
+    )
     .bind(start)
     .bind(end)
     .bind(except)
@@ -214,25 +184,27 @@ pub async fn overlapping_on(
     .await?)
 }
 
-/// Writes `recording` exactly as given (timestamps and tags included), creating or replacing the row,
+/// Writes `recording` exactly as given (timestamps and tag included), creating or replacing the row,
 /// so an undo restores what was there. The caller validates.
 pub async fn put_on(conn: &mut SqliteConnection, recording: &Recording) -> AppResult<()> {
+    ensure_tag(conn, recording.tag_id.as_deref()).await?;
     sqlx::query(
-        r#"INSERT INTO recordings (id, project_id, start, "end", note, created_at, updated_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        r#"INSERT INTO recordings (id, project_id, start, "end", note, tag_id, created_at, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
            ON CONFLICT(id) DO UPDATE SET project_id = ?2, start = ?3, "end" = ?4, note = ?5,
-             created_at = ?6, updated_at = ?7"#,
+             tag_id = ?6, created_at = ?7, updated_at = ?8"#,
     )
     .bind(&recording.id)
     .bind(&recording.project_id)
     .bind(recording.start)
     .bind(recording.end)
     .bind(&recording.note)
+    .bind(&recording.tag_id)
     .bind(recording.created_at)
     .bind(recording.updated_at)
     .execute(&mut *conn)
     .await?;
-    write_tags(conn, &recording.id, &recording.tag_ids).await
+    Ok(())
 }
 
 /// Deletes the row; `not_found` when there is none.
@@ -258,34 +230,26 @@ pub async fn count(db: &Db) -> AppResult<i64> {
 }
 
 pub(super) async fn all(conn: &mut SqliteConnection) -> AppResult<Vec<Recording>> {
-    Ok(sqlx::query_as(select!("ORDER BY r.start, r.id"))
-        .fetch_all(conn)
-        .await?)
+    Ok(
+        sqlx::query_as("SELECT r.* FROM recordings r ORDER BY r.start, r.id")
+            .fetch_all(conn)
+            .await?,
+    )
 }
 
 async fn fetch(conn: &mut SqliteConnection, id: &str) -> AppResult<Recording> {
-    sqlx::query_as(select!("WHERE r.id = ?1"))
+    sqlx::query_as("SELECT r.* FROM recordings r WHERE r.id = ?1")
         .bind(id)
         .fetch_optional(conn)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("No recording {id}")))
 }
 
-/// Replaces the recording's tags; every id must name a tag.
-async fn write_tags(conn: &mut SqliteConnection, id: &str, tag_ids: &[String]) -> AppResult<()> {
-    sqlx::query("DELETE FROM recording_tags WHERE recording_id = ?1")
-        .bind(id)
-        .execute(&mut *conn)
-        .await?;
-    for tag_id in tag_ids {
-        ensure_exists(conn, "SELECT 1 FROM tags WHERE id = ?1", "tag", tag_id).await?;
-        sqlx::query("INSERT OR IGNORE INTO recording_tags (recording_id, tag_id) VALUES (?1, ?2)")
-            .bind(id)
-            .bind(tag_id)
-            .execute(&mut *conn)
-            .await?;
+async fn ensure_tag(conn: &mut SqliteConnection, tag_id: Option<&str>) -> AppResult<()> {
+    match tag_id {
+        Some(id) => ensure_exists(conn, "SELECT 1 FROM tags WHERE id = ?1", "tag", id).await,
+        None => Ok(()),
     }
-    Ok(())
 }
 
 async fn check_project(conn: &mut SqliteConnection, project_id: &str) -> AppResult<()> {
@@ -344,7 +308,7 @@ mod tests {
             start,
             end,
             note: String::new(),
-            tag_ids: Vec::new(),
+            tag_id: None,
         }
     }
 
@@ -353,24 +317,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn insert_returns_tags_ordered_by_tag_name() {
+    async fn insert_stores_the_tag_and_trims_the_note() {
         let db = Db::open_memory().await.unwrap();
         let p = project(&db, "P").await;
         let zeta = tags::insert(&db, "zeta").await.unwrap();
-        let alpha = tags::insert(&db, "Alpha").await.unwrap();
 
         let rec = insert(
             &db,
             NewRecording {
                 note: "  wrote docs ".into(),
-                tag_ids: vec![zeta.id.clone(), alpha.id.clone()],
+                tag_id: Some(zeta.id.clone()),
                 ..new(&p.id, 100, Some(200))
             },
         )
         .await
         .unwrap();
 
-        assert_eq!(rec.tag_ids, [alpha.id, zeta.id]);
+        assert_eq!(rec.tag_id, Some(zeta.id));
         assert_eq!(rec.note, "wrote docs");
         assert_eq!((rec.start, rec.end), (100, Some(200)));
         assert_eq!(rec.created_at, rec.updated_at);
@@ -385,7 +348,7 @@ mod tests {
         let err = insert(
             &db,
             NewRecording {
-                tag_ids: vec!["nope".into()],
+                tag_id: Some("nope".into()),
                 ..new(&p.id, 100, Some(200))
             },
         )
@@ -487,7 +450,7 @@ mod tests {
             &db,
             NewRecording {
                 note: "keep".into(),
-                tag_ids: vec![tag.id.clone()],
+                tag_id: Some(tag.id.clone()),
                 ..new(&p.id, 100, Some(200))
             },
         )
@@ -516,14 +479,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_can_clear_tags_and_make_the_recording_running() {
+    async fn update_can_clear_the_tag_and_make_the_recording_running() {
         let db = Db::open_memory().await.unwrap();
         let p = project(&db, "P").await;
         let tag = tags::insert(&db, "focus").await.unwrap();
         let rec = insert(
             &db,
             NewRecording {
-                tag_ids: vec![tag.id],
+                tag_id: Some(tag.id),
                 ..new(&p.id, 100, Some(200))
             },
         )
@@ -531,17 +494,61 @@ mod tests {
         .unwrap();
 
         let patch = RecordingPatch {
-            tag_ids: Some(vec![]),
+            tag_id: Some(None),
             end: Some(None),
             note: Some(" new ".into()),
             ..Default::default()
         };
         let updated = update(&db, &rec.id, patch).await.unwrap();
 
-        assert!(updated.tag_ids.is_empty());
+        assert_eq!(updated.tag_id, None);
         assert_eq!(updated.end, None);
         assert_eq!(updated.note, "new");
         assert_eq!(running(&db).await.unwrap().unwrap().id, rec.id);
+    }
+
+    #[tokio::test]
+    async fn update_sets_and_replaces_the_tag() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+        let first = tags::insert(&db, "first").await.unwrap();
+        let second = tags::insert(&db, "second").await.unwrap();
+        let rec = recording(&db, &p.id, 100, Some(200)).await;
+        assert_eq!(rec.tag_id, None);
+
+        for tag in [&first, &second] {
+            let patch = RecordingPatch {
+                tag_id: Some(Some(tag.id.clone())),
+                ..Default::default()
+            };
+            let updated = update(&db, &rec.id, patch).await.unwrap();
+            assert_eq!(updated.tag_id, Some(tag.id.clone()), "{}", tag.name);
+            assert_eq!(get(&db, &rec.id).await.unwrap(), updated);
+        }
+    }
+
+    #[tokio::test]
+    async fn an_absent_tag_id_keeps_the_tag_and_a_null_one_clears_it() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+        let tag = tags::insert(&db, "focus").await.unwrap();
+        let rec = insert(
+            &db,
+            NewRecording {
+                tag_id: Some(tag.id.clone()),
+                ..new(&p.id, 100, Some(200))
+            },
+        )
+        .await
+        .unwrap();
+
+        let absent: RecordingPatch = serde_json::from_str(r#"{"note": "x"}"#).unwrap();
+        let kept = update(&db, &rec.id, absent).await.unwrap();
+        assert_eq!(kept.tag_id, Some(tag.id));
+
+        let null: RecordingPatch = serde_json::from_str(r#"{"tagId": null}"#).unwrap();
+        let cleared = update(&db, &rec.id, null).await.unwrap();
+        assert_eq!(cleared.tag_id, None);
     }
 
     #[tokio::test]
@@ -552,7 +559,7 @@ mod tests {
 
         let bad_tag = RecordingPatch {
             start: Some(10),
-            tag_ids: Some(vec!["nope".into()]),
+            tag_id: Some(Some("nope".into())),
             ..Default::default()
         };
         assert_eq!(
@@ -582,15 +589,25 @@ mod tests {
         assert_eq!(absent.end, None);
     }
 
+    #[test]
+    fn patch_distinguishes_a_null_tag_from_an_absent_one() {
+        let null: RecordingPatch = serde_json::from_str(r#"{"tagId": null}"#).unwrap();
+        assert_eq!(null.tag_id, Some(None));
+        let set: RecordingPatch = serde_json::from_str(r#"{"tagId": "t"}"#).unwrap();
+        assert_eq!(set.tag_id, Some(Some("t".to_string())));
+        let absent: RecordingPatch = serde_json::from_str("{}").unwrap();
+        assert_eq!(absent.tag_id, None);
+    }
+
     #[tokio::test]
-    async fn delete_returns_the_recording_with_its_tags_and_removes_it() {
+    async fn delete_returns_the_recording_with_its_tag_and_removes_it() {
         let db = Db::open_memory().await.unwrap();
         let p = project(&db, "P").await;
         let tag = tags::insert(&db, "focus").await.unwrap();
         let rec = insert(
             &db,
             NewRecording {
-                tag_ids: vec![tag.id],
+                tag_id: Some(tag.id),
                 ..new(&p.id, 100, Some(200))
             },
         )

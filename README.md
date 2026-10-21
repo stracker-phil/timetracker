@@ -45,7 +45,7 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 - Time runs top to bottom: the recordings column on the left, activity lanes on the right (one for the
   tracker, one per external source), away time shaded.
 - Select activity (drag, click a block, ⇧-click to extend; or J/K and V) and drop it on the recordings column:
-  the editor asks for a project, a one-line note and tags.
+  the editor asks for a project, a one-line note and a tag.
 - Recordings never overlap. Drag to move or resize, ⌘Z undoes; rules (⌥-drag a block onto a project) suggest
   recordings you accept with a click.
 - The sidebar shows the day (or week, month, report period) with ‹ › and Today; P, N and O do the same, and a
@@ -67,9 +67,9 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 | `timetracker activity add\|start\|stop …` | writes another app's activity, see [Scripting](#scripting) |
 | `timetracker activity delete <DAY>` / `activity delete <FROM> <TO>` | deletes the activity and away spans of a day or range (whole when they cross it; recordings stay) |
 | `timetracker activity undo` | restores the last delete, within 30 s of it |
-| `timetracker record --project P --from T --to T [--note N] [--tag T]… [--replace]` | records time for a project (by id, name or a unique start of its name; tags by name); refuses to overlap another recording unless `--replace` |
+| `timetracker record --project P --from T --to T [--note N] [--tag T] [--replace]` | records time for a project (by id, name or a unique start of its name; one tag by name); refuses to overlap another recording unless `--replace` |
 | `timetracker report [RANGE] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30 [--up]]` | prints the hours and notes of today (or `yesterday`, `week`, `last-week`, `month`, `last-month`, a day, or two days `FROM TO`), ready to paste into a timesheet |
-| `timetracker start PROJECT [--note N] [--tag T]…` / `timetracker stop` | starts a timer now (a running one stops) / stops it |
+| `timetracker start PROJECT [--note N] [--tag T]` / `timetracker stop` | starts a timer now (a running one stops) / stops it |
 | `timetracker mcp` | serves the read-only MCP server on stdin/stdout, see [MCP](#mcp) |
 | `timetracker dev seed [--years N] [--yes]` | debug builds only: writes N years (default 2) of generated workdays into the running app's database ([docs/testing.md](docs/testing.md#sample-data)) |
 
@@ -135,7 +135,9 @@ browser windows are recorded as "Private", without title or address.
 Settings → Data shows the folder, its size and counts, with Reveal in Finder.
 
 - **Backup:** Settings → Data → Export backup… writes every client, project, tag, activity span, recording, rule
-  and saved report to one JSON file. Copying the data folder while TimeTracker is quit works too.
+  and saved report to one JSON file. Copying the data folder while TimeTracker is quit works too. When an
+  update merges several tags of a recording into one, the data before it is saved as `pre-0006-<date>.json`
+  in the data folder.
 - **Delete activity:** the Day header's ⋯ menu deletes a day's or a range's activity (or
   `timetracker activity delete`). Spans that cross the range go entirely; recordings stay. Undo within 30 s.
 - **Move the data folder:** Settings → Data → Move… copies the database to the chosen folder, checks the copy

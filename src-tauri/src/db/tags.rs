@@ -86,19 +86,22 @@ pub async fn rename(db: &Db, id: &str, name: &str) -> AppResult<Tag> {
         .ok_or_else(|| not_found(id))
 }
 
-/// The tags with these names, ignoring case, in the order given; a missing one is `not_found` naming it.
-pub async fn resolve_names(db: &Db, names: &[String]) -> AppResult<Vec<Tag>> {
-    let tags = list(db).await?;
-    names
-        .iter()
-        .map(|name| {
-            let wanted = name.trim();
-            tags.iter()
-                .find(|t| same_name(&t.name, wanted))
-                .cloned()
-                .ok_or_else(|| AppError::NotFound(format!("No tag named {wanted}")))
-        })
-        .collect()
+/// The id of the tag named `name`, when one is given; as `resolve_name` otherwise.
+pub async fn resolve_optional_name(db: &Db, name: Option<&str>) -> AppResult<Option<String>> {
+    match name {
+        Some(name) => Ok(Some(resolve_name(db, name).await?.id)),
+        None => Ok(None),
+    }
+}
+
+/// The tag with this name, ignoring case; `not_found` naming it when there is none.
+pub async fn resolve_name(db: &Db, name: &str) -> AppResult<Tag> {
+    let wanted = name.trim();
+    list(db)
+        .await?
+        .into_iter()
+        .find(|t| same_name(&t.name, wanted))
+        .ok_or_else(|| AppError::NotFound(format!("No tag named {wanted}")))
 }
 
 /// A tag with the number of recordings that carry it.
@@ -116,15 +119,15 @@ pub struct TagListItem {
 /// Every tag by name, with its use count.
 pub async fn list_with_usage(db: &Db) -> AppResult<Vec<TagListItem>> {
     Ok(sqlx::query_as(
-        "SELECT t.*, count(rt.recording_id) AS recordings FROM tags t
-         LEFT JOIN recording_tags rt ON rt.tag_id = t.id
+        "SELECT t.*, count(r.id) AS recordings FROM tags t
+         LEFT JOIN recordings r ON r.tag_id = t.id
          GROUP BY t.id ORDER BY t.name COLLATE NOCASE",
     )
     .fetch_all(db.pool())
     .await?)
 }
 
-/// Also removes the tag from every recording.
+/// Also removes the tag from every recording and rule.
 pub async fn delete(db: &Db, id: &str) -> AppResult<()> {
     let deleted = sqlx::query("DELETE FROM tags WHERE id = ?1")
         .bind(id)
@@ -171,6 +174,8 @@ mod tests {
     use super::*;
     use crate::db::recordings;
     use crate::error::ErrorKind;
+    use crate::rules;
+    use crate::rules::types::{ConditionInput, RuleField, RuleInput, RuleOp};
     use crate::test_support::{project, recording};
 
     fn names(tags: Vec<Tag>) -> Vec<String> {
@@ -279,61 +284,89 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn deleting_a_tag_removes_it_from_recordings() {
+    async fn deleting_a_tag_clears_it_from_recordings_and_rules() {
         let db = Db::open_memory().await.unwrap();
         let keep = insert(&db, "keep").await.unwrap();
         let drop = insert(&db, "drop").await.unwrap();
         let p = project(&db, "P").await;
-        let rec = recording(&db, &p.id, 1_000, Some(2_000)).await;
-        let patch = recordings::RecordingPatch {
-            tag_ids: Some(vec![keep.id.clone(), drop.id.clone()]),
+        let tagged = |tag: &Tag| recordings::RecordingPatch {
+            tag_id: Some(Some(tag.id.clone())),
             ..Default::default()
         };
-        recordings::update(&db, &rec.id, patch).await.unwrap();
+        let dropped = recording(&db, &p.id, 1_000, Some(2_000)).await;
+        recordings::update(&db, &dropped.id, tagged(&drop))
+            .await
+            .unwrap();
+        let kept = recording(&db, &p.id, 3_000, Some(4_000)).await;
+        recordings::update(&db, &kept.id, tagged(&keep))
+            .await
+            .unwrap();
+        let rule_input = |tag: &Tag| RuleInput {
+            name: "Rule".into(),
+            project_id: p.id.clone(),
+            enabled: true,
+            note: String::new(),
+            tag_id: Some(tag.id.clone()),
+            conditions: vec![ConditionInput {
+                field: RuleField::App,
+                op: RuleOp::Is,
+                value: "Code".into(),
+            }],
+        };
+        let dropped_rule = rules::store::save(&db, None, &rule_input(&drop))
+            .await
+            .unwrap();
+        let kept_rule = rules::store::save(&db, None, &rule_input(&keep))
+            .await
+            .unwrap();
 
         delete(&db, &drop.id).await.unwrap();
 
-        assert_eq!(
-            recordings::get(&db, &rec.id).await.unwrap().tag_ids,
-            [keep.id]
-        );
         assert!(!list(&db).await.unwrap().iter().any(|t| t.id == drop.id));
-        let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM recording_tags")
-            .fetch_one(db.pool())
-            .await
-            .unwrap();
-        assert_eq!(remaining, 1);
+        assert_eq!(
+            recordings::get(&db, &dropped.id).await.unwrap().tag_id,
+            None
+        );
+        assert_eq!(
+            recordings::get(&db, &kept.id).await.unwrap().tag_id,
+            Some(keep.id.clone())
+        );
+        assert_eq!(
+            rules::store::get(&db, &dropped_rule.id)
+                .await
+                .unwrap()
+                .tag_id,
+            None
+        );
+        assert_eq!(
+            rules::store::get(&db, &kept_rule.id).await.unwrap().tag_id,
+            Some(keep.id)
+        );
     }
 
     #[tokio::test]
-    async fn resolve_names_ignores_case_trims_and_keeps_the_given_order() {
+    async fn resolve_name_ignores_case_and_surrounding_whitespace() {
         let db = Db::open_memory().await.unwrap();
         let apple = insert(&db, "Äpfel").await.unwrap();
         let beta = insert(&db, "beta").await.unwrap();
 
-        let resolved = resolve_names(
-            &db,
-            &[
-                " BETA ".to_string(),
-                "äpfel".to_string(),
-                "beta".to_string(),
-            ],
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(resolved, [beta.clone(), apple, beta]);
-        assert!(resolve_names(&db, &[]).await.unwrap().is_empty());
+        for (input, expected) in [
+            ("beta", &beta),
+            (" BETA ", &beta),
+            ("äpfel", &apple),
+            ("ÄPFEL", &apple),
+        ] {
+            let resolved = resolve_name(&db, input).await.unwrap();
+            assert_eq!(&resolved, expected, "{input:?}");
+        }
     }
 
     #[tokio::test]
-    async fn resolve_names_with_a_missing_name_is_not_found_naming_it() {
+    async fn resolve_name_with_a_missing_name_is_not_found_naming_it() {
         let db = Db::open_memory().await.unwrap();
         insert(&db, "beta").await.unwrap();
 
-        let err = resolve_names(&db, &["beta".to_string(), " ghost ".to_string()])
-            .await
-            .unwrap_err();
+        let err = resolve_name(&db, " ghost ").await.unwrap_err();
 
         assert_eq!(err.kind(), ErrorKind::NotFound);
         assert_eq!(err.to_string(), "No tag named ghost");
@@ -352,9 +385,11 @@ mod tests {
         let p = project(&db, "P").await;
         let first = recording(&db, &p.id, 1_000, Some(2_000)).await;
         let second = recording(&db, &p.id, 3_000, Some(4_000)).await;
-        for (recording, tags) in [(&first, vec![&alpha, &beta]), (&second, vec![&beta])] {
+        let third = recording(&db, &p.id, 5_000, Some(6_000)).await;
+        recording(&db, &p.id, 7_000, Some(8_000)).await;
+        for (recording, tag) in [(&first, &alpha), (&second, &beta), (&third, &beta)] {
             let patch = recordings::RecordingPatch {
-                tag_ids: Some(tags.iter().map(|t| t.id.clone()).collect()),
+                tag_id: Some(Some(tag.id.clone())),
                 ..Default::default()
             };
             recordings::update(&db, &recording.id, patch).await.unwrap();

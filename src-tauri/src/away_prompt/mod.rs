@@ -351,7 +351,7 @@ mod tests {
                 start,
                 end,
                 note: String::new(),
-                tag_ids: Vec::new(),
+                tag_id: None,
             }
         }
 

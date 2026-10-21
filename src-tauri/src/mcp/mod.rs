@@ -21,7 +21,7 @@ use data::{Core, RecordingsQuery, ReportQuery};
 
 const INSTRUCTIONS: &str = "Read-only access to TimeTracker, a local time tracker. Three layers: \
 activity (what windows were in front; private, available only when the user enabled it), recordings \
-(time the user assigned to a project, with a one-line note and tags; what reports show) and projects \
+(time the user assigned to a project, with a one-line note and at most one tag; what reports show) and projects \
 (optionally under a client). Days are local calendar days `YYYY-MM-DD` (or today, yesterday); times \
 are local ISO 8601 with offset, durations are minutes. Nothing here writes. `status` and `open_day` \
 need the app running.";
@@ -160,7 +160,7 @@ impl TimeTrackerServer {
     }
 
     #[tool(
-        description = "The recordings of a range of days by start: project, client, note, tags, local start and end, minutes; a recording across midnight is listed once per day"
+        description = "The recordings of a range of days by start: project, client, note, tag (or null), local start and end, minutes; a recording across midnight is listed once per day"
     )]
     async fn recordings(
         &self,
@@ -476,7 +476,6 @@ mod tests {
                 "rounding": "none",
                 "total_min": 60.0,
                 "total_rounded_min": 60.0,
-                "tag_overlap": false,
                 "groups": [{
                     "label": "Portal",
                     "minutes": 60.0,

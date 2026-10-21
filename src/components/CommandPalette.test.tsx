@@ -189,7 +189,7 @@ describe("CommandPalette", () => {
       await openPalette("p:promo");
       expect(screen.getByText(/⌘↵ start timer/)).toBeInTheDocument();
       await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
-      expect(mocked.timerStart).toHaveBeenCalledWith("p-promo", "", []);
+      expect(mocked.timerStart).toHaveBeenCalledWith("p-promo", "", null);
       expect(useStore.getState().paletteOpen).toBe(false);
     });
 

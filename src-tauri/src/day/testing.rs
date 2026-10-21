@@ -178,7 +178,7 @@ pub fn input_with_recordings(recordings: Vec<Recording>) -> DayInput {
     }
 }
 
-/// A recording of project `p1` without note or tags; `end: None` is the running timer.
+/// A recording of project `p1` without note or tag; `end: None` is the running timer.
 pub fn recording(id: &str, start: Ms, end: Option<Ms>) -> Recording {
     Recording {
         id: id.into(),
@@ -186,7 +186,7 @@ pub fn recording(id: &str, start: Ms, end: Option<Ms>) -> Recording {
         start,
         end,
         note: String::new(),
-        tag_ids: Vec::new(),
+        tag_id: None,
         created_at: 0,
         updated_at: 0,
     }

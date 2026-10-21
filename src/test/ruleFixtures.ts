@@ -6,7 +6,7 @@ import { at, block } from "./dayFixtures";
 export function rule(patch: Partial<Rule> = {}): Rule {
   const id = patch.id ?? "rule-1";
   const condition: Condition = { id: `${id}-c1`, field: "app", op: "is", value: "Slack" };
-  return { id, name: "Slack", projectId: "project-1", position: 0, enabled: true, note: "", tagIds: [], conditions: [condition], ...patch };
+  return { id, name: "Slack", projectId: "project-1", position: 0, enabled: true, note: "", tagId: null, conditions: [condition], ...patch };
 }
 
 /** A suggestion for the default project from 09:00 to 09:45 of `DAY`; `patch` overrides fields. */
@@ -25,7 +25,7 @@ export function suggestion(patch: Partial<Suggestion> = {}): Suggestion {
     start,
     end,
     note: "",
-    tagIds: [],
+    tagId: null,
     ...patch,
   };
 }

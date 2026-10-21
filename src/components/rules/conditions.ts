@@ -26,7 +26,7 @@ export function conditionSummary(conditions: (Condition | ConditionInput)[]): st
 
 export const emptyCondition = (): ConditionInput => ({ field: "app", op: "is", value: "" });
 
-export const emptyRule = (): RuleInput => ({ name: "", projectId: "", enabled: true, note: "", tagIds: [], conditions: [emptyCondition()] });
+export const emptyRule = (): RuleInput => ({ name: "", projectId: "", enabled: true, note: "", tagId: null, conditions: [emptyCondition()] });
 
 /** The host without `www.`, as rules match the domain. */
 function domainOf(url: string): string | null {

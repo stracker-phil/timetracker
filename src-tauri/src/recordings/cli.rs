@@ -12,14 +12,14 @@ use crate::db::{Db, projects, tags};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-/// `timetracker record`: the project by id, name or unique prefix, the tags by name.
+/// `timetracker record`: the project by id, name or unique prefix, the tag by name.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecordRequest {
     pub project: String,
     pub start: Ms,
     pub end: Ms,
     pub note: String,
-    pub tags: Vec<String>,
+    pub tag: Option<String>,
     pub overlap: Overlap,
 }
 
@@ -35,17 +35,13 @@ pub struct Recorded {
 pub async fn record(app: &AppHandle, request: RecordRequest) -> AppResult<Recorded> {
     let db = app.state::<AppState>().data.db()?;
     let project = projects::resolve(&db, &request.project).await?;
-    let tag_ids = tags::resolve_names(&db, &request.tags)
-        .await?
-        .into_iter()
-        .map(|t| t.id)
-        .collect();
+    let tag_id = tags::resolve_optional_name(&db, request.tag.as_deref()).await?;
     let input = RecordingInput {
         project_id: project.id,
         start: request.start,
         end: request.end,
         note: request.note,
-        tag_ids,
+        tag_id,
     };
     match changing(app, async |s| s.create(input, request.overlap).await).await {
         Ok(recording) => Ok(Recorded {

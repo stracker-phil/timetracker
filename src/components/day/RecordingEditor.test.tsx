@@ -21,7 +21,7 @@ const website = projectItem({ project: { id: "p-site", name: "Website", clientId
 const START = at("09:00");
 const END = at("10:30");
 const standupBlock = recordingBlock({ id: "r1", projectId: "p-site", note: "standup", start: at("11:00"), end: at("11:45") });
-const standupRow = recording({ id: "r1", projectId: "p-site", note: "standup", tagIds: ["tag-research"], start: at("11:00"), end: at("11:45") });
+const standupRow = recording({ id: "r1", projectId: "p-site", note: "standup", tagId: "tag-research", start: at("11:00"), end: at("11:45") });
 
 /** Shows the editor the store asks for, like `DayPage` does. */
 function Host() {
@@ -44,7 +44,7 @@ const renderCreate = (patch: Parameters<typeof resetStore>[0] = {}) => renderEdi
 const editorDialog = (name: "New recording" | "Edit recording") => screen.findByRole("dialog", { name });
 const field = (label: string) => screen.getByLabelText(label);
 const projectField = () => screen.getByRole("combobox", { name: "Project" });
-const tagsField = () => screen.getByRole("combobox", { name: "Tags" });
+const tagField = () => screen.getByRole("combobox", { name: "Tag" });
 const button = (name: string) => screen.getByRole("button", { name });
 
 async function chooseWebsite() {
@@ -66,15 +66,15 @@ describe("RecordingEditor", () => {
       expect(screen.getByText("1 h 30 min")).toBeInTheDocument();
     });
 
-    it("saves the project, times, note and tag ids with overlap cancel, then closes and offers Undo", async () => {
+    it("saves the project, times, note and tag with overlap cancel, then closes and offers Undo", async () => {
       renderCreate();
       await editorDialog("New recording");
       await chooseWebsite();
       await userEvent.type(field("Note"), "fix login");
-      await userEvent.type(tagsField(), "res{Enter}");
+      await userEvent.type(tagField(), "res{Enter}");
       await userEvent.click(button("Save"));
       await waitFor(() =>
-        expect(mocked.recordingCreate).toHaveBeenCalledWith({ projectId: "p-site", start: START, end: END, note: "fix login", tagIds: ["tag-research"] }, "cancel"),
+        expect(mocked.recordingCreate).toHaveBeenCalledWith({ projectId: "p-site", start: START, end: END, note: "fix login", tagId: "tag-research" }, "cancel"),
       );
       expect(await screen.findByText("Recorded 1 h 30 min for Website")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
@@ -241,7 +241,7 @@ describe("RecordingEditor", () => {
     it("saves again with overlap replace when Replace is chosen, then closes the editor", async () => {
       const dialog = await saveIntoOverlap();
       await userEvent.click(dialog.getByRole("button", { name: "Replace overlapped part" }));
-      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenLastCalledWith({ projectId: "p-site", start: START, end: END, note: "", tagIds: [] }, "replace"));
+      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenLastCalledWith({ projectId: "p-site", start: START, end: END, note: "", tagId: null }, "replace"));
       await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     });
 
@@ -266,7 +266,30 @@ describe("RecordingEditor", () => {
       expect(field("Note")).toHaveValue("standup");
       await userEvent.tab();
       expect(projectField()).toHaveValue("Acme / Website");
-      expect(screen.getByText("research")).toBeInTheDocument();
+    });
+
+    it("shows the tag of the recording", async () => {
+      renderEditor({ mode: "edit", id: "r1" });
+      await editorDialog("Edit recording");
+      expect(tagField()).toHaveValue("research");
+    });
+
+    it("sends tagId null when the tag is cleared with Backspace", async () => {
+      renderEditor({ mode: "edit", id: "r1" });
+      await editorDialog("Edit recording");
+      await userEvent.click(tagField());
+      await userEvent.keyboard("{Backspace}");
+      await userEvent.click(button("Save"));
+      await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", expect.objectContaining({ tagId: null }), "cancel"));
+    });
+
+    it("sends tagId null when No tag is picked", async () => {
+      renderEditor({ mode: "edit", id: "r1" });
+      await editorDialog("Edit recording");
+      await userEvent.click(tagField());
+      await userEvent.click(screen.getByRole("option", { name: "No tag" }));
+      await userEvent.click(button("Save"));
+      await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", expect.objectContaining({ tagId: null }), "cancel"));
     });
 
     it("shows the times of a recording that was cut to the day", async () => {
@@ -287,7 +310,7 @@ describe("RecordingEditor", () => {
       await waitFor(() =>
         expect(mocked.recordingUpdate).toHaveBeenCalledWith(
           "r1",
-          { projectId: "p-site", start: standupBlock.start, end: standupBlock.end, note: "standup notes", tagIds: ["tag-research"] },
+          { projectId: "p-site", start: standupBlock.start, end: standupBlock.end, note: "standup notes", tagId: "tag-research" },
           "cancel",
         ),
       );

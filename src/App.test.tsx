@@ -57,6 +57,14 @@ describe("App", () => {
       expect(await screen.findByRole("alert")).toHaveTextContent("Could not open the link");
     });
 
+    it("shows an info toast for a notice launch event", async () => {
+      mocked.takeLaunchEvents.mockResolvedValueOnce([{ type: "notice", message: "Opened the settings" }]);
+      await renderApp();
+      const message = await screen.findByText("Opened the settings");
+      expect(message.closest('[role="status"]')).not.toBeNull();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
     it("shows a toast when the launch events cannot be read", async () => {
       mocked.takeLaunchEvents.mockRejectedValueOnce({ kind: "io", message: "Channel closed", code: null });
       await renderApp();

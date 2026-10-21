@@ -261,7 +261,7 @@ export type LaneKind = "summary" | "activity" | "app" | "source";
  * Something the page acts on once it listens: from the launch that started the app, a later launch,
  * or a deep link.
  */
-export type LaunchEvent = { "type": "error", message: string, } | { "type": "activate" } | { "type": "showDay", day: Day, };
+export type LaunchEvent = { "type": "error", message: string, } | { "type": "notice", message: string, } | { "type": "activate" } | { "type": "showDay", day: Day, };
 
 export type ListRow = { key: string, app: string, bundleId: string | null, 
 /**
@@ -407,9 +407,9 @@ export type ProjectShare = { projectId: string, color: string, shade: number, ms
 export type Range = { "kind": "today" } | { "kind": "yesterday" } | { "kind": "thisWeek" } | { "kind": "lastWeek" } | { "kind": "thisMonth" } | { "kind": "lastMonth" } | { "kind": "custom", from: Day, to: Day, };
 
 /**
- * A project, note and tags recently recorded together, to time again in one click.
+ * A project, note and tag recently recorded together, to time again in one click.
  */
-export type RecentTimer = { projectId: string, projectName: string, color: string, shade: number, note: string, tagIds: Array<string>, lastUsed: number, };
+export type RecentTimer = { projectId: string, projectName: string, color: string, shade: number, note: string, tagId: string | null, lastUsed: number, };
 
 export type Recording = { id: string, projectId: string, start: number, 
 /**
@@ -419,11 +419,7 @@ end: number | null,
 /**
  * One line (ADR 0018).
  */
-note: string, 
-/**
- * Ordered by tag name.
- */
-tagIds: Array<string>, createdAt: number, updatedAt: number, };
+note: string, tagId: string | null, createdAt: number, updatedAt: number, };
 
 /**
  * A recording cut to the day.
@@ -432,11 +428,7 @@ export type RecordingBlock = { id: string, start: number, end: number, projectId
 /**
  * The project's accent and shade.
  */
-color: string, shade: number, note: string, 
-/**
- * Tag names, by name.
- */
-tags: Array<string>, 
+color: string, shade: number, note: string, tag: string | null, 
 /**
  * The timer, still recording.
  */
@@ -446,12 +438,12 @@ running: boolean,
  */
 clippedStart: boolean, clippedEnd: boolean, };
 
-export type RecordingInput = { projectId: string, start: number, end: number, note: string, tagIds: Array<string>, };
+export type RecordingInput = { projectId: string, start: number, end: number, note: string, tagId: string | null, };
 
 /**
- * Absent fields stay as they are; `end: null` makes the recording running.
+ * Absent fields stay as they are; `end: null` makes the recording running, `tagId: null` removes the tag.
  */
-export type RecordingPatch = { projectId?: string, start?: number, end?: number | null, note?: string, tagIds?: Array<string>, };
+export type RecordingPatch = { projectId?: string, start?: number, end?: number | null, note?: string, tagId?: string | null, };
 
 export type RemoteEvent = { id: string, request: RemoteRequest, };
 
@@ -483,24 +475,12 @@ export type ReportNote = { text: string,
  */
 days: Array<Day>, };
 
-export type ReportResult = { filter: ReportFilter, from: Day, to: Day, groups: Array<ReportGroup>, 
-/**
- * Every row once, also when tags overlap.
- */
-totalMs: number, totalRoundedMs: number, 
-/**
- * Grouped by tag and a recording has several tags, so it counts in each of their groups.
- */
-tagOverlap: boolean, };
+export type ReportResult = { filter: ReportFilter, from: Day, to: Day, groups: Array<ReportGroup>, totalMs: number, totalRoundedMs: number, };
 
 /**
  * A recording's part in one day of the range.
  */
-export type ReportRow = { id: string, day: Day, start: number, end: number, durationMs: number, roundedMs: number, projectId: string, project: string, client: string | null, color: string, shade: number, 
-/**
- * Sorted by name.
- */
-tags: Array<string>, note: string, };
+export type ReportRow = { id: string, day: Day, start: number, end: number, durationMs: number, roundedMs: number, projectId: string, project: string, client: string | null, color: string, shade: number, tag: string | null, note: string, };
 
 export type ReportSettings = { rounding: Rounding, defaultGroup: Group, };
 
@@ -513,14 +493,14 @@ export type Rule = { id: string, name: string, projectId: string,
 /**
  * The first matching rule by position wins.
  */
-position: number, enabled: boolean, note: string, tagIds: Array<string>, conditions: Array<Condition>, };
+position: number, enabled: boolean, note: string, tagId: string | null, conditions: Array<Condition>, };
 
 /**
  * What part of an activity block a condition reads.
  */
 export type RuleField = "app" | "title" | "url" | "domain" | "path" | "source";
 
-export type RuleInput = { name: string, projectId: string, enabled: boolean, note: string, tagIds: Array<string>, conditions: Array<ConditionInput>, };
+export type RuleInput = { name: string, projectId: string, enabled: boolean, note: string, tagId: string | null, conditions: Array<ConditionInput>, };
 
 export type RuleOp = "contains" | "is" | "begins_with" | "pattern";
 
@@ -582,7 +562,7 @@ export type Suggestion = {
 /**
  * `<rule id>:<start>:<end>`: the same after a reload.
  */
-id: string, ruleId: string, ruleName: string, projectId: string, projectName: string, color: string, shade: number, start: number, end: number, note: string, tagIds: Array<string>, };
+id: string, ruleId: string, ruleName: string, projectId: string, projectName: string, color: string, shade: number, start: number, end: number, note: string, tagId: string | null, };
 
 export type Tag = { id: string, 
 /**

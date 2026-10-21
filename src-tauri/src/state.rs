@@ -30,8 +30,12 @@ impl AppState {
         let settings = SettingsStore::open(config_dir);
         let launches = LaunchQueue::default();
         let db_file = data_dir_at_startup(&settings, config_dir, &launches).join(DB_FILE);
+        let data = tauri::async_runtime::block_on(DataStore::open(db_file));
+        if let Some(notice) = data.migration_notice() {
+            launches.notice(notice.to_string());
+        }
         Self {
-            data: tauri::async_runtime::block_on(DataStore::open(db_file)),
+            data,
             settings,
             keybindings: KeybindingsStore::open(config_dir),
             ui_state: UiStateStore::open(config_dir),
@@ -82,6 +86,32 @@ mod tests {
         assert_eq!(state.data.file(), config.path().join("data").join(DB_FILE));
         assert!(state.data.db().is_ok());
         assert_eq!(state.launches.take_events(), vec![]);
+    }
+
+    #[test]
+    fn startup_queues_a_notice_when_the_migration_dropped_tags() {
+        use crate::db::one_tag::{TagsDropped, legacy};
+
+        let config = temp_config_dir();
+        let data = config.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        tauri::async_runtime::block_on(legacy::create(
+            &data.join(DB_FILE),
+            legacy::RECORDING_WITH_THREE_TAGS,
+        ));
+
+        let state = AppState::open(config.path());
+
+        let expected = TagsDropped {
+            recordings: 1,
+            rules: 0,
+            backup: data.join(format!("pre-0006-{}.json", db::time::Day::today())),
+        }
+        .message();
+        assert_eq!(
+            state.launches.take_events(),
+            vec![LaunchEvent::Notice { message: expected }]
+        );
     }
 
     #[test]

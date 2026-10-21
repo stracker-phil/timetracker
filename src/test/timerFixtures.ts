@@ -13,7 +13,7 @@ export function runningStatus(patch: Partial<RunningTimer> = {}): TimerStatus {
   return { running: runningTimer(patch) };
 }
 
-/** A recently used project, note and tags combination; `patch` overrides fields. */
+/** A recently used project, note and tag combination; `patch` overrides fields. */
 export function recentTimer(patch: Partial<RecentTimer> = {}): RecentTimer {
-  return { projectId: "project-1", projectName: "Website", color: "blue", shade: 0, note: "", tagIds: [], lastUsed: 0, ...patch };
+  return { projectId: "project-1", projectName: "Website", color: "blue", shade: 0, note: "", tagId: null, lastUsed: 0, ...patch };
 }

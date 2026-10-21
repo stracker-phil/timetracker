@@ -24,7 +24,7 @@ describe("conditionSummary", () => {
 describe("draftFromBlock", () => {
   it("names the rule after the app and the project and puts the project in", () => {
     const draft = draftFromBlock(block({ app: "Notes", title: "" }), website);
-    expect(draft).toMatchObject({ name: "Notes → Website", projectId: "p-site", enabled: true, note: "", tagIds: [] });
+    expect(draft).toMatchObject({ name: "Notes → Website", projectId: "p-site", enabled: true, note: "", tagId: null });
   });
 
   it("names the rule after the app and leaves the project empty without one", () => {

@@ -311,7 +311,6 @@ mod tests {
         )
         .await
         .unwrap();
-        let zeta = tags::insert(&db, "zeta").await.unwrap();
         let alpha = tags::insert(&db, "Alpha").await.unwrap();
         let saved = insert(
             &db,
@@ -321,7 +320,7 @@ mod tests {
                 start,
                 end: Some(start + HOUR),
                 note: "fix login".into(),
-                tag_ids: vec![zeta.id, alpha.id],
+                tag_id: Some(alpha.id),
             },
         )
         .await
@@ -343,7 +342,7 @@ mod tests {
                 color: "teal".into(),
                 shade: 3,
                 note: "fix login".into(),
-                tags: vec!["Alpha".into(), "zeta".into()],
+                tag: Some("Alpha".into()),
                 running: false,
                 clipped_start: false,
                 clipped_end: false,

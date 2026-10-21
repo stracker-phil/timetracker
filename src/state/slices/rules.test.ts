@@ -12,7 +12,7 @@ const state = () => useStore.getState();
 const toastMessages = () => state().toasts.map((t) => t.message);
 const ids = () => state().rules.map((r) => r.id);
 const fieldError = { kind: "invalid_input", message: "Invalid", code: null, field: { path: "conditions.0.value", message: "Needs a value" } };
-const input: RuleInput = { name: "Slack", projectId: "project-1", enabled: true, note: "", tagIds: [], conditions: [{ field: "app", op: "is", value: "Slack" }] };
+const input: RuleInput = { name: "Slack", projectId: "project-1", enabled: true, note: "", tagId: null, conditions: [{ field: "app", op: "is", value: "Slack" }] };
 
 const a = rule({ id: "a", name: "A", position: 0 });
 const b = rule({ id: "b", name: "B", position: 1 });

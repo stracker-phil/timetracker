@@ -40,21 +40,21 @@ describe("timer slice", () => {
   });
 
   describe("startTimer", () => {
-    it("sends project, note and tags and resolves true", async () => {
-      await expect(useStore.getState().startTimer("p1", "standup", ["t1"])).resolves.toBe(true);
-      expect(mocked.timerStart).toHaveBeenCalledWith("p1", "standup", ["t1"]);
+    it("sends project, note and tag and resolves true", async () => {
+      await expect(useStore.getState().startTimer("p1", "standup", "t1")).resolves.toBe(true);
+      expect(mocked.timerStart).toHaveBeenCalledWith("p1", "standup", "t1");
       expect(toasts()).toEqual([]);
     });
 
     it("toasts that a recording covers now on an overlap", async () => {
       mocked.timerStart.mockRejectedValueOnce({ kind: "overlap", message: "Overlaps", code: null });
-      await expect(useStore.getState().startTimer("p1", "", [])).resolves.toBe(false);
+      await expect(useStore.getState().startTimer("p1", "", null)).resolves.toBe(false);
       expect(toastMessages()).toEqual(["A recording already covers now"]);
     });
 
     it("toasts the message of any other error", async () => {
       mocked.timerStart.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
-      await expect(useStore.getState().startTimer("p1", "", [])).resolves.toBe(false);
+      await expect(useStore.getState().startTimer("p1", "", null)).resolves.toBe(false);
       expect(toastMessages()).toContain("Could not start the timer: Disk full");
     });
   });

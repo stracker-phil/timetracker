@@ -17,9 +17,17 @@ use crate::window;
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum LaunchEvent {
-    Error { message: String },
+    Error {
+        message: String,
+    },
+    /// Something the user should know that went fine, such as a data migration.
+    Notice {
+        message: String,
+    },
     Activate,
-    ShowDay { day: Day },
+    ShowDay {
+        day: Day,
+    },
 }
 
 #[derive(Default)]
@@ -40,6 +48,12 @@ impl LaunchQueue {
         };
         self.events.lock_unpoisoned().push(event);
         true
+    }
+
+    pub fn notice(&self, message: String) {
+        self.events
+            .lock_unpoisoned()
+            .push(LaunchEvent::Notice { message });
     }
 
     pub fn take_events(&self) -> Vec<LaunchEvent> {
@@ -197,6 +211,29 @@ mod tests {
         assert_eq!(
             serde_json::to_value(LaunchEvent::Activate).unwrap(),
             serde_json::json!({ "type": "activate" })
+        );
+    }
+
+    #[test]
+    fn a_notice_is_queued_in_order_and_serializes_with_a_type_tag() {
+        let queue = LaunchQueue::default();
+        queue.push(IpcMessage::Activate { hidden: false });
+        queue.notice("Moved".into());
+
+        let events = queue.take_events();
+
+        assert_eq!(
+            events,
+            vec![
+                LaunchEvent::Activate,
+                LaunchEvent::Notice {
+                    message: "Moved".into()
+                }
+            ]
+        );
+        assert_eq!(
+            serde_json::to_value(&events[1]).unwrap(),
+            serde_json::json!({ "type": "notice", "message": "Moved" })
         );
     }
 }

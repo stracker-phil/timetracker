@@ -16,7 +16,7 @@ const DAY_MS = 24 * 60 * MINUTE_MS;
 
 /** Without line breaks: a note is one line (ADR 0018); pasted ones turn into spaces. */
 
-/** Create a recording for a span, or edit one: project, times, note and tags. Rust snaps the times on save. */
+/** Create a recording for a span, or edit one: project, times, note and tag. Rust snaps the times on save. */
 export function RecordingEditor({ editor }: { editor: Editor }) {
   const step = useStore((s) => s.settings?.timeline.snapMinutes ?? 5) * MINUTE_MS;
   const { closeEditor, createRecording, updateRecording, deleteRecording } = useStore.getState();
@@ -35,7 +35,7 @@ export function RecordingEditor({ editor }: { editor: Editor }) {
       return;
     }
     setErrors({});
-    const fields = { projectId: draft.projectId, start: draft.start, end, note: draft.note, tagIds: draft.tagIds };
+    const fields = { projectId: draft.projectId, start: draft.start, end, note: draft.note, tagId: draft.tagId };
     try {
       const saved = existing ? await updateRecording(existing.id, fields) : await createRecording(fields);
       if (saved) closeEditor();
@@ -100,8 +100,8 @@ export function RecordingEditor({ editor }: { editor: Editor }) {
             onChange={(note) => patch({ note })}
           />
         </FormField>
-        <FormField label="Tags" error={errors.tagIds}>
-          <TagPicker value={draft.tagIds} onChange={(tagIds) => patch({ tagIds })} />
+        <FormField label="Tag" error={errors.tagId}>
+          <TagPicker value={draft.tagId} onChange={(tagId) => patch({ tagId })} />
         </FormField>
         <div className="actions">
           {existing && (

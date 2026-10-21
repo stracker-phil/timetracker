@@ -40,9 +40,6 @@ pub fn text(result: &ReportResult) -> String {
         out.push('\n');
     }
     let _ = writeln!(out, "Total  {}", hours(result.total_rounded_ms));
-    if result.tag_overlap {
-        out.push_str("Tags overlap: a recording with several tags counts in each.\n");
-    }
     out
 }
 
@@ -123,7 +120,6 @@ mod tests {
             groups,
             total_ms: total,
             total_rounded_ms: total,
-            tag_overlap: false,
         }
     }
 
@@ -235,15 +231,13 @@ mod tests {
     }
 
     #[test]
-    fn grouping_by_tag_with_overlap_ends_with_the_caveat() {
-        let mut report = result(
+    fn grouping_by_tag_ends_with_the_total_and_no_caveat() {
+        let report = result(
             "2026-10-20",
             "2026-10-20",
             Group::Tag,
             vec![group("admin", 60, vec![]), group("support", 60, vec![])],
         );
-        report.total_rounded_ms = 60 * MINUTE;
-        report.tag_overlap = true;
         assert_eq!(
             text(&report),
             "Tue 2026-10-20\n\
@@ -252,8 +246,7 @@ mod tests {
              \n\
              support  1:00 h\n\
              \n\
-             Total  1:00 h\n\
-             Tags overlap: a recording with several tags counts in each.\n"
+             Total  2:00 h\n"
         );
     }
 

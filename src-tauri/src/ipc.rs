@@ -553,7 +553,7 @@ mod tests {
             request: TimerStartRequest {
                 project: "acme".into(),
                 note: "weekly call".into(),
-                tags: vec!["external meeting".into()],
+                tag: Some("external meeting".into()),
             },
         }
     }
@@ -606,7 +606,7 @@ mod tests {
                 start: 1_000,
                 end: 2_000,
                 note: "fix login".into(),
-                tags: vec!["admin".into(), "internal meeting".into()],
+                tag: Some("internal meeting".into()),
                 overlap: Overlap::Replace,
             },
         }
@@ -693,7 +693,7 @@ mod tests {
                     "type": "record",
                     "request": {
                         "project": "acme", "start": 1000, "end": 2000, "note": "fix login",
-                        "tags": ["admin", "internal meeting"], "overlap": "replace"
+                        "tag": "internal meeting", "overlap": "replace"
                     }
                 }),
             ),
@@ -733,7 +733,7 @@ mod tests {
                 serde_json::json!({
                     "type": "timerStart",
                     "request": {
-                        "project": "acme", "note": "weekly call", "tags": ["external meeting"]
+                        "project": "acme", "note": "weekly call", "tag": "external meeting"
                     }
                 }),
             ),
