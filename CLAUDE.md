@@ -4,6 +4,11 @@ Local-first automatic time tracker for macOS: one person, one computer, no netwo
 the background; the user turns it into recordings for projects on a Day view timeline; reports are text
 built for copying. See README.md for the product and CLI.
 
+The app should feel like a calendar (Fantastical, Timely), not a code editor. DataBee is the blueprint for
+architecture, stack and process only, never for the look: no editor color schemes, monospace text, dense
+outlines or grey-on-grey panels; prefer proportional type, filled colored blocks, cards, generous spacing and
+a dark sidebar.
+
 ## Rules
 
 - Every session or step ends in a commit, so it can be reverted.
@@ -26,7 +31,7 @@ line number.
 - Rust backend in `src-tauri/` (rustup stable; Homebrew rustup is keg-only: `/opt/homebrew/opt/rustup/bin`)
 - Tauri 2 + React 19 + TypeScript in `src/`, bun as package manager, zustand, lucide-react
 - macOS 27, Apple Silicon only
-- Blueprint: `/Users/philipp/Coding/Personal/databee` (same author, stack and conventions)
+- Blueprint: `/Users/philipp/Coding/Personal/databee` (same author, stack and conventions; not the look)
 
 ## Architecture
 - Rust owns all logic; React only renders. Only `api.ts` files call `invoke`/`listen` (`src/api/index.ts`
