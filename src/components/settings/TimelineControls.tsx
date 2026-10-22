@@ -7,8 +7,11 @@ import { TITLES, saveTimeline } from "./timelineActions";
 const SUMMARY_MINUTES = [5, 10, 15, 20, 30, 45, 60] as const;
 const SNAP_MINUTES: readonly string[] = ["1", "5", "10", "15"];
 
+/** The gaps and lengths of Rust's `continuity_ms` and `noise_ms`. */
 const CONTINUITY: readonly Continuity[] = ["off", "short", "regular", "extended"];
+const CONTINUITY_LABELS: Record<Continuity, string> = { off: "Off", short: "2 min", regular: "8 min", extended: "16 min" };
 const NOISE: readonly Noise[] = ["off", "low", "medium", "high"];
+const NOISE_LABELS: Record<Noise, string> = { off: "Off", low: "2 min", medium: "4 min", high: "6 min" };
 
 function SummaryMinutes({ value }: { value: number }) {
   const id = useId();
@@ -47,13 +50,21 @@ export function TimelineControls({ timeline }: { timeline: TimelineSettings }) {
       <Switch label="Compact activity" description="Shorter rows, one line of text per activity." checked={timeline.compact} onChange={(compact) => saveTimeline({ compact })} />
       <Switch label="Group by app and website" description="One activity per app, whatever its windows are called." checked={timeline.groupByApp} onChange={(groupByApp) => saveTimeline({ groupByApp })} />
       <Segmented
-        label="Continuity"
-        description="Joins activity of the same app across gaps shorter than 2, 8 or 16 minutes."
+        label="Join short gaps"
+        description="Activity of the same app with a shorter gap between shows as one."
         options={CONTINUITY}
+        labels={CONTINUITY_LABELS}
         value={timeline.continuity}
         onChange={(continuity) => saveTimeline({ continuity })}
       />
-      <Segmented label="Noise cancellation" description="Hides activity shorter than 2, 4 or 6 minutes." options={NOISE} value={timeline.noise} onChange={(noise) => saveTimeline({ noise })} />
+      <Segmented
+        label="Hide activity shorter than"
+        description="Short activity leaves the timeline but still counts toward the day's time."
+        options={NOISE}
+        labels={NOISE_LABELS}
+        value={timeline.noise}
+        onChange={(noise) => saveTimeline({ noise })}
+      />
       <Segmented label="Titles" description="Label activity with the document or page name, or with the app." options={TITLES} value={timeline.titles} onChange={(titles) => saveTimeline({ titles })} />
       <Segmented
         label="Time snapping (minutes)"

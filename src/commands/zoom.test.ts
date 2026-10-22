@@ -46,17 +46,34 @@ describe("zoom commands", () => {
     beforeEach(() => useStore.setState({ view }));
 
     it.each([
-      ["zoom.in", 14, 13],
-      ["zoom.out", 12, 11],
-    ])("%s saves the text sizes %s and %s", (id, ui, data) => {
+      ["zoom.in", "small", "medium"],
+      ["zoom.in", "medium", "large"],
+      ["zoom.out", "large", "medium"],
+      ["zoom.out", "medium", "small"],
+      ["zoom.reset", "small", "medium"],
+      ["zoom.reset", "large", "medium"],
+    ] as const)("%s from %s saves %s", (id, from, expected) => {
+      useStore.setState({ settings: settings({ textSize: from }) });
       runCommand(id);
-      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ uiFontSize: ui, dataFontSize: data }));
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ textSize: expected }));
     });
 
-    it("zoom.reset saves the default text sizes", () => {
-      useStore.setState({ settings: settings({ uiFontSize: 18, dataFontSize: 17 }) });
-      runCommand("zoom.reset");
-      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ uiFontSize: 13, dataFontSize: 12 }));
+    it.each([
+      ["zoom.in", "large"],
+      ["zoom.out", "small"],
+      ["zoom.reset", "medium"],
+    ] as const)("%s saves nothing at %s", (id, at) => {
+      useStore.setState({ settings: settings({ textSize: at }) });
+      runCommand(id);
+      expect(mocked.updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("steps from the saved size twice in a row", async () => {
+      useStore.setState({ settings: settings({ textSize: "small" }) });
+      runCommand("zoom.in");
+      await vi.waitFor(() => expect(useStore.getState().settings?.textSize).toBe("medium"));
+      runCommand("zoom.in");
+      await vi.waitFor(() => expect(useStore.getState().settings?.textSize).toBe("large"));
     });
 
     it("leaves the timeline zoom alone", () => {

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { SYSTEM_ACCENT, type Scheme, type Settings } from "../api/types";
+import { DEFAULT_TEXT_SIZE, SYSTEM_ACCENT, TEXT_SIZES, type Scheme, type Settings } from "../api/types";
 
 // One query for the whole app; matchMedia is missing in some test environments.
 const darkQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -44,26 +44,15 @@ function applyLook(look: Look) {
   dataset.sidebar = look.sidebar;
 }
 
-/** A family name the user typed, quoted for CSS and put in front of the system stack. */
-function fontStack(family: string | null, fallback: string): string | null {
-  if (!family) return null;
-  return `"${family.replace(/["\\]/g, "\\$&")}", var(${fallback})`;
-}
-
-function setOrRemove(style: CSSStyleDeclaration, name: string, value: string | null) {
-  if (value) style.setProperty(name, value);
-  else style.removeProperty(name);
-}
-
 /** Applies appearance settings to <html> so CSS tokens pick them up. */
 export function applyAppearance(settings: Settings, systemDark: boolean) {
   const root = document.documentElement;
   applyLook(resolveLook(settings, systemDark));
   root.dataset.accent = settings.accent;
-  root.style.setProperty("--ui-font-size", `${settings.uiFontSize}px`);
-  root.style.setProperty("--data-font-size", `${settings.dataFontSize}px`);
-  setOrRemove(root.style, "--font-ui", fontStack(settings.fontUi, "--font-ui-system"));
-  setOrRemove(root.style, "--font-mono", fontStack(settings.fontMono, "--font-mono-system"));
+  const sizeOf = (size: string) => TEXT_SIZES.find((t) => t.size === size);
+  const text = sizeOf(settings.textSize) ?? sizeOf(DEFAULT_TEXT_SIZE)!;
+  root.style.setProperty("--ui-font-size", `${text.ui}px`);
+  root.style.setProperty("--data-font-size", `${text.data}px`);
 }
 
 /** Applies the default look for the OS appearance before settings load, so the first paint has colors. */

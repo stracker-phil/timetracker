@@ -77,6 +77,16 @@ describe("applyAppearance", () => {
     applyAppearance(settings({ accent: "teal" }), false);
     expect(root.dataset.accent).toBe("teal");
   });
+
+  it.each([
+    ["small", "12px", "11px"],
+    ["medium", "13px", "12px"],
+    ["large", "15px", "14px"],
+  ] as const)("sets the %s text size as %s for the interface and %s for data", (textSize, ui, data) => {
+    applyAppearance(settings({ textSize }), false);
+    expect(root.style.getPropertyValue("--ui-font-size")).toBe(ui);
+    expect(root.style.getPropertyValue("--data-font-size")).toBe(data);
+  });
 });
 
 describe("applyInitialLook", () => {

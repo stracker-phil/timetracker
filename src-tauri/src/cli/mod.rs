@@ -20,7 +20,6 @@ use clap::{CommandFactory, Parser, Subcommand};
 
 use crate::db::time::Ms;
 use crate::ipc::IpcMessage;
-use crate::store::settings::LogLevel;
 use crate::timers::commands::TimerStartRequest;
 use activity::ActivityCommand;
 pub use batch::split;
@@ -43,6 +42,29 @@ const EXAMPLES: &str = "Examples:
   timetracker start acme --note \"weekly call\" --tag \"external meeting\"
   timetracker stop
   claude mcp add timetracker -- ~/.local/bin/timetracker mcp";
+
+/// The `--log-level` of the CLI; without it the app logs at `Info`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, clap::ValueEnum)]
+pub enum LogLevel {
+    Error,
+    Warn,
+    #[default]
+    Info,
+    Debug,
+    Trace,
+}
+
+impl From<LogLevel> for log::LevelFilter {
+    fn from(level: LogLevel) -> Self {
+        match level {
+            LogLevel::Error => log::LevelFilter::Error,
+            LogLevel::Warn => log::LevelFilter::Warn,
+            LogLevel::Info => log::LevelFilter::Info,
+            LogLevel::Debug => log::LevelFilter::Debug,
+            LogLevel::Trace => log::LevelFilter::Trace,
+        }
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(

@@ -27,6 +27,8 @@
 .settings-row { display: flex; align-items: center; gap: var(--space-4); min-height: 2.769rem; padding: var(--space-2) 0; }
 .settings-row + .settings-row { border-top: 1px solid var(--line); }
 .settings-row.stacked { flex-direction: column; align-items: stretch; gap: var(--space-2); }
+/* A row that depends on the switch above it: indented and joined to it, without a hairline between. */
+.settings-row.nested { margin-top: calc(-1 * var(--space-2)); padding-left: var(--space-5); border-top: none; }
 .settings-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .settings-row-text label, .settings-row-label { color: var(--text); }
 .settings-row-label.with-icon { display: flex; align-items: center; gap: var(--space-2); }
@@ -41,8 +43,12 @@
 .range-value { min-width: 4rem; text-align: right; }
 .app-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); font-size: var(--fs-meta); }
 .inline-switch { display: flex; align-items: center; gap: var(--space-2); }
+/* Number fields and number selects share one width, so the minutes of a page line up. */
 .settings-input .input.number { width: 6.5rem; text-align: right; }
 .settings-search { flex: none; }
+.settings-location { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+.settings-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.settings-path { font-size: var(--fs-meta); color: var(--o2); overflow-wrap: anywhere; }
 .shortcut-control { display: flex; align-items: center; gap: var(--space-1); }
 
 /* Settings → Appearance: one miniature window per scheme, in its light-mode look; the chosen one ringed. */

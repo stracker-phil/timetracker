@@ -12,7 +12,7 @@ import { blockMenu } from "./blockMenu";
 const mocked = vi.mocked(api, true);
 const KEY = "com.apple.Safari";
 
-const override = (patch: Partial<AppOverride> = {}): AppOverride => ({ groupByApp: null, titles: null, hidden: false, ownLane: false, ...patch });
+const override = (patch: Partial<AppOverride> = {}): AppOverride => ({ hidden: false, ownLane: false, ...patch });
 const withTimeline = (timeline: Partial<Settings["timeline"]>, apps: Settings["apps"] = {}) => settings({ timeline: { ...settings().timeline, ...timeline }, apps });
 
 type Item = Exclude<MenuEntry, "separator">;
@@ -37,11 +37,11 @@ describe("blockMenu", () => {
   describe("of a tracker block", () => {
     it("lists the app settings, a separator, the copy entries, a separator, then Make a rule", () => {
       const url = block({ url: "https://example.com" });
-      expect(labels(menu(settings(), url))).toEqual(["Group by app", "Titles: Document name", "Titles: App name", "Own lane", "Hide Safari", "---", "Copy title", "Copy URL", "---", "Make a rule…"]);
+      expect(labels(menu(settings(), url))).toEqual(["Own lane", "Hide Safari", "---", "Copy title", "Copy URL", "---", "Make a rule…"]);
     });
 
     it("has a single separator before Make a rule when no copy entry follows the app settings", () => {
-      expect(labels(menu(settings(), block({ private: true })))).toEqual(["Group by app", "Titles: Document name", "Titles: App name", "Own lane", "Hide Safari", "---", "Make a rule…"]);
+      expect(labels(menu(settings(), block({ private: true })))).toEqual(["Own lane", "Hide Safari", "---", "Make a rule…"]);
     });
 
     it("has no Copy title for a private block but keeps Copy URL", () => {
@@ -89,50 +89,9 @@ describe("blockMenu", () => {
     });
   });
 
-  describe("Group by app", () => {
-    it("is checked by the timeline setting without an override", () => {
-      expect(entry(menu(withTimeline({ groupByApp: true })), "Group by app").checked).toBe(true);
-      expect(entry(menu(withTimeline({ groupByApp: false })), "Group by app").checked).toBe(false);
-    });
-
-    it("is checked by the override when there is one", () => {
-      const s = withTimeline({ groupByApp: true }, { [KEY]: override({ groupByApp: false }) });
-      expect(entry(menu(s), "Group by app").checked).toBe(false);
-    });
-
-    it.each([
-      ["sends false when switching a grouping timeline off for the app", true, undefined, { groupByApp: false }],
-      ["sends true when switching a non-grouping timeline on for the app", false, undefined, { groupByApp: true }],
-      ["sends null when the new value equals the timeline's", true, false, { groupByApp: null }],
-    ] as const)("%s", (_name, timelineValue, current, expected) => {
-      const s = withTimeline({ groupByApp: timelineValue }, current === undefined ? {} : { [KEY]: override({ groupByApp: current }) });
-      entry(menu(s), "Group by app").action();
-      expect(mocked.setAppSetting).toHaveBeenCalledWith(KEY, expected);
-    });
-  });
-
-  describe("Titles", () => {
-    it("checks the timeline's titles without an override", () => {
-      const m = menu(withTimeline({ titles: "document" }));
-      expect(entry(m, "Titles: Document name").checked).toBe(true);
-      expect(entry(m, "Titles: App name").checked).toBe(false);
-    });
-
-    it("checks the override's titles when there is one", () => {
-      const m = menu(withTimeline({ titles: "document" }, { [KEY]: override({ titles: "app" }) }));
-      expect(entry(m, "Titles: Document name").checked).toBe(false);
-      expect(entry(m, "Titles: App name").checked).toBe(true);
-    });
-
-    it("sends the chosen titles when they differ from the timeline's", () => {
-      entry(menu(withTimeline({ titles: "document" })), "Titles: App name").action();
-      expect(mocked.setAppSetting).toHaveBeenCalledWith(KEY, { titles: "app" });
-    });
-
-    it("sends null when the chosen titles equal the timeline's", () => {
-      const s = withTimeline({ titles: "document" }, { [KEY]: override({ titles: "app" }) });
-      entry(menu(s), "Titles: Document name").action();
-      expect(mocked.setAppSetting).toHaveBeenCalledWith(KEY, { titles: null });
+  describe("removed per-app entries", () => {
+    it.each(["Group by app", "Titles: Document name", "Titles: App name"])("has no %s entry", (label) => {
+      expect(labels(menu(settings(), block({ url: "https://example.com" })))).not.toContain(label);
     });
   });
 

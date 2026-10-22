@@ -74,9 +74,9 @@ details?: unknown, };
 export type AppErrorField = { path: string, message: string, };
 
 /**
- * Per-app overrides of the timeline settings, keyed by bundle id (the app's name without one).
+ * How the timeline treats one app, keyed by bundle id (the app's name without one). Unknown keys are ignored.
  */
-export type AppOverride = { groupByApp: boolean | null, titles: Titles | null, hidden: boolean, ownLane: boolean, };
+export type AppOverride = { hidden: boolean, ownLane: boolean, };
 
 /**
  * An app the tracker recorded, for pickers such as the excluded apps.
@@ -88,10 +88,9 @@ export type AppSeen = { bundleId: string | null,
 app: string, lastSeen: number, totalMs: number, };
 
 /**
- * The fields of one app's `AppOverride` to change; absent ones stay, `null` returns an override to the
- * timeline's own setting.
+ * The fields of one app's `AppOverride` to change; absent ones stay.
  */
-export type AppSettingPatch = { groupByApp?: boolean | null, titles?: Titles | null, ownLane?: boolean, hidden?: boolean, };
+export type AppSettingPatch = { ownLane?: boolean, hidden?: boolean, };
 
 export type AwayPrompt = { span: AwayRow, 
 /**
@@ -378,8 +377,6 @@ export type LaneKind = "summary" | "activity" | "app" | "source";
  * or a deep link.
  */
 export type LaunchEvent = { "type": "error", message: string, } | { "type": "notice", message: string, } | { "type": "activate" } | { "type": "showDay", day: Day, };
-
-export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
 
 /**
  * What `timetracker mcp` may read besides recordings, projects, tags and reports.
@@ -776,23 +773,7 @@ darkScheme: Scheme,
 /**
  * The app accent: `system` (the macOS accent color) or one of `ACCENTS`.
  */
-accent: string, 
-/**
- * Chrome: sidebar, labels, buttons (also scales rem).
- */
-uiFontSize: number, 
-/**
- * Data: times, durations, titles on the timeline.
- */
-dataFontSize: number, calendarTitle: CalendarTitle, dayTitle: DayTitle, 
-/**
- * An installed font family; `None` uses the system font (SF Pro).
- */
-fontUi: string | null, 
-/**
- * An installed font family; `None` uses the system mono font (SF Mono).
- */
-fontMono: string | null, logLevel: LogLevel, launchAtLogin: boolean, 
+accent: string, textSize: TextSize, calendarTitle: CalendarTitle, dayTitle: DayTitle, launchAtLogin: boolean, 
 /**
  * The data folder when moved away from the config dir.
  */
@@ -855,6 +836,11 @@ export type TagListItem = { recordings: number, id: string,
  */
 name: string, createdAt: number, };
 
+/**
+ * The size of all text. The frontend maps each step to its pixel sizes (`TEXT_SIZES` in `src/api/types.ts`).
+ */
+export type TextSize = "small" | "medium" | "large";
+
 export type TimelineSettings = { summaryLane: boolean, 
 /**
  * One of `SUMMARY_MINUTES`.
@@ -901,7 +887,7 @@ idleMinutes: number, awayPromptEnabled: boolean,
 /**
  * Away spans at least this long trigger the away prompt.
  */
-awayPromptMinutes: number, pollSeconds: number, };
+awayPromptMinutes: number, };
 
 export type TrackerState = { "kind": "running" } | { "kind": "paused", until: number | null, } | { "kind": "needsPermission" } | { "kind": "away", since: number, reason: AwayReason, };
 

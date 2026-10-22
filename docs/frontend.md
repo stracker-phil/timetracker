@@ -88,8 +88,10 @@ The IPC types are generated from Rust with ts-rs ([ADR 0004](adr/0004-generated-
 ## Commands
 
 Every user action that has a shortcut or appears in the palette is a `Command` (`commands/registry.ts`):
-`{ id, title, scope, defaultBinding?, when?, run, menu?, checked? }`. The core commands are `APP_COMMANDS`
-(`commands/index.ts`); their default bindings are in [ux.md](ux.md#keys).
+`{ id, title, scope, defaultBinding?, when?, run, menu?, checked?, menuOnly? }`; `menuOnly` marks a menu
+item that is not meant to take a key (Launch at login, Show welcome again), which Settings → Shortcuts leaves
+out. The core commands are `APP_COMMANDS` (`commands/index.ts`); their default bindings are in
+[ux.md](ux.md#keys).
 
 - **Bindings** are strings like `Mod+Shift+K` (`Mod` is ⌘), normalized to `Mod, Ctrl, Alt, Shift` and shown
   as `⌘⇧K`. User overrides come from `keybindings.json`.
@@ -148,7 +150,8 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   dialogs and the editor; elsewhere the last recording change, but not while an overlay is open. The
   palette's search field is left out, so the palette never lists them for it. While the editor is open, only
   `MODAL_ALLOWED` commands run. `zoom.in`/`zoom.out`/`zoom.reset` (⌘= ⌘- ⌘0)
-  zoom the timeline (`TIMELINE_STEPS`) while the Day view shows and the text everywhere else.
+  zoom the timeline (`TIMELINE_STEPS`) while the Day view shows and elsewhere step the text size through
+  `TEXT_SIZES` (Small, Medium, Large; ⌘0 is Medium; past either end nothing changes).
 - **Projects.** `projects.new` (⌘N) and `clients.new` (no default) open the sheets while the Projects view
   shows; `view.projects` (⌘5) shows it.
 - **Tags.** `tags.new` (⌘N while the Tags view shows) asks for a name (`prompt` dialog) and saves it with `saveTag`.
@@ -258,9 +261,9 @@ Tracker components:
 | `Timesheet` (suggestions) | `sheetEntries(view)` (`lib/sheet.ts`) puts each suggestion before its `nextCard`; the editor replaces the card or suggestion it edits; over the cards `ReviewLine`: "n suggestions · Approve all · Dismiss all" |
 | `TimesheetCard` | a `Card` (role button) in the project's shade: the note as title (the project without one), the `AccentDot` and `Project \| Client`, the tag and `n times`, `durationMs`; its height grows with the duration (`--card-minutes`). Click or ↵ focuses the recording and opens the editor on it, hover `hoverRecording` |
 | `ZoomControl` | −, a range input (`TIMELINE_ZOOM`, step 0.5) and +: `stepTimelineZoom` and `setTimelineZoom` |
-| `ViewOptionsPopover` | dialog `viewOptions`, a `Modal` popover anchored under `[data-view-options]`: Lanes (Summary `summaryLane`, Activity `showAllActivity`), Activity (Compact, Titles; `TITLES` from `TimelineControls`), App lanes (an `ownLane` switch per `dayView.apps` entry, `setAppSetting`) and Hidden apps (`dayView.hiddenApps` with Unhide; the count in the heading only above 0). Continuity, Noise, Snapping and the summary interval are only in Settings → Timeline |
+| `ViewOptionsPopover` | dialog `viewOptions`, a `Modal` popover anchored under `[data-view-options]`: Lanes (Summary `summaryLane`, Activity `showAllActivity`), Activity (Compact, Titles; `TITLES` from `timelineActions.ts`), App lanes (an `ownLane` switch per `dayView.apps` entry, `setAppSetting`) and Hidden apps (`dayView.hiddenApps` with Unhide; the count in the heading only above 0). Join short gaps, Hide activity shorter than, Snapping and the summary interval are only in Settings → Timeline |
 | `Timeline` | `timeline-frame`: the scroll box with `LaneHeader` (sticky), `TimeAxis`, the time column (`RecordingsColumn`), the lanes and the current-time line on today; `ZoomControl` floats over its bottom right. Over the lanes, a `selection` band with no visible text per open editor's span (`drawnParts`, cut to the day) and one for the snapped selection while it is not one of them (labelled `Selection 09:00–10:30`); the blocks of `draftBlockIds` (with an editor open) or of the selection's `blockIds` are passed to each `Lane` as `selectedBlocks`. Opens a day scrolled to 30 min before its first activity. Hover (one `mouseover` listener reading `data-block-id`) shows `HoverCard` after 300 ms; right-click, the gear on a hovered block, or ⌃↵ opens the block menu. With `compact` it draws the day at 60% of the zoom and adds `timeline--compact` |
-| `blockMenu.ts` | the block menu's entries: for tracker blocks Group by app, Titles: Document name / App name and Own lane, checked by the effective value (an override equal to the timeline's setting is removed), Hide (a toast with Undo); then Copy title (not for private blocks), Copy URL |
+| `blockMenu.ts` | the block menu's entries: for tracker blocks Own lane (checked in an app lane or with the override) and Hide (a toast with Undo); then Copy title (not for private blocks), Copy URL |
 | `Lane` | its blocks, absolutely placed: `top`/`height` from the times and the zoom, `left`/`width` from `col`/`cols`; only blocks within the visible part ± one screen (`useVisibleRange`, which moves in half-screen steps). The summary lane draws `summary` blocks, the others `memory` blocks |
 | `ActivityBlock` | `look="summary"`: a `Block` with the `AppIcon` (16 px) and the label as title and `activeMs` (`formatDuration`) at the bottom right when tall; `look="memory"`: the icon over a bar of the block's real height, the label and `activeMs` beside it (two lines, one line when short, only the bar when tiny); a gear on hover; `private`, `dimmed` (covered), `focused` and `selected` (its span is in the selection or the draft) classes |
 | `HoverCard` | `AppIcon` and app, title, URL (http(s) opens through `api.openUrl`) or path, time and duration, the source when external; beside the block, else below or above it |
@@ -413,14 +416,13 @@ list closed, Enter and Esc go to the form (save, cancel).
 
 | Page | Holds |
 |---|---|
-| Appearance | Mode (`SegmentedControl`: Light, Dark; local state, starting on the macOS mode) that picks which setting the Scheme tiles below edit (`lightScheme` or `darkScheme`; three tiles, each a miniature window in its look through `schemeLook`, pressed for that mode's scheme), accent row (`AccentSwatches withSystem`: System first, then the nine hues), Dates (`calendarTitle`: short, full; `dayTitle`: long, short; segmented controls), UI and data sizes, fonts |
-| Shortcuts | `ShortcutsPage`: every command with its binding; record, reset or unbind |
+| App → General (order 0) | `LaunchAtLoginSwitch` (`LaunchAtLoginSwitch.tsx`, also on the welcome sheet): checked from `autostartStatus()` (the LaunchAgent, not the stored setting), changed through `setLaunchAtLogin` (`settings` slice: `api.autostartSet`, then the store's `settings.launchAtLogin` is updated so a later save keeps it); "Show welcome again" closes Settings and calls `showWelcome` |
+| App → Appearance | "Light mode scheme" and "Dark mode scheme", stacked rows with three tiles each (`SchemePicker`, a miniature window per scheme through `schemeLook`, pressed for that mode's `lightScheme` or `darkScheme`), accent row (`AccentSwatches withSystem`: System first, then the nine hues), Dates (`calendarTitle`: short, full; `dayTitle`: long, short; segmented controls), Text size (`textSize`: small, medium, large; a segmented control over `TEXT_SIZES`) |
+| App → Shortcuts | `ShortcutsPage`: every command with its binding except `menuOnly` ones; record, reset or unbind |
 | Tracking → Capture | `CapturePage` (`CapturePage.tsx`): address and document switches, excluded apps (an "Add app…" picker listing `appsSeen(30)`), excluded websites (a field; Enter adds) |
-| Tracking → Tracker | `TrackerPage`: away after (idle minutes), check every (poll seconds) |
-| Tracking → Timeline | `TimelinePage` (`TimelinePage.tsx`): `TimelineControls` (summary lane and its interval slider, show all activity, compact, group by app, continuity, noise, titles, time snapping; each saved quietly), then Apps from `appsList()`: per app its `AppIcon` (by `appKey`), Group by app and Titles (Default or a value), Hidden, Own lane |
-| System → General (order 0) | `LaunchAtLoginSwitch` (`LaunchAtLoginSwitch.tsx`, also on the welcome sheet): checked from `autostartStatus()` (the LaunchAgent, not the stored setting), changed through `setLaunchAtLogin` (`settings` slice: `api.autostartSet`, then the store's `settings.launchAtLogin` is updated so a later save keeps it); "Show welcome again" closes Settings and calls `showWelcome` |
-| System → Data | the data folder (Reveal in Finder; Move…: `chooseFolder` → a `Modal` sheet that says the database is copied, tracking pauses meanwhile and the old files stay → `dataMove` with the Move button busy (`Moving…`, Escape ignored) → toast "Data moved to …", settings and the page's `DataInfo` reload; an `invalid_input` refusal shows under the row, other errors toast), counts, first activity, size on disk, Export backup… (save panel → `backupExport`, toast "Backup written"); an alert when the store could not be opened |
-| System → Logging | log level, Open log folder |
+| Tracking → Tracker | `TrackerPage`: away after (idle minutes), the away prompt switch and, `nested` under it, "For longer than" (a minutes popup as wide as the number field) |
+| Tracking → Timeline | `TimelinePage` (`TimelinePage.tsx`): `TimelineControls` (summary lane and its interval slider, show all activity, compact, group by app, Join short gaps (`continuity`), Hide activity shorter than (`noise`), both labelled in minutes through `SegmentedControl`'s `labels`, titles, time snapping; each saved quietly), then Apps from `appsList()`: per app its `AppIcon` (by `appKey`), its name and tracked time (never the bundle id), Hidden and Own lane |
+| System → Data | the data folder (a stacked Location row: Reveal in Finder and Move…, the path under them; Move…: `chooseFolder` → a `Modal` sheet that says the database is copied, tracking pauses meanwhile and the old files stay → `dataMove` with the Move button busy (`Moving…`, Escape ignored) → toast "Data moved to …", settings and the page's `DataInfo` reload; an `invalid_input` refusal shows under the row, other errors toast), counts, first activity, size on disk, Export backup… (save panel → `backupExport`, toast "Backup written"); an alert when the store could not be opened |
 
 A change saves through `saveSettings` (`api.updateSettings`) and applies at once.
 
@@ -441,8 +443,8 @@ cascade. Icons come from `lucide-react`. Token names and roles are in [ux.md](ux
 - **Appearance.** `applyAppearance` picks `lightScheme` or `darkScheme` by `prefers-color-scheme` with
   `resolveLook` (`lib/theme.ts`; `useSystemDark` re-renders on a macOS switch) and sets `data-content` and
   `data-sidebar` on `<html>`, `data-accent` from `accent` (`system` maps `--accent` to WebKit's `AccentColor`
-and `--on-accent` to `--on-system-accent`; `applyInitialLook` sets it before settings load), the font sizes
-and the families in front of the system stacks (`--font-ui-system`, `--font-mono-system`). The native window
+and `--on-accent` to `--on-system-accent`; `applyInitialLook` sets it before settings load), and
+`--ui-font-size` and `--data-font-size` from the `textSize` step's entry in `TEXT_SIZES`. The native window
   theme is never set, so it follows macOS ([ADR 0022](adr/0022-a-scheme-per-system-mode.md)). The palettes match
   `[data-content="light|dark"]` and `[data-sidebar="light|dark"]`, so any element can preview a look.
 - **Sidebar tokens.** The sidebar uses `--sidebar-*` only; inside `.sidebar`, `theme.css` maps `--text`, `--o2`,

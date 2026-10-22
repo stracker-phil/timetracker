@@ -1,4 +1,4 @@
-import { api, TEXT_SIZES, type Settings } from "../api";
+import { api, DEFAULT_TEXT_SIZE, TEXT_SIZES, type TextSize } from "../api";
 import { exportBackup, revealDataFolder, showWelcomeAgain } from "../components/settings/actions";
 import { copyReport, copyReportNotes, promptDeleteSavedReport, promptRenameSavedReport, promptSaveReport } from "../components/reports/actions";
 import { VIEWS } from "../components/views";
@@ -28,14 +28,18 @@ export function registerCoreScopes() {
   registerSuggestionScope();
 }
 
-function saveTextSizes(sizes: (current: Settings) => Pick<Settings, "uiFontSize" | "dataFontSize">) {
+function saveTextSize(textSize: TextSize) {
   const s = useStore.getState();
-  if (s.settings) void s.saveSettings({ ...s.settings, ...sizes(s.settings) }, { quiet: true });
+  if (s.settings && s.settings.textSize !== textSize) void s.saveSettings({ ...s.settings, textSize }, { quiet: true });
 }
 
-/** Rust's `Settings::sanitized` clamps the sizes, so zooming past a bound is a no-op. */
-const zoomText = (step: number) => saveTextSizes((c) => ({ uiFontSize: c.uiFontSize + step, dataFontSize: c.dataFontSize + step }));
-const resetText = () => saveTextSizes(() => ({ uiFontSize: TEXT_SIZES.ui.default, dataFontSize: TEXT_SIZES.data.default }));
+/** The next text size step; past the smallest or largest it stays. */
+function zoomText(step: 1 | -1) {
+  const current = TEXT_SIZES.findIndex((t) => t.size === useStore.getState().settings?.textSize);
+  const next = TEXT_SIZES[Math.min(Math.max(current + step, 0), TEXT_SIZES.length - 1)];
+  saveTextSize(next.size);
+}
+const resetText = () => saveTextSize(DEFAULT_TEXT_SIZE);
 
 const onDayView = () => useStore.getState().view === "day";
 // The Day view zooms its timeline; every other view zooms the text.
@@ -224,8 +228,8 @@ function isTracking() {
 
 const APP_COMMANDS: Command[] = [
   { id: "settings.toggle", title: "Settings…", scope: "global", defaultBinding: "Mod+,", menu: true, run: toggleSettings },
-  { id: "app.launchAtLogin", title: "Launch at login", scope: "global", menu: true, when: () => useStore.getState().settings !== null, checked: () => !!useStore.getState().settings?.launchAtLogin, run: toggleLaunchAtLogin },
-  { id: "welcome.show", title: "Show welcome again", scope: "global", menu: true, run: showWelcomeAgain },
+  { id: "app.launchAtLogin", title: "Launch at login", scope: "global", menu: true, menuOnly: true, when: () => useStore.getState().settings !== null, checked: () => !!useStore.getState().settings?.launchAtLogin, run: toggleLaunchAtLogin },
+  { id: "welcome.show", title: "Show welcome again", scope: "global", menu: true, menuOnly: true, run: showWelcomeAgain },
   { id: "shortcuts.show", title: "Keyboard shortcuts", scope: "global", defaultBinding: "Shift+?", menu: true, run: toggleShortcuts },
   { id: "palette.toggle", title: "Command palette", scope: "global", defaultBinding: "Mod+K", menu: true, run: togglePalette },
   { id: "sidebar.toggle", title: "Toggle sidebar", scope: "global", defaultBinding: "Mod+Ctrl+S", menu: true, run: () => useStore.getState().toggleSidebar() },

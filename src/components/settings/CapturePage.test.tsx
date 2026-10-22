@@ -194,12 +194,9 @@ describe("Settings Tracker page", () => {
     expect(lastSaved().tracker).toEqual({ ...settings().tracker, idleMinutes: 10 });
   });
 
-  it("saves the new check interval when it is committed", async () => {
+  it("has no check interval", () => {
     renderPage("tracker");
-    const field = screen.getByLabelText("Check every");
-    await userEvent.clear(field);
-    await userEvent.type(field, "4{Enter}");
-    expect(lastSaved().tracker).toEqual({ ...settings().tracker, pollSeconds: 4 });
+    expect(screen.queryByLabelText("Check every")).not.toBeInTheDocument();
   });
 
   describe("away prompt", () => {
@@ -215,7 +212,7 @@ describe("Settings Tracker page", () => {
 
     it("offers 5 to 60 minutes", () => {
       renderPage("tracker");
-      expect(within(minutesField()).getAllByRole("option").map((o) => o.textContent)).toEqual(["5 min", "10 min", "15 min", "20 min", "30 min", "45 min", "60 min"]);
+      expect(within(minutesField()).getAllByRole("option").map((o) => o.textContent)).toEqual(["5", "10", "15", "20", "30", "45", "60"]);
     });
 
     it("keeps a hand-edited threshold selectable", () => {
@@ -243,7 +240,6 @@ describe("Settings Tracker page", () => {
   it.each([
     ["Away after", "500"],
     ["Away after", "0"],
-    ["Check every", "11"],
   ])("rejects %s = %s as out of range and restores the value", async (label, typed) => {
     renderPage("tracker");
     const field = screen.getByLabelText(label);

@@ -81,7 +81,8 @@
 .hover-card-url { text-align: left; overflow-wrap: anywhere; font-size: var(--data-font-size); }
 
 /* ---------- shortcut overview ---------- */
-.dialog.shortcuts { max-height: 80vh; }
+.dialog.shortcuts { max-height: 80vh; overflow: hidden; }
+.shortcuts-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--space-3); }
 .shortcuts section { display: flex; flex-direction: column; gap: var(--space-2); }
 .shortcuts section + section { border-top: 1px solid var(--line); padding-top: var(--space-3); }
 .shortcuts h3 { margin: var(--space-1) 0 0; font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }

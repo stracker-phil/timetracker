@@ -43,7 +43,6 @@ use crate::cli::{CliError, CliOutcome};
 use crate::ipc::IpcMessage;
 use crate::state::AppState;
 use crate::store::json_file::create_private_dir;
-use crate::store::settings::Settings;
 
 const IDENTIFIER: &str = "com.philippstracker.timetracker";
 const SOCKET_NAME: &str = "timetracker.sock";
@@ -68,7 +67,6 @@ pub fn run() {
         eprintln!("Cannot create {}: {e}", config_dir.display());
     }
     let socket = config_dir.join(SOCKET_NAME);
-    let stored = Settings::peek(&config_dir);
 
     let outcome = cli::parse(
         std::env::args_os(),
@@ -76,7 +74,7 @@ pub fn run() {
         &chrono::Local,
         &mut std::io::stdin(),
     );
-    let (message, log_override, hidden) = match outcome {
+    let (message, log_level, hidden) = match outcome {
         Ok(CliOutcome::Exit { message }) => {
             print!("{message}");
             std::process::exit(0);
@@ -115,13 +113,11 @@ pub fn run() {
 
     let _instance_lock = instance::forward_or_lock(&config_dir, &socket, &message, exit_code);
 
-    let mut state = AppState::open(&config_dir);
-    state.log_override = log_override;
     app::start(
-        state,
+        AppState::open(&config_dir),
         socket,
         message,
-        log_override.unwrap_or(stored.log_level),
+        log_level.unwrap_or_default(),
         hidden,
     );
 }

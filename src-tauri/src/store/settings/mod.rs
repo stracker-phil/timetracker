@@ -30,22 +30,16 @@ pub struct Settings {
     pub(crate) legacy_scheme: Option<Scheme>,
     /// The app accent: `system` (the macOS accent color) or one of `ACCENTS`.
     pub accent: String,
-    /// Chrome: sidebar, labels, buttons (also scales rem).
-    pub ui_font_size: u8,
-    /// Data: times, durations, titles on the timeline.
-    pub data_font_size: u8,
+    #[serde(deserialize_with = "lenient")]
+    pub text_size: TextSize,
+    /// A text size in pixels (`uiFontSize`); read as its nearest `text_size` step, never written.
+    #[serde(rename = "uiFontSize", skip_serializing, deserialize_with = "lenient")]
+    #[ts(skip)]
+    pub(crate) legacy_ui_font_size: Option<u8>,
     #[serde(deserialize_with = "lenient")]
     pub calendar_title: CalendarTitle,
     #[serde(deserialize_with = "lenient")]
     pub day_title: DayTitle,
-    /// An installed font family; `None` uses the system font (SF Pro).
-    #[serde(deserialize_with = "lenient")]
-    pub font_ui: Option<String>,
-    /// An installed font family; `None` uses the system mono font (SF Mono).
-    #[serde(deserialize_with = "lenient")]
-    pub font_mono: Option<String>,
-    #[serde(deserialize_with = "lenient")]
-    pub log_level: LogLevel,
     pub launch_at_login: bool,
     /// The data folder when moved away from the config dir.
     #[serde(deserialize_with = "lenient")]
@@ -72,13 +66,10 @@ impl Default for Settings {
             dark_scheme: Scheme::Dark,
             legacy_scheme: None,
             accent: SYSTEM_ACCENT.into(),
-            ui_font_size: 13,
-            data_font_size: 12,
+            text_size: TextSize::Medium,
+            legacy_ui_font_size: None,
             calendar_title: CalendarTitle::Short,
             day_title: DayTitle::Long,
-            font_ui: None,
-            font_mono: None,
-            log_level: LogLevel::Info,
             launch_at_login: false,
             data_dir: None,
             tracker: TrackerSettings::default(),
@@ -93,25 +84,24 @@ impl Default for Settings {
 }
 
 impl Settings {
-    /// Clamps every value into a usable range, so a hand-edited file can't break the app.
+    /// Clamps every value into a usable range, so a hand-edited file can't break the app. Unknown keys are
+    /// ignored.
     pub fn sanitized(mut self) -> Self {
         let d = Settings::default();
         if let Some(scheme) = self.legacy_scheme.take() {
             self.light_scheme = scheme;
         }
+        if let Some(px) = self.legacy_ui_font_size.take() {
+            self.text_size = TextSize::nearest_to_px(px);
+        }
         if !is_app_accent(&self.accent) {
             self.accent = d.accent;
         }
-        self.font_ui = non_blank(self.font_ui);
-        self.font_mono = non_blank(self.font_mono);
         self.data_dir = non_blank(self.data_dir);
-        self.ui_font_size = self.ui_font_size.clamp(10, 24);
-        self.data_font_size = self.data_font_size.clamp(9, 28);
 
         let tracker = &mut self.tracker;
         tracker.idle_minutes = tracker.idle_minutes.clamp(1, 120);
         tracker.away_prompt_minutes = tracker.away_prompt_minutes.clamp(1, 240);
-        tracker.poll_seconds = tracker.poll_seconds.clamp(1, 10);
 
         let capture = &mut self.capture;
         capture.excluded_apps = clean_list(std::mem::take(&mut capture.excluded_apps), Some);
@@ -127,6 +117,8 @@ impl Settings {
             d.timeline.zoom
         };
 
+        // Drop app entries that hold no override.
+        self.apps.retain(|_, app| *app != AppOverride::default());
         if !is_global(&self.timer_shortcut) {
             self.timer_shortcut = d.timer_shortcut;
         }
@@ -143,12 +135,6 @@ impl Settings {
             ));
         }
         let app = self.apps.entry(key.to_string()).or_default();
-        if let Some(group_by_app) = patch.group_by_app {
-            app.group_by_app = group_by_app;
-        }
-        if let Some(titles) = patch.titles {
-            app.titles = titles;
-        }
         if let Some(own_lane) = patch.own_lane {
             app.own_lane = own_lane;
         }
@@ -235,112 +221,6 @@ mod tests {
     }
 
     #[test]
-    fn with_app_sets_group_by_app_and_titles() {
-        let updated = Settings::default()
-            .with_app(
-                "com.apple.mail",
-                &AppSettingPatch {
-                    group_by_app: Some(Some(false)),
-                    titles: Some(Some(Titles::App)),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-
-        assert_eq!(
-            updated.apps["com.apple.mail"],
-            AppOverride {
-                group_by_app: Some(false),
-                titles: Some(Titles::App),
-                ..AppOverride::default()
-            }
-        );
-    }
-
-    #[test]
-    fn with_app_resets_a_field_sent_as_null_and_keeps_an_absent_one() {
-        let start = settings(|s| {
-            s.apps.insert(
-                "com.apple.mail".into(),
-                AppOverride {
-                    group_by_app: Some(false),
-                    titles: Some(Titles::App),
-                    ..AppOverride::default()
-                },
-            );
-        });
-
-        let updated = start
-            .with_app(
-                "com.apple.mail",
-                &AppSettingPatch {
-                    group_by_app: Some(None),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-
-        assert_eq!(
-            updated.apps["com.apple.mail"],
-            AppOverride {
-                titles: Some(Titles::App),
-                ..AppOverride::default()
-            }
-        );
-    }
-
-    #[test]
-    fn with_app_removes_an_entry_whose_overrides_are_all_reset() {
-        let start = Settings::default()
-            .with_app(
-                "Notes",
-                &AppSettingPatch {
-                    group_by_app: Some(Some(true)),
-                    titles: Some(Some(Titles::Document)),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-        assert!(start.apps.contains_key("Notes"));
-
-        let updated = start
-            .with_app(
-                "Notes",
-                &AppSettingPatch {
-                    group_by_app: Some(None),
-                    titles: Some(None),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-
-        assert!(updated.apps.is_empty());
-    }
-
-    #[test]
-    fn an_app_patch_tells_a_null_field_from_an_absent_one() {
-        let patch: AppSettingPatch = serde_json::from_value(json!({
-            "groupByApp": null,
-            "titles": "app",
-            "ownLane": true
-        }))
-        .unwrap();
-        let empty: AppSettingPatch = serde_json::from_value(json!({})).unwrap();
-
-        assert_eq!(
-            patch,
-            AppSettingPatch {
-                group_by_app: Some(None),
-                titles: Some(Some(Titles::App)),
-                own_lane: Some(true),
-                hidden: None,
-            }
-        );
-        assert_eq!(empty, AppSettingPatch::default());
-        assert_eq!(empty.group_by_app, None);
-    }
-
-    #[test]
     fn with_app_sets_the_fields_of_the_patch() {
         let updated = Settings::default()
             .with_app("com.apple.mail", &patch(Some(true), Some(true)))
@@ -366,7 +246,6 @@ mod tests {
                 "com.apple.mail".into(),
                 AppOverride {
                     own_lane: true,
-                    group_by_app: Some(false),
                     ..AppOverride::default()
                 },
             );
@@ -381,8 +260,6 @@ mod tests {
             AppOverride {
                 own_lane: true,
                 hidden: true,
-                group_by_app: Some(false),
-                titles: None
             }
         );
     }
@@ -519,50 +396,24 @@ mod tests {
     }
 
     #[test]
-    fn font_sizes_are_clamped_to_the_allowed_range() {
-        for (input, ui, data) in [
-            (0, 10, 9),
-            (9, 10, 9),
-            (10, 10, 10),
-            (17, 17, 17),
-            (24, 24, 24),
-            (28, 24, 28),
-            (29, 24, 28),
-            (255, 24, 28),
-        ] {
-            let sanitized = settings(|s| {
-                s.ui_font_size = input;
-                s.data_font_size = input;
-            })
-            .sanitized();
-            assert_eq!(sanitized.ui_font_size, ui, "ui {input}");
-            assert_eq!(sanitized.data_font_size, data, "data {input}");
-        }
-    }
-
-    #[test]
     fn tracker_values_are_clamped_to_the_allowed_range() {
-        for (input, idle, away, poll) in [
-            (0, 1, 1, 1),
-            (1, 1, 1, 1),
-            (5, 5, 5, 5),
-            (10, 10, 10, 10),
-            (11, 11, 11, 10),
-            (120, 120, 120, 10),
-            (121, 120, 121, 10),
-            (240, 120, 240, 10),
-            (241, 120, 240, 10),
-            (60_000, 120, 240, 10),
+        for (input, idle, away) in [
+            (0, 1, 1),
+            (1, 1, 1),
+            (5, 5, 5),
+            (120, 120, 120),
+            (121, 120, 121),
+            (240, 120, 240),
+            (241, 120, 240),
+            (60_000, 120, 240),
         ] {
             let sanitized = settings(|s| {
                 s.tracker.idle_minutes = input;
                 s.tracker.away_prompt_minutes = input;
-                s.tracker.poll_seconds = input.min(255) as u8;
             })
             .sanitized();
             assert_eq!(sanitized.tracker.idle_minutes, idle, "idle {input}");
             assert_eq!(sanitized.tracker.away_prompt_minutes, away, "away {input}");
-            assert_eq!(sanitized.tracker.poll_seconds, poll, "poll {input}");
         }
     }
 
@@ -658,25 +509,17 @@ mod tests {
     }
 
     #[test]
-    fn blank_font_names_and_data_dir_become_none_and_others_are_trimmed() {
+    fn a_blank_data_dir_becomes_none_and_others_are_trimmed() {
         for (input, expected) in [
             (None, None),
             (Some(""), None),
             (Some("   "), None),
-            (Some(" Fira Code "), Some("Fira Code")),
+            (Some(" /Volumes/Data "), Some("/Volumes/Data")),
             (Some("/Users/me/data"), Some("/Users/me/data")),
         ] {
             let value = input.map(String::from);
-            let sanitized = settings(|s| {
-                s.font_ui = value.clone();
-                s.font_mono = value.clone();
-                s.data_dir = value.clone();
-            })
-            .sanitized();
-            let expected = expected.map(String::from);
-            assert_eq!(sanitized.font_ui, expected, "{input:?}");
-            assert_eq!(sanitized.font_mono, expected, "{input:?}");
-            assert_eq!(sanitized.data_dir, expected, "{input:?}");
+            let sanitized = settings(|s| s.data_dir = value).sanitized();
+            assert_eq!(sanitized.data_dir, expected.map(String::from), "{input:?}");
         }
     }
 
@@ -749,6 +592,31 @@ mod tests {
     }
 
     #[test]
+    fn text_size_defaults_to_medium_and_round_trips_as_lowercase_json() {
+        assert_eq!(Settings::default().text_size, TextSize::Medium);
+        for (size, json_value) in [
+            (TextSize::Small, "small"),
+            (TextSize::Medium, "medium"),
+            (TextSize::Large, "large"),
+        ] {
+            let original = settings(|s| s.text_size = size);
+
+            let value = serde_json::to_value(&original).unwrap();
+
+            assert_eq!(value["textSize"], json!(json_value));
+            let back: Settings = serde_json::from_value(value).unwrap();
+            assert_eq!(back, original, "{json_value}");
+        }
+    }
+
+    #[test]
+    fn the_legacy_font_size_is_never_serialized() {
+        let value = serde_json::to_value(settings(|s| s.legacy_ui_font_size = Some(16))).unwrap();
+
+        assert!(value.get("uiFontSize").is_none());
+    }
+
+    #[test]
     fn mcp_does_not_expose_activity_by_default() {
         assert!(!Settings::default().mcp.expose_activity);
         assert!(!McpSettings::default().expose_activity);
@@ -762,20 +630,15 @@ mod tests {
                 "lightScheme": "default",
                 "darkScheme": "dark",
                 "accent": "system",
-                "uiFontSize": 13,
-                "dataFontSize": 12,
+                "textSize": "medium",
                 "calendarTitle": "short",
                 "dayTitle": "long",
-                "fontUi": null,
-                "fontMono": null,
-                "logLevel": "info",
                 "launchAtLogin": false,
                 "dataDir": null,
                 "tracker": {
                     "idleMinutes": 5,
                     "awayPromptEnabled": true,
-                    "awayPromptMinutes": 10,
-                    "pollSeconds": 2
+                    "awayPromptMinutes": 10
                 },
                 "capture": {
                     "excludedApps": [],

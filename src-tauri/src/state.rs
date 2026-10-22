@@ -6,7 +6,7 @@ use crate::ipc::IpcMessage;
 use crate::launch::LaunchQueue;
 use crate::recordings::undo::UndoStack;
 use crate::store::keybindings::KeybindingsStore;
-use crate::store::settings::{LogLevel, SettingsStore};
+use crate::store::settings::SettingsStore;
 use crate::store::ui_state::UiStateStore;
 
 pub struct AppState {
@@ -20,8 +20,6 @@ pub struct AppState {
     /// The last activity delete, for its undo window.
     pub deleted_activity: DeleteBuffer,
     pub config_dir: PathBuf,
-    /// `--log-level` from the CLI; wins over the stored level until the app quits.
-    pub log_override: Option<LogLevel>,
 }
 
 impl AppState {
@@ -43,7 +41,6 @@ impl AppState {
             undo: Default::default(),
             deleted_activity: DeleteBuffer::default(),
             config_dir: config_dir.to_path_buf(),
-            log_override: None,
         }
     }
 }

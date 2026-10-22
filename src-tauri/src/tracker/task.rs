@@ -7,7 +7,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::RecvError;
 
-use super::Tracker;
+use super::{POLL_MS, Tracker};
 use crate::capture::{PermissionStatus, SystemEvent};
 use crate::db::time::{Ms, now_ms};
 use crate::error::AppResult;
@@ -26,7 +26,7 @@ impl Tracker {
 
     fn poll_interval(&self, permission: PermissionStatus) -> Duration {
         if permission == PermissionStatus::Granted {
-            Duration::from_secs(u64::from(self.settings().poll_seconds))
+            Duration::from_millis(POLL_MS.unsigned_abs())
         } else {
             PERMISSION_POLL
         }

@@ -14,12 +14,3 @@ where
         T::default()
     }))
 }
-
-/// Tells a field sent as `null` (`Some(None)`) from an absent one (`None`).
-pub(super) fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    T::deserialize(deserializer).map(Some)
-}

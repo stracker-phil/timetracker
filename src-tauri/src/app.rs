@@ -7,10 +7,10 @@ use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
+use crate::cli::LogLevel;
 use crate::handlers::handlers;
 use crate::ipc::IpcMessage;
 use crate::state::AppState;
-use crate::store::settings::LogLevel;
 use crate::tracker::Tracker;
 use crate::{
     app_icons, away_prompt, capture, commands, db, deep_link, ipc, menu, remote, timers, tracker,

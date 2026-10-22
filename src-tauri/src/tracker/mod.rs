@@ -30,6 +30,8 @@ use crate::store::settings::{CaptureSettings, TrackerSettings};
 pub const TRACKER_SOURCE: &str = "tracker";
 /// The status goes out at least this often, so the shown activity stays fresh.
 const HEARTBEAT: Ms = 10_000;
+/// How often the tracker looks at the front window; app switches are seen at once either way.
+pub(crate) const POLL_MS: Ms = 2_000;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -187,8 +189,7 @@ impl Tracker {
     /// Closes spans a crash or forced quit left open. The real end of an activity span is unknown
     /// (it is written on change only), so it ends one poll after its start; an away span ends now.
     pub async fn recover(&self, now: Ms) -> AppResult<()> {
-        let poll = Ms::from(self.settings().poll_seconds) * 1_000;
-        activities::close_stale(&self.db(), TRACKER_SOURCE, poll).await?;
+        activities::close_stale(&self.db(), TRACKER_SOURCE, POLL_MS).await?;
         away::close_open(&self.db(), now).await?;
         Ok(())
     }

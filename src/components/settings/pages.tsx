@@ -1,10 +1,10 @@
 /** The core settings pages. Modules register their own pages from their install function. */
-import { Activity, Copy, Database, Download, EyeOff, FolderInput, FolderOpen, GanttChart, Keyboard, Palette, Power, ScrollText } from "lucide-react";
+import { Activity, Copy, Database, Download, EyeOff, FolderInput, FolderOpen, GanttChart, Keyboard, Palette, Power } from "lucide-react";
 import { useState } from "react";
-import { api, DEFAULT_FONTS, LOG_LEVELS, TEXT_SIZES, toAppError, type DataInfo, type LogLevel, type Scheme } from "../../api";
+import { api, TEXT_SIZES, toAppError, type DataInfo, type Scheme } from "../../api";
 import { copyText } from "../../lib/clipboard";
-import { capitalize, formatBytes, formatCount } from "../../lib/format";
-import { schemeLook, systemIsDark, type Tone } from "../../lib/theme";
+import { formatBytes, formatCount } from "../../lib/format";
+import { schemeLook } from "../../lib/theme";
 import { useApiResult } from "../../lib/useApiResult";
 import { registerSettingsPage, type SettingsPageProps } from "../../registry/settingsPages";
 import { fail } from "../../state/requests";
@@ -12,7 +12,7 @@ import { useStore } from "../../state/store";
 import { AccentSwatches } from "../Accent";
 import { Modal } from "../Modal";
 import { exportBackup, revealFolder, showWelcomeAgain } from "./actions";
-import { Group, NumberField, Row, Segmented, Switch, TextField } from "./controls";
+import { Group, Row, Segmented, Switch } from "./controls";
 import { CapturePage, TrackerPage } from "./CapturePage";
 import { LaunchAtLoginSwitch } from "./LaunchAtLoginSwitch";
 import { ShortcutsPage } from "./ShortcutsPage";
@@ -44,17 +44,15 @@ function SchemePicker({ label, value, onChange }: { label: string; value: Scheme
   );
 }
 
-const SCHEME_KEYS = { light: "lightScheme", dark: "darkScheme" } as const;
-
 function AppearancePage({ s, set }: SettingsPageProps) {
-  const [mode, setMode] = useState<Tone>(() => (systemIsDark() ? "dark" : "light"));
-  const key = SCHEME_KEYS[mode];
   return (
     <>
       <Group title="Look">
-        <Segmented label="Mode" description="Pick a scheme for each macOS mode." options={["light", "dark"] as const} value={mode} onChange={setMode} />
-        <Row label="Scheme" description={`Used while macOS is in ${mode} mode.`} stacked>
-          <SchemePicker label={`${capitalize(mode)} mode scheme`} value={s[key]} onChange={(scheme) => set({ [key]: scheme })} />
+        <Row label="Light mode scheme" description="Used while macOS is in light mode." stacked>
+          <SchemePicker label="Light mode scheme" value={s.lightScheme} onChange={(lightScheme) => set({ lightScheme })} />
+        </Row>
+        <Row label="Dark mode scheme" description="Used while macOS is in dark mode." stacked>
+          <SchemePicker label="Dark mode scheme" value={s.darkScheme} onChange={(darkScheme) => set({ darkScheme })} />
         </Row>
         <Row label="Accent" description="Buttons, links, selection and focus. System follows macOS.">
           <AccentSwatches withSystem value={s.accent} onChange={(accent) => set({ accent })} />
@@ -63,24 +61,27 @@ function AppearancePage({ s, set }: SettingsPageProps) {
       <Group title="Dates">
         <Segmented
           label="Calendar title"
-          description="The sidebar calendar's month: Short reads Nov 2026, Full November 2026."
+          description="The sidebar calendar's month: abbreviated or in full."
           options={["short", "full"] as const}
           value={s.calendarTitle}
           onChange={(calendarTitle) => set({ calendarTitle })}
         />
         <Segmented
           label="Day title"
-          description="The Day view's title: Long reads Wednesday, November 11, 2026, Short Wed, Nov 11."
+          description="The Day view's title: with the weekday and month in full, or abbreviated."
           options={["long", "short"] as const}
           value={s.dayTitle}
           onChange={(dayTitle) => set({ dayTitle })}
         />
       </Group>
       <Group title="Text">
-        <NumberField label="UI size" description="Sidebar, toolbar and labels." suffix="px" value={s.uiFontSize} min={TEXT_SIZES.ui.min} max={TEXT_SIZES.ui.max} onCommit={(uiFontSize) => set({ uiFontSize })} />
-        <NumberField label="Data size" description="Times, durations and titles. ⌘= / ⌘- zoom both." suffix="px" value={s.dataFontSize} min={TEXT_SIZES.data.min} max={TEXT_SIZES.data.max} onCommit={(dataFontSize) => set({ dataFontSize })} />
-        <TextField label="UI font" description="Any installed family; empty uses the system font." placeholder={DEFAULT_FONTS.ui} value={s.fontUi ?? ""} onCommit={(name) => set({ fontUi: name.trim() || null })} />
-        <TextField label="Mono font" description="Paths, ids and commands. Any installed family; empty uses the system mono font." placeholder={DEFAULT_FONTS.mono} value={s.fontMono ?? ""} onCommit={(name) => set({ fontMono: name.trim() || null })} />
+        <Segmented
+          label="Text size"
+          description="Every text in the window. ⌘= and ⌘- step through the sizes outside the Day view."
+          options={TEXT_SIZES.map((t) => t.size)}
+          value={s.textSize}
+          onChange={(textSize) => set({ textSize })}
+        />
       </Group>
     </>
   );
@@ -100,25 +101,6 @@ function GeneralPage() {
         </Row>
       </Group>
     </>
-  );
-}
-
-function LoggingPage({ s, set }: SettingsPageProps) {
-  return (
-    <Group>
-      <Row label="Log level" htmlFor="settings-log-level" description="Higher levels write more detail.">
-        <select id="settings-log-level" className="input" value={s.logLevel} onChange={(e) => set({ logLevel: e.target.value as LogLevel })}>
-          {LOG_LEVELS.map((l) => (
-            <option key={l} value={l}>{capitalize(l)}</option>
-          ))}
-        </select>
-      </Row>
-      <Row label="Log files" description="The three most recent files are kept.">
-        <button type="button" className="btn" onClick={() => void api.openLogFolder()}>
-          <FolderOpen size="1.077rem" /> Open log folder
-        </button>
-      </Row>
-    </Group>
   );
 }
 
@@ -194,13 +176,18 @@ function FolderGroup({ info, onMoved }: { info: DataInfo; onMoved: () => void })
 
   return (
     <Group title="Folder">
-      <Row label="Location" description={<span className="mono selectable">{info.dir}</span>}>
-        <button type="button" className="btn" onClick={() => void revealFolder(info.file)}>
-          <FolderOpen size="1.077rem" /> Reveal in Finder
-        </button>
-        <button type="button" className="btn" disabled={!info.available} onClick={() => void choose()}>
-          <FolderInput size="1.077rem" /> Move…
-        </button>
+      <Row label="Location" stacked>
+        <div className="settings-location">
+          <div className="settings-buttons">
+            <button type="button" className="btn" onClick={() => void revealFolder(info.file)}>
+              <FolderOpen size="1.077rem" /> Reveal in Finder
+            </button>
+            <button type="button" className="btn" disabled={!info.available} onClick={() => void choose()}>
+              <FolderInput size="1.077rem" /> Move…
+            </button>
+          </div>
+          <span className="settings-path mono selectable">{info.dir}</span>
+        </div>
       </Row>
       {refused && (
         <div className="settings-row">
@@ -274,8 +261,9 @@ function DataPage({ s, set }: SettingsPageProps) {
 }
 
 export function registerCoreSettingsPages() {
-  registerSettingsPage({ id: "appearance", group: "Interface", label: "Appearance", icon: Palette, order: 10, intro: "How TimeTracker looks. Changes apply right away.", Body: AppearancePage });
-  registerSettingsPage({ id: "shortcuts", group: "Interface", label: "Shortcuts", icon: Keyboard, order: 20, intro: "Click a shortcut and press the new keys. Backspace unbinds, Escape cancels.", Body: ShortcutsPage });
+  registerSettingsPage({ id: "general", group: "App", label: "General", icon: Power, order: 0, intro: "How TimeTracker starts.", Body: GeneralPage });
+  registerSettingsPage({ id: "appearance", group: "App", label: "Appearance", icon: Palette, order: 10, intro: "How TimeTracker looks. Changes apply right away.", Body: AppearancePage });
+  registerSettingsPage({ id: "shortcuts", group: "App", label: "Shortcuts", icon: Keyboard, order: 20, intro: "Click a shortcut and press the new keys. Backspace unbinds, Escape cancels.", Body: ShortcutsPage });
   registerSettingsPage({
     id: "capture",
     group: "Tracking",
@@ -285,9 +273,7 @@ export function registerCoreSettingsPages() {
     intro: "What the tracker records. It never records keystrokes, screenshots, audio, your clipboard or page content, and nothing leaves this Mac.",
     Body: CapturePage,
   });
-  registerSettingsPage({ id: "tracker", group: "Tracking", label: "Tracker", icon: Activity, order: 20, intro: "When time counts as away, and how often the tracker looks.", Body: TrackerPage });
+  registerSettingsPage({ id: "tracker", group: "Tracking", label: "Tracker", icon: Activity, order: 20, intro: "When time counts as away, and when TimeTracker asks about it.", Body: TrackerPage });
   registerSettingsPage({ id: "timeline", group: "Tracking", label: "Timeline", icon: GanttChart, order: 30, intro: "How the Day view shows your activity.", Body: TimelinePage });
-  registerSettingsPage({ id: "general", group: "System", label: "General", icon: Power, order: 0, intro: "How TimeTracker starts.", Body: GeneralPage });
-  registerSettingsPage({ id: "data", group: "System", label: "Data", icon: Database, order: 15, intro: "Where TimeTracker keeps your activity and recordings. Everything stays on this Mac.", Body: DataPage });
-  registerSettingsPage({ id: "logging", group: "System", label: "Logging", icon: ScrollText, order: 20, intro: "What TimeTracker writes to its log file.", Body: LoggingPage });
+  registerSettingsPage({ id: "data", group: "System", label: "Data", icon: Database, order: 0, intro: "Where TimeTracker keeps your activity and recordings. Everything stays on this Mac.", Body: DataPage });
 }

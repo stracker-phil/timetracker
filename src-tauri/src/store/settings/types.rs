@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::serde_helpers::{lenient, present};
+use super::serde_helpers::lenient;
 
 /// A look for one macOS mode: `Default` has a dark sidebar beside light content, `Light` is all light,
 /// `Dark` is all dark.
@@ -15,28 +15,24 @@ pub enum Scheme {
     Dark,
 }
 
-#[derive(
-    Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, clap::ValueEnum, TS,
-)]
+/// The size of all text. The frontend maps each step to its pixel sizes (`TEXT_SIZES` in `src/api/types.ts`).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "lowercase")]
-pub enum LogLevel {
-    Error,
-    Warn,
+pub enum TextSize {
+    Small,
     #[default]
-    Info,
-    Debug,
-    Trace,
+    Medium,
+    Large,
 }
 
-impl From<LogLevel> for log::LevelFilter {
-    fn from(level: LogLevel) -> Self {
-        match level {
-            LogLevel::Error => log::LevelFilter::Error,
-            LogLevel::Warn => log::LevelFilter::Warn,
-            LogLevel::Info => log::LevelFilter::Info,
-            LogLevel::Debug => log::LevelFilter::Debug,
-            LogLevel::Trace => log::LevelFilter::Trace,
+impl TextSize {
+    /// The step closest to a chrome text size in pixels (Medium is 13); the smaller one on a tie.
+    pub fn nearest_to_px(px: u8) -> Self {
+        match px {
+            ..=12 => Self::Small,
+            13..=14 => Self::Medium,
+            _ => Self::Large,
         }
     }
 }
@@ -158,7 +154,6 @@ pub struct TrackerSettings {
     pub away_prompt_enabled: bool,
     /// Away spans at least this long trigger the away prompt.
     pub away_prompt_minutes: u16,
-    pub poll_seconds: u8,
 }
 
 impl Default for TrackerSettings {
@@ -167,7 +162,6 @@ impl Default for TrackerSettings {
             idle_minutes: 5,
             away_prompt_enabled: true,
             away_prompt_minutes: 10,
-            poll_seconds: 2,
         }
     }
 }
@@ -232,30 +226,20 @@ impl Default for TimelineSettings {
     }
 }
 
-/// Per-app overrides of the timeline settings, keyed by bundle id (the app's name without one).
+/// How the timeline treats one app, keyed by bundle id (the app's name without one). Unknown keys are ignored.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(default, rename_all = "camelCase")]
 pub struct AppOverride {
-    pub group_by_app: Option<bool>,
-    #[serde(deserialize_with = "lenient")]
-    pub titles: Option<Titles>,
     pub hidden: bool,
     pub own_lane: bool,
 }
 
-/// The fields of one app's `AppOverride` to change; absent ones stay, `null` returns an override to the
-/// timeline's own setting.
+/// The fields of one app's `AppOverride` to change; absent ones stay.
 #[derive(Deserialize, Clone, Debug, Default, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettingPatch {
-    #[serde(default, deserialize_with = "present")]
-    #[ts(optional)]
-    pub group_by_app: Option<Option<bool>>,
-    #[serde(default, deserialize_with = "present")]
-    #[ts(optional)]
-    pub titles: Option<Option<Titles>>,
     #[ts(optional)]
     pub own_lane: Option<bool>,
     #[ts(optional)]

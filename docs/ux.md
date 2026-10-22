@@ -88,14 +88,13 @@ One place for views and one place for dates: the sidebar.
   without a period (Projects, Tags, Rules) show nothing period-bound. The billable part is a small bar (a
   neutral track, filled in the accent; no red or green judgment) with `Billable 67 %`, and
   `Billable 1h 00m / 1h 30m` in its tooltip; it hides while nothing is recorded in that period. The
-  text zoom has no readout: ⌘= ⌘- ⌘0.
+  text size has no readout: ⌘= ⌘- ⌘0.
 
 ## Appearance and tokens
 
 The app always follows the macOS appearance; there is no app mode. Settings → Appearance picks a **scheme
-per macOS mode**: a Light | Dark segmented control ("Pick a scheme for each macOS mode."), starting on the
-current mode, switches which mode's three scheme tiles show below it, and a tile sets that mode's scheme
-(`lightScheme`, `darkScheme`). The look is the scheme of the current mode, so dark mode with the Light scheme
+per macOS mode**: two rows, "Light mode scheme" and "Dark mode scheme", each with the three scheme tiles under
+it; a tile sets that mode's scheme (`lightScheme`, `darkScheme`). The look is the scheme of the current mode, so dark mode with the Light scheme
 is all light ([ADR 0022](adr/0022-a-scheme-per-system-mode.md)). The accent is one setting for both modes.
 
 | Scheme | Sidebar | Content | Default for |
@@ -158,11 +157,11 @@ Derived tokens in `src/styles/theme.css`, the same for every palette:
 | `--accent-text` | `--accent` with its lightness capped at `--accent-text-max-l` | the accent as text |
 | `--focus-ring` | a 3px ring of the accent at 45% | focus on fields, buttons, segments |
 | `--block-fill`, `--block-text`, `--block-meta` | from the project's shade `--rec` on `.card`, `.suggestion`, `.project-chip` | a filled recording: the fill, its text, its foot (text 75% over the fill) |
-| `--ui-font-size`, `--data-font-size` | 13px, 12px | set from Settings by `applyAppearance` (`lib/theme.ts`) |
+| `--ui-font-size`, `--data-font-size` | 13px, 12px | set from the Text size setting by `applyAppearance` (`lib/theme.ts`) |
 | `--fs-display`, `--fs-title`, `--fs-body`, `--fs-meta`, `--fs-caption` | 22, 15, 13, 11 and 10px in rem | the type scale |
 | `--space-1` … `--space-6`, `--space-8`, `--margin` | 4 to 24px and 32px in rem; 20px | spacing; content margins |
 | `--control-h`, `--toolbar-control-h` | 22px, 28px in rem | push buttons, fields, popup buttons, menu items; toolbar buttons |
-| `--font-ui`, `--font-mono` | the system font (SF Pro), SF Mono | defaults; Settings accepts any installed family |
+| `--font-ui`, `--font-mono` | the system font (SF Pro), SF Mono | fixed |
 | `--radius-sm`, `--radius`, `--radius-lg` | 6, 10, 12px | controls; menus, popovers and inset groups; sheets and panels |
 | `--radius-block`, `--radius-card` | 6, 8px | activity blocks; recording cards |
 | `--toolbar-height`, `--traffic-lights` | 52px, 84px | the unified toolbar (centered on the window buttons); its left inset without the sidebar (px: they don't scale) |
@@ -172,8 +171,7 @@ around a circle; it follows the macOS accent color through WebKit's `AccentColor
 then the nine hues. System is the default (`SYSTEM_ACCENT`); an unknown value falls back to it.
 
 **Fonts:** none are bundled. The UI uses the system font (`-apple-system`, SF Pro) and machine text SF Mono
-(`ui-monospace`). Settings → Appearance "UI font" and "Mono font" take any installed family name; empty means
-the system one.
+(`ui-monospace`); neither is a setting.
 
 ## Type
 
@@ -187,9 +185,10 @@ the system one.
 | `--fs-caption` | 10px | hour labels, key caps |
 
 Times and durations use tabular figures (the body sets `tabular-nums`); `--data-font-size` (12px) sizes
-data values such as activity titles. Both sizes are settings: Appearance "UI size" (13px, 10–24) and "Data
-size" (12px, 9–28); ⌘= and ⌘- zoom both, except in the Day view, where they zoom the timeline. Chrome sizes
-are in rem of the UI size. Weights 400, 500, 600 and 700 (titles). Never mono in the UI: mono is for paths,
+data values such as activity titles. Both follow one setting, Appearance → "Text size": Small (12 and 11px),
+Medium (13 and 12px, the default) or Large (15 and 14px), a segmented control without a pixel readout; ⌘= and
+⌘- step through the three (⌘0 returns to Medium), except in the Day view, where they zoom the timeline. Chrome
+sizes are in rem of the UI size. Weights 400, 500, 600 and 700 (titles). Never mono in the UI: mono is for paths,
 bundle ids, URLs and commands only. Clock times read `09:30` (`formatClock`).
 
 ## Formats and words
@@ -393,7 +392,8 @@ The Day view reads like Timely's: the toolbar, the timesheet on the left, then t
 - **View options** (toolbar, `day.settings`): one popover under its button with Lanes (Summary, Activity),
   Activity (Compact, Titles), App lanes (a switch per app of the day, most time first, that gives it a lane of
   its own, `ownLane`) and Hidden apps (each with Unhide; the heading counts them only when there are any).
-  Continuity, Noise cancellation, Time snapping and the summary interval live in Settings → Timeline only.
+  Join short gaps, Hide activity shorter than, Time snapping and the summary interval live in Settings →
+  Timeline only.
 - **Noisy titles:** symbols that apps put in front of a window title (spinners and dingbats such as ◐ ✳ ⠋)
   are dropped before labelling, so one document keeps one block; the activity lane leaves out blocks under a
   minute, which are too short for a label.
@@ -411,13 +411,14 @@ Settings → Timeline holds them all; the Day toolbar's View options repeat the 
 | Show all activity | on | the activity lane; off leaves the summary, app and source lanes |
 | Compact activity | off | shorter rows, one line per activity |
 | Group by app and website | on | one activity per app, whatever its windows are called; off splits by title |
-| Continuity | short | joins activity of one app across gaps under 2 (short), 8 (regular) or 16 (extended) min; never across sleep, lock or a pause |
-| Noise cancellation | low | hides activity under 2 (low), 4 (medium) or 6 (high) min; tracked time still counts them |
+| Join short gaps | 2 min | joins activity of one app across gaps under Off, 2, 8 or 16 min (`continuity`: off, short, regular, extended); never across sleep, lock or a pause |
+| Hide activity shorter than | 2 min | hides activity under Off, 2, 4 or 6 min (`noise`: off, low, medium, high); tracked time still counts it |
 | Titles | document | label activity with the document or page name, or with the app |
 | Time snapping | 5 min | the grid recordings snap to: 1, 5, 10 or 15 min |
 
-Per app (Settings → Timeline → Apps, or an activity's menu): Group by app and Titles (default follows the
-timeline), Hidden (gone from every lane; View options list hidden apps with Unhide), Own lane.
+Per app (Settings → Timeline → Apps, by app name with its tracked time, or an activity's menu): Hidden (gone
+from every lane; View options list hidden apps with Unhide) and Own lane. Grouping and titles are the
+timeline's for every app.
 
 ## Recordings
 
@@ -592,9 +593,16 @@ timeline), Hidden (gone from every lane; View options list hidden apps with Unhi
   with the accent and `--on-accent` text, as a focused macOS sidebar) and the page on `--bg`: the title in
   `--fs-title` bold, the intro in `--o2`, then groups. A group heading is 13px semibold `--text` over its
   inset group; each row (at least 36px) has the label and its description (`--fs-meta`, `--o2`) on the left
-  and the control on the right, hairlines between rows. Counts and durations use tabular
+  and the control on the right, hairlines between rows. A row that depends on a switch sits indented under
+  it; number fields and number popups share one width. Counts and durations use tabular
   figures; paths, bundle ids and commands are mono and selectable. A failure reads in red on a light red
   tint.
+- Pages, in order: General, Appearance, Shortcuts (App); Capture, Tracker, Timeline (Tracking); Data
+  (System). Tracker holds Away after and the away prompt switch with its "For longer than" minutes; how often
+  the tracker looks is fixed (2 s). Data → Location is a stacked row: Reveal in Finder and Move…, the path
+  under them. Shortcuts lists every command that can take a key, without menu-only toggles (Launch at
+  login, Show welcome again). There is no Logging page: Help → Open Log Folder opens the logs and
+  `--log-level` sets their level for a run.
 - Appearance → **Dates**: Calendar title (Short `Nov 2026`, the default, or Full `November 2026`) and Day
   title (Long `Wednesday, November 11, 2026`, the default, or Short `Wed, Nov 11`, with the year only when it
   is not this year's), as segmented controls. Rust formats both; a change reloads the Day view and the
@@ -661,7 +669,7 @@ under the Location row instead of a toast.
 
 Every action is a command (`APP_COMMANDS` in `src/commands/index.ts`) with a rebindable key (Settings →
 Shortcuts, `keybindings.json`) or, without a default key, an item in the [menu bar](#menu-bar); every
-command is in the palette too (⌘K, `>` lists the commands of the active scopes; see [Palette](#palette)). `?` lists the bound commands of the scopes active when it opens, most specific first.
+command is in the palette too (⌘K, `>` lists the commands of the active scopes; see [Palette](#palette)). `?` lists the bound commands of the scopes active when it opens, most specific first, in a sheet that opens at its top: only the list scrolls, Close stays below it.
 
 Rules of the keys (`handleKeydown`):
 

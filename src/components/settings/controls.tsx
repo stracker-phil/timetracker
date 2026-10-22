@@ -11,10 +11,23 @@ export function Group({ title, children }: { title?: string; children: ReactNode
   );
 }
 
-/** One card row: label and description on the left, the control on the right (or below when `stacked`). */
-export function Row({ label, icon, description, htmlFor, stacked, children }: { label: string; icon?: ReactNode; description?: ReactNode; htmlFor?: string; stacked?: boolean; children?: ReactNode }) {
+interface RowProps {
+  label: string;
+  icon?: ReactNode;
+  description?: ReactNode;
+  htmlFor?: string;
+  /** The control goes below the label instead of beside it. */
+  stacked?: boolean;
+  /** Indented under the row above it, the switch it depends on. */
+  nested?: boolean;
+  children?: ReactNode;
+}
+
+/** One card row: label and description on the left, the control on the right. */
+export function Row({ label, icon, description, htmlFor, stacked, nested, children }: RowProps) {
+  const className = ["settings-row", stacked && "stacked", nested && "nested"].filter(Boolean).join(" ");
   return (
-    <div className={`settings-row${stacked ? " stacked" : ""}`}>
+    <div className={className}>
       <div className="settings-row-text">
         {htmlFor ? (
           <label htmlFor={htmlFor}>{label}</label>

@@ -1,23 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const system = vi.hoisted(() => {
-  const state = { dark: false };
-  window.matchMedia = ((query: string) => ({
-    get matches() {
-      return state.dark;
-    },
-    media: query,
-    onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => false,
-  }));
-  return state;
-});
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
@@ -42,98 +25,122 @@ function renderDialog(patch: Parameters<typeof resetStore>[0] = {}) {
 describe("SettingsDialog", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("opens on the Appearance page", () => {
+  it("opens on General, the first page", () => {
     renderDialog();
-    expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "General" })).toBeInTheDocument();
   });
 
   it("switches the shown page from the navigation", async () => {
     renderDialog();
-    await openPage("Logging");
-    expect(screen.getByRole("heading", { name: "Logging" })).toBeInTheDocument();
+    await openPage("Appearance");
+    expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+  });
+
+  describe("navigation", () => {
+    const nav = () => screen.getByRole("navigation", { name: "Settings pages" });
+
+    it("lists the pages in order", () => {
+      renderDialog();
+      expect(within(nav()).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["General", "Appearance", "Shortcuts", "Capture", "Tracker", "Timeline", "Data"]);
+    });
+
+    it("groups them under App, Tracking and System", () => {
+      renderDialog();
+      expect(nav().textContent).toMatch(/^\s*App\s*General\s*Appearance\s*Shortcuts\s*Tracking\s*Capture\s*Tracker\s*Timeline\s*System\s*Data\s*$/);
+    });
+
+    it("has no Logging page", () => {
+      renderDialog();
+      expect(within(nav()).queryByRole("button", { name: "Logging" })).not.toBeInTheDocument();
+    });
   });
 
   describe("Appearance", () => {
-    const modeGroup = () => within(screen.getByRole("group", { name: "Mode" }));
+    const schemes = (name: string) => within(screen.getByRole("group", { name }));
+    const renderAppearance = (patch: Parameters<typeof settings>[0] = {}) =>
+      renderDialog({ settings: settings(patch), dialog: { type: "settings", page: "appearance" } });
 
-    afterEach(() => {
-      system.dark = false;
+    it("has no Mode switcher", () => {
+      renderAppearance();
+      expect(screen.queryByRole("group", { name: "Mode" })).not.toBeInTheDocument();
     });
 
-    it("explains that a scheme is picked for each macOS mode", () => {
-      renderDialog();
-      expect(screen.getByText("Pick a scheme for each macOS mode.")).toBeInTheDocument();
+    it.each(["Light mode scheme", "Dark mode scheme"])("offers %s as Default, Light and Dark", (name) => {
+      renderAppearance();
+      expect(schemes(name).getAllByRole("button").map((b) => b.textContent)).toEqual(["Default", "Light", "Dark"]);
     });
 
-    it("offers Light and Dark modes only", () => {
-      renderDialog();
-      expect(modeGroup().getAllByRole("button").map((b) => b.textContent)).toEqual(["Light", "Dark"]);
-    });
-
-    it("starts on Light and its scheme picker while macOS is light", () => {
-      renderDialog();
-      expect(modeGroup().getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "true");
-      expect(modeGroup().getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "false");
-      expect(screen.getByRole("group", { name: "Light mode scheme" })).toBeInTheDocument();
-      expect(screen.queryByRole("group", { name: "Dark mode scheme" })).not.toBeInTheDocument();
-    });
-
-    it("starts on Dark and its scheme picker while macOS is dark", () => {
-      system.dark = true;
-      renderDialog();
-      expect(modeGroup().getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
-      expect(screen.getByRole("group", { name: "Dark mode scheme" })).toBeInTheDocument();
-    });
-
-    it("switches the picker and its pressed tile when the mode tab changes", async () => {
-      renderDialog({ settings: settings({ lightScheme: "light", darkScheme: "default" }) });
-      expect(within(screen.getByRole("group", { name: "Light mode scheme" })).getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "true");
-      await userEvent.click(modeGroup().getByRole("button", { name: "Dark" }));
-      const dark = within(screen.getByRole("group", { name: "Dark mode scheme" }));
-      expect(screen.queryByRole("group", { name: "Light mode scheme" })).not.toBeInTheDocument();
-      expect(dark.getByRole("button", { name: "Default" })).toHaveAttribute("aria-pressed", "true");
-      expect(dark.getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "false");
+    it("presses the saved scheme in each group", () => {
+      renderAppearance({ lightScheme: "light", darkScheme: "default" });
+      expect(schemes("Light mode scheme").getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "true");
+      expect(schemes("Light mode scheme").getByRole("button", { name: "Default" })).toHaveAttribute("aria-pressed", "false");
+      expect(schemes("Dark mode scheme").getByRole("button", { name: "Default" })).toHaveAttribute("aria-pressed", "true");
+      expect(schemes("Dark mode scheme").getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "false");
     });
 
     it("saves the clicked tile as the light scheme and leaves the dark one unchanged", async () => {
-      renderDialog({ settings: settings({ lightScheme: "default", darkScheme: "dark" }) });
-      await userEvent.click(within(screen.getByRole("group", { name: "Light mode scheme" })).getByRole("button", { name: "Dark" }));
+      renderAppearance({ lightScheme: "default", darkScheme: "dark" });
+      await userEvent.click(schemes("Light mode scheme").getByRole("button", { name: "Dark" }));
       expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ lightScheme: "dark", darkScheme: "dark" }));
     });
 
     it("saves the clicked tile as the dark scheme and leaves the light one unchanged", async () => {
-      renderDialog({ settings: settings({ lightScheme: "default", darkScheme: "dark" }) });
-      await userEvent.click(modeGroup().getByRole("button", { name: "Dark" }));
-      await userEvent.click(within(screen.getByRole("group", { name: "Dark mode scheme" })).getByRole("button", { name: "Light" }));
+      renderAppearance({ lightScheme: "default", darkScheme: "dark" });
+      await userEvent.click(schemes("Dark mode scheme").getByRole("button", { name: "Light" }));
       expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ lightScheme: "default", darkScheme: "light" }));
     });
 
-    it("does not save anything when only the mode tab changes", async () => {
-      renderDialog();
-      await userEvent.click(modeGroup().getByRole("button", { name: "Dark" }));
-      expect(mocked.updateSettings).not.toHaveBeenCalled();
+    describe("Text size", () => {
+      const sizes = () => schemes("Text size");
+
+      it("offers Small, Medium and Large", () => {
+        renderAppearance();
+        expect(sizes().getAllByRole("button").map((b) => b.textContent)).toEqual(["Small", "Medium", "Large"]);
+      });
+
+      it("presses the saved size", () => {
+        renderAppearance({ textSize: "large" });
+        expect(sizes().getByRole("button", { name: "Large" })).toHaveAttribute("aria-pressed", "true");
+        expect(sizes().getByRole("button", { name: "Medium" })).toHaveAttribute("aria-pressed", "false");
+      });
+
+      it("saves the clicked size", async () => {
+        renderAppearance();
+        await userEvent.click(sizes().getByRole("button", { name: "Small" }));
+        expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ textSize: "small" }));
+      });
+
+      it("shows no pixel sizes", () => {
+        renderAppearance();
+        expect(document.body.textContent).not.toMatch(/\d\s*px|\bpx\b/i);
+      });
+
+      it.each(["UI size", "Data size", "UI font", "Mono font"])("has no %s field", (label) => {
+        renderAppearance();
+        expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+      });
     });
 
     it("saves the accent of the clicked swatch", async () => {
-      renderDialog();
+      renderAppearance();
       await userEvent.click(screen.getByRole("button", { name: "Accent teal" }));
       expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ accent: "teal" }));
     });
 
     it("saves the system accent when the System swatch is clicked", async () => {
-      renderDialog();
+      renderAppearance();
       await userEvent.click(screen.getByRole("button", { name: "Accent system" }));
       expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ accent: "system" }));
     });
 
     it("marks the System swatch as pressed while the accent is system", () => {
-      renderDialog({ settings: settings({ accent: "system" }) });
+      renderAppearance({ accent: "system" });
       expect(screen.getByRole("button", { name: "Accent system" })).toHaveAttribute("aria-pressed", "true");
       expect(screen.getByRole("button", { name: "Accent orange" })).toHaveAttribute("aria-pressed", "false");
     });
 
     it("marks the current accent as pressed", () => {
-      renderDialog();
+      renderAppearance();
       expect(screen.getByRole("button", { name: "Accent orange" })).toHaveAttribute("aria-pressed", "true");
       expect(screen.getByRole("button", { name: "Accent teal" })).toHaveAttribute("aria-pressed", "false");
     });
@@ -145,12 +152,12 @@ describe("SettingsDialog", () => {
         ["Calendar title", ["Short", "Full"]],
         ["Day title", ["Long", "Short"]],
       ])("offers %s as %j", (name, options) => {
-        renderDialog();
+        renderAppearance();
         expect(control(name).getAllByRole("button").map((b) => b.textContent)).toEqual(options);
       });
 
       it("presses the saved choices", () => {
-        renderDialog({ settings: settings({ calendarTitle: "full", dayTitle: "short" }) });
+        renderAppearance({ calendarTitle: "full", dayTitle: "short" });
         expect(control("Calendar title").getByRole("button", { name: "Full" })).toHaveAttribute("aria-pressed", "true");
         expect(control("Calendar title").getByRole("button", { name: "Short" })).toHaveAttribute("aria-pressed", "false");
         expect(control("Day title").getByRole("button", { name: "Short" })).toHaveAttribute("aria-pressed", "true");
@@ -158,59 +165,23 @@ describe("SettingsDialog", () => {
       });
 
       it("saves calendarTitle when the Calendar title is changed", async () => {
-        renderDialog();
+        renderAppearance();
         await userEvent.click(control("Calendar title").getByRole("button", { name: "Full" }));
         expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ calendarTitle: "full", dayTitle: "long" }));
         await vi.waitFor(() => expect(control("Calendar title").getByRole("button", { name: "Full" })).toHaveAttribute("aria-pressed", "true"));
       });
 
       it("saves dayTitle when the Day title is changed", async () => {
-        renderDialog();
+        renderAppearance();
         await userEvent.click(control("Day title").getByRole("button", { name: "Short" }));
         expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ dayTitle: "short", calendarTitle: "short" }));
         await vi.waitFor(() => expect(control("Day title").getByRole("button", { name: "Short" })).toHaveAttribute("aria-pressed", "true"));
       });
     });
 
-    it("saves a typed text size on blur, not per keystroke", async () => {
-      renderDialog();
-      const size = screen.getByLabelText("UI size");
-      await userEvent.clear(size);
-      await userEvent.type(size, "16");
-      expect(mocked.updateSettings).not.toHaveBeenCalled();
-      await userEvent.tab();
-      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ uiFontSize: 16 }));
-    });
-
-    it("restores the saved size instead of saving an out-of-range one", async () => {
-      renderDialog();
-      const size = screen.getByLabelText("UI size");
-      await userEvent.clear(size);
-      await userEvent.type(size, "99");
-      await userEvent.tab();
-      expect(mocked.updateSettings).not.toHaveBeenCalled();
-      expect(size).toHaveValue(13);
-    });
-
-    it("saves an empty font name as null", async () => {
-      renderDialog({ settings: settings({ fontUi: "Inter" }) });
-      const font = screen.getByLabelText("UI font");
-      expect(font).toHaveValue("Inter");
-      await userEvent.clear(font);
-      await userEvent.tab();
-      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ fontUi: null }));
-    });
   });
 
-  describe("System", () => {
-    it("lists General first among the System pages", () => {
-      renderDialog();
-      const pages = within(screen.getByRole("navigation", { name: "Settings pages" })).getAllByRole("button");
-      const names = pages.map((p) => p.textContent?.trim());
-      expect(names.indexOf("General")).toBeLessThan(names.indexOf("Data"));
-      expect(names.indexOf("Data")).toBeLessThan(names.indexOf("Logging"));
-    });
-
+  describe("General", () => {
     it("installs launch at login when the switch is turned on", async () => {
       renderDialog();
       await openPage("General");
@@ -232,20 +203,6 @@ describe("SettingsDialog", () => {
       await userEvent.click(screen.getByRole("button", { name: "Show welcome again" }));
       expect(useStore.getState().dialog).toBeNull();
       expect(useStore.getState().uiState.onboardingDone).toBe(false);
-    });
-
-    it("saves the log level chosen in the select", async () => {
-      renderDialog();
-      await openPage("Logging");
-      await userEvent.selectOptions(screen.getByRole("combobox", { name: "Log level" }), "Debug");
-      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ logLevel: "debug" }));
-    });
-
-    it("opens the log folder", async () => {
-      renderDialog();
-      await openPage("Logging");
-      await userEvent.click(screen.getByRole("button", { name: /Open log folder/ }));
-      expect(mocked.openLogFolder).toHaveBeenCalled();
     });
   });
 
@@ -299,6 +256,13 @@ describe("SettingsDialog", () => {
       renderDialog();
       await openShortcuts();
       expect(commandField()).toHaveTextContent("⌘⌃S");
+    });
+
+    it.each(["Launch at login", "Show welcome again"])("omits the menu-only command %s", async (title) => {
+      renderDialog();
+      await openPage("Shortcuts");
+      expect(screen.getByText("Toggle sidebar")).toBeInTheDocument();
+      expect(screen.queryByText(title)).not.toBeInTheDocument();
     });
 
     it("says so when no command matches the search", async () => {

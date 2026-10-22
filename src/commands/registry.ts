@@ -14,6 +14,8 @@ export interface Command {
   menu?: true;
   /** The checkmark of a menu checkbox item. */
   checked?: () => boolean;
+  /** A menu item that is not meant to have a shortcut; Settings → Shortcuts leaves it out. */
+  menuOnly?: true;
 }
 
 export type Overrides = Record<string, string | null>;

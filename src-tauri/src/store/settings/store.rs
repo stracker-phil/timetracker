@@ -247,7 +247,7 @@ mod tests {
         assert_eq!(
             loaded,
             settings(|s| {
-                s.ui_font_size = 16;
+                s.text_size = TextSize::Large;
                 s.timeline.zoom = 2.0;
                 s.timeline.compact = true;
                 s.apps.insert(
@@ -274,7 +274,7 @@ mod tests {
 
         let loaded = SettingsStore::open(dir.path()).get();
 
-        assert_eq!(loaded, settings(|s| s.ui_font_size = 16));
+        assert_eq!(loaded, settings(|s| s.text_size = TextSize::Large));
         assert_eq!(
             (loaded.calendar_title, loaded.day_title),
             (CalendarTitle::Short, DayTitle::Long)
@@ -315,7 +315,7 @@ mod tests {
         assert_eq!(
             loaded,
             settings(|s| {
-                s.ui_font_size = 18;
+                s.text_size = TextSize::Large;
                 s.timeline.zoom = 2.0;
             })
         );
@@ -346,8 +346,159 @@ mod tests {
 
         let loaded = SettingsStore::open(dir.path()).get();
 
-        assert_eq!(loaded.ui_font_size, 24);
+        assert_eq!(loaded.text_size, TextSize::Large);
         assert_eq!(loaded.accent, "system");
+    }
+
+    #[test]
+    fn an_old_ui_font_size_moves_to_the_nearest_text_size() {
+        for (px, expected) in [
+            (12, TextSize::Small),
+            (13, TextSize::Medium),
+            (14, TextSize::Medium),
+            (15, TextSize::Large),
+            (16, TextSize::Large),
+            (24, TextSize::Large),
+            (99, TextSize::Large),
+        ] {
+            let dir = temp_config_dir();
+            write_settings(dir.path(), &format!(r#"{{"uiFontSize": {px}}}"#));
+
+            assert_eq!(
+                SettingsStore::open(dir.path()).get().text_size,
+                expected,
+                "{px}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_migrated_ui_font_size_is_saved_as_text_size_only() {
+        let dir = temp_config_dir();
+        write_settings(dir.path(), r#"{"uiFontSize": 12}"#);
+        let store = SettingsStore::open(dir.path());
+
+        store.update(store.get()).await.unwrap();
+
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join(FILE_NAME)).unwrap())
+                .unwrap();
+        assert!(written.get("uiFontSize").is_none());
+        assert_eq!(written["textSize"], "small");
+        assert_eq!(
+            SettingsStore::open(dir.path()).get().text_size,
+            TextSize::Small
+        );
+    }
+
+    #[test]
+    fn a_text_size_in_the_file_is_read() {
+        let dir = temp_config_dir();
+        write_settings(dir.path(), r#"{"textSize": "small"}"#);
+
+        assert_eq!(Settings::peek(dir.path()).text_size, TextSize::Small);
+    }
+
+    #[test]
+    fn an_unknown_text_size_falls_back_to_medium_without_quarantining_the_file() {
+        let dir = temp_config_dir();
+        let raw = r#"{"textSize": "huge", "accent": "teal"}"#;
+        write_settings(dir.path(), raw);
+
+        let loaded = SettingsStore::open(dir.path()).get();
+
+        assert_eq!(loaded, settings(|s| s.accent = "teal".into()));
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join(FILE_NAME)).unwrap(),
+            raw
+        );
+        assert_eq!(dir_entries(dir.path()), vec![FILE_NAME.to_string()]);
+    }
+
+    #[tokio::test]
+    async fn retired_keys_load_without_harm_and_are_dropped_on_the_next_save() {
+        let dir = temp_config_dir();
+        write_settings(
+            dir.path(),
+            r#"{
+                "fontUi": "Helvetica",
+                "fontMono": "Menlo",
+                "logLevel": "debug",
+                "dataFontSize": 11,
+                "accent": "teal",
+                "tracker": {"pollSeconds": 7, "idleMinutes": 9}
+            }"#,
+        );
+        let store = SettingsStore::open(dir.path());
+
+        let loaded = store.get();
+
+        assert_eq!(
+            loaded,
+            settings(|s| {
+                s.accent = "teal".into();
+                s.tracker.idle_minutes = 9;
+            })
+        );
+        assert_eq!(dir_entries(dir.path()), vec![FILE_NAME.to_string()]);
+
+        store.update(loaded).await.unwrap();
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join(FILE_NAME)).unwrap())
+                .unwrap();
+        for key in ["fontUi", "fontMono", "logLevel", "dataFontSize"] {
+            assert!(written.get(key).is_none(), "{key}");
+        }
+        assert!(written["tracker"].get("pollSeconds").is_none());
+        assert_eq!(written["accent"], "teal");
+        assert_eq!(written["tracker"]["idleMinutes"], 9);
+    }
+
+    #[test]
+    fn app_entries_holding_only_retired_overrides_are_removed_on_load() {
+        let dir = temp_config_dir();
+        write_settings(
+            dir.path(),
+            r#"{"apps": {
+                "com.example.old": {"groupByApp": false, "titles": "app"},
+                "com.example.empty": {}
+            }}"#,
+        );
+
+        assert_eq!(Settings::peek(dir.path()), Settings::default());
+        assert!(SettingsStore::open(dir.path()).get().apps.is_empty());
+    }
+
+    #[test]
+    fn app_entries_keep_hidden_and_own_lane_next_to_retired_overrides() {
+        let dir = temp_config_dir();
+        write_settings(
+            dir.path(),
+            r#"{"apps": {
+                "com.example.hidden": {"groupByApp": false, "titles": "app", "hidden": true},
+                "com.example.lane": {"titles": "document", "ownLane": true}
+            }}"#,
+        );
+
+        assert_eq!(
+            SettingsStore::open(dir.path()).get().apps,
+            HashMap::from([
+                (
+                    "com.example.hidden".to_string(),
+                    AppOverride {
+                        hidden: true,
+                        ..AppOverride::default()
+                    }
+                ),
+                (
+                    "com.example.lane".to_string(),
+                    AppOverride {
+                        own_lane: true,
+                        ..AppOverride::default()
+                    }
+                ),
+            ])
+        );
     }
 
     #[test]
@@ -376,10 +527,7 @@ mod tests {
 
         assert_eq!(
             Settings::peek(dir.path()),
-            settings(|s| {
-                s.log_level = LogLevel::Debug;
-                s.ui_font_size = 24;
-            })
+            settings(|s| s.text_size = TextSize::Large)
         );
     }
 
@@ -411,7 +559,7 @@ mod tests {
         let (previous, saved) = store
             .update(settings(|s| {
                 s.dark_scheme = Scheme::Light;
-                s.ui_font_size = 99;
+                s.legacy_ui_font_size = Some(99);
             }))
             .await
             .unwrap();
@@ -421,7 +569,7 @@ mod tests {
             saved,
             settings(|s| {
                 s.dark_scheme = Scheme::Light;
-                s.ui_font_size = 24;
+                s.text_size = TextSize::Large;
             })
         );
         assert_eq!(store.get(), saved);

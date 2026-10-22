@@ -418,7 +418,7 @@ describe("App", () => {
       await renderApp();
       await userEvent.keyboard("{Meta>},{/Meta}");
       const dialog = await screen.findByRole("dialog");
-      expect(within(dialog).getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+      expect(within(dialog).getByRole("heading", { name: "General" })).toBeInTheDocument();
       await userEvent.keyboard("{Meta>},{/Meta}");
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
@@ -428,13 +428,13 @@ describe("App", () => {
       await userEvent.keyboard("{Meta>}k{/Meta}");
       await userEvent.type(await screen.findByLabelText("Search"), "settings");
       await userEvent.click(screen.getByRole("option", { name: /^Settings…/ }));
-      expect(await screen.findByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "General" })).toBeInTheDocument();
     });
 
     it("opens from the gear in the sidebar", async () => {
       await renderApp();
       await userEvent.click(sidebar().getByRole("button", { name: "Settings" }));
-      expect(await screen.findByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "General" })).toBeInTheDocument();
     });
 
     it("closes with Escape", async () => {

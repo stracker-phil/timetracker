@@ -11,7 +11,7 @@ import { settings } from "../../test/settings";
 import { SettingsDialog } from "./SettingsDialog";
 
 const mocked = vi.mocked(api, true);
-const override = (patch: Partial<AppOverride> = {}): AppOverride => ({ groupByApp: null, titles: null, hidden: false, ownLane: false, ...patch });
+const override = (patch: Partial<AppOverride> = {}): AppOverride => ({ hidden: false, ownLane: false, ...patch });
 const knownApp = (patch: Partial<KnownApp> = {}): KnownApp => ({ appKey: "com.apple.Safari", app: "Safari", totalMs: 3_600_000, lastSeen: 1, ...patch });
 
 const SAFARI = "com.apple.Safari";
@@ -74,8 +74,10 @@ describe("Settings Timeline page", () => {
 
     describe("segmented choices", () => {
       it.each([
-        ["Continuity", "Extended", { continuity: "extended" }],
-        ["Noise cancellation", "High", { noise: "high" }],
+        ["Join short gaps", "16 min", { continuity: "extended" }],
+        ["Join short gaps", "Off", { continuity: "off" }],
+        ["Hide activity shorter than", "6 min", { noise: "high" }],
+        ["Hide activity shorter than", "Off", { noise: "off" }],
         ["Titles", "App", { titles: "app" }],
         ["Time snapping (minutes)", "15", { snapMinutes: 15 }],
       ] as const)("%s: choosing %s saves it", async (name, option, patch) => {
@@ -84,10 +86,24 @@ describe("Settings Timeline page", () => {
         expect(saved()).toEqual(settings({ timeline: timelineWith(patch) }));
       });
 
+      it.each([
+        ["Join short gaps", ["Off", "2 min", "8 min", "16 min"]],
+        ["Hide activity shorter than", ["Off", "2 min", "4 min", "6 min"]],
+      ])("offers %s as %j", (name, options) => {
+        renderPage();
+        expect(group(name).getAllByRole("button").map((b) => b.textContent)).toEqual(options);
+      });
+
       it("presses the current choice", () => {
-        renderPage({ timeline: timelineWith({ continuity: "regular" }) });
-        expect(group("Continuity").getByRole("button", { name: "Regular" })).toHaveAttribute("aria-pressed", "true");
-        expect(group("Continuity").getByRole("button", { name: "Short" })).toHaveAttribute("aria-pressed", "false");
+        renderPage({ timeline: timelineWith({ continuity: "regular", noise: "medium" }) });
+        expect(group("Join short gaps").getByRole("button", { name: "8 min" })).toHaveAttribute("aria-pressed", "true");
+        expect(group("Join short gaps").getByRole("button", { name: "2 min" })).toHaveAttribute("aria-pressed", "false");
+        expect(group("Hide activity shorter than").getByRole("button", { name: "4 min" })).toHaveAttribute("aria-pressed", "true");
+      });
+
+      it.each(["Continuity", "Noise cancellation"])("no longer has a %s control", (name) => {
+        renderPage();
+        expect(screen.queryByRole("group", { name })).not.toBeInTheDocument();
       });
     });
   });
@@ -96,13 +112,33 @@ describe("Settings Timeline page", () => {
     it("lists each app with its name and tracked time", async () => {
       renderPage();
       expect(await screen.findByText("Safari")).toBeInTheDocument();
-      expect(screen.getByText("1h 00m")).toBeInTheDocument();
+      expect(screen.getByText("1h 00m tracked")).toBeInTheDocument();
     });
 
-    it("shows the key of an app without tracked time", async () => {
-      mocked.appsList.mockResolvedValue([knownApp({ appKey: "com.example.new", app: "New", totalMs: 0 })]);
+    it.each([
+      [3_600_000, "1h 00m tracked"],
+      [30_000, "Under a minute tracked"],
+      [0, "Not tracked yet"],
+    ])("describes an app with %s ms as %s", async (totalMs, description) => {
+      mocked.appsList.mockResolvedValue([knownApp({ totalMs })]);
       renderPage();
-      expect(await screen.findByText("com.example.new")).toBeInTheDocument();
+      expect(await screen.findByText(description)).toBeInTheDocument();
+    });
+
+    it("never shows the bundle id of an app", async () => {
+      renderPage();
+      await screen.findByText("Safari");
+      expect(screen.queryByText(SAFARI)).not.toBeInTheDocument();
+    });
+
+    it("offers only the Hidden and Own lane switches for an app", async () => {
+      mocked.appsList.mockResolvedValue([knownApp(), knownApp({ appKey: "com.apple.Notes", app: "Notes" })]);
+      renderPage();
+      await screen.findByText("Notes");
+      expect(screen.getAllByRole("switch", { name: "Hidden" })).toHaveLength(2);
+      expect(screen.getAllByRole("switch", { name: "Own lane" })).toHaveLength(2);
+      expect(screen.queryByRole("group", { name: "Group Safari by app" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("group", { name: "Titles of Safari" })).not.toBeInTheDocument();
     });
 
     it("says no apps are tracked when the list is empty", async () => {
@@ -138,42 +174,11 @@ describe("Settings Timeline page", () => {
       expect(mocked.setAppSetting).toHaveBeenCalledWith(SAFARI, { hidden: false });
     });
 
-    it.each([
-      ["Off", { groupByApp: false }],
-      ["On", { groupByApp: true }],
-      ["Default", { groupByApp: null }],
-    ] as const)("choosing %s for Group by app sends it", async (option, patch) => {
-      renderPage({ apps: { [SAFARI]: override({ groupByApp: option === "Default" ? true : null }) } });
+    it("checks Own lane for an app whose override has it on", async () => {
+      renderPage({ apps: { [SAFARI]: override({ ownLane: true }) } });
       await screen.findByText("Safari");
-      await userEvent.click(group("Group Safari by app").getByRole("button", { name: option }));
-      expect(mocked.setAppSetting).toHaveBeenCalledWith(SAFARI, patch);
-    });
-
-    it.each([
-      ["Document", { titles: "document" }],
-      ["App", { titles: "app" }],
-      ["Default", { titles: null }],
-    ] as const)("choosing %s for the titles of an app sends it", async (option, patch) => {
-      renderPage({ apps: { [SAFARI]: override({ titles: option === "Default" ? "app" : null }) } });
-      await screen.findByText("Safari");
-      await userEvent.click(group("Titles of Safari").getByRole("button", { name: option }));
-      expect(mocked.setAppSetting).toHaveBeenCalledWith(SAFARI, patch);
-    });
-
-    it("presses the choices stored in the app's override", async () => {
-      renderPage({ apps: { [SAFARI]: override({ groupByApp: false, titles: "document", ownLane: true }) } });
-      await screen.findByText("Safari");
-      expect(group("Group Safari by app").getByRole("button", { name: "Off" })).toHaveAttribute("aria-pressed", "true");
-      expect(group("Group Safari by app").getByRole("button", { name: "Default" })).toHaveAttribute("aria-pressed", "false");
-      expect(group("Titles of Safari").getByRole("button", { name: "Document" })).toHaveAttribute("aria-pressed", "true");
       expect(screen.getByRole("switch", { name: "Own lane" })).toBeChecked();
-    });
-
-    it("presses Default for an app without an override", async () => {
-      renderPage();
-      await screen.findByText("Safari");
-      expect(group("Group Safari by app").getByRole("button", { name: "Default" })).toHaveAttribute("aria-pressed", "true");
-      expect(group("Titles of Safari").getByRole("button", { name: "Default" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("switch", { name: "Hidden" })).not.toBeChecked();
     });
   });
 });

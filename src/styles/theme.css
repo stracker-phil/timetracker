@@ -1,14 +1,12 @@
 /* Palette-independent design tokens (docs/ux.md). Colors come from the active palettes (`palettes/*.css`, chosen
    by `data-content` and `data-sidebar` on <html>); this file only derives from them, so it holds no color
-   literal. lib/theme.ts sets those attributes, `data-accent`, the font sizes and the chosen font families.
+   literal. lib/theme.ts sets those attributes, `data-accent` and the font sizes of the chosen text size.
    Sizing: chrome is in rem of `--ui-font-size` (html font-size), so ⌘= and ⌘- scale it; `--data-font-size`
    drives times, durations and data values; the row anatomy and the window's own chrome (traffic lights, the
    toolbar beside them) are in px. */
 :root {
-  --font-ui-system: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-mono-system: ui-monospace, "SF Mono", Menlo, monospace;
-  --font-ui: var(--font-ui-system);
-  --font-mono: var(--font-mono-system);
+  --font-ui: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
   --ui-font-size: 13px;
   --data-font-size: 12px;
 

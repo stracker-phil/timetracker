@@ -8,8 +8,7 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
 
 1. **Config dir.** `config_dir()` resolves `~/Library/Application Support/<IDENTIFIER>` (no home dir: exit 2)
    and `create_private_dir` (`store/json_file.rs`) makes it mode 0700. This happens before Tauri starts,
-   because the CLI and the socket need the path first. `Settings::peek` reads the stored log level without
-   ever quarantining a corrupt file.
+   because the CLI and the socket need the path first.
 2. **CLI.** `cli::parse(std::env::args_os())` returns:
    - `Exit { message }`: `--help` or `--version`; printed, exit 0.
    - `Run { hidden, log_level }`: becomes `IpcMessage::Activate { hidden }`.
@@ -24,9 +23,8 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
 4. **`AppState`.** `AppState::open(&config_dir)` opens every JSON store and the data store
    (`DataStore::open`, blocking on Tauri's async runtime; a failure is logged and the app runs without a
    database, see [data.md](data.md#the-data-folder); a `dataDir` that is gone falls back to the default folder
-   with a launch error toast); the CLI `--log-level` is kept in
-   `AppState::log_override`. The effective level (override, else the stored `logLevel`) is computed here, so
-   logging never starts at `Trace`.
+   with a launch error toast). The log level is the CLI `--log-level`, else Info, so logging never starts at
+   `Trace`.
 5. **`app::start`** (`app.rs`) builds Tauri with `.manage(state)` first, then `remote::Bridge`:
    - plugins: `log_plugin()` (stdout plus a rotating file in the log dir, 3 × 5 MiB, `tao`/`wry` capped at
      Warn), `init_logging(level)` (sets the effective level right after the log plugin's setup, whose
@@ -51,9 +49,8 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
 ### Settings side effects
 
 `update_settings` and startup both call `commands::apply_settings(app, previous, saved)`. The decision is the
-pure `settings_effects(previous, saved, log_override) -> SettingsEffects { log_level, launch_at_login }`:
-without `previous` everything applies; otherwise only what changed. A CLI `--log-level` wins for the app's
-lifetime, so a settings change never resets it. `launch_at_login` goes to `autostart::apply` (below), which
+pure `settings_effects(previous, saved) -> SettingsEffects { launch_at_login }`:
+without `previous` everything applies; otherwise only what changed. `launch_at_login` goes to `autostart::apply` (below), which
 changes the LaunchAgent only when its state differs; at startup this reconciles a LaunchAgent that went
 missing while the setting says on. A failure is logged.
 
@@ -107,7 +104,6 @@ itself. Panics unwind ([ADR 0014](adr/0014-panic-unwind.md)), so code takes `std
 | `data` | `DataStore` | the database file and the open `Db`, or why it could not be opened ([data.md](data.md)) |
 | `deleted_activity` | `activity::delete::DeleteBuffer` | the rows of the last activity delete, for its 30 s undo ([Activity deletion](#activity-deletion)) |
 | `config_dir` | `PathBuf` | the config dir |
-| `log_override` | `Option<LogLevel>` | the CLI `--log-level` |
 
 The tracker is managed beside `AppState` as `Arc<Tracker>` (`tracker/mod.rs`), and only when the data store
 opened. Its commands look it up with `try_state` and fail with `db` "The data store is not available"
@@ -172,7 +168,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `suggestion_approve_edited` | `day: Day, id, input: RecordingInput, overlap` | `Recording`: `input` (the editor's fields) created and the suggestion's whole span dismissed, one undo entry (`Recordings::create_settling`) | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
 | `suggestions_dismiss` | `day: Day, ids: string[]` | `number` dismissed: each one's rule, day and span stored in `dismissed_suggestions`, one undo entry `Dismiss suggestion` / `Dismiss n suggestions` | `not_found` (none of them left), `db` |
 | `rules_today` | – | `RuleDay[] { ruleId, matchedMs, pending, pendingMs }` for each active rule today (`rules::day_of_rules`): the activity it matched (first match wins) and its suggestions waiting for review; the Rules screen | `db` |
-| `app_settings_set` (`commands.rs`) | `bundleId: String` (the app key: bundle id, else the app name), `patch: AppSettingPatch { groupByApp?, titles?, ownLane?, hidden? }` (`null` returns `groupByApp`/`titles` to the timeline's setting) | `Settings`; applied under the settings store's lock (`SettingsStore::update_app`), so concurrent changes never undo each other; an override that ends up default is removed (`Settings::with_app`) | `invalid_input` (blank key), `io` |
+| `app_settings_set` (`commands.rs`) | `bundleId: String` (the app key: bundle id, else the app name), `patch: AppSettingPatch { ownLane?, hidden? }` | `Settings`; applied under the settings store's lock (`SettingsStore::update_app`), so concurrent changes never undo each other; an override that ends up default is removed (`Settings::with_app`) | `invalid_input` (blank key), `io` |
 | `apps_list` (`day/commands.rs`) | – | `KnownApp[] { appKey, app, totalMs, lastSeen }` (`day::apps::known_apps`): every tracker app and every app with an override, by name | `db` |
 | `recording_create` (`recordings/commands.rs`) | `input: RecordingInput { projectId, spans: Span[], note, tagId }, overlap: Overlap` | `Recording` (snapped) | `invalid_input` (`field`: `spans` empty or overlapping each other, `end`, `note`, …), `overlap` (`details`: the recordings in the way), `not_found`, `db` |
 | `recording_update` | `id, patch: RecordingPatch, overlap` | `Recording` | the same |
@@ -801,7 +797,7 @@ save leaves memory unchanged. `JsonStore::open_with` normalizes the loaded value
 
 | File | Contents |
 |---|---|
-| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets an unknown accent (neither `system` (`SYSTEM_ACCENT`) nor one of `ACCENTS`: `is_app_accent`) to `system` (an unknown `lightScheme` or `darkScheme` falls back to `default` or `dark` through `lenient`) and moves a 0021 file's `scheme` into `lightScheme`; turns blank `fontUi`, `fontMono` and `dataDir` into `null` (an unknown `calendarTitle` (`CalendarTitle`: short, the default, or full) or `dayTitle` (`DayTitle`: long, the default, or short) falls back through `lenient`); a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline`, `apps`, `dayTitle` or `calendarTitle` emits `data_changed { kind: settings, day: null }`, so every open day and the sidebar calendar reload. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
+| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `textSize` (`TextSize`: small, medium, the default, or large) is the one text size; the pixel sizes per step are the frontend's `TEXT_SIZES`. Unknown keys are ignored on load and dropped on the next save; a `uiFontSize` in pixels is read into the private `legacy_ui_font_size` (`#[serde(rename = "uiFontSize", skip_serializing)]`) and `sanitized()` turns it into the nearest step (`TextSize::nearest_to_px`: up to 12 Small, 13–14 Medium, 15 and up Large). `sanitized()` clamps on load and on update: `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets an unknown accent (neither `system` (`SYSTEM_ACCENT`) nor one of `ACCENTS`: `is_app_accent`) to `system` (an unknown `lightScheme` or `darkScheme` falls back to `default` or `dark` through `lenient`) and moves a 0021 file's `scheme` into `lightScheme`; turns a blank `dataDir` into `null` (an unknown `calendarTitle` (`CalendarTitle`: short, the default, or full) or `dayTitle` (`DayTitle`: long, the default, or short) falls back through `lenient`); a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline`, `apps`, `dayTitle` or `calendarTitle` emits `data_changed { kind: settings, day: null }`, so every open day and the sidebar calendar reload. `apps` maps an app key to its `AppOverride { hidden, ownLane }`; an entry left at the defaults is removed. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed. A trailing `++` is the `+` key |
 | `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay` (`get_ui_state` leaves it out when it is more than 30 days before today, `UiState::restorable`), `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id), `onboardingDone` (default `false`: the welcome sheet shows); unknown keys, such as the dropped `dayMode`, are ignored |
 | `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere (written only by `data_move`) |
@@ -825,7 +821,8 @@ skip_serializing)]`) and `sanitized()` moves it to `lightScheme`; its `mode` is 
 
 `tauri-plugin-log` writes to stdout and to Tauri's `app_log_dir`,
 `~/Library/Logs/com.philippstracker.timetracker/`, rotating 3 files of 5 MiB, local timestamps. The level
-comes from `logLevel` (Settings → System → Logging) or `--log-level`. `open_log_folder` opens the folder.
+is Info, or `--log-level` for that run (`app::start` passes it to `init_logging`); there is no setting.
+`open_log_folder` (Help → Open Log Folder) opens the folder.
 Text from `log_frontend_error` is cut to 4 KiB and its `\n`/`\r` escaped (`sanitize_log_text`), so the page
 cannot flood or forge log lines. Window titles, URLs and paths are user data: log them at Debug at most.
 

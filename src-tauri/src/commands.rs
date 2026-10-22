@@ -10,7 +10,7 @@ use crate::launch::LaunchEvent;
 use crate::menu;
 use crate::state::AppState;
 use crate::store::keybindings::Keybindings;
-use crate::store::settings::{AppSettingPatch, LogLevel, Settings};
+use crate::store::settings::{AppSettingPatch, Settings};
 use crate::store::ui_state::UiState;
 use crate::timers;
 use crate::tracker::Tracker;
@@ -24,23 +24,12 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
 /// What a settings change has to apply outside the store.
 #[derive(Debug, PartialEq)]
 pub struct SettingsEffects {
-    pub log_level: Option<log::LevelFilter>,
     pub launch_at_login: Option<bool>,
 }
 
-/// Without `previous` (at startup) everything applies. A `--log-level` from the CLI wins over
-/// the stored level for the app's lifetime.
-pub fn settings_effects(
-    previous: Option<&Settings>,
-    saved: &Settings,
-    log_override: Option<LogLevel>,
-) -> SettingsEffects {
-    let log_level = match log_override {
-        Some(cli_level) => previous.is_none().then_some(cli_level),
-        None => changed(previous, saved, |s| s.log_level),
-    };
+/// Without `previous` (at startup) everything applies.
+pub fn settings_effects(previous: Option<&Settings>, saved: &Settings) -> SettingsEffects {
     SettingsEffects {
-        log_level: log_level.map(Into::into),
         launch_at_login: changed(previous, saved, |s| s.launch_at_login),
     }
 }
@@ -57,10 +46,7 @@ fn changed<T: PartialEq>(
 }
 
 pub fn apply_settings(app: &AppHandle, previous: Option<&Settings>, saved: &Settings) {
-    let effects = settings_effects(previous, saved, app.state::<AppState>().log_override);
-    if let Some(level) = effects.log_level {
-        log::set_max_level(level);
-    }
+    let effects = settings_effects(previous, saved);
     // At startup this reconciles a LaunchAgent that went missing (a moved or reinstalled bundle).
     if let Some(enabled) = effects.launch_at_login
         && let Err(e) = autostart::apply(app, enabled)
@@ -266,7 +252,7 @@ pub fn sanitize_log_text(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::settings::Scheme;
+    use crate::store::settings::{Scheme, TextSize};
 
     #[test]
     fn web_url_rules_cover_scheme_case_and_credentials() {
@@ -307,15 +293,11 @@ mod tests {
     }
 
     #[test]
-    fn startup_without_override_applies_everything() {
-        let saved = settings(|s| {
-            s.log_level = LogLevel::Warn;
-            s.launch_at_login = true;
-        });
+    fn startup_applies_everything() {
+        let saved = settings(|s| s.launch_at_login = true);
         assert_eq!(
-            settings_effects(None, &saved, None),
+            settings_effects(None, &saved),
             SettingsEffects {
-                log_level: Some(log::LevelFilter::Warn),
                 launch_at_login: Some(true),
             }
         );
@@ -325,7 +307,6 @@ mod tests {
     fn a_scheme_change_alone_applies_nothing_outside_the_page() {
         let previous = Settings::default();
         let nothing = SettingsEffects {
-            log_level: None,
             launch_at_login: None,
         };
         for saved in [
@@ -333,7 +314,7 @@ mod tests {
             settings(|s| s.dark_scheme = Scheme::Light),
         ] {
             assert_eq!(
-                settings_effects(Some(&previous), &saved, None),
+                settings_effects(Some(&previous), &saved),
                 nothing,
                 "{saved:?}"
             );
@@ -341,43 +322,43 @@ mod tests {
     }
 
     #[test]
-    fn unchanged_settings_apply_nothing() {
-        let current = Settings::default();
+    fn only_launch_at_login_has_an_effect_outside_the_store() {
+        let previous = Settings::default();
+        let nothing = SettingsEffects {
+            launch_at_login: None,
+        };
+        for (name, saved) in [
+            ("text size", settings(|s| s.text_size = TextSize::Large)),
+            ("timeline", settings(|s| s.timeline.compact = true)),
+            ("tracker", settings(|s| s.tracker.idle_minutes = 30)),
+            ("accent", settings(|s| s.accent = "teal".into())),
+            (
+                "timer shortcut",
+                settings(|s| s.timer_shortcut = "Mod+Alt+R".into()),
+            ),
+        ] {
+            assert_eq!(settings_effects(Some(&previous), &saved), nothing, "{name}");
+        }
+        let saved = settings(|s| {
+            s.text_size = TextSize::Small;
+            s.launch_at_login = true;
+        });
         assert_eq!(
-            settings_effects(Some(&current), &current, None),
+            settings_effects(Some(&previous), &saved),
             SettingsEffects {
-                log_level: None,
-                launch_at_login: None,
+                launch_at_login: Some(true),
             }
         );
     }
 
     #[test]
-    fn changed_log_level_is_applied() {
-        let previous = Settings::default();
-        let saved = settings(|s| s.log_level = LogLevel::Debug);
+    fn unchanged_settings_apply_nothing() {
+        let current = Settings::default();
         assert_eq!(
-            settings_effects(Some(&previous), &saved, None).log_level,
-            Some(log::LevelFilter::Debug)
-        );
-    }
-
-    #[test]
-    fn cli_log_override_beats_a_changed_log_level() {
-        let previous = Settings::default();
-        let saved = settings(|s| s.log_level = LogLevel::Trace);
-        assert_eq!(
-            settings_effects(Some(&previous), &saved, Some(LogLevel::Error)).log_level,
-            None
-        );
-    }
-
-    #[test]
-    fn cli_log_override_is_applied_at_startup() {
-        let saved = settings(|s| s.log_level = LogLevel::Trace);
-        assert_eq!(
-            settings_effects(None, &saved, Some(LogLevel::Error)).log_level,
-            Some(log::LevelFilter::Error)
+            settings_effects(Some(&current), &current),
+            SettingsEffects {
+                launch_at_login: None,
+            }
         );
     }
 
@@ -386,13 +367,13 @@ mod tests {
         let off = Settings::default();
         let on = settings(|s| s.launch_at_login = true);
         assert_eq!(
-            settings_effects(Some(&off), &on, None).launch_at_login,
+            settings_effects(Some(&off), &on).launch_at_login,
             Some(true)
         );
         assert_eq!(
-            settings_effects(Some(&on), &off, None).launch_at_login,
+            settings_effects(Some(&on), &off).launch_at_login,
             Some(false)
         );
-        assert_eq!(settings_effects(Some(&on), &on, None).launch_at_login, None);
+        assert_eq!(settings_effects(Some(&on), &on).launch_at_login, None);
     }
 }

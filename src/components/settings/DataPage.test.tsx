@@ -63,6 +63,13 @@ describe("Settings Data page", () => {
       expect(screen.getByText("1.5 KB")).toBeInTheDocument();
     });
 
+    it("shows the Location row with the path, Reveal in Finder and Move…", () => {
+      expect(screen.getByText("Location")).toBeInTheDocument();
+      expect(screen.getByText("/data/dir")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Reveal in Finder/ })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /Move…/ })).toBeEnabled();
+    });
+
     it("reveals the database file in Finder", async () => {
       await userEvent.click(screen.getByRole("button", { name: /Reveal in Finder/ }));
       expect(mocked.revealPath).toHaveBeenCalledWith("/data/dir/timetracker.sqlite");

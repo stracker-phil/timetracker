@@ -51,21 +51,14 @@ pub(super) fn without_hidden(
         .collect()
 }
 
-/// Labels each row by the effective title mode and keys it by app (group by app) or by app and label.
+/// Labels each row by the title mode and keys it by app (group by app) or by app and label.
 /// Private rows read "Private" and never join the app's other rows.
 pub(super) fn identified(blocks: Vec<ActivityBlock>, settings: &ViewSettings) -> Vec<Piece> {
     let mut pieces: Vec<Piece> = blocks
         .into_iter()
         .map(|mut block| {
-            let app = settings.app(&block.app_key);
-            let titles = app
-                .and_then(|a| a.titles)
-                .unwrap_or(settings.timeline.titles);
-            let by_app = app
-                .and_then(|a| a.group_by_app)
-                .unwrap_or(settings.timeline.group_by_app);
-            block.label = label_of(&block, titles);
-            let key = key_of(&block, by_app);
+            block.label = label_of(&block, settings.timeline.titles);
+            let key = key_of(&block, settings.timeline.group_by_app);
             Piece { key, block }
         })
         .collect();
@@ -204,10 +197,6 @@ mod tests {
     fn private_at(mut rows: Vec<ActivityRow>, index: usize) -> Vec<ActivityRow> {
         rows[index] = private(rows[index].clone());
         rows
-    }
-
-    fn without_bundle_ids(rows: Vec<ActivityRow>) -> Vec<ActivityRow> {
-        rows.into_iter().map(|r| with_bundle_id(r, None)).collect()
     }
 
     fn two_code_rows(gap: Ms) -> Vec<ActivityRow> {
@@ -380,81 +369,6 @@ mod tests {
     }
 
     #[test]
-    fn a_per_app_group_by_app_override_wins_over_the_global_setting_for_that_app_only() {
-        let rows = || {
-            rows(&[
-                (0, 10, "Code", "a"),
-                (10, 20, "Code", "b"),
-                (20, 30, "Mail", "a"),
-                (30, 40, "Mail", "b"),
-            ])
-        };
-        let cases = [
-            ("global off, Code on", false, "test.code", true),
-            ("global on, Mail off", true, "test.mail", false),
-        ];
-
-        for (name, global, key, over) in cases {
-            let settings = with_override(
-                with_timeline(settings(), |t| t.group_by_app = global),
-                key,
-                |a| a.group_by_app = Some(over),
-            );
-
-            let view = render(rows(), &settings);
-
-            assert_eq!(
-                shape(lane_by_id(&view, "activity")),
-                [(0, 20, vec![1, 2]), (20, 30, vec![3]), (30, 40, vec![4])],
-                "{name}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_per_app_titles_override_wins_over_the_global_setting_for_that_app_only() {
-        let rows = || rows(&[(0, 10, "Code", "main.rs"), (10, 20, "Mail", "inbox")]);
-        let cases = [
-            (Titles::Document, "test.code", Titles::App),
-            (Titles::App, "test.mail", Titles::Document),
-        ];
-
-        for (global, key, over) in cases {
-            let settings =
-                with_override(with_timeline(settings(), |t| t.titles = global), key, |a| {
-                    a.titles = Some(over)
-                });
-
-            let view = render(rows(), &settings);
-
-            assert_eq!(
-                labels(&view),
-                ["Code", "inbox"],
-                "{global:?} with {key} {over:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn overrides_of_rows_without_a_bundle_id_are_keyed_by_the_app_name() {
-        let bundle_key = bundle_of("Code");
-        let cases = [("Code", true), (bundle_key.as_str(), false)];
-
-        for (key, merged) in cases {
-            let rows = without_bundle_ids(rows(&[(0, 10, "Code", "a"), (10, 20, "Code", "b")]));
-            let settings = with_override(settings(), key, |a| a.group_by_app = Some(true));
-
-            let view = render(rows, &settings);
-
-            assert_eq!(
-                activity_members(&view),
-                merged_or_apart(merged),
-                "key {key}"
-            );
-        }
-    }
-
-    #[test]
     fn continuity_bridges_a_gap_below_its_threshold_and_not_one_at_or_above_it() {
         let cases = [
             (Continuity::Off, 0, true),
@@ -611,6 +525,67 @@ mod tests {
 
             assert_eq!(view.compact, compact);
         }
+    }
+
+    #[test]
+    fn titles_and_grouping_follow_the_timeline_settings_for_every_app() {
+        let build = || {
+            vec![
+                activity(1, 0, Some(mins(10)), "Code", "a.rs"),
+                activity(2, mins(10), Some(mins(30)), "Code", "b.rs"),
+                with_bundle_id(activity(3, mins(30), Some(mins(40)), "Notes", "x"), None),
+                with_bundle_id(activity(4, mins(40), Some(mins(60)), "Notes", "y"), None),
+            ]
+        };
+
+        let app_titles_grouped = render(
+            build(),
+            &with_timeline(settings(), |t| {
+                t.titles = Titles::App;
+                t.group_by_app = true;
+            }),
+        );
+        let document_titles_apart = render(
+            build(),
+            &with_timeline(settings(), |t| {
+                t.titles = Titles::Document;
+                t.group_by_app = false;
+            }),
+        );
+
+        assert_eq!(labels(&app_titles_grouped), ["Code", "Notes"]);
+        assert_eq!(
+            activity_members(&app_titles_grouped),
+            [vec![1, 2], vec![3, 4]]
+        );
+        assert_eq!(labels(&document_titles_apart), ["a.rs", "b.rs", "x", "y"]);
+        assert_eq!(
+            activity_members(&document_titles_apart),
+            [vec![1], vec![2], vec![3], vec![4]]
+        );
+    }
+
+    #[test]
+    fn overrides_keyed_by_app_name_hide_or_separate_rows_without_a_bundle_id() {
+        let build = || {
+            vec![
+                with_bundle_id(activity(1, 0, Some(mins(10)), "Notes", ""), None),
+                activity(2, mins(10), Some(mins(20)), "Code", ""),
+                with_bundle_id(activity(3, mins(20), Some(mins(30)), "Draft", ""), None),
+            ]
+        };
+
+        let view = render(build(), &own_lane(hidden(settings(), "Draft"), "Notes"));
+
+        assert_eq!(shape(lane_by_id(&view, "activity")), [(10, 20, vec![2])]);
+        assert_eq!(shape(lane_by_id(&view, "app:Notes")), [(0, 10, vec![1])]);
+        assert!(
+            view.lanes
+                .iter()
+                .flat_map(|l| &l.blocks)
+                .all(|b| b.app != "Draft")
+        );
+        assert_eq!(view.totals.tracked_ms, mins(30));
     }
 
     #[test]

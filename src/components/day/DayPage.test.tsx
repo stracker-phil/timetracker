@@ -620,12 +620,12 @@ describe("DayPage", () => {
       renderDay(busyDay());
       const menu = within(await openMenu("Safari: Docs"));
       expect(menu.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Hide Safari", "Copy title", "Copy URL", "Make a rule…"]);
-      expect(menu.getAllByRole("menuitemcheckbox").map((i) => i.textContent)).toEqual(["Group by app", "Titles: Document name", "Titles: App name", "Own lane"]);
+      expect(menu.getAllByRole("menuitemcheckbox").map((i) => i.textContent)).toEqual(["Own lane"]);
     });
 
-    it("checks Group by app when the timeline groups by app", async () => {
+    it("has no Group by app entry", async () => {
       renderDay(busyDay());
-      expect(within(await openMenu("Safari: Docs")).getByRole("menuitemcheckbox", { name: "Group by app" })).toHaveAttribute("aria-checked", "true");
+      expect(within(await openMenu("Safari: Docs")).queryByRole("menuitemcheckbox", { name: "Group by app" })).not.toBeInTheDocument();
     });
 
     it("omits Copy URL when the block has none", async () => {
@@ -671,7 +671,7 @@ describe("DayPage", () => {
       renderDay(busyDay());
       await blockEl("Safari: Docs");
       await userEvent.click(screen.getByRole("button", { name: "Actions for Safari" }));
-      expect(await screen.findByRole("menuitemcheckbox", { name: "Group by app" })).toBeInTheDocument();
+      expect(await screen.findByRole("menuitemcheckbox", { name: "Own lane" })).toBeInTheDocument();
     });
 
     it("hides the app and offers Undo, which shows it again", async () => {
@@ -1714,7 +1714,7 @@ describe("DayPage", () => {
       it("runs its focused item on ↵ rather than a command, even while a selection exists", async () => {
         await openBlockMenu("jv");
         await userEvent.keyboard("{Enter}");
-        expect(mocked.setAppSetting).toHaveBeenCalledWith("com.apple.Safari", { groupByApp: false });
+        expect(mocked.setAppSetting).toHaveBeenCalledWith("com.apple.Safari", { ownLane: true });
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       });
     });

@@ -1,4 +1,4 @@
-/** Settings → Tracking: what the tracker captures, what it never records, and how often it looks. */
+/** Settings → Capture and Tracker: what the tracker captures, what it never records, and when time counts as away. */
 import { Plus, Search, X } from "lucide-react";
 import { useState } from "react";
 import { api, SETTINGS_LIMITS, type AppSeen, type CaptureSettings } from "../../api";
@@ -188,35 +188,29 @@ export function TrackerPage({ s, set }: SettingsPageProps) {
         max={SETTINGS_LIMITS.idleMinutes.max}
         onCommit={(idleMinutes) => set({ tracker: { ...tracker, idleMinutes } })}
       />
-      <NumberField
-        label="Check every"
-        description="How often the tracker looks at the front window. App switches are seen at once either way."
-        suffix="s"
-        value={tracker.pollSeconds}
-        min={SETTINGS_LIMITS.pollSeconds.min}
-        max={SETTINGS_LIMITS.pollSeconds.max}
-        onCommit={(pollSeconds) => set({ tracker: { ...tracker, pollSeconds } })}
-      />
       <Switch
         label="Ask what I did after being away"
         description="After a long away time, a small window asks for the project to record it for. Pauses never ask."
         checked={tracker.awayPromptEnabled}
         onChange={(awayPromptEnabled) => set({ tracker: { ...tracker, awayPromptEnabled } })}
       />
-      <Row label="For longer than" htmlFor="settings-away-prompt-minutes">
-        <select
-          id="settings-away-prompt-minutes"
-          className="input"
-          disabled={!tracker.awayPromptEnabled}
-          value={tracker.awayPromptMinutes}
-          onChange={(e) => set({ tracker: { ...tracker, awayPromptMinutes: Number(e.target.value) } })}
-        >
-          {awayPromptChoices(tracker.awayPromptMinutes).map((minutes) => (
-            <option key={minutes} value={minutes}>
-              {minutes} min
-            </option>
-          ))}
-        </select>
+      <Row label="For longer than" htmlFor="settings-away-prompt-minutes" nested>
+        <div className="settings-input">
+          <select
+            id="settings-away-prompt-minutes"
+            className="input number"
+            disabled={!tracker.awayPromptEnabled}
+            value={tracker.awayPromptMinutes}
+            onChange={(e) => set({ tracker: { ...tracker, awayPromptMinutes: Number(e.target.value) } })}
+          >
+            {awayPromptChoices(tracker.awayPromptMinutes).map((minutes) => (
+              <option key={minutes} value={minutes}>
+                {minutes}
+              </option>
+            ))}
+          </select>
+          <span className="muted">min</span>
+        </div>
       </Row>
     </Group>
   );

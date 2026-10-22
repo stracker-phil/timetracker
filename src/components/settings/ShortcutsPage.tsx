@@ -59,7 +59,7 @@ export function ShortcutsPage() {
   const save = useStore((s) => s.saveKeybindings);
   const [search, setSearch] = useState("");
   const needle = search.trim().toLowerCase();
-  const list = allCommands().filter((c) => !needle || c.title.toLowerCase().includes(needle) || c.id.toLowerCase().includes(needle));
+  const list = allCommands().filter((c) => !c.menuOnly && (!needle || c.title.toLowerCase().includes(needle) || c.id.toLowerCase().includes(needle)));
   const clashes = conflicts(bindings);
   const set = (id: string, binding: string | null) => void save({ ...bindings, [id]: binding });
   const reset = (id: string) => {

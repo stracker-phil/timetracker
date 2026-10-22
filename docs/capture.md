@@ -110,7 +110,7 @@ tagged by `kind`:
 
 ### One step
 
-`tick(now)` runs every `pollSeconds` (5 s while the permission is missing), and `on_event(event, now)` runs
+`tick(now)` runs every `POLL_MS` (2 s, `tracker/mod.rs`; 5 s while the permission is missing), and `on_event(event, now)` runs
 for each `SystemEvent` after updating the asleep, locked and session flags. Both run the same step, whose
 stages (`held_by_pause`, `held_by_permission`, `held_by_system`, `held_by_idle`) each either hold the tracker
 or pass it on to recording:
@@ -148,7 +148,7 @@ palette (`tracker.pause`, `tracker.resume`) and the CLI (`timetracker pause`, `t
 
 `tracker::start(app, tracker)` (called from `setup` when the data store is open) subscribes the tray and the
 page to the statuses, then runs `recover(now)`.
-Activity rows left open by a crash or forced quit get `end = start + pollSeconds`, because their real end
+Activity rows left open by a crash or forced quit get `end = start + POLL_MS`, because their real end
 is unknown (it is written only on change). Open away spans end at `now`. Open rows of external sources stay
 as they are.
 

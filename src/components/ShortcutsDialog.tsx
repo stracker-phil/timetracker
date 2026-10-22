@@ -30,21 +30,24 @@ export function ShortcutsDialog({ scopes }: { scopes: string[] }) {
   return (
     <Modal onClose={close} className="shortcuts" labelledBy="shortcuts-title">
       <h2 id="shortcuts-title">Keyboard shortcuts</h2>
-      {shortcutGroups(scopes, custom).map((group) => (
-        <section key={group.scope} aria-label={group.label}>
-          <h3>{group.label}</h3>
-          <dl>
-            {group.rows.map((row) => (
-              <div key={row.id} className="shortcut-row">
-                <dt>{row.title}</dt>
-                <dd>
-                  <KeyCap keys={row.keys} />
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      ))}
+      {/* Only the list scrolls: Close stays in view, so focusing it never scrolls the list to its end. */}
+      <div className="shortcuts-list">
+        {shortcutGroups(scopes, custom).map((group) => (
+          <section key={group.scope} aria-label={group.label}>
+            <h3>{group.label}</h3>
+            <dl>
+              {group.rows.map((row) => (
+                <div key={row.id} className="shortcut-row">
+                  <dt>{row.title}</dt>
+                  <dd>
+                    <KeyCap keys={row.keys} />
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ))}
+      </div>
       <div className="actions">
         <button className="btn" onClick={close}>Close</button>
       </div>
