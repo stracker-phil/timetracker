@@ -1,10 +1,10 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
-import { Sparkles, Timer, Trash2 } from "lucide-react";
+import { Sparkles, Trash2 } from "lucide-react";
 import { useStore } from "../../state/store";
 import { NOTE_PLACEHOLDER, NoteInput } from "../NoteInput";
 import { ProjectPicker } from "../pickers/ProjectPicker";
 import { TagPicker } from "../pickers/TagPicker";
-import { DurationField, EditorField, EditorLine, OverlapNotice } from "./EditorParts";
+import { EditorField, LoggedTime, OverlapNotice } from "./EditorParts";
 import { EditorSpans } from "./EditorSpans";
 import { useEditorSave } from "./useEditorSave";
 import { useProposal } from "./useProposal";
@@ -74,34 +74,38 @@ export function RecordingEditor({ id }: { id?: string }) {
           Suggested by {suggestion.ruleName}. Approve records it.
         </p>
       )}
-      <EditorField className="editor-note" error={errors.note}>
-        <NoteInput aria-label="Note" placeholder={NOTE_PLACEHOLDER} autoFocus maxLength={500} value={draft.note} onChange={(note) => patchDraft({ note })} />
-      </EditorField>
-      <EditorField error={errors.projectId}>
-        <ProjectPicker value={draft.projectId} onChange={(picked) => patchDraft({ projectId: picked })} showRecent suggested={proposed} />
-      </EditorField>
-      {showTag && (
-        <EditorField error={errors.tagId}>
-          <TagPicker value={draft.tagId} onChange={(tagId) => patchDraft({ tagId })} />
+      <div className="editor-section">
+        <EditorField className="editor-note" error={errors.note}>
+          <NoteInput aria-label="Note" placeholder={NOTE_PLACEHOLDER} autoFocus maxLength={500} value={draft.note} onChange={(note) => patchDraft({ note })} />
         </EditorField>
-      )}
-      <EditorLine icon={<Timer size="1rem" />}>
-        <DurationField total={draft.totalMs} readOnly={open !== null || draft.spans.length === 0} onChange={setDraftTotal} />
-      </EditorLine>
-      <EditorSpans spans={draft.spans} step={step} runningSince={open?.start ?? null} error={errors.end ?? errors.start ?? errors.spans} />
-      {overlap && <OverlapNotice overlap={overlap} />}
+      </div>
+      <div className="editor-section">
+        <EditorField error={errors.projectId}>
+          <ProjectPicker value={draft.projectId} onChange={(picked) => patchDraft({ projectId: picked })} showRecent suggested={proposed} />
+        </EditorField>
+        {showTag && (
+          <EditorField error={errors.tagId}>
+            <TagPicker value={draft.tagId} onChange={(tagId) => patchDraft({ tagId })} />
+          </EditorField>
+        )}
+      </div>
+      <LoggedTime total={draft.totalMs} readOnly={open !== null || draft.spans.length === 0} onChange={setDraftTotal} />
+      <div className="editor-section">
+        <EditorSpans spans={draft.spans} step={step} runningSince={open?.start ?? null} error={errors.end ?? errors.start ?? errors.spans} />
+        {overlap && <OverlapNotice overlap={overlap} />}
+      </div>
       <div className="editor-actions">
+        <button type="submit" className="btn btn-primary" title={suggestion ? "Approve (↵)" : "Save (↵)"}>
+          {suggestion ? "Approve" : "Save"}
+        </button>
+        <button type="button" className="btn btn-quiet" title="Cancel (Escape)" onClick={closeEditor}>
+          Cancel
+        </button>
         {editing && (
           <button type="button" className="btn btn-quiet editor-delete" aria-label="Delete" title="Delete (⌘⌫)" onClick={remove}>
             <Trash2 size="1rem" aria-hidden="true" />
           </button>
         )}
-        <button type="button" className="btn" title="Cancel (Escape)" onClick={closeEditor}>
-          Cancel
-        </button>
-        <button type="submit" className="btn btn-primary" title={suggestion ? "Approve (↵)" : "Save (↵)"}>
-          {suggestion ? "Approve" : "Save"}
-        </button>
       </div>
     </form>
   );

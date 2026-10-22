@@ -1,9 +1,33 @@
 import type { ReactNode } from "react";
+import { formatDuration } from "../../lib/format";
 import { spansText } from "../../lib/recordings";
 import type { EditorOverlap } from "../../state/slices/editor";
 import { useStore } from "../../state/store";
 
 const MINUTE_MS = 60_000;
+
+const QUICK_MINUTES = [15, 30, 60];
+
+/** "Logged time": the length as large `0 h 20 m` and buttons that set it to a common length. */
+export function LoggedTime({ total, readOnly, onChange }: { total: number; readOnly: boolean; onChange: (ms: number) => void }) {
+  return (
+    <div className="editor-logged">
+      <div className="editor-logged-head">
+        <span className="editor-logged-label">Logged time</span>
+        {!readOnly && (
+          <div className="editor-quick" role="group" aria-label="Set duration">
+            {QUICK_MINUTES.map((minutes) => (
+              <button key={minutes} type="button" className="editor-quick-btn" aria-pressed={total === minutes * MINUTE_MS} onClick={() => onChange(minutes * MINUTE_MS)}>
+                {formatDuration(minutes * MINUTE_MS)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <DurationField total={total} readOnly={readOnly} onChange={onChange} />
+    </div>
+  );
+}
 
 /** The recording's length as `0 h 20 m`, both numbers editable; a change moves the last span's end. */
 export function DurationField({ total, readOnly, onChange }: { total: number; readOnly: boolean; onChange: (ms: number) => void }) {

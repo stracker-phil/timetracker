@@ -475,13 +475,16 @@ timeline's for every app.
   note as the title field (focused, "What did you work on?"), project (the name, the client muted after it;
   focus opens the list of every project once by client, type to search, "New project…"; a new recording
   starts empty, and while empty up to 5 projects show below it as rows to click: the proposed one first,
-  marked "Suggested", then the recent ones), tag (only once a project is picked), the duration as `[0] h [20] m` behind a timer icon (both numbers
-  editable; a change moves the last span's end), the spans as `[10:00] – [10:20]` lines behind a clock icon (✕ removes one while there are several; "Add time" adds one
-  after the last), then a trash icon for Delete at the leading end and Cancel and Save right-aligned. The note
-  is always one input styled as a 15px semibold title, its text at the fields' leading edge; focus only adds
-  the field's surface, frame and ring, so nothing moves. There are no labels: every field spans the card's
-  width, so a long project name fits; the duration and times put an icon where the pickers show theirs. Every
-  field (pickers, duration, times) is 22px high, rows 8px apart.
+  marked "Suggested", then the recent ones), tag (only once a project is picked), "Logged time" on a tinted
+  band across the card (the duration as large `[0] h [20] m`, both numbers editable, underlined, a change
+  moving the last span's end; 15m, 30m and 1h 00m buttons set it, the current one pressed), the spans as
+  `[10:00] – [10:20]` lines behind a clock icon (✕ removes one while there are several; "Add time" adds one
+  after the last), then Save and Cancel at the leading end and a trash icon for Delete at the trailing end.
+  Like Timely's, the card is sections split by hairlines, with no labels and no field frames: the note is
+  one input styled as a 15px semibold title (focus only adds the field's surface, frame and ring, so nothing
+  moves), the pickers are full-width semibold rows that light up on hover and focus, so a long project name
+  fits, and the times sit on soft fills. Project colors show as small rounded squares in the editor and the
+  picker lists.
   The editor shows no activity: activity is only a signal for recording, never linked to a recording. The draft's spans show in the time column as accent-filled blocks with their
   times and a short accent bar on the top and bottom edge (an edge in another day has none): dragging an edge
   moves that end from mark to mark while the block and the From and To fields follow; on release Rust merges

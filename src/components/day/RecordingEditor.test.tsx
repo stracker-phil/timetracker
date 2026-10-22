@@ -504,6 +504,50 @@ describe("RecordingEditor", () => {
     });
   });
 
+  describe("logged time", () => {
+    const quick = () => within(screen.getByRole("group", { name: "Set duration" }));
+
+    it("labels the band and offers 15m, 30m and 1h 00m", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      expect(screen.getByText("Logged time")).toBeInTheDocument();
+      expect(quick().getAllByRole("button").map((b) => b.textContent)).toEqual(["15m", "30m", "1h 00m"]);
+    });
+
+    it.each([
+      ["15m", 15, "09:15", "0", "15"],
+      ["30m", 30, "09:30", "0", "30"],
+      ["1h 00m", 60, "10:00", "1", "0"],
+    ])("sets the length with %s and shows the end Rust moves to", async (label, minutes, end, hours, rest) => {
+      renderCreate();
+      await editorForm("New recording");
+      await userEvent.click(quick().getByRole("button", { name: label }));
+      expect(mocked.recordingDraftTotal).toHaveBeenCalledWith([{ start: START, end: END }], minutes * MINUTE_MS);
+      await waitFor(() => expect(field("Time 1 to")).toHaveValue(end));
+      expect(field("Hours")).toHaveValue(hours);
+      expect(field("Minutes")).toHaveValue(rest);
+    });
+
+    it("presses only the button that matches the current length", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      for (const label of ["15m", "30m", "1h 00m"]) expect(quick().getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "false");
+      await userEvent.click(quick().getByRole("button", { name: "30m" }));
+      await waitFor(() => expect(quick().getByRole("button", { name: "30m" })).toHaveAttribute("aria-pressed", "true"));
+      expect(quick().getByRole("button", { name: "15m" })).toHaveAttribute("aria-pressed", "false");
+      expect(quick().getByRole("button", { name: "1h 00m" })).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("is not offered while the timer runs on the recording", async () => {
+      const running = recording({ ...standupRow, spans: [{ id: "r1-s1", start: at("11:00"), end: null }] });
+      mocked.recordingsList.mockResolvedValue([running]);
+      renderEditor({ mode: "edit", id: "r1" });
+      await editorForm("Edit recording");
+      expect(screen.getByText("Logged time")).toBeInTheDocument();
+      expect(screen.queryByRole("group", { name: "Set duration" })).not.toBeInTheDocument();
+    });
+  });
+
   describe("spans", () => {
     it("adds the row Rust places after the last span with Add time", async () => {
       renderCreate();
