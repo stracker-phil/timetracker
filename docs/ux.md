@@ -78,14 +78,15 @@ One place for views and one place for dates: the sidebar.
   hairline below. Empty parts drag the window. There is no app title and no Settings button (⌘, the app
   menu and the palette open Settings). Without the sidebar the row leaves `--traffic-lights` for the window
   buttons. Titles, totals and view switches live here, never date controls; the Day toolbar shows the
-  shown day's totals only when it is not today.
+  shown day's totals without the parts that are zero.
 - **Status bar** (plain `--fs-meta` text in `--o2` on `--chrome`, beside the sidebar): on the left the sidebar
   toggle, the tracker's state only while the sidebar is hidden (a dot: accent while running, `--o3` while away or paused, `--style-red`
   without permission; the tray's text; Pause, Resume or Allow…) and the selection; on the right the running
-  timer, the billable ratio and today's totals, `recorded 1:00 · tracked 3:12`, in every view. The billable
-  ratio is a small bar (a neutral track, filled in the accent; no red or green judgment) with
-  `Billable 80 %`, and `Billable 6:24 / 8:00` in its tooltip, for the shown period (day, week,
-  month, report period; today on Projects, Tags and Rules). It hides while nothing is recorded in that period. The
+  timer and the shown period's numbers, labelled: `This week · recorded 1:30 · Billable 67 %` (the day,
+  week, month or report period; Rust names it: Today, Yesterday, This week, `Week 43`, `October`, …). Views
+  without a period (Projects, Tags, Rules) show nothing period-bound. The billable part is a small bar (a
+  neutral track, filled in the accent; no red or green judgment) with `Billable 67 %`, and
+  `Billable 1:00 / 1:30` in its tooltip; it hides while nothing is recorded in that period. The
   text zoom has no readout: ⌘= ⌘- ⌘0.
 
 ## Appearance and tokens
@@ -228,7 +229,7 @@ leading end (the recording editor's Delete).
 | `Toolbar` (`components/Toolbar.tsx`) | the first row of every view | see Shell; props `title`, `detail` and the actions as children |
 | `Card` (`components/Card.tsx`) | a recording in the timesheet, the time column and the Week view's columns | filled with `--block-fill`, text `--block-text`, no shadow: the title (600), the subtitle (500), a foot with meta (the tag, with an icon) and the duration (tabular) on the right |
 | `Block` (`components/Block.tsx`) | a summary block on the timeline, placed by time (activity lanes draw memories, see Timeline) | `--activity-fill`, 1px `--bg` border, `--radius-block`: the app (500, `--text-strong`), the title (`--text`), the duration trailing at the bottom right (`--o2`), as on a card; one line when short |
-| Popover | `Modal variant="popover"`: the date picker, the timeline settings | `--pop`, `--radius`, `--shadow`, placed under its control, no scrim |
+| Popover | `Modal variant="popover"`: the date picker, View options | `--pop`, `--radius`, `--shadow`, placed under its control, no scrim |
 | Sheet | `Modal` (default `variant="sheet"`) | `--pop`, `--radius-lg`, `--shadow`, 20px padding, the title 13px bold, over `--scrim`; buttons at least 70px wide |
 | Donut (`ReportChart` in `components/reports/`) | the Reports charts | an SVG ring of slices in accent colors on a `--fill` track, percentages outside, the total in the center, a legend beside |
 
@@ -268,7 +269,7 @@ Period and Settings choices.
 
 Palette, popovers, context menus, toasts and dialogs: `--pop` with `--shadow` (a hairline ring and a soft
 drop; no border). Menus, toasts and popovers take `--radius` (10px), sheets and panels `--radius-lg` (12px).
-Sheets and the palette sit over `--scrim`; popovers (the date picker, the timeline settings) sit over
+Sheets and the palette sit over `--scrim`; popovers (the date picker, View options) sit over
 nothing. Overlays take `Esc` first. Palette results use the row anatomy with a 6px radius; the active one is
 filled with the accent and `--on-accent` text, as in Spotlight, and command shortcuts show as key caps.
 Context menus use the UI font, 22px items with a 5px radius; the hovered or focused item is `--accent` with
@@ -309,9 +310,8 @@ text; a row's date or detail follows its title in `--o2`.
 
 The Day view reads like Timely's: the toolbar, the timesheet on the left, then the timeline.
 
-- **Toolbar:** the date, the day's totals (`recorded 1:00 · tracked 6:12 · away 1:05`) only for a day other
-  than today (the status bar has today's), Lanes, the timeline
-  settings gear and the ⋯ menu, all borderless toolbar buttons.
+- **Toolbar:** the date, the day's totals (`recorded 1:00 · tracked 6:12 · away 1:05`, a part that is zero
+  left out), View options and the ⋯ menu, borderless toolbar buttons.
 - **Timesheet** (left, about a quarter of the width, resizable with the splitter; kept as the `timesheet`
   pane size): "Timesheet", the day's recorded total large (`6h 05m`) and a + button (a new recording for the
   selection, else now; `recording.new`). Below, one `Card` per recording in the order of its first span on
@@ -343,19 +343,26 @@ The Day view reads like Timely's: the toolbar, the timesheet on the left, then t
 - **Away time and gaps** draw nothing: the lanes show only the captured activity, and the body keeps one
   background. Away time counts in the day's totals (`away 1:05`) and can be recorded from the away prompt.
 - **Now** is a 1px accent line on today, updated every 30 s.
-- **Empty day** (no activity and no recordings; away time alone is empty): "Nothing tracked on this day"
-  with the tracker's status line; without the Accessibility permission "Tracking needs permission" with
-  Allow…. The timesheet stays beside it.
+- **Empty day** (no activity and no recordings; away time alone is empty): the hour axis, the time column
+  and the lanes stay, so a forgotten day can be recorded by dragging or with +. Over the lanes: "Nothing
+  tracked on this day", on today with the tracker's status line; without the Accessibility permission
+  "Tracking needs permission" with Allow…. The timesheet stays beside it.
 - **Zoom** is 1–8 px per minute (default 2.5), kept in `ui_state.json` as `timelineZoom`: a floating control
   at the timeline's bottom right (−, a slider, +) and ⌘= / ⌘-.
-- **Lanes** (toolbar): a popover with Summary and Activity switches and a switch per app of the day (most
-  time first) that gives it a lane of its own (`ownLane`).
+- **View options** (toolbar, `day.settings`): one popover under its button with Lanes (Summary, Activity),
+  Blocks (Compact, Titles), App lanes (a switch per app of the day, most time first, that gives it a lane of
+  its own, `ownLane`) and Hidden apps (each with Unhide; the heading counts them only when there are any).
+  Continuity, Noise cancellation, Time snapping and the summary interval live in Settings → Timeline only.
+- **Noisy titles:** symbols that apps put in front of a window title (spinners and dingbats such as ◐ ✳ ⠋)
+  are dropped before labelling, so one document keeps one block; the activity lane leaves out blocks under a
+  minute, which are too short for a label.
 - **Compact** draws the day at 60% of the zoom, every block on one line.
 - **Block gear:** a hovered block shows a gear at its top right; it opens the same menu as a right-click.
 
 ### Timeline settings
 
-Settings → Timeline and the Day toolbar's gear (both save at once; the Day view reloads):
+Settings → Timeline holds them all; the Day toolbar's View options repeat the lanes, Compact and Titles
+(both save at once; the Day view reloads):
 
 | Setting | Values | Does |
 |---|---|---|
@@ -369,7 +376,7 @@ Settings → Timeline and the Day toolbar's gear (both save at once; the Day vie
 | Time snapping | 5 min | the grid recordings snap to: 1, 5, 10 or 15 min |
 
 Per app (Settings → Timeline → Apps, or a block's menu): Group by app and Titles (default follows the
-timeline), Hidden (gone from every lane; the Lanes popover lists hidden apps with Unhide), Own lane.
+timeline), Hidden (gone from every lane; View options list hidden apps with Unhide), Own lane.
 
 ## Recordings
 
@@ -419,6 +426,10 @@ timeline), Hidden (gone from every lane; the Lanes popover lists hidden apps wit
   times. A new recording's project is proposed: the project of the latest recording (two weeks back) that
   covered the same main app, else the rule matching most of the activity. Field errors show under their
   field. A running recording's spans are shown, not edited.
+- **Leaving the view** with the editor open (the sidebar, the calendar, ⌘1…⌘7, the palette): an unchanged
+  editor closes; a changed one asks "Discard changes?" with Keep editing and Discard, and the view changes only
+  on Discard. Any change of view clears the selection, and the Week and Month views show only an editor opened
+  in them.
 - **Overlap**: asked inside the editor (outside it, a confirm sheet) listing the recordings in the way, each
   with its spans; "Replace overlapped part" trims or cuts their spans, and deletes a recording left without
   any; Back returns to the fields.
@@ -666,7 +677,7 @@ recording commands'.
 | `day.extendNext` / `day.extendPrev` | Extend selection to the next / previous block | ⇧J / ⇧K | day |
 | `activity.deleteDay` | Delete activity for this day… | menu | day |
 | `activity.deleteRange` | Delete activity in a range… | menu | day |
-| `day.settings` | Timeline settings | menu | day |
+| `day.settings` | View options | menu | day |
 | `day.clearFocus` | Clear selection (and the block and recording focus) | Escape | day |
 | `recording.next` / `recording.prev` | Next / Previous recording | ] / [ | day |
 | `recording.open` | Record selection or edit recording (opens the editor) | ↵ | day |
@@ -758,7 +769,7 @@ from every text field. The page's key handler runs them, with the rules above.
 | TimeTracker | About; Settings… (`settings.toggle`; ⌘,); Launch at Login (`app.launchAtLogin`, a check item); Show Welcome Again (`welcome.show`); Services; Hide, Hide Others, Show All; Quit TimeTracker (`app.quit`; ⌘Q) |
 | File | New Recording… (`recording.new`); Start Timer… (`timer.start`; ⌘T), Stop Timer (`timer.stop`; ⌘⇧.); New Project… (`projects.new`; ⌘N), New Client… (`clients.new`), New Tag… (`tags.new`; ⌘N), New Rule… (`rules.new`; ⌘N); Export Backup… (`data.exportBackup`); Close Window (`window.hide`; ⌘W) |
 | Edit | Undo (`edit.undo`; ⌘Z), Redo (`edit.redo`; ⌘⇧Z); Cut, Copy, Paste, Select All (native); Delete Recording (`recording.delete`; ⌫); Copy Report as Text (`reports.copyText`; ⌘⇧C), Copy Report Notes (`reports.copyNotes`; ⌥⌘C) |
-| View | Hours (`view.hours`); Day, Week, Month, Reports, Projects, Tags, Rules (`view.day` … `view.rules`; ⌘1 … ⌘7, the active view checked); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); Timeline Settings… (`day.settings`); Enter Full Screen (native) |
+| View | Hours (`view.hours`); Day, Week, Month, Reports, Projects, Tags, Rules (`view.day` … `view.rules`; ⌘1 … ⌘7, the active view checked); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); View Options… (`day.settings`); Enter Full Screen (native) |
 | Go | Previous (`nav.prev`; P), Next (`nav.next`; N), Today (`nav.today`; O), Go to Date… (`nav.goToDate`); Next Block (`day.nextBlock`; J), Previous Block (`day.prevBlock`; K); Next Recording (`recording.next`; ], recordings and suggestions), Previous Recording (`recording.prev`; [) |
 | Day | Record Selection (`recording.create`; ↵, the key of `recording.open`), Edit Recording… (`recording.edit`); Move Recording to Previous / Next Day (⌥← / ⌥→), Copy Recording to Previous / Next Day (⌥⇧← / ⌥⇧→); Approve Suggestion (↵), Edit Suggestion… (E), Dismiss Suggestion (⌫), Approve All Suggestions of Rule, Approve All Suggestions, Dismiss All Suggestions (`suggestion.*`); Delete Activity for This Day…, Delete Activity in a Range… (`activity.*`) |
 | Window | Minimize, Zoom, Bring All to Front (native) |

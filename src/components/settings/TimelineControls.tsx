@@ -1,7 +1,7 @@
 import { useId } from "react";
-import type { Continuity, Noise, TimelineSettings, Titles } from "../../api";
-import { useStore } from "../../state/store";
+import type { Continuity, Noise, TimelineSettings } from "../../api";
 import { Row, Segmented, Switch } from "./controls";
+import { TITLES, saveTimeline } from "./timelineActions";
 
 /** Rust's `SUMMARY_MINUTES` and `SNAP_MINUTES`; `Settings::sanitized` snaps other values to these. */
 const SUMMARY_MINUTES = [5, 10, 15, 20, 30, 45, 60] as const;
@@ -9,9 +9,6 @@ const SNAP_MINUTES: readonly string[] = ["1", "5", "10", "15"];
 
 const CONTINUITY: readonly Continuity[] = ["off", "short", "regular", "extended"];
 const NOISE: readonly Noise[] = ["off", "low", "medium", "high"];
-const TITLES: readonly Titles[] = ["document", "app"];
-
-const saveTimeline = (patch: Partial<TimelineSettings>) => void useStore.getState().saveTimeline(patch);
 
 function SummaryMinutes({ value }: { value: number }) {
   const id = useId();

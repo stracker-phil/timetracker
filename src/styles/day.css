@@ -4,6 +4,10 @@
 .day-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 .day-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); color: var(--text); }
 .day-empty p { margin: 0; }
+/* A day without anything keeps its timeline for dragging; the message floats over the lanes and lets presses through. */
+.lanes-empty { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.lanes-empty .day-empty { position: sticky; top: 40%; padding: var(--space-4); text-align: center; }
+.lanes-empty button { pointer-events: auto; }
 
 /* ---------- timesheet: the day's total, then one filled card per recording ---------- */
 .timesheet-pane { flex: none; min-width: 0; display: flex; }
@@ -104,7 +108,6 @@
 }
 .zoom-slider { width: 7.692rem; margin: 0 var(--space-1); accent-color: var(--accent); }
 
-.lanes-popover { width: min(22rem, 92vw); max-height: 70vh; overflow: auto; }
 
 /* ---------- recording editor: a card in the timesheet (a sheet in the Week view) ---------- */
 .recording-editor {

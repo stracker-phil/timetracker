@@ -33,10 +33,7 @@ function EmptyDay({ day }: { day: string }) {
   );
 }
 
-/**
- * The Day view: the timesheet on the left (resizable), then the shown day's timeline; it reloads when the day's
- * data changes, and keeps following today.
- */
+/** The Day view: the timesheet beside the shown day's timeline; it reloads when the day's data changes and keeps following today. */
 export function DayPage() {
   const day = useStore((s) => s.day);
   const version = useStore(selectDayVersion(day));
@@ -53,7 +50,7 @@ export function DayPage() {
 
   return (
     <section className="day-page" aria-label="Day">
-      <DayHeader day={day} label={label} totals={view?.totals ?? null} />
+      <DayHeader label={label} totals={view?.totals ?? null} />
       {error && !view && <p className="settings-alert">{error.message}</p>}
       {view && (
         <div className="day-body">
@@ -61,7 +58,9 @@ export function DayPage() {
             <Timesheet view={view} />
           </div>
           <Splitter axis="x" paneAfter={false} label="Resize the timesheet" {...pane} />
-          <div className="day-main">{isEmpty(view) ? <EmptyDay day={day} /> : <Timeline view={view} />}</div>
+          <div className="day-main">
+            <Timeline view={view} empty={isEmpty(view) ? <EmptyDay day={day} /> : null} />
+          </div>
         </div>
       )}
     </section>

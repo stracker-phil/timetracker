@@ -118,9 +118,11 @@ const hasFocusedSuggestion = () => useStore.getState().focusedSuggestion !== nul
 function newRecording() {
   const s = useStore.getState();
   if (s.view === "day" && hasSelection()) return s.recordSelection();
-  if (s.view !== "week" && s.view !== "month") s.setView("day");
-  s.goToday();
-  return s.openNewRecording();
+  const view = s.view === "week" || s.view === "month" ? s.view : "day";
+  s.setView(view, () => {
+    s.goToday();
+    void s.openNewRecording();
+  });
 }
 
 /** Edits the focused recording, else opens the editor for the selection. */
@@ -248,7 +250,7 @@ const APP_COMMANDS: Command[] = [
   { id: "day.selectBlock", title: "Select block", scope: "day", defaultBinding: "V", when: hasFocusedBlock, run: selectFocusedBlock },
   { id: "day.extendNext", title: "Extend selection to the next block", scope: "day", defaultBinding: "Shift+J", run: () => extendToBlock(1) },
   { id: "day.extendPrev", title: "Extend selection to the previous block", scope: "day", defaultBinding: "Shift+K", run: () => extendToBlock(-1) },
-  { id: "day.settings", title: "Timeline settings", scope: "day", menu: true, run: () => useStore.getState().openDialog({ type: "timelineSettings" }) },
+  { id: "day.settings", title: "View options", scope: "day", menu: true, run: () => useStore.getState().openDialog({ type: "viewOptions" }) },
   { id: "activity.deleteDay", title: "Delete activity for this day…", scope: "day", menu: true, when: () => !!shownDayView(), run: () => openDeleteActivity(false) },
   { id: "activity.deleteRange", title: "Delete activity in a range…", scope: "day", menu: true, when: () => !!shownDayView(), run: () => openDeleteActivity(true) },
   { id: "day.clearFocus", title: "Clear selection", scope: "day", defaultBinding: "Escape", when: () => hasFocusedBlock() || hasSelection() || hasFocusedRecording() || hasFocusedSuggestion(), run: clearDayFocus },

@@ -11,7 +11,11 @@ export interface NavSlice {
   view: View;
   /** The day the Day, Week and Month views show (`YYYY-MM-DD`). */
   day: string;
-  setView: (view: View) => void;
+  /**
+   * Shows `view`, then runs `then`. Leaving a view clears the selection and closes the editor, asking first
+   * when it has changes; Keep editing stays, and `then` never runs.
+   */
+  setView: (view: View, then?: () => void) => void;
   /** Shows `day` in the Day view. */
   goToDay: (day: string) => void;
   /** Hours: today in the Day view. */
@@ -36,17 +40,19 @@ export const navSlice: Slice<NavSlice> = {
       get().rememberDay(day);
     };
     const stepDay = dayStepper(() => get().day, stay);
-    const show = (day: string) => {
-      set({ view: "day" });
-      stay(day);
+    const enter = (view: View, then?: () => void) => {
+      if (view === get().view) return then?.();
+      get().leaveEditor(() => {
+        set({ view, selection: null, selectionSnap: null });
+        then?.();
+      });
     };
+    const show = (day: string) => enter("day", () => stay(day));
     return {
       view: "day",
       day: today(),
 
-      setView(view) {
-        set({ view });
-      },
+      setView: enter,
 
       goToDay: show,
       showHours: () => show(today()),

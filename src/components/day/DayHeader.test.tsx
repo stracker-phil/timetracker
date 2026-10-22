@@ -1,11 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api } from "../../api";
-import { installCommands } from "../../commands";
+import { installCommands, runCommand } from "../../commands";
 import { formatDayLabel, today } from "../../lib/day";
 import { resetStore } from "../../state/store";
 import { DAY, dayView } from "../../test/dayFixtures";
@@ -20,7 +20,7 @@ function renderHeader(patch: Parameters<typeof resetStore>[0] = { dayView: dayVi
   installCommands();
   return render(
     <>
-      <DayHeader day={DAY} totals={null} />
+      <DayHeader totals={null} />
       <Dialogs />
     </>,
   );
@@ -37,44 +37,65 @@ describe("DayHeader", () => {
   describe("date and totals", () => {
     const totals = { recordedMs: 3_600_000, trackedMs: 7_200_000, awayMs: 600_000 };
 
-    function renderFor(day: string, label?: string) {
+    function renderFor(label: string, shown = totals, day = DAY) {
       resetStore({ settings: settings(), day });
       installCommands();
-      render(<DayHeader day={day} label={label} totals={totals} />);
+      render(<DayHeader label={label} totals={shown} />);
     }
 
     it.each(["Tuesday, March 10", "Tue, Mar 10"])("shows the title %s Rust gives for the day, as is", (label) => {
-      renderFor(DAY, label);
+      renderFor(label);
       expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(new RegExp(`^${label}$`));
     });
 
     it("shows the totals of a past day", () => {
-      renderFor(DAY, "Tuesday, March 10");
+      renderFor("Tuesday, March 10");
       expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 1:00 · tracked 2:00 · away 0:10");
     });
 
-    it("hides the totals on today, which the status bar shows", () => {
-      renderFor(today());
+    it("shows the totals on today too", () => {
+      renderFor("Today", totals, today());
+      expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 1:00 · tracked 2:00 · away 0:10");
+    });
+
+    it.each([
+      ["recorded", { recordedMs: 0, trackedMs: 7_200_000, awayMs: 600_000 }, "tracked 2:00 · away 0:10"],
+      ["tracked", { recordedMs: 3_600_000, trackedMs: 0, awayMs: 600_000 }, "recorded 1:00 · away 0:10"],
+      ["away", { recordedMs: 3_600_000, trackedMs: 7_200_000, awayMs: 0 }, "recorded 1:00 · tracked 2:00"],
+    ])("leaves out the %s part when it is zero", (_part, shown, expected) => {
+      renderFor("Tuesday, March 10", shown);
+      expect(screen.getByLabelText("Totals")).toHaveTextContent(new RegExp(`^${expected}$`));
+    });
+
+    it("shows no totals when everything is zero", () => {
+      renderFor("Tuesday, March 10", { recordedMs: 0, trackedMs: 0, awayMs: 0 });
       expect(screen.queryByLabelText("Totals")).not.toBeInTheDocument();
     });
 
     it("has no buttons to change the day", () => {
-      renderFor(DAY);
+      renderFor("Tuesday, March 10");
       for (const name of ["Previous day", "Next day", "Today"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     });
   });
 
-  describe("lanes", () => {
-    it("opens the Lanes popover from the Lanes button", async () => {
+  describe("view options", () => {
+    it("opens the View options popover from the View options button", async () => {
       renderHeader();
-      await userEvent.click(screen.getByRole("button", { name: "Lanes" }));
-      expect(await screen.findByRole("dialog", { name: "Lanes" })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "View options" }));
+      expect(await screen.findByRole("dialog", { name: "View options" })).toBeInTheDocument();
     });
 
-    it("shows the Lanes button without a Timeline/List switch", () => {
+    it("opens the popover with the day.settings command", async () => {
       renderHeader();
-      expect(screen.getByRole("button", { name: "Lanes" })).toBeInTheDocument();
-      for (const name of ["Timeline", "List"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+      act(() => {
+        runCommand("day.settings");
+      });
+      expect(await screen.findByRole("dialog", { name: "View options" })).toBeInTheDocument();
+    });
+
+    it("has no Lanes button and no Timeline/List switch", () => {
+      renderHeader();
+      for (const name of ["Lanes", "Timeline", "List"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     });
   });
 

@@ -148,14 +148,14 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes, recordings, activities }` | `db`, `io`, `invalid_input` |
 | `report_run` (`reports/commands.rs`) | `filter: ReportFilter` | `ReportResult` (see [Reports](#reports)) | `invalid_input` (a range that ends before it starts), `db` |
 | `report_text` | `filter: ReportFilter` | the report as text (`reports::text`) | the same |
-| `billable_ratio` | `range: Range` | `Billable { recordedMs, billableMs, percent }` (`reports::billable`): every recording of the range, archived projects included, no other filter; `percent` is `null` when nothing is recorded. The status bar's ratio for the shown period | `invalid_input`, `db` |
+| `period_totals` | `range: Range` | `PeriodTotals { label, recordedMs, billableMs, billablePercent }` (`reports/period.rs`): every recording of the range, archived projects included, no other filter (`reports::billable`); `billablePercent` is `null` when nothing is recorded. `label` (`period_label`) names the days: Today, Yesterday, This week, Last week, This month, Last month, else `Mon, Oct 19`, `Week 43`, `October` or `Oct 1 – Oct 14`, with the year when it is not the current one. The status bar's numbers for the shown period | `invalid_input`, `db` |
 | `report_range_shift` | `range: Range, anchor: Day \| null, by: i32` | `Range`: the period of the range's unit `by` steps away (`reports::shift`, see [Reports](#reports)); P, N, O and the date picker in Reports | `invalid_input` |
 | `saved_reports_list` | – | `SavedReport[] { id, name, filter, position }`, by position | `db` |
 | `saved_report_save` | `name, filter` | `SavedReport` (appended) | `invalid_input` (`field: name`), `db` |
 | `saved_report_rename` | `id, name` | `SavedReport` | `not_found`, `invalid_input` |
 | `saved_report_delete` | `id` | – | `not_found` |
 | `day_view` (`day/commands.rs`) | `day: String` | `DayView` (see [Day view](#day-view)) with the saved rules' `suggestions` and `label`, the toolbar title in the `dayTitle` format; logs the time it took at debug level | `invalid_input`, `db` |
-| `day_totals` (`day/commands.rs`) | `day: Day` | `DayTotals { recordedMs, trackedMs, awayMs }` (`day::totals`, without building the view; the status bar's today) | `invalid_input`, `db` |
+| `day_totals` (`day/commands.rs`) | `day: Day` | `DayTotals { recordedMs, trackedMs, awayMs }` (`day::totals`, without building the view) | `invalid_input`, `db` |
 | `away_prompt_current` (`away_prompt/commands.rs`) | – | `AwayPrompt \| null` | – |
 | `away_prompt_answer` | `input: RecordingInput` | `Recording`, created with `overlap: cancel` (undoable); closes the window | `not_found` (no prompt), `invalid_input` (`field`: `start` when a span lies outside the last 7 days, or the recording's own fields), `overlap` (the prompt stays open) |
 | `away_prompt_skip` | – | – (clears the prompt, closes the window; nothing is recorded) | – |
@@ -279,10 +279,12 @@ by the commands and the CLI. Activity is never edited (ADR 0005), so deletion wo
 from the day before included) and calls it. `ViewSettings` is a copy of `Settings.timeline` and
 `Settings.apps`. The module is split by concern: `types.rs` (everything `DayView` sends), `totals.rs`
 (`totals`, `tracked_ms`, span unions), `recordings.rs` (`recording_blocks`, `timesheet`), `summary.rs`
-(the summary lane), `lanes.rs` (lanes and columns), `transform.rs` (the timeline settings). In order:
+(the summary lane), `lanes.rs` (lanes and columns), `transform.rs` (the timeline settings), `title.rs` (`clean_title`). In order:
 
 1. `clipped_blocks`: every activity cut to the day's bounds (an open span ends at `now`); private rows keep
-   the app and read "Private" without URL or path. `appKey` is the bundle id, else the app name: what
+   the app and read "Private" without URL or path. Titles go through `title::clean_title`: the symbols leading
+   the title or any of its ` — ` parts (spinners and dingbats such as `◐`, `✳`, `⠋`: any non-ASCII character
+   that is not a letter or digit) are dropped, so one document keeps one label; ASCII punctuation stays. `appKey` is the bundle id, else the app name: what
    `Settings.apps` overrides are keyed by.
 2. Totals (`totals`, also behind `day_totals`), `firstActivity` and `sources` come from these raw rows,
    so hiding and merging never change them: `trackedMs` the union of tracker spans, `awayMs` the union of away spans, `recordedMs` the sum of
@@ -303,7 +305,7 @@ from the day before included) and calls it. `ViewSettings` is a copy of `Setting
    Blocks shorter than the noise threshold (off 0, low 2, medium 4, high 6 min) are dropped. A block shows
    its longest row (`title`, `label`, URL, path); its id is `a<first member id>`, `members` every row,
    `activeMs` the time its rows fill (without the gaps it bridges).
-6. `lanes::lanes`: the `activity` lane (unless `showAllActivity` is off), one `app:<appKey>` lane per app
+6. `lanes::lanes`: the `activity` lane (unless `showAllActivity` is off; without blocks shorter than a minute, which never have room for a label), one `app:<appKey>` lane per app
    with `ownLane` in the order of first appearance (`bundleId` for its icon), one `source:<name>` lane per
    external source by name;
    `packed` per lane: by start, longer first, each block in the lowest free column, a cluster of overlapping
@@ -312,7 +314,7 @@ from the day before included) and calls it. `ViewSettings` is a copy of `Setting
 
 `DayView` also carries `compact` (from `timeline`), `hiddenApps` (every hidden override, named from the
 day's rows, else by its key) for the header's popover, `apps` (the day's tracked apps that are not hidden,
-most time first by `activeMs`, with `ownLane`; `apps::day_apps`) for the Lanes popover, and `timesheet`: one `TimesheetCard` per recording,
+most time first by `activeMs`, with `ownLane`; `apps::day_apps`) for the View options popover, and `timesheet`: one `TimesheetCard` per recording,
 in the order of its first span on the day, with the day's parts of its spans added up (`durationMs`), its
 first start and last end on the day and its `spanIds` there (`recordings::timesheet`, from the recording
 blocks).

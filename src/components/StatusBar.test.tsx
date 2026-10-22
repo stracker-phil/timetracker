@@ -6,7 +6,6 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api } from "../api";
 import { EMPTY_UI_STATE } from "../api/types";
-import { today } from "../lib/day";
 import { resetStore, useStore } from "../state/store";
 import { defaultFilter } from "../state/slices/reports";
 import { trackerStatus } from "../test/data";
@@ -20,7 +19,6 @@ const MINUTE_MS = 60_000;
 describe("StatusBar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocked.dayTotals.mockResolvedValue({ recordedMs: 0, trackedMs: 0, awayMs: 0 });
   });
 
   it("shows the snapped selection with its length", () => {
@@ -42,91 +40,66 @@ describe("StatusBar", () => {
     expect(screen.queryByRole("button", { name: /zoom/i })).not.toBeInTheDocument();
   });
 
-  describe("today's totals", () => {
-    it("shows the recorded and tracked time of today", async () => {
-      mocked.dayTotals.mockResolvedValue({ recordedMs: 60 * MINUTE_MS, trackedMs: (3 * 60 + 12) * MINUTE_MS, awayMs: 0 });
-      resetStore();
-      render(<StatusBar />);
-      expect(await screen.findByLabelText("Today")).toHaveTextContent("recorded 1:00 · tracked 3:12");
-      expect(mocked.dayTotals).toHaveBeenCalledWith(today());
-    });
-
-    it("shows them whatever day the views show", async () => {
-      mocked.dayTotals.mockResolvedValue({ recordedMs: 0, trackedMs: 30 * MINUTE_MS, awayMs: 0 });
-      resetStore({ day: "2026-03-10", view: "month" });
-      render(<StatusBar />);
-      expect(await screen.findByLabelText("Today")).toHaveTextContent("recorded 0:00 · tracked 0:30");
-      expect(mocked.dayTotals).toHaveBeenCalledWith(today());
-    });
-
-    it("reloads when the data of today changed", async () => {
-      resetStore();
-      render(<StatusBar />);
-      await screen.findByLabelText("Today");
-      mocked.dayTotals.mockResolvedValue({ recordedMs: 90 * MINUTE_MS, trackedMs: 90 * MINUTE_MS, awayMs: 0 });
-      act(() => useStore.getState().dataChanged({ kind: "recordings", day: today() }));
-      await vi.waitFor(() => expect(screen.getByLabelText("Today")).toHaveTextContent("recorded 1:30 · tracked 1:30"));
-    });
-
-    it("keeps showing the last totals when another day changed", async () => {
-      resetStore();
-      render(<StatusBar />);
-      await screen.findByLabelText("Today");
-      mocked.dayTotals.mockResolvedValue({ recordedMs: 90 * MINUTE_MS, trackedMs: 90 * MINUTE_MS, awayMs: 0 });
-      act(() => useStore.getState().dataChanged({ kind: "recordings", day: "2026-03-10" }));
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(screen.getByLabelText("Today")).toHaveTextContent("recorded 0:00 · tracked 0:00");
-    });
-  });
-
-  describe("billable meter", () => {
-    const eightHours = { recordedMs: 8 * 60 * MINUTE_MS, billableMs: (6 * 60 + 24) * MINUTE_MS, percent: 80 };
+  describe("shown period totals", () => {
+    const week = { label: "This week", recordedMs: 8 * 60 * MINUTE_MS, billableMs: (6 * 60 + 24) * MINUTE_MS, billablePercent: 80 };
+    const shown = () => screen.findByLabelText("Shown period");
 
     beforeEach(() => {
-      mocked.billableRatio.mockResolvedValue({ recordedMs: 0, billableMs: 0, percent: null });
+      mocked.periodTotals.mockResolvedValue(week);
       mocked.calendarPeriod.mockResolvedValue({ from: "2026-03-09", to: "2026-03-15", holdsToday: false });
     });
 
-    it("shows the share with its hours as a meter", async () => {
-      mocked.billableRatio.mockResolvedValue(eightHours);
+    it("reads the label, the recorded time and the billable share", async () => {
+      resetStore({ view: "week" });
+      render(<StatusBar />);
+      expect(await shown()).toHaveTextContent("This week · recorded 8:00 · Billable 80 %");
+    });
+
+    it("shows the share as a meter with its hours", async () => {
       resetStore({ view: "week" });
       render(<StatusBar />);
       const meter = await screen.findByRole("meter", { name: "Billable" });
-      expect(meter).toHaveTextContent("Billable 80 %");
       expect(meter).toHaveAttribute("aria-valuenow", "80");
       expect(meter).toHaveAttribute("title", "Billable 6:24 / 8:00");
     });
 
-    it("is hidden when nothing is recorded in the period", async () => {
+    it("shows no meter when Rust has no billable share", async () => {
+      mocked.periodTotals.mockResolvedValue({ ...week, billableMs: 0, billablePercent: null });
       resetStore({ view: "week" });
       render(<StatusBar />);
-      await vi.waitFor(() => expect(mocked.billableRatio).toHaveBeenCalled());
-      await screen.findByLabelText("Today");
+      expect(await shown()).toHaveTextContent(/^This week · recorded 8:00$/);
       expect(screen.queryByRole("meter")).not.toBeInTheDocument();
     });
 
-    it.each(["day", "week", "month"] as const)("asks for the period the %s view shows", async (view) => {
-      mocked.billableRatio.mockResolvedValue(eightHours);
+    it.each(["day", "week", "month"] as const)("asks for the days the %s view shows", async (view) => {
       resetStore({ view });
       render(<StatusBar />);
-      await screen.findByRole("meter");
-      expect(mocked.billableRatio).toHaveBeenLastCalledWith({ kind: "custom", from: "2026-03-09", to: "2026-03-15" });
+      await shown();
+      expect(mocked.periodTotals).toHaveBeenLastCalledWith({ kind: "custom", from: "2026-03-09", to: "2026-03-15" });
     });
 
     it("asks for the range of the report in Reports", async () => {
-      mocked.billableRatio.mockResolvedValue(eightHours);
       resetStore({ view: "reports", reportFilter: { ...defaultFilter(null), range: { kind: "lastWeek" } } });
       render(<StatusBar />);
-      await screen.findByRole("meter");
-      expect(mocked.billableRatio).toHaveBeenLastCalledWith({ kind: "lastWeek" });
+      await shown();
+      expect(mocked.periodTotals).toHaveBeenLastCalledWith({ kind: "lastWeek" });
     });
 
-    it.each(["projects", "tags", "rules"] as const)("asks for today in the %s view", async (view) => {
-      mocked.billableRatio.mockResolvedValue(eightHours);
+    it.each(["projects", "tags", "rules"] as const)("shows nothing and asks for nothing in the %s view", async (view) => {
       resetStore({ view });
       render(<StatusBar />);
-      await screen.findByRole("meter");
-      expect(mocked.billableRatio).toHaveBeenLastCalledWith({ kind: "today" });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(screen.queryByLabelText("Shown period")).not.toBeInTheDocument();
+      expect(mocked.periodTotals).not.toHaveBeenCalled();
+    });
+
+    it("reloads when recordings changed", async () => {
+      resetStore({ view: "week" });
+      render(<StatusBar />);
+      await shown();
+      mocked.periodTotals.mockResolvedValue({ ...week, recordedMs: 90 * MINUTE_MS, billablePercent: null });
+      act(() => useStore.getState().dataChanged({ kind: "recordings", day: "2026-03-10" }));
+      await vi.waitFor(() => expect(screen.getByLabelText("Shown period")).toHaveTextContent("This week · recorded 1:30"));
     });
   });
 

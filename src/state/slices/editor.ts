@@ -1,7 +1,7 @@
 import { api, type DayView, type DraftSpans, type Recording, type Span } from "../../api";
 import { findBlock } from "../../lib/blockFocus";
 import { fail } from "../requests";
-import type { Slice } from "../store";
+import type { Slice, View } from "../store";
 
 /** The suggestion a new recording approves once saved. */
 export interface EditedSuggestion {
@@ -36,6 +36,8 @@ export interface EditorOverlap {
 
 export interface EditorSlice {
   editor: Editor | null;
+  /** The view the editor was opened in; the Week and Month views show only their own editor as a sheet. */
+  editorView: View | null;
   /** The open editor's fields; null until Rust has answered for its spans (and an edited recording has loaded). */
   draft: Draft | null;
   /** The recording the editor edits, once loaded. */
@@ -49,6 +51,13 @@ export interface EditorSlice {
   /** Closes the editor and drops its draft and the selection. */
   closeEditor: () => void;
   patchDraft: (patch: Partial<Pick<Draft, "projectId" | "note" | "tagId">>) => void;
+  /** Like `patchDraft`, but a value the editor proposed itself (the project Rust proposes), so the draft stays unchanged. */
+  prefillDraft: (patch: Partial<Pick<Draft, "projectId" | "note" | "tagId">>) => void;
+  /**
+   * Runs `proceed` once the open editor is out of the way: at once without one, after closing an unchanged one,
+   * and for a changed one only after "Discard changes?" is answered with Discard (Keep editing stays).
+   */
+  leaveEditor: (proceed: () => void) => void;
   /** New times for one span; shown at once, then as Rust rolls them. */
   /** Resolves once Rust has answered for the new spans. */
   setDraftSpan: (index: number, span: Span) => Promise<void>;
@@ -82,12 +91,23 @@ function spansOfBlocks(view: DayView, ids: string[]): Span[] {
   });
 }
 
+const sameSpans = (a: Span[], b: Span[]) => a.length === b.length && a.every((s, i) => s.start === b[i].start && s.end === b[i].end);
+
+/** Whether a save of `a` would write what `b` holds. */
+const sameFields = (a: Draft, b: Draft) => a.projectId === b.projectId && a.note === b.note && a.tagId === b.tagId && sameSpans(a.spans, b.spans);
+
 const closedSpans = (recording: Recording): Span[] => recording.spans.flatMap((s) => (s.end === null ? [] : [{ start: s.start, end: s.end }]));
 
 export const editorSlice: Slice<EditorSlice> = {
   create: (set, get) => {
     // Answers about the spans arrive in any order; only the latest ask counts.
     let asked = 0;
+    // The draft as the editor opened it.
+    let openedDraft: Draft | null = null;
+    const changed = () => {
+      const draft = get().draft;
+      return draft !== null && openedDraft !== null && !sameFields(draft, openedDraft);
+    };
 
     /** Shows `spans` at once (when given), then Rust's answer for them unless a later ask came first. */
     async function respan(spans: Span[] | null, ask: () => Promise<DraftSpans>) {
@@ -107,7 +127,10 @@ export const editorSlice: Slice<EditorSlice> = {
     async function fill(editor: Editor, fields: Pick<Draft, "projectId" | "note" | "tagId">, spans: Span[]) {
       const ticket = ++asked;
       const answer = await api.recordingDraftSpans(spans);
-      if (get().editor === editor && ticket === asked) set({ draft: { ...fields, ...answer } });
+      if (get().editor !== editor || ticket !== asked) return;
+      const draft = { ...fields, ...answer };
+      openedDraft = draft;
+      set({ draft });
     }
 
     async function load(editor: Extract<Editor, { mode: "edit" }>) {
@@ -125,6 +148,7 @@ export const editorSlice: Slice<EditorSlice> = {
 
     return {
       editor: null,
+      editorView: null,
       draft: null,
       editing: null,
       editorOverlap: null,
@@ -132,7 +156,8 @@ export const editorSlice: Slice<EditorSlice> = {
 
       openEditor(editor) {
         get().editorOverlap?.resolve(false);
-        set({ editor, draft: null, editing: null, editorOverlap: null, draftBlockIds: [] });
+        openedDraft = null;
+        set({ editor, editorView: get().view, draft: null, editing: null, editorOverlap: null, draftBlockIds: [] });
         const opened =
           editor.mode === "create"
             ? fill(editor, { projectId: editor.projectId ?? null, note: editor.note ?? "", tagId: editor.tagId ?? null }, [{ start: editor.start, end: editor.end }])
@@ -151,12 +176,40 @@ export const editorSlice: Slice<EditorSlice> = {
 
       closeEditor() {
         get().editorOverlap?.resolve(false);
-        set({ editor: null, draft: null, editing: null, editorOverlap: null, draftBlockIds: [], selection: null, selectionSnap: null });
+        openedDraft = null;
+        set({ editor: null, editorView: null, draft: null, editing: null, editorOverlap: null, draftBlockIds: [], selection: null, selectionSnap: null });
+      },
+
+      leaveEditor(proceed) {
+        if (!get().editor) return proceed();
+        if (!changed()) {
+          get().closeEditor();
+          return proceed();
+        }
+        get().openDialog({
+          type: "confirm",
+          title: "Discard changes?",
+          message: "The recording you are editing has changes that are not saved.",
+          confirmLabel: "Discard",
+          cancelLabel: "Keep editing",
+          onConfirm: () => {
+            get().closeEditor();
+            proceed();
+          },
+        });
       },
 
       patchDraft(patch) {
         const draft = get().draft;
         if (draft) set({ draft: { ...draft, ...patch } });
+      },
+
+      prefillDraft(patch) {
+        const draft = get().draft;
+        if (!draft) return;
+        const prefilled = { ...draft, ...patch };
+        if (!changed()) openedDraft = prefilled;
+        set({ draft: prefilled });
       },
 
       setDraftSpan(index, span) {

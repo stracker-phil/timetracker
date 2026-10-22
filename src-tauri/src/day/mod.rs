@@ -9,6 +9,7 @@ mod recordings;
 mod summary;
 #[cfg(test)]
 mod testing;
+mod title;
 mod totals;
 pub(crate) mod transform;
 mod types;
@@ -214,7 +215,11 @@ fn clipped_blocks(input: &DayInput) -> Vec<ActivityBlock> {
             let (title, url, path) = if row.private {
                 (PRIVATE_TITLE.to_string(), None, None)
             } else {
-                (row.title.clone(), row.url.clone(), row.path.clone())
+                (
+                    title::clean_title(&row.title),
+                    row.url.clone(),
+                    row.path.clone(),
+                )
             };
             let label = if title.is_empty() {
                 row.app.clone()
@@ -249,7 +254,7 @@ mod tests {
     use super::testing::*;
     use super::*;
     use crate::db::away::AwayReason;
-    use crate::store::settings::Noise;
+    use crate::store::settings::{Noise, Titles};
     use serde_json::json;
 
     #[test]
@@ -860,6 +865,34 @@ mod tests {
         let rows = vec![code(1, 0, 10), code(2, 20, 30)];
 
         assert_eq!(covered_flags(rows, vec![]), [false, false]);
+    }
+
+    #[test]
+    fn titles_differing_only_by_a_leading_spinner_merge_into_one_block_with_one_label() {
+        let rows = rows(&[
+            (0, 10, "Code", "timetracker \u{2014} \u{25D0} Docs"),
+            (10, 20, "Code", "timetracker \u{2014} \u{25D1} Docs"),
+            (20, 30, "Code", "\u{2733} timetracker \u{2014} Docs"),
+        ]);
+        let settings = with_timeline(settings(), |t| t.titles = Titles::Document);
+
+        let view = render(rows, &settings);
+
+        let lane = activity_lane(&view);
+        assert_eq!(shape(lane), [(0, 30, vec![1, 2, 3])]);
+        assert_eq!(lane.blocks[0].label, "timetracker \u{2014} Docs");
+        assert_eq!(lane.blocks[0].title, "timetracker \u{2014} Docs");
+    }
+
+    #[test]
+    fn a_title_of_only_symbols_is_labelled_by_its_app() {
+        let rows = rows(&[(0, 10, "Code", "\u{25D0}")]);
+        let settings = with_timeline(settings(), |t| t.titles = Titles::Document);
+
+        let view = render(rows, &settings);
+
+        let block = &activity_lane(&view).blocks[0];
+        assert_eq!((block.title.as_str(), block.label.as_str()), ("", "Code"));
     }
 
     #[test]

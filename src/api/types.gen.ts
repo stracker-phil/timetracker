@@ -447,6 +447,11 @@ export type PauseUntil = { "minutes": number } | "tomorrow" | "resumed";
 
 export type Period = { from: Day, to: Day, holdsToday: boolean, };
 
+/**
+ * `This week · recorded 1:30 · Billable 67 %`; `billable_percent` is `None` while nothing is recorded.
+ */
+export type PeriodTotals = { label: string, recordedMs: number, billableMs: number, billablePercent: number | null, };
+
 export type PeriodUnit = "day" | "week" | "month";
 
 /**

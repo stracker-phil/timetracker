@@ -10,8 +10,7 @@ const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 function show(view: "week" | "month", day: string) {
   const { setView, showDate } = useStore.getState();
-  setView(view);
-  showDate(day);
+  setView(view, () => showDate(day));
 }
 
 function DayCell({ cell }: { cell: MiniDay }) {

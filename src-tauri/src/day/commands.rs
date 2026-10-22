@@ -355,7 +355,7 @@ mod tests {
         for i in 0..ROWS {
             let row = NewActivity {
                 source: "tracker".into(),
-                start: start + i * 10_000,
+                start: start + i * 28_000,
                 app: format!("App {}", i % 7),
                 bundle_id: Some(format!("test.app{}", i % 7)),
                 title: format!("Window {i}"),
@@ -363,7 +363,7 @@ mod tests {
                 path: None,
                 private: false,
             };
-            activities::insert_on(&mut tx, &row, Some(start + i * 10_000 + 9_000))
+            activities::insert_on(&mut tx, &row, Some(start + i * 28_000 + 60_000))
                 .await
                 .unwrap();
         }
@@ -376,7 +376,7 @@ mod tests {
         settings.timeline.noise = Noise::Off;
 
         let started = Instant::now();
-        let view = load(&db, today, &settings, start + 12 * HOUR)
+        let view = load(&db, today, &settings, start + 24 * HOUR)
             .await
             .unwrap();
         let elapsed = started.elapsed();

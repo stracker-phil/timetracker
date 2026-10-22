@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, Billable, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, MiniMonth, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, MiniMonth, PauseUntil, Period, PeriodTotals, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -132,8 +132,8 @@ export const api = {
   reportRun: (filter: ReportFilter) => invoke<ReportResult>("report_run", { filter }),
   /** The period of the range's unit (month, week or its days) `by` steps away, from `anchor`'s period when given; presets where they match. */
   reportRangeShift: (range: Range, anchor: string | null, by: number) => invoke<Range>("report_range_shift", { range, anchor, by }),
-  /** Billable out of recorded time in `range`, every recording counted (no report filter); `percent` null when nothing is recorded. */
-  billableRatio: (range: Range) => invoke<Billable>("billable_ratio", { range }),
+  /** The status bar's numbers for `range`: its name from Rust, the recorded time and the billable share (every recording, no report filter; `billablePercent` null when nothing is recorded). */
+  periodTotals: (range: Range) => invoke<PeriodTotals>("period_totals", { range }),
   /** The report as the plain text the Reports screen copies. */
   reportText: (filter: ReportFilter) => invoke<string>("report_text", { filter }),
   savedReportsList: () => invoke<SavedReport[]>("saved_reports_list"),

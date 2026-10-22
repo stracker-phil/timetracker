@@ -117,7 +117,7 @@ pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         rules::commands::suggestions_dismiss,
         reports::commands::report_run,
         reports::commands::report_range_shift,
-        reports::commands::billable_ratio,
+        reports::commands::period_totals,
         reports::commands::report_text,
         reports::commands::saved_reports_list,
         reports::commands::saved_report_save,

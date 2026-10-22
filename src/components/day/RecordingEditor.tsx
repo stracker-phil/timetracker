@@ -35,7 +35,7 @@ export function RecordingEditor({ id }: { id?: string }) {
 
   // A new recording takes the proposed project until one is picked.
   useEffect(() => {
-    if (prefill && projectId === null && proposed) useStore.getState().patchDraft({ projectId: proposed });
+    if (prefill && projectId === null && proposed) useStore.getState().prefillDraft({ projectId: proposed });
   }, [prefill, projectId, proposed]);
 
   // Escape cancels wherever the focus is; an open list or dialog takes it first.

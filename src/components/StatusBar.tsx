@@ -1,10 +1,9 @@
 import { PanelLeft } from "lucide-react";
 import { api, type Range } from "../api";
 import { useBindingLabel, runCommand } from "../commands";
-import { today } from "../lib/day";
 import { formatClock, formatHm } from "../lib/format";
 import { useApiResult } from "../lib/useApiResult";
-import { selectDayVersion, useStore } from "../state/store";
+import { useStore } from "../state/store";
 import { useLiveReload } from "./day/useLiveReload";
 import { useCalendarPeriod, useReportRange } from "./shownPeriod";
 import { TrackerStatus } from "./TrackerStatus";
@@ -20,59 +19,51 @@ function RunningTimer() {
   );
 }
 
-/** Today's recorded and tracked totals, shown in every view. */
-function TodayTotals() {
-  const tick = useLiveReload(true);
-  const day = today();
-  const version = useStore(selectDayVersion(day));
-  const { data: totals } = useApiResult(`${day}#${version}#${tick}`, () => api.dayTotals(day), { keepData: true });
-  if (!totals) return null;
-  return (
-    <span className="tabular" aria-label="Today">
-      recorded {formatHm(totals.recordedMs)} · tracked {formatHm(totals.trackedMs)}
-    </span>
-  );
-}
-
-const TODAY: Range = { kind: "today" };
-
-/** The period the shown view covers; today in views without one; `null` while it loads. */
+/** The period the shown view covers: the report's range, or the Day, Week or Month view's days; null elsewhere and while it loads. */
 function useShownRange(): Range | null {
   const view = useStore((s) => s.view);
   const reportRange = useReportRange();
   const calendar = useCalendarPeriod();
   if (view === "reports") return reportRange;
-  if (view !== "day" && view !== "week" && view !== "month") return TODAY;
   if (!calendar) return null;
   return { kind: "custom", from: calendar.period.from, to: calendar.period.to };
 }
 
-/** `Billable 80 %` with a bar, for the shown period; hidden while nothing is recorded in it. */
-function BillableRatio() {
+/** `This week · recorded 1:30 · Billable 67 %` for the shown period; nothing in views without one. */
+function ShownPeriodTotals() {
   const range = useShownRange();
   if (!range) return null;
-  return <BillableMeter range={range} />;
+  return <PeriodNumbers range={range} />;
 }
 
-function BillableMeter({ range }: { range: Range }) {
+function PeriodNumbers({ range }: { range: Range }) {
   const tick = useLiveReload(true);
   const changes = useStore((s) => s.changeCount);
-  const { data: billable } = useApiResult(`${JSON.stringify(range)}#${changes}#${tick}`, () => api.billableRatio(range), { keepData: true });
-  if (billable?.percent == null) return null;
+  const { data: totals } = useApiResult(`${JSON.stringify(range)}#${changes}#${tick}`, () => api.periodTotals(range), { keepData: true });
+  if (!totals) return null;
+  const percent = totals.billablePercent;
   return (
-    <span
-      className="status-billable"
-      role="meter"
-      aria-label="Billable"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={billable.percent}
-      title={`Billable ${formatHm(billable.billableMs)} / ${formatHm(billable.recordedMs)}`}
-    >
-      <span className="status-billable-track" aria-hidden="true">
-        <span className="status-billable-fill" style={{ width: `${billable.percent}%` }} />
-      </span>
-      Billable {billable.percent} %
+    <span className="status-period tabular" aria-label="Shown period">
+      {totals.label} · recorded {formatHm(totals.recordedMs)}
+      {percent != null && (
+        <>
+          {" · "}
+          <span
+            className="status-billable"
+            role="meter"
+            aria-label="Billable"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={percent}
+            title={`Billable ${formatHm(totals.billableMs)} / ${formatHm(totals.recordedMs)}`}
+          >
+            <span className="status-billable-track" aria-hidden="true">
+              <span className="status-billable-fill" style={{ width: `${percent}%` }} />
+            </span>
+            Billable {percent} %
+          </span>
+        </>
+      )}
     </span>
   );
 }
@@ -95,8 +86,7 @@ export function StatusBar() {
       )}
       <span className="spacer" />
       <RunningTimer />
-      <BillableRatio />
-      <TodayTotals />
+      <ShownPeriodTotals />
     </footer>
   );
 }

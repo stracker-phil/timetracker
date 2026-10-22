@@ -15,7 +15,7 @@
   padding: var(--margin); display: flex; flex-direction: column; gap: var(--space-3);
 }
 .dialog.panel { overflow: hidden; }
-.dialog.timeline-popover { width: min(34rem, calc(100vw - 1.231rem)); max-height: calc(100vh - 8rem); overflow: auto; padding: var(--space-2) var(--space-3); }
+.dialog.view-options { display: flex; flex-direction: column; gap: var(--space-4); width: min(26rem, calc(100vw - 1.231rem)); max-height: calc(100vh - 8rem); overflow: auto; padding: var(--space-3); }
 .dialog.wide { width: min(43.077rem, calc(100vw - 2.462rem)); }
 .dialog.sheet h2 { margin: 0; font-size: var(--fs-body); font-weight: 700; color: var(--text-strong); }
 .form-contents { display: contents; }

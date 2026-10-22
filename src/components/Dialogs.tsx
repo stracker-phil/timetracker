@@ -1,9 +1,8 @@
 import { useStore } from "../state/store";
 import { DatePickerPopover } from "./DatePickerPopover";
 import { DeleteActivityDialog } from "./day/DeleteActivityDialog";
-import { LanesPopover } from "./day/LanesPopover";
 import { OverlapDialog } from "./day/OverlapDialog";
-import { TimelineSettingsPopover } from "./day/TimelineSettingsPopover";
+import { ViewOptionsPopover } from "./day/ViewOptionsPopover";
 import { Modal } from "./Modal";
 import { PromptDialog } from "./PromptDialog";
 import { ClientSheet } from "./projects/ClientSheet";
@@ -12,14 +11,14 @@ import { RuleSheet } from "./rules/RuleSheet";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 
-function ConfirmDialog({ title, message, confirmLabel, onConfirm }: { title: string; message: string; confirmLabel: string; onConfirm: () => void }) {
+function ConfirmDialog({ title, message, confirmLabel, cancelLabel = "Cancel", onConfirm }: { title: string; message: string; confirmLabel: string; cancelLabel?: string; onConfirm: () => void }) {
   const close = useStore((s) => s.closeDialog);
   return (
     <Modal onClose={close} labelledBy="confirm-title">
       <h2 id="confirm-title">{title}</h2>
       <p className="muted">{message}</p>
       <div className="actions">
-        <button className="btn" onClick={close}>Cancel</button>
+        <button className="btn" onClick={close}>{cancelLabel}</button>
         <button
           className="btn btn-danger"
           autoFocus
@@ -50,10 +49,8 @@ export function Dialogs() {
       return <OverlapDialog recordings={dialog.recordings} onReplace={dialog.onReplace} onCancel={dialog.onCancel} />;
     case "prompt":
       return <PromptDialog {...dialog} />;
-    case "timelineSettings":
-      return <TimelineSettingsPopover />;
-    case "lanes":
-      return <LanesPopover />;
+    case "viewOptions":
+      return <ViewOptionsPopover />;
     case "datePicker":
       return <DatePickerPopover />;
     case "deleteActivity":

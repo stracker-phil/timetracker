@@ -69,7 +69,7 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("zoom.in", "Zoom In", "Mod+="),
     item("zoom.out", "Zoom Out", "Mod+-"),
     item("zoom.reset", "Reset Zoom", "Mod+0"),
-    item("day.settings", "Timeline Settings…", ""),
+    item("day.settings", "View Options…", ""),
     // Go
     item("nav.prev", "Previous", "P"),
     item("nav.next", "Next", "N"),

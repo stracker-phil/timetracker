@@ -69,6 +69,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .status-icon { width: 1.692rem; height: 1.385rem; }
 .status-text { padding: 0; border: none; background: none; color: inherit; white-space: nowrap; cursor: default; }
 .status-text:hover { color: var(--text); }
+.status-period { white-space: nowrap; }
 .status-billable { display: inline-flex; align-items: center; gap: var(--space-2); }
 .status-billable-track { width: 3.692rem; height: 0.308rem; border-radius: 0.154rem; overflow: hidden; background: var(--fill-strong); }
 .status-billable-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }

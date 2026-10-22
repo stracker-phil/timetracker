@@ -5,6 +5,9 @@ use std::collections::HashMap;
 use super::{ActivityBlock, EXTERNAL_PREFIX, Lane, LaneKind, ViewSettings};
 use crate::db::time::Ms;
 
+/// Shorter blocks never get room for a label at any zoom, so the activity lane leaves them out.
+const ACTIVITY_MIN_MS: Ms = 60_000;
+
 /// The activity lane (unless the settings leave it out), then app lanes by first appearance, then source
 /// lanes by name; each packed.
 pub(super) fn lanes(
@@ -69,7 +72,12 @@ pub(super) fn lanes(
             label: "Activity".into(),
             app_key: None,
             bundle_id: None,
-            blocks: packed(activity),
+            blocks: packed(
+                activity
+                    .into_iter()
+                    .filter(|b| b.end - b.start >= ACTIVITY_MIN_MS)
+                    .collect(),
+            ),
         });
     }
     lanes.extend(app_lanes.into_iter().map(|lane| Lane {
@@ -174,6 +182,34 @@ mod tests {
             [(0, 5, vec![1]), (20, 25, vec![3])]
         );
         assert!(lane_by_id(&view, "activity").blocks.is_empty());
+    }
+
+    #[test]
+    fn the_activity_lane_leaves_out_blocks_under_a_minute() {
+        let rows = vec![
+            activity(1, 0, Some(MIN - 1), "Code", ""),
+            activity(2, mins(5), Some(mins(5) + MIN), "Code", ""),
+            activity(3, mins(10), Some(mins(10) + MIN - 1), "Notes", ""),
+        ];
+
+        let view = render(rows, &settings());
+
+        assert_eq!(shape(activity_lane(&view)), [(5, 6, vec![2])]);
+    }
+
+    #[test]
+    fn short_blocks_stay_in_app_lanes_and_in_the_tracked_total() {
+        let rows = vec![
+            activity(1, 0, Some(MIN - 1), "Code", ""),
+            activity(2, mins(5), Some(mins(5) + 30_000), "Mail", ""),
+        ];
+        let settings = own_lane(settings(), &bundle_of("Mail"));
+
+        let view = render(rows, &settings);
+
+        assert!(activity_lane(&view).blocks.is_empty());
+        assert_eq!(block_ids(lane_by_id(&view, "app:test.mail")), ["a2"]);
+        assert_eq!(view.totals.tracked_ms, MIN - 1 + 30_000);
     }
 
     #[test]

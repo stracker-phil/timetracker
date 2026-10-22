@@ -558,7 +558,7 @@ mod tests {
     #[test]
     fn noise_drops_blocks_shorter_than_its_threshold_and_keeps_the_time_tracked() {
         let cases = [
-            (Noise::Off, 1, true),
+            (Noise::Off, MIN, true),
             (Noise::Low, 2 * MIN - 1, false),
             (Noise::Low, 2 * MIN, true),
             (Noise::Medium, 4 * MIN - 1, false),

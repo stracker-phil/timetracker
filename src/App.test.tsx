@@ -23,7 +23,7 @@ async function renderApp(patch: Parameters<typeof resetStore>[0] = {}) {
   resetStore(patch);
   render(<App />);
   await vi.waitFor(() => expect(useStore.getState().settings).not.toBeNull());
-  await screen.findByLabelText("Today");
+  await screen.findByRole("navigation", { name: "Views" });
 }
 
 /** The Day, Week, Month and Reports views are regions, the Projects, Tags and Rules pages have a level-1 heading. */
@@ -126,11 +126,12 @@ describe("App", () => {
 
     it("reloads the shown day when its data changed", async () => {
       const day = await api.calendarStep("day", today(), -1);
+      mocked.dayView.mockResolvedValue(dayView({ day, totals: { recordedMs: 0, trackedMs: 600_000, awayMs: 0 } }));
       await renderApp({ day });
-      await screen.findByText("recorded 0:00 · tracked 0:00 · away 0:00");
+      await screen.findByText("tracked 0:10");
       mocked.dayView.mockResolvedValue(dayView({ day, totals: { recordedMs: 0, trackedMs: 1_800_000, awayMs: 0 } }));
       act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "activity", day }));
-      expect(await screen.findByText("recorded 0:00 · tracked 0:30 · away 0:00")).toBeInTheDocument();
+      expect(await screen.findByText("tracked 0:30")).toBeInTheDocument();
     });
 
     it("opens on the day Rust sends as the one shown last", async () => {

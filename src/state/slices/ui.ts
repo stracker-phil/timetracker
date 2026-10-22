@@ -21,7 +21,7 @@ export interface ToastAction {
 export type Dialog =
   /** `page`: the Settings page shown (ids from `settingsPages()` in `registry/settingsPages.ts`); the first one when absent. */
   | { type: "settings"; page?: string }
-  | { type: "confirm"; title: string; message: string; confirmLabel: string; onConfirm: () => void }
+  | { type: "confirm"; title: string; message: string; confirmLabel: string; cancelLabel?: string; onConfirm: () => void }
   /** The shortcut overview of the scopes that were active when it opened. */
   | { type: "shortcuts"; scopes: string[] }
   /** Edit a project (`id`) or create one, for `clientId` when given. */
@@ -32,10 +32,8 @@ export type Dialog =
   | { type: "client"; id?: string }
   /** One line of text, e.g. a name; `onSubmit` gets it trimmed and never blank. */
   | { type: "prompt"; title: string; label: string; initial: string; confirmLabel: string; onSubmit: (value: string) => void }
-  /** The Day header's timeline settings. */
-  | { type: "timelineSettings" }
-  /** The Day header's lanes: which lanes the timeline shows. */
-  | { type: "lanes" }
+  /** The Day toolbar's View options: lanes, Compact, Titles and the hidden apps. */
+  | { type: "viewOptions" }
   /** The calendar under the sidebar's date heading: picks the day (or the period holding it) to show. */
   | { type: "datePicker" }
   /** Delete the activity of `day` (its `bounds`), or of a range starting there when `range`. */

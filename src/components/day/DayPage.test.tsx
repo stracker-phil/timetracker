@@ -9,7 +9,7 @@ import { handleKeydown, installCommands, runCommand } from "../../commands";
 import { today } from "../../lib/day";
 import { resetStore, useStore } from "../../state/store";
 import { trackerStatus } from "../../test/data";
-import { appLane, at, block, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane, timesheetCard, withTimesheet } from "../../test/dayFixtures";
+import { appLane, at, block, dayApp, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane, timesheetCard, withTimesheet } from "../../test/dayFixtures";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
 import { suggestion } from "../../test/ruleFixtures";
@@ -148,13 +148,13 @@ describe("DayPage", () => {
     it("shows the totals of the day", async () => {
       const totals = { recordedMs: 0, trackedMs: (6 * 60 + 12) * 60_000, awayMs: (60 + 5) * 60_000 };
       renderDay(dayView({ lanes: [lane({ blocks: [docs] })], totals }));
-      expect(await screen.findByText("recorded 0:00 · tracked 6:12 · away 1:05")).toBeInTheDocument();
+      expect(await screen.findByText("tracked 6:12 · away 1:05")).toBeInTheDocument();
     });
 
-    it("shows the recorded time of the day", async () => {
+    it("shows the recorded time of the day and leaves out the zero parts", async () => {
       const totals = { recordedMs: 90 * MINUTE_MS, trackedMs: 0, awayMs: 0 };
       renderDay(dayView({ lanes: [lane({ blocks: [docs] })], recordings: [meeting], totals }));
-      expect(await screen.findByText("recorded 1:30 · tracked 0:00 · away 0:00")).toBeInTheDocument();
+      expect(await screen.findByLabelText("Totals")).toHaveTextContent(/^recorded 1:30$/);
     });
 
     it("has no buttons to change the day", async () => {
@@ -163,9 +163,14 @@ describe("DayPage", () => {
       for (const name of ["Previous day", "Next day", "Today"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     });
 
-    it("hides the totals on today, which the status bar shows", async () => {
+    it("shows the totals on today too", async () => {
       const totals = { recordedMs: 0, trackedMs: 60 * MINUTE_MS, awayMs: 0 };
       renderDay(dayView({ day: today(), totals }));
+      expect(await screen.findByLabelText("Totals")).toHaveTextContent("tracked 1:00");
+    });
+
+    it("shows no totals on a day with everything at zero", async () => {
+      renderDay(dayView());
       await screen.findByText("Nothing tracked on this day");
       expect(screen.queryByLabelText("Totals")).not.toBeInTheDocument();
     });
@@ -227,30 +232,29 @@ describe("DayPage", () => {
     });
   });
 
-  describe("timeline settings", () => {
+  describe("view options", () => {
     const mail = { appKey: "com.apple.Mail", app: "Mail" };
 
     it("opens from the header and lists the hidden apps", async () => {
       renderDay(dayView({ lanes: [lane({ blocks: [docs] })], hiddenApps: [mail] }));
       await blockEl("Safari: Docs");
-      await userEvent.click(screen.getByRole("button", { name: "Timeline settings" }));
-      const dialog = within(await screen.findByRole("dialog", { name: "Timeline settings" }));
-      expect(dialog.getByRole("heading", { name: "Hidden apps: 1" })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "View options" }));
+      const dialog = within(await screen.findByRole("dialog", { name: "View options" }));
+      expect(dialog.getByRole("heading", { name: "Hidden apps (1)" })).toBeInTheDocument();
       expect(dialog.getByText("Mail")).toBeInTheDocument();
     });
 
-    it("says no app is hidden when none is", async () => {
-      renderDay(busyDay());
+    it("lists the apps of the day with a lane switch", async () => {
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], apps: [dayApp()] }));
       await blockEl("Safari: Docs");
-      await userEvent.click(screen.getByRole("button", { name: "Timeline settings" }));
-      expect(await screen.findByRole("heading", { name: "Hidden apps: 0" })).toBeInTheDocument();
-      expect(screen.getByText("No hidden apps")).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "View options" }));
+      expect(await screen.findByRole("switch", { name: "Safari lane" })).not.toBeChecked();
     });
 
     it("shows a hidden app again with Unhide", async () => {
       renderDay(dayView({ lanes: [lane({ blocks: [docs] })], hiddenApps: [mail] }));
       await blockEl("Safari: Docs");
-      await userEvent.click(screen.getByRole("button", { name: "Timeline settings" }));
+      await userEvent.click(screen.getByRole("button", { name: "View options" }));
       await userEvent.click(await screen.findByRole("button", { name: "Unhide" }));
       expect(mocked.setAppSetting).toHaveBeenCalledWith("com.apple.Mail", { hidden: false });
     });
@@ -261,7 +265,7 @@ describe("DayPage", () => {
       act(() => {
         runCommand("day.settings");
       });
-      expect(await screen.findByRole("dialog", { name: "Timeline settings" })).toBeInTheDocument();
+      expect(await screen.findByRole("dialog", { name: "View options" })).toBeInTheDocument();
     });
   });
 
@@ -289,6 +293,23 @@ describe("DayPage", () => {
       renderDay(dayView(), { tracker: trackerStatus({ state: { kind: "needsPermission" }, permission: "denied", text: "Needs permission" }) });
       expect(await screen.findByText("Nothing tracked on this day")).toBeInTheDocument();
       expect(screen.queryByText("Tracking needs permission")).not.toBeInTheDocument();
+    });
+
+    it("keeps the hour axis and the lanes on an empty day, with the message in the lanes", async () => {
+      renderDay(dayView({ lanes: [lane()] }));
+      expect(await screen.findByText("Nothing tracked on this day")).toBeInTheDocument();
+      expect(screen.getByText("09:00")).toBeInTheDocument();
+      expect(screen.getByRole("columnheader")).toHaveTextContent("Activity");
+    });
+
+    it("opens the editor with the dragged span on an empty day", async () => {
+      mocked.recordingSnap.mockResolvedValue({ start: at("09:00"), end: at("10:30") });
+      renderDay(dayView({ lanes: [lane()] }));
+      const message = await screen.findByText("Nothing tracked on this day");
+      fireEvent.pointerDown(message, { button: 0, clientX: 300, clientY: px("09:02") });
+      fireEvent.pointerMove(message, { clientX: 300, clientY: px("10:28") });
+      fireEvent.pointerUp(message, { clientX: 300, clientY: px("10:28") });
+      expectSpan(await editorForm("New recording"), "09:00", "10:30");
     });
 
     it("shows the error when the day cannot be loaded", async () => {

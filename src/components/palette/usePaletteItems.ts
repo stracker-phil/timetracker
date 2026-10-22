@@ -79,8 +79,7 @@ function dateItems(jumps: DateJump[], needle: string): Item[] {
       rank: j.name ? Math.max(1, score([j.name], needle)) : 5,
       go: closeThen(() => {
         const s = useStore.getState();
-        s.setView(JUMP_VIEWS[j.unit]);
-        s.showDate(j.from);
+        s.setView(JUMP_VIEWS[j.unit], () => s.showDate(j.from));
       }),
     };
   });

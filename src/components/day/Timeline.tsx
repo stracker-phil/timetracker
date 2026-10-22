@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import type { DayView } from "../../api";
 import { findBlock } from "../../lib/blockFocus";
 import { isToday } from "../../lib/day";
@@ -67,8 +67,8 @@ function useHoveredBlock() {
   };
 }
 
-/** The day's scroll box: the time column and the lanes; the zoom floats over them. */
-export function Timeline({ view }: { view: DayView }) {
+/** The day's scroll box: the time column and the lanes; the zoom floats over them. `empty` shows over the lanes of a day without anything. */
+export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) {
   const zoom = useStore((s) => s.uiState.timelineZoom);
   const pxPerMinute = view.compact ? zoom * COMPACT_SCALE : zoom;
   const focusedBlock = useStore((s) => s.focusedBlock);
@@ -162,6 +162,7 @@ export function Timeline({ view }: { view: DayView }) {
               />
             )}
             {live && now >= origin && now < end && <div className="now-line" style={{ top: y(now) }} aria-hidden="true" />}
+            {empty && <div className="lanes-empty">{empty}</div>}
           </div>
         </div>
       </div>

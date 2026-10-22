@@ -1,7 +1,6 @@
-import { Columns3, Ellipsis, SlidersHorizontal } from "lucide-react";
+import { Ellipsis, SlidersHorizontal } from "lucide-react";
 import type { DayTotals } from "../../api";
 import { runCommand, useBindingLabel } from "../../commands";
-import { isToday } from "../../lib/day";
 import { formatHm } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { useContextMenu } from "../ContextMenu";
@@ -9,9 +8,23 @@ import { Toolbar } from "../Toolbar";
 
 const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` : label);
 
+/** `recorded 1:00 · tracked 6:12 · away 1:05`, without the parts that are zero; empty when all are. */
+function totalsText(totals: DayTotals): string {
+  const parts: [string, number][] = [
+    ["recorded", totals.recordedMs],
+    ["tracked", totals.trackedMs],
+    ["away", totals.awayMs],
+  ];
+  return parts
+    .filter(([, ms]) => ms > 0)
+    .map(([name, ms]) => `${name} ${formatHm(ms)}`)
+    .join(" · ");
+}
+
 /** `label` is the day's title from Rust, in the format of the day title setting. */
-export function DayHeader({ day, label = "", totals }: { day: string; label?: string; totals: DayTotals | null }) {
-  const settingsKeys = useBindingLabel("day.settings");
+export function DayHeader({ label = "", totals }: { label?: string; totals: DayTotals | null }) {
+  const optionsKeys = useBindingLabel("day.settings");
+  const text = totals ? totalsText(totals) : "";
   const menu = useContextMenu();
   const openMenu = (button: HTMLElement) => {
     const { left, bottom } = button.getBoundingClientRect();
@@ -24,25 +37,21 @@ export function DayHeader({ day, label = "", totals }: { day: string; label?: st
     <Toolbar
       title={label}
       detail={
-        totals &&
-        !isToday(day) && (
+        text && (
           <span className="toolbar-detail" aria-label="Totals">
-            recorded {formatHm(totals.recordedMs)} · tracked {formatHm(totals.trackedMs)} · away {formatHm(totals.awayMs)}
+            {text}
           </span>
         )
       }
     >
-      <button type="button" className="btn btn-quiet" data-lanes-button aria-haspopup="dialog" onClick={() => useStore.getState().openDialog({ type: "lanes" })}>
-        <Columns3 size="1.154rem" aria-hidden="true" />
-        Lanes
-      </button>
       <button
         type="button"
         className="icon-btn"
-        aria-label="Timeline settings"
-        title={withKeys("Timeline settings", settingsKeys)}
-        data-timeline-settings
-        onClick={() => useStore.getState().openDialog({ type: "timelineSettings" })}
+        aria-label="View options"
+        aria-haspopup="dialog"
+        title={withKeys("View options", optionsKeys)}
+        data-view-options
+        onClick={() => useStore.getState().openDialog({ type: "viewOptions" })}
       >
         <SlidersHorizontal size="1.154rem" />
       </button>
