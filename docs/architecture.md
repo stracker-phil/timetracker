@@ -150,7 +150,9 @@ src-tauri/
   Cargo.toml                 crate `timetracker`, lib `timetracker_lib`, edition 2024
   Info.plist                 merged into the bundle's Info.plist (usage descriptions)
   migrations/NNNN_*.sql      sqlx migrations
-  src/lib.rs                 startup: config dir, CLI parse, socket handoff, lock, AppState, Tauri builder
+  src/lib.rs                 startup: config dir, CLI parse, AppState, then app::start
+  src/instance.rs            socket handoff to the running app, instance lock, subcommand replies
+  src/app.rs handlers.rs     Tauri builder (plugins, setup, run loop); every registered command
   src/main.rs
   src/cli/                   CLI: command tree (mod.rs), time words (time.rs), report words (report.rs), human replies (reply.rs)
   src/ipc.rs remote.rs pending.rs launch.rs   socket, dispatch and requests the page answers, launch queue

@@ -1,6 +1,6 @@
 //! Debug-build conveniences for driving the app from scripts/dev without disturbing the
 //! user: window placement, background launches and seeding sample data. Only compiled into debug builds
-//! (`#[cfg(debug_assertions)]` on the module and its call sites in `lib.rs`).
+//! (`#[cfg(debug_assertions)]` on the module and its call sites).
 
 use tauri::Manager;
 

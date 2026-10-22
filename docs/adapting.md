@@ -12,14 +12,14 @@ The app's name and ids live in a few places. Change them together.
 
 | What | Value | Where |
 |---|---|---|
-| Product name | `TimeTracker` | `tauri.conf.json` `productName` and window `title`; `menu/` (app menu, `Quit TimeTracker`); `tray.rs` (tooltip, item labels); `index.html`; the toolbar; user-facing errors in `lib.rs` and `remote.rs`; the `TimeTracker.app` path in `scripts/install-app.sh`, `scripts/install-cli.sh`, `scripts/dev/launch.sh` and the `app` script of `package.json`; the window owner in `scripts/dev/screenshot.sh`; `Info.plist` usage strings |
+| Product name | `TimeTracker` | `tauri.conf.json` `productName` and window `title`; `menu/` (app menu, `Quit TimeTracker`); `tray.rs` (tooltip, item labels); `index.html`; the toolbar; user-facing errors in `lib.rs`, `instance.rs` and `remote.rs`; the `TimeTracker.app` path in `scripts/install-app.sh`, `scripts/install-cli.sh`, `scripts/dev/launch.sh` and the `app` script of `package.json`; the window owner in `scripts/dev/screenshot.sh`; `Info.plist` usage strings |
 | Bundle identifier | `com.philippstracker.timetracker` | `tauri.conf.json` `identifier`; `lib.rs` `IDENTIFIER` (a test compares both); `scripts/dev/js.sh` (socket path); `scripts/dev/launch.sh` (signing identifier). It also names the config dir and the log dir; changing it starts with empty settings and data |
 | Binary and CLI command | `timetracker` | Cargo package `name` in `src-tauri/Cargo.toml`; `cli/mod.rs` `name` and `EXAMPLES`; `cli/reply.rs` (`TimeTracker <version>` line); the README Scripting examples; `scripts/install-cli.sh`; `scripts/dev/launch.sh`; `.claude/settings.json` (`pkill -x timetracker`) |
 | Rust lib | `timetracker_lib` | `Cargo.toml` `[lib]`; `main.rs`; `tests/` |
 | URL scheme | `timetracker://` | `tauri.conf.json` `plugins.deep-link.desktop.schemes` (the bundler writes it into `Info.plist`); `deep_link.rs` (`link_message`, error text); the README Scripting examples |
-| Socket, lock | `timetracker.sock`, `timetracker.lock` in the config dir | `lib.rs` `SOCKET_NAME`, `LOCK_NAME`; `scripts/dev/js.sh` (the socket) |
+| Socket, lock | `timetracker.sock`, `timetracker.lock` in the config dir | `lib.rs` `SOCKET_NAME`, `instance.rs` `LOCK_NAME`; `scripts/dev/js.sh` (the socket) |
 | Data file | `timetracker.sqlite` in `<config dir>/data/` | `db/mod.rs` `DB_FILE`, `default_data_dir`; `db/relocate.rs` (the copy) |
-| LaunchAgent | `~/Library/LaunchAgents/TimeTracker.plist`, written by `tauri-plugin-autostart` and named after `productName` | `lib.rs` (`MacosLauncher::LaunchAgent`, `--hidden`), `autostart.rs` |
+| LaunchAgent | `~/Library/LaunchAgents/TimeTracker.plist`, written by `tauri-plugin-autostart` and named after `productName` | `app.rs` (`MacosLauncher::LaunchAgent`, `--hidden`), `autostart.rs` |
 | Config dir | `~/Library/Application Support/com.philippstracker.timetracker/` | `lib.rs` `config_dir()` |
 | Logs dir | `~/Library/Logs/com.philippstracker.timetracker/` | Tauri's `app_log_dir`, from the identifier |
 | Env vars | `TIMETRACKER_WINDOW_FRAME`, `TIMETRACKER_BACKGROUND` (debug builds), `TIMETRACKER_DEV_TERMINAL`, `TIMETRACKER_SIGN_IDENTITY`, `TIMETRACKER_CLI` | `dev.rs`, `window.rs`, `scripts/dev/launch.sh`, `scripts/dev/seed-day.sh` |
@@ -36,7 +36,7 @@ The app's name and ids live in a few places. Change them together.
 | **Browser addresses**: AppleScript per browser through `NSAppleScript`; private-window detection | `capture/browsers.rs`, `capture/private.rs` (title rules, portable) | Not readable from outside; keep titles only, or a browser extension that sends `activity` over the socket | UI Automation on the address bar |
 | **Permissions**: Accessibility (window titles, document paths) and Automation per browser (the prompt shows `NSAppleEventsUsageDescription`) | `capture/macos.rs`; `src-tauri/Info.plist`; `tracker/commands.rs` `PRIVACY_SETTINGS` (the System Settings link); `PermissionDialog`, the welcome sheet | No prompts; `permission()` returns `granted` | Same |
 | **Tray**: template images (black with alpha, tinted by macOS), menu on left click, the timer picker placed under it | `tray.rs`, `src-tauri/icons/tray/`; `timers/picker.rs` (`Position::TrayCenter`, `tauri-plugin-positioner`) | Works with an `AppIndicator`; template tinting does not apply, ship colored icons | Works; colored icons |
-| **Launch at login**: `MacosLauncher::LaunchAgent` with `--hidden` | `lib.rs` (autostart plugin), `autostart.rs` | The plugin writes an XDG autostart entry | The plugin writes a registry key |
+| **Launch at login**: `MacosLauncher::LaunchAgent` with `--hidden` | `app.rs` (autostart plugin), `autostart.rs` | The plugin writes an XDG autostart entry | The plugin writes a registry key |
 | **Global shortcut** for the timer picker (`Settings.timerShortcut`, default `Mod+Shift+T`) | `timers/shortcut.rs` (`tauri-plugin-global-shortcut`), `store/keybindings.rs` `accelerator`, `is_global` | X11 works; Wayland needs the GlobalShortcuts portal | Works |
 | **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs | `src/commands/registry.ts`, `store/keybindings.rs` `key_label`, `menu/mod.rs` | Map `Mod` to Ctrl | Same |
 | **Config dir** hard-coded to `~/Library/Application Support/<id>` | `lib.rs` `config_dir()`, `scripts/dev/js.sh` | `dirs::config_dir()`; it must resolve before Tauri starts, because the CLI and socket run first | `dirs::config_dir()` (`%APPDATA%\<id>`) |
@@ -96,10 +96,10 @@ in `DataPage.test.tsx`, plus `mcp`/`binaryPath` in `src/test/settings.ts` and `s
 ### Dropping the tray
 
 The tray is the only way back to a hidden window besides a second launch, so decide first: either quit on
-close (remove `prevent_close` in `lib.rs`'s `WindowEvent::CloseRequested` handler and the `ExitRequested`
+close (remove `prevent_close` in `app.rs`'s `WindowEvent::CloseRequested` handler and the `ExitRequested`
 `prevent_exit`; tracking then stops with the window, against [ADR 0007](adr/0007-tracker-in-process-menu-bar-app.md)),
 or keep running and show the window on a Dock click (`RunEvent::Reopen` → `window::show_main`). Then delete
-`tray.rs`, `pub mod tray;` and `tray::install` in `lib.rs`, `tray::sync` in `tracker/task.rs`, `tray::set_timer`
+`tray.rs`, `pub mod tray;` in `lib.rs`, `tray::install` in `app.rs`, `tray::sync` in `tracker/task.rs`, `tray::set_timer`
 in `timers/mod.rs`, `src-tauri/icons/tray/`, and the `tray-icon` features of `tauri` and
 `tauri-plugin-positioner` in `Cargo.toml`. The timer picker then opens at `Position::Center`
 (`timers/picker.rs`); pause, resume and timers stay in the window, the palette and the CLI. Update the Tray

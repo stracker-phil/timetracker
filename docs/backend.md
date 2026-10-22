@@ -17,16 +17,17 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
      instance lock and Tauri, so it runs beside the app ([MCP server](#mcp-server)).
    - an error: printed to stderr and turned into `IpcMessage::Error`; the exit code after forwarding is 2,
      and a newly started app shows it.
-3. **Single-instance handoff.** `forward` sends the message with `ipc::try_forward`. `Delivered` exits;
-   `NoInstance` continues. Then `lock_instance` takes `timetracker.lock`; if another process holds it,
-   `forward_to_starting_instance` retries the socket 25 × 200 ms while that process starts up.
+3. **Single-instance handoff.** `instance::forward_or_lock` (`instance.rs`) sends the message with
+   `ipc::try_forward`. `Delivered` exits; `NoInstance` continues. Then it takes `timetracker.lock`; if
+   another process holds it, it retries the socket 25 × 200 ms while that process starts up. A subcommand
+   that talks to the app asks it first with `instance::ask`, which prints the reply.
 4. **`AppState`.** `AppState::open(&config_dir)` opens every JSON store and the data store
    (`DataStore::open`, blocking on Tauri's async runtime; a failure is logged and the app runs without a
    database, see [data.md](data.md#the-data-folder); a `dataDir` that is gone falls back to the default folder
    with a launch error toast); the CLI `--log-level` is kept in
    `AppState::log_override`. The effective level (override, else the stored `logLevel`) is computed here, so
    logging never starts at `Trace`.
-5. **`start_app`** builds Tauri with `.manage(state)` first, then `remote::Bridge`:
+5. **`app::start`** (`app.rs`) builds Tauri with `.manage(state)` first, then `remote::Bridge`:
    - plugins: `log_plugin()` (stdout plus a rotating file in the log dir, 3 × 5 MiB, `tao`/`wry` capped at
      Warn), `init_logging(level)` (sets the effective level right after the log plugin's setup, whose
      dispatch level caps every later change), opener, dialog, deep-link, autostart
@@ -119,7 +120,7 @@ tracker with `Tracker::suspend` and hands it the new database with `Suspended::r
 
 ## Tauri commands
 
-Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives in its module.
+Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Commands stay thin; logic lives in its module.
 
 | Command | Args | Returns | Errors |
 |---|---|---|---|
@@ -217,7 +218,7 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `activity_delete_undo` | – | `DeleteResult` of the restored rows | `not_found` "Nothing to undo", `db` |
 
 To add a command: write it in its module (or `commands.rs` for app-wide ones), register it in
-`generate_handler!`, export its types with ts-rs, add the wrapper to `src/api/index.ts` and a default to
+`handlers.rs`, export its types with ts-rs, add the wrapper to `src/api/index.ts` and a default to
 `src/test/apiMock.ts`.
 
 ## App icons
@@ -647,7 +648,9 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
   deriving `JsonSchema`), `INSTRUCTIONS`, and `run(config_dir, socket) -> i32`, which builds its own
   current-thread tokio runtime. Exit codes: 0 when the client disconnects, 1 on a handshake or transport
   error, 2 when the runtime cannot start.
-- `mcp/data.rs`: `Core`, the headless data access. The database opens on first use with
+- `mcp/data/`: `Core`, the headless data access (`mod.rs`), with one file per tool area: `report.rs`,
+  `recordings.rs`, `catalog.rs` (projects, tags), `day_summary.rs`, `activity.rs`, `status.rs`; their tests
+  share the seeded day in `fixtures.rs`. The database opens on first use with
   `Db::open_read_only` (path from `Settings::peek` and `db::data_dir`), so the handshake succeeds on a Mac
   that never ran the app, and a failed open is tried again on the next call. Settings are read on every call.
 - `mcp/ui.rs`: `ask(socket, message)` sends an `IpcMessage` like the CLI; no listener answers
