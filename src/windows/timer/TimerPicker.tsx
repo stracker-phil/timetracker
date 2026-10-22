@@ -5,7 +5,7 @@ import { AccentDot } from "../../components/Accent";
 import { NoteInput } from "../../components/NoteInput";
 import { ProjectPicker } from "../../components/pickers/ProjectPicker";
 import { TagPicker } from "../../components/pickers/TagPicker";
-import { formatHm } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
 import { applyAppearance, systemIsDark } from "../../lib/theme";
 import { useStore } from "../../state/store";
 
@@ -50,7 +50,7 @@ function RunningTimer({ running, onAnother, onStop }: { running: Running; onAnot
       <div className="timer-running">
         <AccentDot accent={running.color} shade={running.shade} />
         <span className="grow-text">{running.projectName}</span>
-        <span className="timer-elapsed">{formatHm(running.elapsedMs)}</span>
+        <span className="timer-elapsed">{formatDuration(running.elapsedMs)}</span>
       </div>
       {running.recording.note && <p className="timer-note o2">{running.recording.note}</p>}
       <div className="actions">

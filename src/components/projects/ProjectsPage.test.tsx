@@ -80,14 +80,14 @@ describe("ProjectsPage", () => {
     it("shows the hours of this week and this month", () => {
       const item = projectItem({ project: { name: "Retainer" }, weekMs: 5_400_000, monthMs: 45_000_000 });
       renderPage({ projects: [item] });
-      expect(screen.getByTitle("This week: 1:30 h")).toHaveTextContent("1:30");
-      expect(screen.getByTitle("This month: 12:30 h")).toHaveTextContent("12:30");
+      expect(screen.getByTitle("This week: 1h 30m")).toHaveTextContent("1h 30m");
+      expect(screen.getByTitle("This month: 12h 30m")).toHaveTextContent("12h 30m");
     });
 
     it("shows zero hours for a project without recordings", () => {
       renderPage({ projects: [projectItem()] });
-      expect(screen.getByTitle("This week: 0:00 h")).toHaveTextContent("0:00");
-      expect(screen.getByTitle("This month: 0:00 h")).toHaveTextContent("0:00");
+      expect(screen.getByTitle("This week: 0m")).toHaveTextContent("0m");
+      expect(screen.getByTitle("This month: 0m")).toHaveTextContent("0m");
     });
 
     it("badges a billable project only", () => {
@@ -107,11 +107,11 @@ describe("ProjectsPage", () => {
     it("reloads the hours when recordings change", async () => {
       const recorded = (weekMs: number) => projectItem({ project: { id: "p-site", name: "Website" }, weekMs });
       renderPage({ projects: [recorded(3_600_000)] });
-      expect(await screen.findByTitle("This week: 1:00 h")).toBeInTheDocument();
+      expect(await screen.findByTitle("This week: 1h 00m")).toBeInTheDocument();
       mocked.projectsList.mockResolvedValue([recorded(7_200_000)]);
       act(() => useStore.getState().dataChanged({ kind: "recordings", day: "2026-03-10" }));
-      expect(await screen.findByTitle("This week: 2:00 h")).toBeInTheDocument();
-      expect(screen.queryByTitle("This week: 1:00 h")).not.toBeInTheDocument();
+      expect(await screen.findByTitle("This week: 2h 00m")).toBeInTheDocument();
+      expect(screen.queryByTitle("This week: 1h 00m")).not.toBeInTheDocument();
     });
   });
 

@@ -78,8 +78,9 @@ fn hours(ms: Ms) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calendar::titles::period_title;
     use crate::reports::{ReportFilter, ReportGroup};
-    use crate::store::settings::Rounding;
+    use crate::store::settings::{DayTitle, Rounding};
 
     const MINUTE: Ms = 60_000;
 
@@ -117,6 +118,7 @@ mod tests {
             },
             from: day(from),
             to: day(to),
+            title: period_title(day(from), day(to), DayTitle::Long, day(to)),
             groups,
             total_ms: total,
             total_rounded_ms: total,

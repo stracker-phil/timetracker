@@ -1,7 +1,7 @@
 import { Ellipsis, SlidersHorizontal } from "lucide-react";
 import type { DayTotals } from "../../api";
 import { runCommand, useBindingLabel } from "../../commands";
-import { formatHm } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { useContextMenu } from "../ContextMenu";
 import { Toolbar } from "../Toolbar";
@@ -17,7 +17,7 @@ function totalsText(totals: DayTotals): string {
   ];
   return parts
     .filter(([, ms]) => ms > 0)
-    .map(([name, ms]) => `${name} ${formatHm(ms)}`)
+    .map(([name, ms]) => `${name} ${formatDuration(ms)}`)
     .join(" · ");
 }
 

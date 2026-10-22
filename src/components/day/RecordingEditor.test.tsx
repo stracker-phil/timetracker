@@ -60,8 +60,8 @@ describe("RecordingEditor", () => {
     it("shows the span as a From and To row with its length", async () => {
       renderCreate();
       await editorForm("New recording");
-      expect(field("Span 1 from")).toHaveValue("09:00");
-      expect(field("Span 1 to")).toHaveValue("10:30");
+      expect(field("Time 1 from")).toHaveValue("09:00");
+      expect(field("Time 1 to")).toHaveValue("10:30");
       expect(field("Hours")).toHaveValue("1");
       expect(field("Minutes")).toHaveValue("30");
     });
@@ -89,7 +89,7 @@ describe("RecordingEditor", () => {
       await waitFor(() =>
         expect(mocked.recordingCreate).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: START, end: END }], note: "fix login", tagId: "tag-research" }, "cancel"),
       );
-      expect(await screen.findByText("Recorded 1 h 30 min for Website")).toBeInTheDocument();
+      expect(await screen.findByText("Recorded 1h 30m for Website")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
       expect(screen.queryByRole("form")).not.toBeInTheDocument();
     });
@@ -106,7 +106,7 @@ describe("RecordingEditor", () => {
       renderCreate();
       await editorForm("New recording");
       await chooseWebsite();
-      await userEvent.click(field("Span 1 from"));
+      await userEvent.click(field("Time 1 from"));
       await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
       await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p-site" }), "cancel"));
     });
@@ -199,8 +199,8 @@ describe("RecordingEditor", () => {
       renderCreate();
       await editorForm("New recording");
       await waitFor(() => expect(mocked.recordingProposal).toHaveBeenCalledWith([{ start: START, end: END }]));
-      await userEvent.clear(field("Span 1 to"));
-      await userEvent.type(field("Span 1 to"), "11:15");
+      await userEvent.clear(field("Time 1 to"));
+      await userEvent.type(field("Time 1 to"), "11:15");
       await waitFor(() => expect(mocked.recordingProposal).toHaveBeenLastCalledWith([{ start: START, end: at("11:15") }]));
     });
 
@@ -245,10 +245,10 @@ describe("RecordingEditor", () => {
     it("commits a typed time on blur and updates the length", async () => {
       renderCreate();
       await editorForm("New recording");
-      await userEvent.clear(field("Span 1 to"));
-      await userEvent.type(field("Span 1 to"), "11:15");
+      await userEvent.clear(field("Time 1 to"));
+      await userEvent.type(field("Time 1 to"), "11:15");
       await userEvent.tab();
-      expect(field("Span 1 to")).toHaveValue("11:15");
+      expect(field("Time 1 to")).toHaveValue("11:15");
       await waitFor(() => expect(field("Hours")).toHaveValue("2"));
       expect(field("Minutes")).toHaveValue("15");
     });
@@ -256,8 +256,8 @@ describe("RecordingEditor", () => {
     it("asks Rust about the spans once a valid time is typed", async () => {
       renderCreate();
       await editorForm("New recording");
-      await userEvent.clear(field("Span 1 to"));
-      await userEvent.type(field("Span 1 to"), "11:15");
+      await userEvent.clear(field("Time 1 to"));
+      await userEvent.type(field("Time 1 to"), "11:15");
       await waitFor(() => expect(mocked.recordingDraftSpans).toHaveBeenLastCalledWith([{ start: START, end: at("11:15") }]));
     });
 
@@ -265,16 +265,16 @@ describe("RecordingEditor", () => {
       renderCreate();
       await editorForm("New recording");
       await chooseWebsite();
-      await userEvent.clear(field("Span 1 to"));
-      await userEvent.type(field("Span 1 to"), "11:15{Enter}");
+      await userEvent.clear(field("Time 1 to"));
+      await userEvent.type(field("Time 1 to"), "11:15{Enter}");
       await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: START, end: at("11:15") }] }), "cancel"));
     });
 
     it("updates the length while a valid time is typed, before the field is left", async () => {
       renderCreate();
       await editorForm("New recording");
-      await userEvent.clear(field("Span 1 to"));
-      await userEvent.type(field("Span 1 to"), "11:15");
+      await userEvent.clear(field("Time 1 to"));
+      await userEvent.type(field("Time 1 to"), "11:15");
       await waitFor(() => expect(field("Hours")).toHaveValue("2"));
       expect(field("Minutes")).toHaveValue("15");
     });
@@ -282,28 +282,28 @@ describe("RecordingEditor", () => {
     it("accepts a time typed without a colon", async () => {
       renderCreate();
       await editorForm("New recording");
-      await userEvent.clear(field("Span 1 from"));
-      await userEvent.type(field("Span 1 from"), "0845");
+      await userEvent.clear(field("Time 1 from"));
+      await userEvent.type(field("Time 1 from"), "0845");
       await userEvent.tab();
-      expect(field("Span 1 from")).toHaveValue("08:45");
+      expect(field("Time 1 from")).toHaveValue("08:45");
     });
 
     it("restores the previous time when the text is not a time", async () => {
       renderCreate();
       await editorForm("New recording");
-      await userEvent.clear(field("Span 1 to"));
-      await userEvent.type(field("Span 1 to"), "later");
+      await userEvent.clear(field("Time 1 to"));
+      await userEvent.type(field("Time 1 to"), "later");
       await userEvent.tab();
-      expect(field("Span 1 to")).toHaveValue("10:30");
+      expect(field("Time 1 to")).toHaveValue("10:30");
     });
 
     it("steps a time by the snap interval with the arrow keys", async () => {
       renderCreate({ settings: settings({ timeline: { ...settings().timeline, snapMinutes: 15 } }) });
       await editorForm("New recording");
-      await userEvent.type(field("Span 1 to"), "{ArrowUp}");
-      expect(field("Span 1 to")).toHaveValue("10:45");
-      await userEvent.type(field("Span 1 from"), "{ArrowDown}{ArrowDown}");
-      expect(field("Span 1 from")).toHaveValue("08:30");
+      await userEvent.type(field("Time 1 to"), "{ArrowUp}");
+      expect(field("Time 1 to")).toHaveValue("10:45");
+      await userEvent.type(field("Time 1 from"), "{ArrowDown}{ArrowDown}");
+      expect(field("Time 1 from")).toHaveValue("08:30");
     });
 
     it("sends an end before the start as typed and shows the next-day end Rust rolls it to", async () => {
@@ -312,8 +312,8 @@ describe("RecordingEditor", () => {
       await chooseWebsite();
       const rolled = { start: START, end: at("08:00", "2026-03-11") };
       mocked.recordingDraftSpans.mockResolvedValueOnce({ spans: [rolled], totalMs: rolled.end - rolled.start });
-      await userEvent.clear(field("Span 1 to"));
-      await userEvent.type(field("Span 1 to"), "08:00");
+      await userEvent.clear(field("Time 1 to"));
+      await userEvent.type(field("Time 1 to"), "08:00");
       await waitFor(() => expect(mocked.recordingDraftSpans).toHaveBeenLastCalledWith([{ start: START, end: at("08:00") }]));
       await waitFor(() => expect(field("Hours")).toHaveValue("23"));
       expect(field("Minutes")).toHaveValue("0");
@@ -338,8 +338,8 @@ describe("RecordingEditor", () => {
       await openWithProject();
       const readings: ((ms: number | null) => void)[] = [];
       mocked.calendarParseTime.mockImplementation(() => new Promise((resolve) => readings.push(resolve)));
-      await userEvent.clear(field("Span 1 to"));
-      await userEvent.type(field("Span 1 to"), `11:15${keys}`);
+      await userEvent.clear(field("Time 1 to"));
+      await userEvent.type(field("Time 1 to"), `11:15${keys}`);
       expect(mocked.recordingCreate).not.toHaveBeenCalled();
       act(() => readings.forEach((read) => read(at("11:15"))));
       await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: START, end: at("11:15") }] }), "cancel"));
@@ -351,8 +351,8 @@ describe("RecordingEditor", () => {
       await editorForm("Edit recording");
       const readings: ((ms: number | null) => void)[] = [];
       mocked.calendarParseTime.mockImplementation(() => new Promise((resolve) => readings.push(resolve)));
-      await userEvent.clear(field("Span 1 from"));
-      await userEvent.type(field("Span 1 from"), "1{Enter}");
+      await userEvent.clear(field("Time 1 from"));
+      await userEvent.type(field("Time 1 from"), "1{Enter}");
       expect(mocked.recordingUpdate).not.toHaveBeenCalled();
       act(() => readings.forEach((read) => read(at("10:45"))));
       await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", expect.objectContaining({ spans: [{ start: at("10:45"), end: standupBlock.end }] }), "cancel"));
@@ -363,8 +363,8 @@ describe("RecordingEditor", () => {
       const rolled = { start: START, end: at("08:00", "2026-03-11") };
       let answer: (draft: { spans: { start: number; end: number }[]; totalMs: number }) => void = () => {};
       mocked.recordingDraftSpans.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
-      await userEvent.clear(field("Span 1 to"));
-      await userEvent.type(field("Span 1 to"), "08:00{Enter}");
+      await userEvent.clear(field("Time 1 to"));
+      await userEvent.type(field("Time 1 to"), "08:00{Enter}");
       expect(mocked.recordingCreate).not.toHaveBeenCalled();
       act(() => answer({ spans: [rolled], totalMs: rolled.end - rolled.start }));
       await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [rolled] }), "cancel"));
@@ -372,19 +372,19 @@ describe("RecordingEditor", () => {
 
     it("saves the old time when the typed text is not a time", async () => {
       await openWithProject();
-      await userEvent.clear(field("Span 1 to"));
-      await userEvent.type(field("Span 1 to"), "later{Enter}");
+      await userEvent.clear(field("Time 1 to"));
+      await userEvent.type(field("Time 1 to"), "later{Enter}");
       await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: START, end: END }] }), "cancel"));
     });
 
     it("saves the newest typed time when an older reading answers after it", async () => {
       await openWithProject();
-      await userEvent.clear(field("Span 1 to"));
+      await userEvent.clear(field("Time 1 to"));
       let older: (ms: number | null) => void = () => {};
       mocked.calendarParseTime.mockReturnValueOnce(new Promise((resolve) => (older = resolve)));
-      await userEvent.type(field("Span 1 to"), "1");
+      await userEvent.type(field("Time 1 to"), "1");
       mocked.calendarParseTime.mockResolvedValue(at("11:15"));
-      await userEvent.type(field("Span 1 to"), "2");
+      await userEvent.type(field("Time 1 to"), "2");
       act(() => older(at("10:45")));
       await userEvent.click(button("Save"));
       await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: START, end: at("11:15") }] }), "cancel"));
@@ -397,25 +397,25 @@ describe("RecordingEditor", () => {
       await editorForm("New recording");
       fireEvent.change(field("Hours"), { target: { value: "2" } });
       expect(mocked.recordingDraftTotal).toHaveBeenCalledWith([{ start: START, end: END }], 150 * MINUTE_MS);
-      await waitFor(() => expect(field("Span 1 to")).toHaveValue("11:30"));
-      expect(field("Span 1 from")).toHaveValue("09:00");
+      await waitFor(() => expect(field("Time 1 to")).toHaveValue("11:30"));
+      expect(field("Time 1 from")).toHaveValue("09:00");
     });
 
     it("moves the end of the last span only when the recording has several", async () => {
       renderCreate();
       await editorForm("New recording");
-      await userEvent.click(button("Add span"));
-      await screen.findByLabelText("Span 2 from");
+      await userEvent.click(button("Add time"));
+      await screen.findByLabelText("Time 2 from");
       fireEvent.change(field("Minutes"), { target: { value: "45" } });
-      await waitFor(() => expect(field("Span 2 to")).toHaveValue("11:45"));
-      expect(field("Span 1 to")).toHaveValue("10:30");
+      await waitFor(() => expect(field("Time 2 to")).toHaveValue("11:45"));
+      expect(field("Time 1 to")).toHaveValue("10:30");
     });
 
     it("never asks for a total of zero", async () => {
       renderCreate();
       await editorForm("New recording");
       fireEvent.change(field("Hours"), { target: { value: "0" } });
-      await waitFor(() => expect(field("Span 1 to")).toHaveValue("09:30"));
+      await waitFor(() => expect(field("Time 1 to")).toHaveValue("09:30"));
       fireEvent.change(field("Minutes"), { target: { value: "0" } });
       expect(mocked.recordingDraftTotal).not.toHaveBeenCalledWith(expect.anything(), 0);
       expect(field("Minutes")).toHaveValue("30");
@@ -423,14 +423,14 @@ describe("RecordingEditor", () => {
   });
 
   describe("spans", () => {
-    it("adds the row Rust places after the last span with Add span", async () => {
+    it("adds the row Rust places after the last span with Add time", async () => {
       renderCreate();
       await editorForm("New recording");
       await chooseWebsite();
-      await userEvent.click(button("Add span"));
+      await userEvent.click(button("Add time"));
       expect(mocked.recordingDraftAdd).toHaveBeenCalledWith([{ start: START, end: END }]);
-      expect(await screen.findByLabelText("Span 2 from")).toHaveValue("10:30");
-      expect(field("Span 2 to")).toHaveValue("11:00");
+      expect(await screen.findByLabelText("Time 2 from")).toHaveValue("10:30");
+      expect(field("Time 2 to")).toHaveValue("11:00");
       await userEvent.click(button("Save"));
       await waitFor(() =>
         expect(mocked.recordingCreate).toHaveBeenCalledWith(
@@ -448,17 +448,17 @@ describe("RecordingEditor", () => {
     it("removes a row with its ✕ and renumbers the rest", async () => {
       renderCreate();
       await editorForm("New recording");
-      await userEvent.click(button("Add span"));
-      await screen.findByLabelText("Span 2 from");
-      await userEvent.click(button("Remove span 09:00–10:30"));
-      expect(screen.queryByLabelText("Span 2 from")).not.toBeInTheDocument();
-      expect(field("Span 1 from")).toHaveValue("10:30");
+      await userEvent.click(button("Add time"));
+      await screen.findByLabelText("Time 2 from");
+      await userEvent.click(button("Remove time 09:00–10:30"));
+      expect(screen.queryByLabelText("Time 2 from")).not.toBeInTheDocument();
+      expect(field("Time 1 from")).toHaveValue("10:30");
     });
 
     it("has no ✕ while there is a single span", async () => {
       renderCreate();
       await editorForm("New recording");
-      expect(screen.queryByRole("button", { name: /^Remove span/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Remove time/ })).not.toBeInTheDocument();
     });
   });
 
@@ -516,8 +516,8 @@ describe("RecordingEditor", () => {
       renderEditor({ mode: "edit", id: "r1" });
       await editorForm("Edit recording");
       expect(mocked.recordingsList).toHaveBeenCalledWith(standupBlock.start, standupBlock.end);
-      expect(field("Span 1 from")).toHaveValue("11:00");
-      expect(field("Span 1 to")).toHaveValue("11:45");
+      expect(field("Time 1 from")).toHaveValue("11:00");
+      expect(field("Time 1 to")).toHaveValue("11:45");
       expect(field("Note")).toHaveValue("standup");
       expect(projectField()).toHaveValue("Acme / Website");
     });
@@ -560,8 +560,8 @@ describe("RecordingEditor", () => {
       mocked.recordingsList.mockResolvedValue([longer]);
       renderEditor({ mode: "edit", id: "r1" }, { dayView: dayView({ recordings: [{ ...standupBlock, start: at("00:00"), end: at("01:00"), clippedStart: true }] }) });
       await editorForm("Edit recording");
-      expect(field("Span 1 from")).toHaveValue("22:00");
-      expect(field("Span 1 to")).toHaveValue("01:00");
+      expect(field("Time 1 from")).toHaveValue("22:00");
+      expect(field("Time 1 to")).toHaveValue("01:00");
       expect(field("Hours")).toHaveValue("3");
     });
 
@@ -569,7 +569,7 @@ describe("RecordingEditor", () => {
       renderEditor({ mode: "edit", id: "r1", at: { start: standupBlock.start, end: standupBlock.end } }, { dayView: dayView() });
       await editorForm("Edit recording");
       expect(mocked.recordingsList).toHaveBeenCalledWith(standupBlock.start, standupBlock.end);
-      expect(field("Span 1 from")).toHaveValue("11:00");
+      expect(field("Time 1 from")).toHaveValue("11:00");
     });
 
     it("saves the changes to the recording with overlap cancel", async () => {
@@ -615,16 +615,16 @@ describe("RecordingEditor", () => {
       it("shows every span as a row", async () => {
         renderEditor({ mode: "edit", id: "r1" }, { dayView: dayView({ recordings: [{ ...standupBlock, spanId: noon.id, spanCount: 3 }] }) });
         await editorForm("Edit recording");
-        expect([1, 2, 3].map((n) => (field(`Span ${n} from`) as HTMLInputElement).value)).toEqual(["09:00", "11:00", "16:00"]);
-        expect([1, 2, 3].map((n) => (field(`Span ${n} to`) as HTMLInputElement).value)).toEqual(["09:30", "11:45", "17:00"]);
+        expect([1, 2, 3].map((n) => (field(`Time ${n} from`) as HTMLInputElement).value)).toEqual(["09:00", "11:00", "16:00"]);
+        expect([1, 2, 3].map((n) => (field(`Time ${n} to`) as HTMLInputElement).value)).toEqual(["09:30", "11:45", "17:00"]);
         expect(screen.queryByText(/^Also /)).not.toBeInTheDocument();
       });
 
       it("saves all spans with only the edited one changed", async () => {
         renderEditor({ mode: "edit", id: "r1" });
         await editorForm("Edit recording");
-        await userEvent.clear(field("Span 2 to"));
-        await userEvent.type(field("Span 2 to"), "12:00");
+        await userEvent.clear(field("Time 2 to"));
+        await userEvent.type(field("Time 2 to"), "12:00");
         await userEvent.click(button("Save"));
         await waitFor(() =>
           expect(mocked.recordingUpdate).toHaveBeenCalledWith(
@@ -644,7 +644,7 @@ describe("RecordingEditor", () => {
       it("drops a span removed with its ✕ from the save", async () => {
         renderEditor({ mode: "edit", id: "r1" });
         await editorForm("Edit recording");
-        await userEvent.click(button("Remove span 09:00–09:30"));
+        await userEvent.click(button("Remove time 09:00–09:30"));
         await userEvent.click(button("Save"));
         await waitFor(() =>
           expect(mocked.recordingUpdate).toHaveBeenCalledWith(
@@ -664,7 +664,7 @@ describe("RecordingEditor", () => {
         mocked.recordingsList.mockResolvedValue([standupRow]);
         renderEditor({ mode: "edit", id: "r1" });
         await editorForm("Edit recording");
-        expect(screen.queryByRole("button", { name: /^Remove span/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /^Remove time/ })).not.toBeInTheDocument();
       });
     });
 
@@ -674,16 +674,16 @@ describe("RecordingEditor", () => {
 
       beforeEach(() => mocked.recordingsList.mockResolvedValue([running]));
 
-      it("shows the spans without fields to edit them and without Add span", async () => {
+      it("shows the spans without fields to edit them and without Add time", async () => {
         renderEditor({ mode: "edit", id: "r1" });
         await editorForm("Edit recording");
-        expect(screen.queryByLabelText("Span 1 from")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Time 1 from")).not.toBeInTheDocument();
         expect(screen.getByText("09:00")).toBeInTheDocument();
         expect(screen.getByText("11:00")).toBeInTheDocument();
         expect(screen.getByText("running")).toBeInTheDocument();
         expect(screen.getAllByText("From")).toHaveLength(2);
         expect(screen.getByText("to")).toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: "Add span" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Add time" })).not.toBeInTheDocument();
         expect(field("Hours")).toHaveAttribute("readonly");
       });
 

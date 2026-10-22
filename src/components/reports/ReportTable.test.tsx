@@ -4,9 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { formatDayLabel } from "../../lib/day";
 import { resetStore } from "../../state/store";
-import { at, DAY } from "../../test/dayFixtures";
+import { at } from "../../test/dayFixtures";
 import { reportClient, reportProject, reportRow } from "../../test/reportFixtures";
 import { Toasts } from "../Toasts";
 import { ReportTable } from "./ReportTable";
@@ -54,10 +53,10 @@ describe("ReportTable", () => {
 
   it("shows the hours of each client and project", () => {
     renderTable();
-    expect(screen.getByRole("row", { name: /^Acme 2:15 h/ })).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /^No client 0:45 h/ })).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /^Portal/ })).toHaveTextContent("1:45 h");
-    expect(screen.getByRole("row", { name: /^Docs/ })).toHaveTextContent("0:30 h");
+    expect(screen.getByRole("row", { name: /^Acme 2h 15m/ })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /^No client 45m/ })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /^Portal/ })).toHaveTextContent("1h 45m");
+    expect(screen.getByRole("row", { name: /^Docs/ })).toHaveTextContent("30m");
   });
 
   it("counts the recordings of a project and badges a billable one", () => {
@@ -80,10 +79,10 @@ describe("ReportTable", () => {
       await userEvent.click(toggle("Portal"));
       expect(toggle("Portal")).toHaveAttribute("aria-expanded", "true");
       const first = screen.getByRole("row", { name: /Fixed the header/ });
-      expect(first).toHaveTextContent(`${formatDayLabel(DAY)} · 09:00–09:45`);
+      expect(first).toHaveTextContent("Wed, Oct 21 · 09:00–09:45");
       expect(within(first).getByText("support")).toBeInTheDocument();
-      expect(first).toHaveTextContent("0:45 h");
-      expect(screen.getByText(/14:00–15:00/).closest("tr")).toHaveTextContent("1:00 h");
+      expect(first).toHaveTextContent("45m");
+      expect(screen.getByText(/14:00–15:00/).closest("tr")).toHaveTextContent("1h 00m");
       expect(screen.queryAllByText(/09:00–09:45/)).toHaveLength(1);
     });
 

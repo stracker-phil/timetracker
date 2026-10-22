@@ -45,6 +45,6 @@ export function rulePreview(patch: Partial<RulePreview> = {}): RulePreview {
 }
 
 /** A preview hit on `day`. */
-export function previewHit(day: string, patch: Parameters<typeof block>[0] = {}) {
-  return { day, block: block(patch) };
+export function previewHit(day: string, patch: Parameters<typeof block>[0] = {}, dayLabel = day) {
+  return { day, dayLabel, block: block(patch) };
 }

@@ -329,7 +329,7 @@ mod tests {
         assert_eq!(w.rows().await, vec![existing]);
         assert_eq!(
             w.status().await.undo_label.as_deref(),
-            Some("Record 1 h 00 min for Acme")
+            Some("Record 1h 00m for Acme")
         );
     }
 
@@ -477,7 +477,7 @@ mod tests {
         assert!(change.days.is_empty());
         assert_eq!(
             w.status().await.undo_label.as_deref(),
-            Some("Record 1 h 00 min for Acme")
+            Some("Record 1h 00m for Acme")
         );
     }
 

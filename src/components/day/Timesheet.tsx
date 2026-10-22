@@ -3,7 +3,7 @@ import { Check, Plus, X } from "lucide-react";
 import type { DayView, Suggestion } from "../../api";
 import type { Draft, Editor } from "../../state/slices/editor";
 import { runCommand, useBindingLabel } from "../../commands";
-import { formatShortDuration } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
 import { sheetEntries, type SheetEntry } from "../../lib/sheet";
 import { useStore } from "../../state/store";
 import { RecordingEditor } from "./RecordingEditor";
@@ -80,7 +80,7 @@ export function Timesheet({ view }: { view: DayView }) {
         <div className="timesheet-heading">
           <span className="timesheet-label">Timesheet</span>
           <span className="timesheet-total" aria-label="Recorded">
-            {formatShortDuration(view.totals.recordedMs)}
+            {formatDuration(view.totals.recordedMs)}
           </span>
         </div>
         <button type="button" className="btn timesheet-add" aria-label="New recording" title={newKeys ? `New recording (${newKeys})` : "New recording"} onClick={() => runCommand("recording.new")}>

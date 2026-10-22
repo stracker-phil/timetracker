@@ -57,7 +57,6 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("reports.copyText", "Copy Report as Text", "Mod+Shift+C"),
     item("reports.copyNotes", "Copy Report Notes", "Mod+Alt+C"),
     // View
-    item("view.hours", "Hours", ""),
     check("view.day", "Day", "Mod+1"),
     check("view.week", "Week", "Mod+2"),
     check("view.month", "Month", "Mod+3"),
@@ -75,8 +74,8 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("nav.next", "Next", "N"),
     item("nav.today", "Today", "O"),
     item("nav.goToDate", "Go to Date…", ""),
-    item("day.nextBlock", "Next Block", "J"),
-    item("day.prevBlock", "Previous Block", "K"),
+    item("day.nextBlock", "Next Activity", "J"),
+    item("day.prevBlock", "Previous Activity", "K"),
     item("recording.next", "Next Recording", "]"),
     item("recording.prev", "Previous Recording", "["),
     // Day
@@ -180,7 +179,6 @@ mod tests {
         "recording.delete",
         "reports.copyText",
         "reports.copyNotes",
-        "view.hours",
         "view.day",
         "view.week",
         "view.month",
@@ -293,13 +291,19 @@ mod tests {
     }
 
     #[test]
-    fn the_hours_view_item_is_a_plain_item_without_a_binding() {
-        let hours = menu_item("view.hours").unwrap();
+    fn there_is_no_hours_view_item() {
+        assert!(menu_item("view.hours").is_none());
+    }
 
-        assert_eq!(
-            (hours.label, hours.default_binding, hours.check),
-            ("Hours", "", false)
-        );
+    #[test]
+    fn the_go_menu_steps_through_activities() {
+        for (id, label, binding) in [
+            ("day.nextBlock", "Next Activity", "J"),
+            ("day.prevBlock", "Previous Activity", "K"),
+        ] {
+            let def = menu_item(id).unwrap();
+            assert_eq!((def.label, def.default_binding), (label, binding), "{id}");
+        }
     }
 
     #[test]

@@ -107,6 +107,8 @@ pub struct Suggestion {
 pub struct PreviewHit {
     pub block: ActivityBlock,
     pub day: Day,
+    /// `Wed, Oct 21`, the short day title.
+    pub day_label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]

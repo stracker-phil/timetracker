@@ -10,6 +10,7 @@ export function dataInfo(patch: Partial<DataInfo> = {}): DataInfo {
     recordings: 0,
     projects: 0,
     firstActivity: null,
+    firstActivityLabel: null,
     available: true,
     error: null,
     binaryPath: "/Users/test/.local/bin/timetracker",

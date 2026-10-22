@@ -6,9 +6,11 @@ use crate::db::projects::Project;
 use crate::db::recordings::{Recording, RecordingSpan};
 use crate::db::tags::Tag;
 use crate::db::time::{Day, Ms};
-use crate::store::settings::Group;
+use crate::store::settings::{DayTitle, Group};
 
 pub const D: &str = "2026-10-20";
+/// The day the fixtures' reports are titled on.
+pub const TODAY: &str = "2026-10-22";
 
 pub fn day(s: &str) -> Day {
     Day::parse(s).unwrap()
@@ -161,7 +163,14 @@ pub fn report(
     to: &str,
     recordings: Vec<Recording>,
 ) -> ReportResult {
-    build(filter, (day(from), day(to)), &data(recordings), now())
+    build(
+        filter,
+        (day(from), day(to)),
+        &data(recordings),
+        now(),
+        DayTitle::Short,
+        day(TODAY),
+    )
 }
 
 pub fn by(group_by: Group) -> ReportFilter {
@@ -197,6 +206,8 @@ pub fn billing_report(
         (day(D), day(D)),
         &data_billing(recordings, billable),
         now(),
+        DayTitle::Short,
+        day(TODAY),
     )
 }
 

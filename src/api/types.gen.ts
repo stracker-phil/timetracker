@@ -34,7 +34,11 @@ col: number, cols: number, private: boolean, };
 /**
  * How many spans deleting a range would remove.
  */
-export type ActivityCount = { activities: number, away: number, };
+export type ActivityCount = { activities: number, away: number, 
+/**
+ * The range, `Wed, Oct 21 09:30 – Thu, Oct 22 10:00` (`titles::moments_label`).
+ */
+rangeLabel: string, };
 
 /**
  * One span from another app. `source` is the bare name (`planner`); `app` defaults to it.
@@ -216,7 +220,11 @@ export type DataInfo = { dir: string, file: string,
 /**
  * The database file plus its WAL side files.
  */
-sizeBytes: number, activities: number, recordings: number, projects: number, firstActivity: number | null, available: boolean, error: string | null, 
+sizeBytes: number, activities: number, recordings: number, projects: number, firstActivity: number | null, 
+/**
+ * Its local date, `October 21, 2026` (`titles::date_label`).
+ */
+firstActivityLabel: string | null, available: boolean, error: string | null, 
 /**
  * The `timetracker` command for `claude mcp add`: the installed link, else this executable.
  */
@@ -228,7 +236,11 @@ export type DateJump = {
 /**
  * The date word (`Yesterday`, `Last week`, `Monday`, `October`); none for a typed date.
  */
-name: string | null, unit: PeriodUnit, from: Day, to: Day, };
+name: string | null, unit: PeriodUnit, from: Day, to: Day, 
+/**
+ * The date it opens, as a short title: `Tue, Oct 20`, `Oct 19 – 25`, `Oct 2026` (`titles::period_title`).
+ */
+label: string, };
 
 /**
  * A local calendar day, `YYYY-MM-DD` on the wire. Deserializing validates it.
@@ -475,7 +487,11 @@ export type PickerMonth = { monthStart: Day,
  */
 weeks: Array<Array<PickerDay>>, };
 
-export type PreviewHit = { block: ActivityBlock, day: Day, };
+export type PreviewHit = { block: ActivityBlock, day: Day, 
+/**
+ * `Wed, Oct 21`, the short day title.
+ */
+dayLabel: string, };
 
 export type Project = { id: string, clientId: string | null, name: string, 
 /**
@@ -650,7 +666,11 @@ notes: CopiedNotes,
  */
 rows: Array<ReportRow>, };
 
-export type ReportResult = { filter: ReportFilter, from: Day, to: Day, totalMs: number, totalRoundedMs: number, 
+export type ReportResult = { filter: ReportFilter, from: Day, to: Day, 
+/**
+ * The Reports toolbar's title, in the Day title's format (`titles::period_title`).
+ */
+title: string, totalMs: number, totalRoundedMs: number, 
 /**
  * Of the rounded times, so it adds up with `total_rounded_ms`.
  */
@@ -676,6 +696,10 @@ notes: CopiedNotes, };
  * A recording's part in one day of the range: its spans of that day.
  */
 export type ReportRow = { id: string, day: Day, 
+/**
+ * `Wed, Oct 21`, the short day title (with the year when it is not this year's).
+ */
+dayLabel: string, 
 /**
  * The start of the first span and the end of the last one.
  */
@@ -917,6 +941,6 @@ export type UndoStatus = { undoLabel: string | null, redoLabel: string | null, }
 
 export type WeekView = { weekStart: Day, 
 /**
- * `Week 43 · 19 – 25 Oct 2026`.
+ * `Week 43 · Oct 19 – 25, 2026`, in the locale's date order (`titles::range_label`).
  */
 label: string, days: Array<DayColumn>, totalMs: number, trackedMs: number, };

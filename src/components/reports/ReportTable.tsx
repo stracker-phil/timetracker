@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Copy } from "lucide-react";
 import type { ReportClient, ReportProject, ReportRow } from "../../api";
-import { formatDayLabel } from "../../lib/day";
-import { formatHours, plural } from "../../lib/format";
+import { formatDuration, plural } from "../../lib/format";
 import { spansText } from "../../lib/recordings";
 import { AccentDot } from "../Accent";
 import { copyNotes } from "./actions";
@@ -12,13 +11,13 @@ function RecordingRow({ row }: { row: ReportRow }) {
     <tr className="report-recording">
       <td>
         <span className="report-recording-when">
-          {formatDayLabel(row.day)} · {spansText(row.spans)}
+          {row.dayLabel} · {spansText(row.spans)}
         </span>
         {row.note && <span className="report-recording-note">{row.note}</span>}
         {row.tag && <span className="report-recording-tag o2">{row.tag}</span>}
       </td>
       <td />
-      <td className="report-hours">{formatHours(row.roundedMs)}</td>
+      <td className="report-hours">{formatDuration(row.roundedMs)}</td>
     </tr>
   );
 }
@@ -49,7 +48,7 @@ function ProjectRows({ project, open, onToggle }: { project: ReportProject; open
             <Copy size="1rem" aria-hidden="true" /> Copy notes
           </button>
         </td>
-        <td className="report-hours">{formatHours(project.roundedMs)}</td>
+        <td className="report-hours">{formatDuration(project.roundedMs)}</td>
       </tr>
       {open && project.rows.map((row) => <RecordingRow key={`${row.id}:${row.day}`} row={row} />)}
     </>
@@ -92,7 +91,7 @@ export function ReportTable({ clients }: { clients: ReportClient[] }) {
                 {client.color && <AccentDot accent={client.color} />}
                 {client.label}
               </th>
-              <td className="report-hours">{formatHours(client.roundedMs)}</td>
+              <td className="report-hours">{formatDuration(client.roundedMs)}</td>
             </tr>
             {client.projects.map((project) => (
               <ProjectRows key={project.id} project={project} open={open.has(project.id)} onToggle={() => toggle(project.id)} />

@@ -96,7 +96,7 @@ describe("Settings Timeline page", () => {
     it("lists each app with its name and tracked time", async () => {
       renderPage();
       expect(await screen.findByText("Safari")).toBeInTheDocument();
-      expect(screen.getByText("1:00")).toBeInTheDocument();
+      expect(screen.getByText("1h 00m")).toBeInTheDocument();
     });
 
     it("shows the key of an app without tracked time", async () => {

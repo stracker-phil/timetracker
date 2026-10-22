@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { api, type DayColumn as Column } from "../../api";
-import { formatHm } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
 import { Toolbar } from "../Toolbar";
@@ -18,11 +18,11 @@ function DayHead({ column }: { column: Column }) {
       type="button"
       className={classes.filter(Boolean).join(" ")}
       role="columnheader"
-      aria-label={`${columnName(column)}, ${formatHm(column.totalMs)} recorded`}
+      aria-label={`${columnName(column)}, ${formatDuration(column.totalMs)} recorded`}
       onClick={() => useStore.getState().goToDay(column.day)}
     >
       <span className="week-day-name">{column.isToday ? "Today" : columnName(column)}</span>
-      <span className={column.totalMs > 0 ? "week-day-total" : "week-day-total o3"}>{formatHm(column.totalMs)}</span>
+      <span className={column.totalMs > 0 ? "week-day-total" : "week-day-total o3"}>{formatDuration(column.totalMs)}</span>
     </button>
   );
 }
@@ -65,7 +65,7 @@ export function WeekView() {
         detail={
           week && (
             <span className="toolbar-detail" aria-label="Totals">
-              recorded {formatHm(week.totalMs)} · tracked {formatHm(week.trackedMs)}
+              recorded {formatDuration(week.totalMs)} · tracked {formatDuration(week.trackedMs)}
             </span>
           )
         }

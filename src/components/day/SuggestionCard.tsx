@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, type CSSProperties } from "react";
 import { Check, Sparkles, Tag, X } from "lucide-react";
 import type { Suggestion } from "../../api";
-import { formatClock, formatShortDuration } from "../../lib/format";
+import { formatClock, formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { AccentDot, shadeColor } from "../Accent";
 import { Card } from "../Card";
@@ -55,7 +55,7 @@ export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focu
           )}
         </>
       }
-      trailing={formatShortDuration(s.durationMs)}
+      trailing={formatDuration(s.durationMs)}
       onFocus={(e) => e.target === e.currentTarget && store().focusSuggestion(s.id)}
       onClick={() => store().editSuggestion(s)}
     >

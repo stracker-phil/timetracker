@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Suggestion } from "../../api";
-import { formatClock, formatHm } from "../../lib/format";
+import { formatClock, formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
 
@@ -29,7 +29,7 @@ export function SuggestionBlock({ suggestion: s, y, focused }: Props) {
     >
       <span className="suggestion-project">{s.projectName}</span>
       <span className="suggestion-rule">{s.ruleName}</span>
-      <span className="recording-duration">{formatHm(s.durationMs)}</span>
+      <span className="recording-duration">{formatDuration(s.durationMs)}</span>
     </div>
   );
 }

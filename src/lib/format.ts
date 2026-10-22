@@ -29,34 +29,15 @@ export const plural = (n: number, one: string, many: string) => `${formatCount(n
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 
-/** Whole hours and the minutes past them (two digits); seconds are dropped, negative counts as zero. */
-function hoursMinutes(ms: number): { hours: number; minutes: number; padded: string } {
-  const total = Math.floor(Math.max(0, ms) / MINUTE_MS);
-  const minutes = total % 60;
-  return { hours: Math.floor(total / 60), minutes, padded: String(minutes).padStart(2, "0") };
-}
-
-/** A duration as `1 h 05 min`, `45 min` or `0 min`. */
+/**
+ * The UI's one duration format, `1h 05m`, `30m`, `0m`: seconds dropped, negative counts as zero. It mirrors
+ * Rust's `format_duration` (`db/time.rs`) for durations the page shows from milliseconds.
+ */
 export function formatDuration(ms: number): string {
-  const { hours, minutes, padded } = hoursMinutes(ms);
-  return hours === 0 ? `${minutes} min` : `${hours} h ${padded} min`;
-}
-
-/** A duration as `34m` or `1h 05m`. */
-export function formatShortDuration(ms: number): string {
-  const { hours, minutes, padded } = hoursMinutes(ms);
-  return hours === 0 ? `${minutes}m` : `${hours}h ${padded}m`;
-}
-
-/** Hours and minutes as `12:30`; negative counts as zero. */
-export function formatHm(ms: number): string {
-  const minutes = Math.floor(Math.max(0, ms) / MINUTE_MS);
-  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
-}
-
-/** Hours and minutes as `12:30 h`. */
-export function formatHours(ms: number): string {
-  return `${formatHm(ms)} h`;
+  const total = Math.floor(Math.max(0, ms) / MINUTE_MS);
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  return hours === 0 ? `${minutes}m` : `${hours}h ${String(minutes).padStart(2, "0")}m`;
 }
 
 /** A UTC millisecond timestamp as local wall-clock time, `09:30`. */

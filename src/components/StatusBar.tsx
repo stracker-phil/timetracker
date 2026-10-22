@@ -1,7 +1,7 @@
 import { PanelLeft } from "lucide-react";
 import { api, type Range } from "../api";
 import { useBindingLabel, runCommand } from "../commands";
-import { formatClock, formatHm } from "../lib/format";
+import { formatClock, formatDuration } from "../lib/format";
 import { useApiResult } from "../lib/useApiResult";
 import { useStore } from "../state/store";
 import { useLiveReload } from "./day/useLiveReload";
@@ -14,7 +14,7 @@ function RunningTimer() {
   if (!running) return null;
   return (
     <button className="status-text status-timer" title="Stop timer" onClick={() => void useStore.getState().stopTimer()}>
-      ⏱ {running.projectName} <span className="tabular">{formatHm(running.elapsedMs)}</span>
+      ⏱ {running.projectName} <span className="tabular">{formatDuration(running.elapsedMs)}</span>
     </button>
   );
 }
@@ -44,7 +44,7 @@ function PeriodNumbers({ range }: { range: Range }) {
   const percent = totals.billablePercent;
   return (
     <span className="status-period tabular" aria-label="Shown period">
-      {totals.label} · recorded {formatHm(totals.recordedMs)}
+      {totals.label} · recorded {formatDuration(totals.recordedMs)}
       {percent != null && (
         <>
           {" · "}
@@ -55,7 +55,7 @@ function PeriodNumbers({ range }: { range: Range }) {
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={percent}
-            title={`Billable ${formatHm(totals.billableMs)} / ${formatHm(totals.recordedMs)}`}
+            title={`Billable ${formatDuration(totals.billableMs)} / ${formatDuration(totals.recordedMs)}`}
           >
             <span className="status-billable-track" aria-hidden="true">
               <span className="status-billable-fill" style={{ width: `${percent}%` }} />
@@ -81,7 +81,7 @@ export function StatusBar() {
       {sidebarHidden && <TrackerStatus />}
       {selection && (
         <span className="tabular" aria-label="Selection">
-          {formatClock(selection.start)}–{formatClock(selection.end)} · {formatHm(selection.end - selection.start)}
+          {formatClock(selection.start)}–{formatClock(selection.end)} · {formatDuration(selection.end - selection.start)}
         </span>
       )}
       <span className="spacer" />

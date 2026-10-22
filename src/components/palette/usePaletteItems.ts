@@ -1,6 +1,5 @@
 import { type Client, type DateJump, type Keybindings, type PeriodUnit, type Project, type ProjectListItem, type SavedReport } from "../../api";
 import { activeScopes, allCommands, bindingFor, bindingLabel } from "../../commands";
-import { formatDayLabel, formatMonthLabel, formatRangeLabel } from "../../lib/day";
 import { settingsPages, useSettingsPagesVersion } from "../../registry/settingsPages";
 import { projectLabel } from "../../state/slices/projects";
 import { useStore, type View } from "../../state/store";
@@ -38,44 +37,33 @@ const closeThen = (run: () => void) => () => {
 
 const JUMP_VIEWS: Record<PeriodUnit, View> = { day: "day", week: "week", month: "month" };
 
-const JUMP_LABELS: Record<PeriodUnit, (j: DateJump) => string> = {
-  day: (j) => formatDayLabel(j.from),
-  week: (j) => formatRangeLabel(j.from, j.to),
-  month: (j) => formatMonthLabel(j.from),
-};
-
 function showReport(filter: { clientIds: string[]; projectIds: string[] }) {
   const s = useStore.getState();
   s.setReportFilter({ ...filter, tagIds: [] });
   s.setView("reports");
 }
 
-/** The views, and Hours: today's Day view. */
+/** The views, each once; today is the Today command (O) and the `Today` date word. */
 function viewItems(custom: Keybindings, prefix: Prefix, needle: string): Item[] {
   if (prefix !== null) return [];
-  const targets = [
-    ...VIEWS.map(({ id, label }) => ({ id: `view.${id}`, label, show: () => useStore.getState().setView(id) })),
-    { id: "view.hours", label: "Hours", show: () => useStore.getState().showHours() },
-  ];
-  return targets.map(({ id, label, show }) => ({
-    key: id,
+  return VIEWS.map(({ id, label }) => ({
+    key: `view.${id}`,
     section: GO_TO,
     title: label,
-    keys: bindingLabel(bindingFor(id, custom)),
+    keys: bindingLabel(bindingFor(`view.${id}`, custom)),
     rank: score([label], needle),
-    go: closeThen(show),
+    go: closeThen(() => useStore.getState().setView(id)),
   }));
 }
 
 /** Rust matched them already; a typed date is an exact hit. */
 function dateItems(jumps: DateJump[], needle: string): Item[] {
   return jumps.map((j) => {
-    const label = JUMP_LABELS[j.unit](j);
     return {
       key: `date:${j.unit}:${j.from}:${j.name ?? ""}`,
       section: GO_TO,
-      title: j.name ?? label,
-      subtitle: j.name ? label : undefined,
+      title: j.name ?? j.label,
+      subtitle: j.name ? j.label : undefined,
       rank: j.name ? Math.max(1, score([j.name], needle)) : 5,
       go: closeThen(() => {
         const s = useStore.getState();

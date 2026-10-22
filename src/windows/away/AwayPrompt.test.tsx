@@ -43,7 +43,7 @@ describe("AwayPrompt", () => {
   describe("the prompt", () => {
     it("shows how long the user was away and when", async () => {
       await renderPrompt();
-      expect(screen.getByRole("heading", { name: "You were away 42 min" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "You were away 42m" })).toBeInTheDocument();
       expect(screen.getByText("12:03–12:45 · idle")).toBeInTheDocument();
     });
 
@@ -66,7 +66,7 @@ describe("AwayPrompt", () => {
     it("takes the length and the end from Rust for a span that is still open", async () => {
       mocked.awayPromptCurrent.mockResolvedValue(awayPrompt({ span: { id: 1, start: at("12:15"), end: null, reason: "idle" }, endedAt: at("13:30"), awayMs: 75 * 60_000 }));
       await renderPrompt();
-      expect(screen.getByRole("heading", { name: "You were away 1 h 15 min" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "You were away 1h 15m" })).toBeInTheDocument();
       expect(screen.getByText("12:15–13:30 · idle")).toBeInTheDocument();
     });
 
@@ -74,17 +74,17 @@ describe("AwayPrompt", () => {
       let answer: (draft: { spans: { start: number; end: number }[]; totalMs: number }) => void = () => {};
       mocked.recordingDraftSpans.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
       await renderPrompt();
-      expect(screen.queryByText("25 min")).not.toBeInTheDocument();
+      expect(screen.queryByText("25m")).not.toBeInTheDocument();
       act(() => answer({ spans: [{ start: at("12:05"), end: at("12:30") }], totalMs: 25 * 60_000 }));
-      expect(await screen.findByText("25 min")).toBeInTheDocument();
+      expect(await screen.findByText("25m")).toBeInTheDocument();
     });
 
     it("asks Rust for the length of the edited times", async () => {
       await renderPrompt();
-      expect(await screen.findByText("40 min")).toBeInTheDocument();
+      expect(await screen.findByText("40m")).toBeInTheDocument();
       await userEvent.clear(field("To"));
       await userEvent.type(field("To"), "12:25");
-      expect(await screen.findByText("20 min")).toBeInTheDocument();
+      expect(await screen.findByText("20m")).toBeInTheDocument();
     });
 
     it("says there is nothing to record when no prompt is open, and Close skips", async () => {
@@ -308,7 +308,7 @@ describe("AwayPrompt", () => {
       await renderPrompt();
       await userEvent.type(field("Note"), "lunch");
       emitChanged(newer);
-      expect(await screen.findByRole("heading", { name: "You were away 20 min" })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "You were away 20m" })).toBeInTheDocument();
       expect(screen.getByText("15:00–15:20 · locked")).toBeInTheDocument();
       expect(field("From")).toHaveValue("15:00");
       expect(field("To")).toHaveValue("15:20");
@@ -318,7 +318,7 @@ describe("AwayPrompt", () => {
     it("answers with the times of the newer span", async () => {
       await renderPrompt();
       emitChanged(newer);
-      await screen.findByRole("heading", { name: "You were away 20 min" });
+      await screen.findByRole("heading", { name: "You were away 20m" });
       await userEvent.click(recordButton());
       await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: at("15:00"), end: at("15:20") }] })));
     });
@@ -327,7 +327,7 @@ describe("AwayPrompt", () => {
       await renderPrompt();
       mocked.awayPromptCurrent.mockResolvedValue(newer);
       act(() => void window.dispatchEvent(new Event("focus")));
-      expect(await screen.findByRole("heading", { name: "You were away 20 min" })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "You were away 20m" })).toBeInTheDocument();
     });
   });
 });

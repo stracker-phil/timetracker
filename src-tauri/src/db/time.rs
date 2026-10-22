@@ -169,9 +169,25 @@ pub fn clip(start: Ms, end: Option<Ms>, bounds: (Ms, Ms), now: Ms) -> Option<(Ms
     (from < to).then_some((from, to))
 }
 
-/// A duration as `6:24`, hours without a leading zero; negative counts as zero.
+/// Whole minutes, seconds dropped; negative counts as zero.
+fn whole_minutes(ms: Ms) -> Ms {
+    ms.max(0) / 60_000
+}
+
+/// The UI's one duration format: `1h 05m`, `30m`, `0m`, `12h 30m`; seconds are dropped, negative counts as
+/// zero. `formatDuration` in `src/lib/format.ts` mirrors it for times the page counts itself.
+pub fn format_duration(ms: Ms) -> String {
+    let minutes = whole_minutes(ms);
+    match (minutes / 60, minutes % 60) {
+        (0, m) => format!("{m}m"),
+        (h, m) => format!("{h}h {m:02}m"),
+    }
+}
+
+/// A duration as `6:24`, hours without a leading zero; negative counts as zero. The CLI and the copied
+/// report text only; the UI reads `format_duration`.
 pub fn format_hm(ms: Ms) -> String {
-    let minutes = ms.max(0) / 60_000;
+    let minutes = whole_minutes(ms);
     format!("{}:{:02}", minutes / 60, minutes % 60)
 }
 
@@ -398,6 +414,24 @@ mod tests {
             same_time_on_in(ms, day("2026-10-24"), &Vienna),
             utc_ms(2026, 10, 24, 13)
         );
+    }
+
+    #[test]
+    fn durations_read_as_hours_and_minutes_without_seconds() {
+        const MIN: Ms = 60_000;
+        for (ms, expected) in [
+            (0, "0m"),
+            (59_999, "0m"),
+            (MIN, "1m"),
+            (30 * MIN, "30m"),
+            (59 * MIN + 59_999, "59m"),
+            (60 * MIN, "1h 00m"),
+            (65 * MIN, "1h 05m"),
+            (750 * MIN, "12h 30m"),
+            (-5 * MIN, "0m"),
+        ] {
+            assert_eq!(format_duration(ms), expected, "{ms}");
+        }
     }
 
     #[test]

@@ -282,14 +282,14 @@ mod tests {
     #[test]
     fn the_inverse_of_a_batch_keeps_its_label() {
         let op = Op::Batch {
-            label: "Record 1 h 00 min for Acme".into(),
+            label: "Record 1h 00m for Acme".into(),
             ops: vec![],
         };
 
         assert_eq!(
             op.inverse(),
             Op::Batch {
-                label: "Record 1 h 00 min for Acme".into(),
+                label: "Record 1h 00m for Acme".into(),
                 ops: vec![]
             }
         );

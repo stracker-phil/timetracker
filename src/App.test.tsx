@@ -128,10 +128,10 @@ describe("App", () => {
       const day = await api.calendarStep("day", today(), -1);
       mocked.dayView.mockResolvedValue(dayView({ day, totals: { recordedMs: 0, trackedMs: 600_000, awayMs: 0 } }));
       await renderApp({ day });
-      await screen.findByText("tracked 0:10");
+      await screen.findByText("tracked 10m");
       mocked.dayView.mockResolvedValue(dayView({ day, totals: { recordedMs: 0, trackedMs: 1_800_000, awayMs: 0 } }));
       act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "activity", day }));
-      expect(await screen.findByText("tracked 0:30")).toBeInTheDocument();
+      expect(await screen.findByText("tracked 30m")).toBeInTheDocument();
     });
 
     it("opens on the day Rust sends as the one shown last", async () => {
@@ -183,10 +183,10 @@ describe("App", () => {
     it("shows the new hours on the Projects page when recordings changed", async () => {
       mocked.projectsList.mockResolvedValue([projectItem({ project: { id: "p-site", name: "Website" }, weekMs: 3_600_000 })]);
       await renderApp({ view: "projects" });
-      expect(await screen.findByTitle("This week: 1:00 h")).toBeInTheDocument();
+      expect(await screen.findByTitle("This week: 1h 00m")).toBeInTheDocument();
       mocked.projectsList.mockResolvedValue([projectItem({ project: { id: "p-site", name: "Website" }, weekMs: 7_200_000 })]);
       act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "recordings", day: null }));
-      expect(await screen.findByTitle("This week: 2:00 h")).toBeInTheDocument();
+      expect(await screen.findByTitle("This week: 2h 00m")).toBeInTheDocument();
     });
 
     it("opens the new project sheet with ⌘N in the Projects view", async () => {
@@ -371,14 +371,14 @@ describe("App", () => {
     it("shows the timer loaded on boot in the status bar", async () => {
       mocked.timerStatus.mockResolvedValueOnce(runningStatus({ projectName: "Docs" }));
       await renderApp();
-      expect(await statusBar().findByRole("button", { name: "⏱ Docs 1:23" })).toBeInTheDocument();
+      expect(await statusBar().findByRole("button", { name: "⏱ Docs 1h 23m" })).toBeInTheDocument();
     });
 
     it("follows the timer status events and stops the timer from the status bar", async () => {
       await renderApp();
       expect(statusBar().queryByTitle("Stop timer")).not.toBeInTheDocument();
       act(() => mocked.onTimerStatus.mock.calls[0][0](runningStatus({ projectName: "Docs" })));
-      await userEvent.click(statusBar().getByRole("button", { name: "⏱ Docs 1:23" }));
+      await userEvent.click(statusBar().getByRole("button", { name: "⏱ Docs 1h 23m" }));
       expect(mocked.timerStop).toHaveBeenCalled();
       act(() => mocked.onTimerStatus.mock.calls[0][0]({ running: null }));
       expect(statusBar().queryByTitle("Stop timer")).not.toBeInTheDocument();

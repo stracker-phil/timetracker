@@ -47,15 +47,15 @@ describe("suggestions slice", () => {
       mocked.suggestionApprove.mockResolvedValueOnce({ recording: recording(), durationMs: 45 * 60_000 });
       await state().approveSuggestion(first);
       expect(mocked.suggestionApprove).toHaveBeenCalledWith(DAY, first.id);
-      expect(toastMessages()).toEqual(["Recorded 45 min for Website"]);
+      expect(toastMessages()).toEqual(["Recorded 45m for Website"]);
       expect(state().toasts[0].action?.label).toBe("Undo");
     });
 
     it("runs the Undo action of the toast through the api", async () => {
-      mocked.undo.mockResolvedValueOnce("Record 45 min for Website");
+      mocked.undo.mockResolvedValueOnce("Record 45m for Website");
       await state().approveSuggestion(first);
       state().toasts[0].action?.run();
-      await vi.waitFor(() => expect(toastMessages()).toContain("Undid “Record 45 min for Website”"));
+      await vi.waitFor(() => expect(toastMessages()).toContain("Undid “Record 45m for Website”"));
     });
 
     it("toasts the error and offers no Undo when the suggestion is gone", async () => {

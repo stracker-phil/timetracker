@@ -8,7 +8,7 @@ use ts_rs::TS;
 use super::{MINUTE_MS, Span, default_span, snap_span};
 use crate::db::time::{Day, Ms, same_time_on_in};
 
-/// How long a span added with "Add span" starts out.
+/// How long a span added with "Add time" starts out.
 const ADDED_SPAN_MS: Ms = 30 * MINUTE_MS;
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]

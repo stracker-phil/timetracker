@@ -44,17 +44,17 @@ export function TimelineControls({ timeline }: { timeline: TimelineSettings }) {
       <Switch label="Summary lane" description="One lane with the main app of each interval." checked={timeline.summaryLane} onChange={(summaryLane) => saveTimeline({ summaryLane })} />
       {timeline.summaryLane && <SummaryMinutes value={timeline.summaryMinutes} />}
       <Switch label="Show all activity" description="The activity lane next to the summary." checked={timeline.showAllActivity} onChange={(showAllActivity) => saveTimeline({ showAllActivity })} />
-      <Switch label="Compact activity" description="Shorter rows, one line of text per block." checked={timeline.compact} onChange={(compact) => saveTimeline({ compact })} />
-      <Switch label="Group by app and website" description="One block per app, whatever its windows are called." checked={timeline.groupByApp} onChange={(groupByApp) => saveTimeline({ groupByApp })} />
+      <Switch label="Compact activity" description="Shorter rows, one line of text per activity." checked={timeline.compact} onChange={(compact) => saveTimeline({ compact })} />
+      <Switch label="Group by app and website" description="One activity per app, whatever its windows are called." checked={timeline.groupByApp} onChange={(groupByApp) => saveTimeline({ groupByApp })} />
       <Segmented
         label="Continuity"
-        description="Joins blocks of the same app across gaps shorter than 2, 8 or 16 minutes."
+        description="Joins activity of the same app across gaps shorter than 2, 8 or 16 minutes."
         options={CONTINUITY}
         value={timeline.continuity}
         onChange={(continuity) => saveTimeline({ continuity })}
       />
-      <Segmented label="Noise cancellation" description="Hides blocks shorter than 2, 4 or 6 minutes." options={NOISE} value={timeline.noise} onChange={(noise) => saveTimeline({ noise })} />
-      <Segmented label="Titles" description="Label blocks with the document or page name, or with the app." options={TITLES} value={timeline.titles} onChange={(titles) => saveTimeline({ titles })} />
+      <Segmented label="Noise cancellation" description="Hides activity shorter than 2, 4 or 6 minutes." options={NOISE} value={timeline.noise} onChange={(noise) => saveTimeline({ noise })} />
+      <Segmented label="Titles" description="Label activity with the document or page name, or with the app." options={TITLES} value={timeline.titles} onChange={(titles) => saveTimeline({ titles })} />
       <Segmented
         label="Time snapping (minutes)"
         description="The grid recordings snap to."

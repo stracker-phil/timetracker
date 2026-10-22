@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { api, toAppError, type ActivityCount } from "../../api";
-import { formatDayLabel } from "../../lib/day";
 import { formatClock, formatDay, plural } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
 import { fail } from "../../state/requests";
@@ -9,7 +8,8 @@ import { FormField } from "../Field";
 import { Modal } from "../Modal";
 
 interface Props {
-  day: string;
+  /** The day's title, from its Day view. */
+  label: string;
   /** The day's bounds, from its Day view. */
   bounds: [number, number];
   /** Two date-time fields instead of the whole day. */
@@ -19,12 +19,7 @@ interface Props {
 /** `2026-10-21T09:30`, the local value of a `datetime-local` input. */
 const toInput = (ms: number) => `${formatDay(ms)}T${formatClock(ms)}`;
 
-const spans = (count: ActivityCount) => `${plural(count.activities, "activity span", "activity spans")} and ${plural(count.away, "away span", "away spans")}`;
-
-function rangeLabel(from: number, to: number) {
-  const at = (ms: number) => `${formatDayLabel(formatDay(ms))} ${formatClock(ms)}`;
-  return `${at(from)} – ${at(to)}`;
-}
+const counted = (count: Pick<ActivityCount, "activities" | "away">) => `${plural(count.activities, "activity", "activities")} and ${plural(count.away, "away time", "away times")}`;
 
 /** A `datetime-local` value as Rust reads it; null while it is empty, not a time, or still being read. */
 function useParsedTime(text: string | null, on: number): number | null {
@@ -35,12 +30,12 @@ function useParsedTime(text: string | null, on: number): number | null {
 function undoDelete() {
   api
     .activityDeleteUndo()
-    .then((restored) => useStore.getState().toast("success", `Restored ${spans(restored)}`))
+    .then((restored) => useStore.getState().toast("success", `Restored ${counted(restored)}`))
     .catch((e: unknown) => fail(e, "Couldn't undo the delete"));
 }
 
-/** Deletes the activity and away spans of a day or range; the toast offers Undo while Rust keeps the rows. */
-export function DeleteActivityDialog({ day, bounds, range }: Props) {
+/** Deletes the activity and away time of a day or range; the toast offers Undo while Rust keeps the rows. */
+export function DeleteActivityDialog({ label, bounds, range }: Props) {
   const close = useStore((s) => s.closeDialog);
   const [fromText, setFromText] = useState(() => toInput(bounds[0]));
   const [toText, setToText] = useState(() => toInput(bounds[1]));
@@ -70,13 +65,13 @@ export function DeleteActivityDialog({ day, bounds, range }: Props) {
   }, [from, to]);
 
   const remove = async () => {
-    if (!picked) return;
+    if (!picked || !count) return;
     const { from, to } = picked;
     setBusy(true);
     try {
       const deleted = await api.activityDelete(from, to);
       close();
-      const what = range ? rangeLabel(from, to) : formatDayLabel(day);
+      const what = range ? count.rangeLabel : label;
       useStore.getState().toast("success", `Deleted activity for ${what}`, { label: "Undo", run: undoDelete, ttlMs: Math.max(0, deleted.undoUntil - Date.now()) });
     } catch (e) {
       setBusy(false);
@@ -86,7 +81,7 @@ export function DeleteActivityDialog({ day, bounds, range }: Props) {
 
   return (
     <Modal onClose={close} labelledBy="delete-activity-title">
-      <h2 id="delete-activity-title">{range ? "Delete activity in a range" : `Delete activity for ${formatDayLabel(day)}`}</h2>
+      <h2 id="delete-activity-title">{range ? "Delete activity in a range" : `Delete activity for ${label}`}</h2>
       {range && (
         <div className="form-row">
           <FormField label="From" htmlFor="delete-activity-from">
@@ -98,7 +93,7 @@ export function DeleteActivityDialog({ day, bounds, range }: Props) {
         </div>
       )}
       <p className="muted">
-        {count && !error ? `Deletes ${spans(count)}. ` : ""}Spans that cross the range are deleted entirely. Recordings are not affected.
+        {count && !error ? `Deletes ${counted(count)}. ` : ""}Activity and away time that cross the range are deleted entirely. Recordings are not affected.
       </p>
       {error && (
         <p className="form-field-error" role="alert">

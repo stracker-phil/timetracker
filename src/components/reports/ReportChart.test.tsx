@@ -22,20 +22,20 @@ describe("ReportChart", () => {
     renderChart();
     const legend = within(screen.getByRole("list", { name: "By client legend" }));
     expect(legend.getAllByRole("listitem")).toHaveLength(2);
-    expect(legend.getByText("Acme").parentElement).toHaveTextContent("1:30 h");
-    expect(legend.getByText("Globex").parentElement).toHaveTextContent("0:30 h");
+    expect(legend.getByText("Acme").parentElement).toHaveTextContent("1h 30m");
+    expect(legend.getByText("Globex").parentElement).toHaveTextContent("30m");
   });
 
   it("shows the total and the number of slices in the center", () => {
     renderChart();
     const chart = within(screen.getByRole("img", { name: /^By client:/ }));
-    expect(chart.getByText("2:00 h")).toBeInTheDocument();
+    expect(chart.getByText("2h 00m")).toBeInTheDocument();
     expect(chart.getByText("2 clients")).toBeInTheDocument();
   });
 
   it("describes the slices with their percentages for assistive technology", () => {
     renderChart();
-    expect(screen.getByRole("img", { name: "By client: Acme 1:30 h (75 %), Globex 0:30 h (25 %)" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "By client: Acme 1h 30m (75 %), Globex 30m (25 %)" })).toBeInTheDocument();
   });
 
   it.each([

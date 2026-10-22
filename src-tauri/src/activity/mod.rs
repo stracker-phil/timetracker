@@ -60,7 +60,7 @@ pub async fn stop(
 }
 
 pub async fn count(app: &AppHandle, from: Ms, to: Ms) -> AppResult<ActivityCount> {
-    delete::count(&db(app)?, from, to).await
+    delete::count(&db(app)?, from, to, Day::today()).await
 }
 
 pub async fn delete_range(app: &AppHandle, from: Ms, to: Ms) -> AppResult<DeleteResult> {

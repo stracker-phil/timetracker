@@ -199,7 +199,7 @@ export function TrackerPage({ s, set }: SettingsPageProps) {
       />
       <Switch
         label="Ask what I did after being away"
-        description="After a long away span, a small window asks for the project to record it for. Pauses never ask."
+        description="After a long away time, a small window asks for the project to record it for. Pauses never ask."
         checked={tracker.awayPromptEnabled}
         onChange={(awayPromptEnabled) => set({ tracker: { ...tracker, awayPromptEnabled } })}
       />

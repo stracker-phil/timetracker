@@ -1,7 +1,7 @@
 import { GripVertical } from "lucide-react";
 import { useRef, type CSSProperties, type PointerEvent } from "react";
 import type { Rule, RuleDay } from "../../api";
-import { formatShortDuration } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
 import { conditionSummary } from "./conditions";
@@ -20,7 +20,7 @@ interface Props {
 function todayText(rule: Rule, today: RuleDay | undefined): string {
   if (!rule.enabled) return "Off";
   if (!today || today.matchedMs === 0) return "Nothing today";
-  const matched = `${formatShortDuration(today.matchedMs)} today`;
+  const matched = `${formatDuration(today.matchedMs)} today`;
   return today.pending === 0 ? matched : `${matched} · ${today.pending} to review`;
 }
 

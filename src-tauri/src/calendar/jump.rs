@@ -5,7 +5,9 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use super::period::{PeriodUnit, period};
+use super::titles::period_title;
 use crate::db::time::Day;
+use crate::store::settings::DayTitle;
 
 /// A year without a February 29 is skipped; eight years back always reach a leap year.
 const YEARS_BACK: i32 = 8;
@@ -49,6 +51,8 @@ pub struct DateJump {
     pub unit: PeriodUnit,
     pub from: Day,
     pub to: Day,
+    /// The date it opens, as a short title: `Tue, Oct 20`, `Oct 19 – 25`, `Oct 2026` (`titles::period_title`).
+    pub label: String,
 }
 
 fn jump(name: Option<&str>, unit: PeriodUnit, day: Day, today: Day) -> DateJump {
@@ -58,6 +62,7 @@ fn jump(name: Option<&str>, unit: PeriodUnit, day: Day, today: Day) -> DateJump 
         unit,
         from: p.from,
         to: p.to,
+        label: period_title(p.from, p.to, DayTitle::Short, today),
     }
 }
 
@@ -198,21 +203,23 @@ mod tests {
         day("2026-10-21")
     }
 
-    fn word(name: &str, unit: PeriodUnit, from: &str, to: &str) -> DateJump {
+    fn word(name: &str, unit: PeriodUnit, from: &str, to: &str, label: &str) -> DateJump {
         DateJump {
             name: Some(name.to_string()),
             unit,
             from: day(from),
             to: day(to),
+            label: label.to_string(),
         }
     }
 
-    fn typed(date: &str) -> DateJump {
+    fn typed(date: &str, label: &str) -> DateJump {
         DateJump {
             name: None,
             unit: PeriodUnit::Day,
             from: day(date),
             to: day(date),
+            label: label.to_string(),
         }
     }
 
@@ -228,10 +235,34 @@ mod tests {
         assert_eq!(
             jumps("", today()),
             vec![
-                word("Today", PeriodUnit::Day, "2026-10-21", "2026-10-21"),
-                word("Yesterday", PeriodUnit::Day, "2026-10-20", "2026-10-20"),
-                word("This week", PeriodUnit::Week, "2026-10-19", "2026-10-25"),
-                word("This month", PeriodUnit::Month, "2026-10-01", "2026-10-31"),
+                word(
+                    "Today",
+                    PeriodUnit::Day,
+                    "2026-10-21",
+                    "2026-10-21",
+                    "Wed, Oct 21"
+                ),
+                word(
+                    "Yesterday",
+                    PeriodUnit::Day,
+                    "2026-10-20",
+                    "2026-10-20",
+                    "Tue, Oct 20"
+                ),
+                word(
+                    "This week",
+                    PeriodUnit::Week,
+                    "2026-10-19",
+                    "2026-10-25",
+                    "Oct 19 – 25"
+                ),
+                word(
+                    "This month",
+                    PeriodUnit::Month,
+                    "2026-10-01",
+                    "2026-10-31",
+                    "Oct 2026"
+                ),
             ]
         );
     }
@@ -244,7 +275,8 @@ mod tests {
                 "Yesterday",
                 PeriodUnit::Day,
                 "2026-10-20",
-                "2026-10-20"
+                "2026-10-20",
+                "Tue, Oct 20"
             )]
         );
         assert_eq!(
@@ -258,30 +290,60 @@ mod tests {
         assert_eq!(
             jumps("week", today()),
             vec![
-                word("This week", PeriodUnit::Week, "2026-10-19", "2026-10-25"),
-                word("Last week", PeriodUnit::Week, "2026-10-12", "2026-10-18"),
+                word(
+                    "This week",
+                    PeriodUnit::Week,
+                    "2026-10-19",
+                    "2026-10-25",
+                    "Oct 19 – 25"
+                ),
+                word(
+                    "Last week",
+                    PeriodUnit::Week,
+                    "2026-10-12",
+                    "2026-10-18",
+                    "Oct 12 – 18"
+                ),
             ]
         );
         assert_eq!(
             jumps("mo", today()),
             vec![
-                word("This month", PeriodUnit::Month, "2026-10-01", "2026-10-31"),
-                word("Last month", PeriodUnit::Month, "2026-09-01", "2026-09-30"),
-                word("Monday", PeriodUnit::Day, "2026-10-19", "2026-10-19"),
+                word(
+                    "This month",
+                    PeriodUnit::Month,
+                    "2026-10-01",
+                    "2026-10-31",
+                    "Oct 2026"
+                ),
+                word(
+                    "Last month",
+                    PeriodUnit::Month,
+                    "2026-09-01",
+                    "2026-09-30",
+                    "Sep 2026"
+                ),
+                word(
+                    "Monday",
+                    PeriodUnit::Day,
+                    "2026-10-19",
+                    "2026-10-19",
+                    "Mon, Oct 19"
+                ),
             ]
         );
     }
 
     #[test]
     fn a_weekday_is_its_latest_occurrence_on_or_before_today() {
-        for (text, name, date) in [
-            ("monday", "Monday", "2026-10-19"),
-            ("wed", "Wednesday", "2026-10-21"),
-            ("thursday", "Thursday", "2026-10-15"),
+        for (text, name, date, label) in [
+            ("monday", "Monday", "2026-10-19", "Mon, Oct 19"),
+            ("wed", "Wednesday", "2026-10-21", "Wed, Oct 21"),
+            ("thursday", "Thursday", "2026-10-15", "Thu, Oct 15"),
         ] {
             assert_eq!(
                 jumps(text, today()),
-                vec![word(name, PeriodUnit::Day, date, date)],
+                vec![word(name, PeriodUnit::Day, date, date, label)],
                 "{text}"
             );
         }
@@ -289,14 +351,14 @@ mod tests {
 
     #[test]
     fn a_month_name_is_its_latest_month_on_or_before_this_one() {
-        for (text, name, from, to) in [
-            ("oct", "October", "2026-10-01", "2026-10-31"),
-            ("nov", "November", "2025-11-01", "2025-11-30"),
-            ("january", "January", "2026-01-01", "2026-01-31"),
+        for (text, name, from, to, label) in [
+            ("oct", "October", "2026-10-01", "2026-10-31", "Oct 2026"),
+            ("nov", "November", "2025-11-01", "2025-11-30", "Nov 2025"),
+            ("january", "January", "2026-01-01", "2026-01-31", "Jan 2026"),
         ] {
             assert_eq!(
                 jumps(text, today()),
-                vec![word(name, PeriodUnit::Month, from, to)],
+                vec![word(name, PeriodUnit::Month, from, to, label)],
                 "{text}"
             );
         }
@@ -313,25 +375,39 @@ mod tests {
             "October 12",
             "12. october",
         ] {
-            assert_eq!(jumps(text, today()), vec![typed("2026-10-12")], "{text}");
+            assert_eq!(
+                jumps(text, today()),
+                vec![typed("2026-10-12", "Mon, Oct 12")],
+                "{text}"
+            );
         }
     }
 
     #[test]
     fn typed_dates_with_a_year_open_that_year() {
         for text in ["12.10.2025", "12 oct 2025"] {
-            assert_eq!(jumps(text, today()), vec![typed("2025-10-12")], "{text}");
+            assert_eq!(
+                jumps(text, today()),
+                vec![typed("2025-10-12", "Sun, Oct 12, 2025")],
+                "{text}"
+            );
         }
     }
 
     #[test]
     fn a_typed_date_after_today_falls_back_to_the_previous_year() {
-        assert_eq!(jumps("24.12.", today()), vec![typed("2025-12-24")]);
+        assert_eq!(
+            jumps("24.12.", today()),
+            vec![typed("2025-12-24", "Wed, Dec 24, 2025")]
+        );
     }
 
     #[test]
     fn february_29_falls_back_to_the_latest_leap_year() {
-        assert_eq!(jumps("29.2.", today()), vec![typed("2024-02-29")]);
+        assert_eq!(
+            jumps("29.2.", today()),
+            vec![typed("2024-02-29", "Thu, Feb 29, 2024")]
+        );
     }
 
     #[test]
@@ -346,19 +422,35 @@ mod tests {
         assert_eq!(jumps("  TODAY ", today()), jumps("today", today()));
         assert_eq!(
             jumps("  TODAY ", today()),
-            vec![word("Today", PeriodUnit::Day, "2026-10-21", "2026-10-21")]
+            vec![word(
+                "Today",
+                PeriodUnit::Day,
+                "2026-10-21",
+                "2026-10-21",
+                "Wed, Oct 21"
+            )]
         );
+    }
+
+    #[test]
+    fn a_week_in_another_year_labels_its_range_with_the_year() {
+        let jump = jumps("last week", Day::parse("2026-01-02").unwrap())
+            .into_iter()
+            .next()
+            .unwrap();
+        assert_eq!(jump.label, "Dec 22 – 28, 2025");
     }
 
     #[test]
     fn a_jump_serializes_in_camel_case_with_a_null_name_for_a_typed_date() {
         assert_eq!(
-            serde_json::to_value(typed("2026-10-12")).unwrap(),
+            serde_json::to_value(typed("2026-10-12", "Mon, Oct 12")).unwrap(),
             serde_json::json!({
                 "name": null,
                 "unit": "day",
                 "from": "2026-10-12",
                 "to": "2026-10-12",
+                "label": "Mon, Oct 12",
             })
         );
         assert_eq!(
@@ -366,7 +458,8 @@ mod tests {
                 "This week",
                 PeriodUnit::Week,
                 "2026-10-19",
-                "2026-10-25"
+                "2026-10-25",
+                "Oct 19 – 25"
             ))
             .unwrap(),
             serde_json::json!({
@@ -374,6 +467,7 @@ mod tests {
                 "unit": "week",
                 "from": "2026-10-19",
                 "to": "2026-10-25",
+                "label": "Oct 19 – 25",
             })
         );
     }

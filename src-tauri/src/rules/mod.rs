@@ -11,13 +11,14 @@ pub mod suggest;
 pub(crate) mod testing;
 pub mod types;
 
+use crate::calendar::titles::day_title;
 use crate::day::transform::continuity_ms;
 use crate::day::{ActivityBlock, DayView, LaneKind, Names, TimesheetCard};
 use crate::db::Db;
 use crate::db::dismissed::Dismissal;
 use crate::db::time::{Day, Ms, now_ms};
 use crate::error::AppResult;
-use crate::store::settings::Settings;
+use crate::store::settings::{DayTitle, Settings};
 use matching::{Compiled, compile, matches};
 pub use review::{approve, approve_all, approve_edited, approve_rule, dismiss};
 use types::{PreviewHit, RuleDay, RuleInput, RulePreview, Suggestion};
@@ -127,9 +128,11 @@ pub async fn preview(
         }
         total_ms += found.iter().map(|b| b.end - b.start).sum::<Ms>();
         found.reverse();
+        let day_label = day_title(day, DayTitle::Short, today);
         hits.extend(found.into_iter().map(|block| PreviewHit {
             block: block.clone(),
             day,
+            day_label: day_label.clone(),
         }));
         day = day.prev();
     }
@@ -506,7 +509,7 @@ mod tests {
 
         let undone = w.service().undo().await.unwrap();
 
-        assert_eq!(undone.value.as_deref(), Some("Record 30 min for Portal"));
+        assert_eq!(undone.value.as_deref(), Some("Record 30m for Portal"));
         assert!(w.recordings().await.is_empty());
         assert_eq!(w.suggestions(today).await, [suggestion]);
         assert_eq!(w.service().undo().await.unwrap().value, None);
@@ -860,6 +863,11 @@ mod tests {
                 (d5, on(d5, 9, 0)),
                 (d1, on(d1, 8, 0)),
             ]
+        );
+        let labels: Vec<&str> = preview.hits.iter().map(|h| h.day_label.as_str()).collect();
+        assert_eq!(
+            labels,
+            ["Wed, Jan 7", "Wed, Jan 7", "Mon, Jan 5", "Thu, Jan 1"]
         );
         assert_eq!(preview.total_ms, (60 + 30 + 45 + 60) * MIN);
         assert_eq!(preview.days, 3);

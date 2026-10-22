@@ -1,7 +1,7 @@
 use tauri::State;
 
 use super::saved::{self, SavedReport};
-use super::{PeriodTotals, Range, ReportFilter, ReportResult, run, shift, text};
+use super::{PeriodTotals, Range, ReportFilter, ReportResult, run, run_titled, shift, text};
 use crate::db::time::{Day, now_ms};
 use crate::error::AppResult;
 use crate::state::AppState;
@@ -11,7 +11,8 @@ pub async fn report_run(
     state: State<'_, AppState>,
     filter: ReportFilter,
 ) -> AppResult<ReportResult> {
-    run(&state.data.db()?, &filter, Day::today(), now_ms()).await
+    let format = state.settings.get().day_title;
+    run_titled(&state.data.db()?, &filter, format, Day::today(), now_ms()).await
 }
 
 /// The status bar's numbers for the shown period.

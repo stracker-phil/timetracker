@@ -1,7 +1,7 @@
 import { memo, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Tag } from "lucide-react";
 import type { CalendarEntry } from "../../api";
-import { formatHm } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
 import { Card } from "../Card";
@@ -77,10 +77,10 @@ export const WeekCard = memo(function WeekCard({ entry, day, focused, dragging, 
               {entry.tag}
             </>
           )}
-          {entry.spanIds.length > 1 && <span>{entry.spanIds.length} spans</span>}
+          {entry.spanIds.length > 1 && <span>{entry.spanIds.length} times</span>}
         </>
       }
-      trailing={formatHm(entry.durationMs)}
+      trailing={formatDuration(entry.durationMs)}
       onPointerDown={press}
       onDoubleClick={() => editEntry(entry)}
       onKeyDown={onKeyDown}

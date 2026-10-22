@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { Plus } from "lucide-react";
 import { api, type CalendarEntry, type MonthDay } from "../../api";
-import { formatHm } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
@@ -16,13 +16,13 @@ function EntryLine({ entry }: { entry: CalendarEntry }) {
       type="button"
       className="month-entry"
       style={{ "--rec": shadeColor(entry.color, entry.shade) } as CSSProperties}
-      title={`${entryName(entry)} · ${formatHm(entry.durationMs)}`}
-      aria-label={`${entryName(entry)}, ${formatHm(entry.durationMs)}`}
+      title={`${entryName(entry)} · ${formatDuration(entry.durationMs)}`}
+      aria-label={`${entryName(entry)}, ${formatDuration(entry.durationMs)}`}
       onClick={() => editEntry(entry)}
     >
       <span className="month-entry-dot" aria-hidden="true" />
       <span className="month-entry-name">{entry.note || entry.projectName}</span>
-      <span className="month-entry-time">{formatHm(entry.durationMs)}</span>
+      <span className="month-entry-time">{formatDuration(entry.durationMs)}</span>
     </button>
   );
 }
@@ -33,14 +33,14 @@ function DayCell({ cell }: { cell: MonthDay }) {
   return (
     <div className={classes.filter(Boolean).join(" ")} role="gridcell" aria-label={cell.day}>
       <div className="month-day-head">
-        <button type="button" className="month-day-date" aria-label={`${cell.day}${cell.recordedMs > 0 ? `, ${formatHm(cell.recordedMs)} recorded` : ""}`} onClick={() => useStore.getState().goToDay(cell.day)}>
+        <button type="button" className="month-day-date" aria-label={`${cell.day}${cell.recordedMs > 0 ? `, ${formatDuration(cell.recordedMs)} recorded` : ""}`} onClick={() => useStore.getState().goToDay(cell.day)}>
           <span className="month-day-weekday">{cell.weekday}</span>
           <span className="month-day-number">{cell.dayOfMonth}</span>
         </button>
         <button type="button" className="month-day-add" aria-label={`New recording on ${name}`} title="New recording" onClick={() => void useStore.getState().openNewRecording(cell.day)}>
           <Plus size="0.923rem" aria-hidden="true" />
         </button>
-        {cell.recordedMs > 0 && <span className="month-day-hours">{formatHm(cell.recordedMs)}</span>}
+        {cell.recordedMs > 0 && <span className="month-day-hours">{formatDuration(cell.recordedMs)}</span>}
       </div>
       {cell.entries.map((e) => (
         <EntryLine key={e.id} entry={e} />
@@ -62,7 +62,7 @@ export function MonthView() {
         detail={
           month && (
             <span className="toolbar-detail" aria-label="Totals">
-              recorded {formatHm(month.totalMs)}
+              recorded {formatDuration(month.totalMs)}
             </span>
           )
         }

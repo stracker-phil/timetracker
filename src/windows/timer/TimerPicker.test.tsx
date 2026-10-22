@@ -133,7 +133,7 @@ describe("TimerPicker", () => {
     it("shows the project, the elapsed time and the note instead of the form", async () => {
       renderPicker();
       expect(await screen.findByText("Docs")).toBeInTheDocument();
-      expect(screen.getByText("1:23")).toBeInTheDocument();
+      expect(screen.getByText("1h 23m")).toBeInTheDocument();
       expect(screen.getByText("writing")).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Start timer" })).not.toBeInTheDocument();
       expect(screen.queryByRole("list", { name: "Recent timers" })).not.toBeInTheDocument();

@@ -25,7 +25,6 @@ use ts_rs::TS;
 pub use billable::{Billable, billable, billable_text};
 pub use charts::ReportCharts;
 pub use groups::day_label;
-pub(crate) use groups::week_label;
 pub use notes::CopiedNotes;
 pub use period::{PeriodTotals, period_totals};
 pub use range::{Range, resolve, shift};
@@ -33,6 +32,7 @@ pub use rows::rounding_step;
 use table::ReportClient;
 pub use text::text;
 
+use crate::calendar::titles::period_title;
 use crate::db::clients::Client;
 use crate::db::projects::Project;
 use crate::db::recordings::{Recording, Span};
@@ -40,7 +40,7 @@ use crate::db::tags::Tag;
 use crate::db::time::{Day, Ms};
 use crate::db::{Db, clients, projects, recordings, tags};
 use crate::error::AppResult;
-use crate::store::settings::{Group, Rounding};
+use crate::store::settings::{DayTitle, Group, Rounding};
 
 const MINUTE: Ms = 60_000;
 
@@ -79,6 +79,8 @@ impl Default for ReportFilter {
 pub struct ReportRow {
     pub id: String,
     pub day: Day,
+    /// `Wed, Oct 21`, the short day title (with the year when it is not this year's).
+    pub day_label: String,
     /// The start of the first span and the end of the last one.
     pub start: Ms,
     pub end: Ms,
@@ -139,6 +141,8 @@ pub struct ReportResult {
     pub filter: ReportFilter,
     pub from: Day,
     pub to: Day,
+    /// The Reports toolbar's title, in the Day title's format (`titles::period_title`).
+    pub title: String,
     /// By `filter.groupBy`, for the text and MCP; left out on the wire, where `clients` carries the rows
     /// (the CLI's `--json` adds them back).
     #[serde(skip)]
@@ -168,7 +172,19 @@ pub struct ReportData {
     pub tags: Vec<Tag>,
 }
 
+/// `run_titled` with a long title, for the copied text, the CLI and MCP.
 pub async fn run(db: &Db, filter: &ReportFilter, today: Day, now: Ms) -> AppResult<ReportResult> {
+    run_titled(db, filter, DayTitle::Long, today, now).await
+}
+
+/// The report of `filter`'s range, titled in `format` (the Day title setting on the Reports screen).
+pub async fn run_titled(
+    db: &Db,
+    filter: &ReportFilter,
+    format: DayTitle,
+    today: Day,
+    now: Ms,
+) -> AppResult<ReportResult> {
     let (from, to) = resolve(&filter.range, today)?;
     let data = ReportData {
         recordings: recordings::list_for_range(db, from.bounds().0, to.bounds().1).await?,
@@ -176,15 +192,17 @@ pub async fn run(db: &Db, filter: &ReportFilter, today: Day, now: Ms) -> AppResu
         clients: clients::list(db, true).await?,
         tags: tags::list(db).await?,
     };
-    Ok(build(filter, (from, to), &data, now))
+    Ok(build(filter, (from, to), &data, now, format, today))
 }
 
-/// The report of `data` over the days `from..=to`; a running recording ends at `now`.
+/// The report of `data` over the days `from..=to`, titled in `format`; a running recording ends at `now`.
 pub fn build(
     filter: &ReportFilter,
     (from, to): (Day, Day),
     data: &ReportData,
     now: Ms,
+    format: DayTitle,
+    today: Day,
 ) -> ReportResult {
     let rows = rows::rows(filter, (from, to), data, now);
     let rounded_where = |keep: fn(&ReportRow) -> bool| -> i64 {
@@ -197,6 +215,7 @@ pub fn build(
         filter: filter.clone(),
         from,
         to,
+        title: period_title(from, to, format, today),
         groups: groups::groups(filter, &rows),
         total_ms: rows.iter().map(|r| r.duration_ms).sum(),
         total_rounded_ms,
@@ -266,6 +285,7 @@ mod tests {
 
         assert_eq!(wire["from"], D);
         assert_eq!(wire["to"], D);
+        assert_eq!(wire["title"], "Tue, Oct 20");
         assert_eq!(wire["totalMs"], minutes(90));
         assert_eq!(wire["totalRoundedMs"], minutes(90));
         assert_eq!(
@@ -279,6 +299,7 @@ mod tests {
             json!({
                 "id": "r1",
                 "day": D,
+                "dayLabel": "Tue, Oct 20",
                 "start": start,
                 "end": start + minutes(90),
                 "spans": [{ "start": start, "end": start + minutes(90) }],
@@ -294,6 +315,55 @@ mod tests {
                 "note": "fix login",
             })
         );
+    }
+
+    #[test]
+    fn the_title_follows_the_day_title_format() {
+        let data = data(vec![]);
+        for (format, from, to, expected) in [
+            (DayTitle::Long, D, D, "Tuesday, October 20, 2026"),
+            (DayTitle::Short, D, D, "Tue, Oct 20"),
+            (DayTitle::Long, "2026-10-01", "2026-10-31", "October 2026"),
+            (DayTitle::Short, "2026-10-01", "2026-10-31", "Oct 2026"),
+            (
+                DayTitle::Long,
+                "2026-10-20",
+                "2026-10-26",
+                "October 20 \u{2013} 26, 2026",
+            ),
+            (
+                DayTitle::Short,
+                "2026-10-20",
+                "2026-10-26",
+                "Oct 20 \u{2013} 26",
+            ),
+        ] {
+            let result = build(
+                &ReportFilter::default(),
+                (day(from), day(to)),
+                &data,
+                now(),
+                format,
+                day(TODAY),
+            );
+            assert_eq!(result.title, expected, "{format:?} {from}..{to}");
+        }
+    }
+
+    #[tokio::test]
+    async fn run_titles_the_report_in_the_long_format_and_run_titled_in_the_given_one() {
+        let db = Db::open_memory().await.unwrap();
+        let today = day("2026-10-21");
+
+        let long = run(&db, &ReportFilter::default(), today, now())
+            .await
+            .unwrap();
+        let short = run_titled(&db, &ReportFilter::default(), DayTitle::Short, today, now())
+            .await
+            .unwrap();
+
+        assert_eq!(long.title, "Wednesday, October 21, 2026");
+        assert_eq!(short.title, "Wed, Oct 21");
     }
 
     #[test]
@@ -424,6 +494,7 @@ mod tests {
                 filter,
                 from: day(D),
                 to: day("2026-10-26"),
+                title: "Oct 20 \u{2013} 26".into(),
                 groups: vec![],
                 total_ms: 0,
                 total_rounded_ms: 0,

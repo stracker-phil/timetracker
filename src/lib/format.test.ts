@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NOW } from "../test/now";
-import { capitalize, formatBytes, formatClock, formatDay, formatDuration, formatHm, formatShortDuration, relativeTime } from "./format";
+import { capitalize, formatBytes, formatClock, formatDay, formatDuration, relativeTime } from "./format";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -13,44 +13,20 @@ describe("capitalize", () => {
   });
 });
 
-describe("formatHm", () => {
-  it.each([
-    ["zero", 0, "0:00"],
-    ["seconds are dropped", 59_999, "0:00"],
-    ["minutes zero-padded", 5 * MIN, "0:05"],
-    ["hours and minutes", 6 * HOUR + 12 * MIN, "6:12"],
-    ["more than a day", 25 * HOUR, "25:00"],
-    ["negative counts as zero", -MIN, "0:00"],
-  ])("formats %s", (_name, ms, expected) => {
-    expect(formatHm(ms)).toBe(expected);
-  });
-});
-
 describe("formatDuration", () => {
-  it.each([
-    ["zero", 0, "0 min"],
-    ["less than a minute", 59_999, "0 min"],
-    ["whole minutes", 45 * MIN, "45 min"],
-    ["an hour and some minutes, zero-padded", 65 * MIN, "1 h 05 min"],
-    ["full hours", 10 * HOUR, "10 h 00 min"],
-    ["a negative span", -5 * MIN, "0 min"],
-  ])("formats %s", (_name, ms, expected) => {
-    expect(formatDuration(ms)).toBe(expected);
-  });
-});
-
-describe("formatShortDuration", () => {
   it.each([
     ["zero", 0, "0m"],
     ["less than a minute", 59_999, "0m"],
-    ["whole minutes without padding", 5 * MIN, "5m"],
+    ["whole minutes without padding", 30 * MIN, "30m"],
     ["just under an hour", 59 * MIN, "59m"],
     ["an exact hour, minutes zero-padded", HOUR, "1h 00m"],
     ["an hour and some minutes, zero-padded", 65 * MIN, "1h 05m"],
+    ["three and a half hours", 3 * HOUR + 30 * MIN, "3h 30m"],
+    ["twelve and a half hours", 12 * HOUR + 30 * MIN, "12h 30m"],
     ["more than a day", 25 * HOUR + 30 * MIN, "25h 30m"],
     ["a negative span", -5 * MIN, "0m"],
   ])("formats %s", (_name, ms, expected) => {
-    expect(formatShortDuration(ms)).toBe(expected);
+    expect(formatDuration(ms)).toBe(expected);
   });
 });
 

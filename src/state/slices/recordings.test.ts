@@ -88,16 +88,16 @@ describe("recordings slice", () => {
       state().setSelection({ ...input.spans[0], blockIds: [] });
       await state().createRecording(input);
       expect(mocked.recordingCreate).toHaveBeenCalledWith(input, "cancel");
-      expect(toastMessages()).toContain("Recorded 45 min for Website");
+      expect(toastMessages()).toContain("Recorded 45m for Website");
       expect(state().toasts[0].action?.label).toBe("Undo");
       expect(state().selection).toBeNull();
     });
 
     it("runs the Undo action of the toast through the api", async () => {
-      mocked.undo.mockResolvedValueOnce("Record 45 min for Website");
+      mocked.undo.mockResolvedValueOnce("Record 45m for Website");
       await state().createRecording(input);
       state().toasts[0].action?.run();
-      await vi.waitFor(() => expect(toastMessages()).toContain("Undid “Record 45 min for Website”"));
+      await vi.waitFor(() => expect(toastMessages()).toContain("Undid “Record 45m for Website”"));
     });
 
     it("asks before replacing on an overlap and retries with replace on Replace", async () => {

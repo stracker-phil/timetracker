@@ -203,7 +203,7 @@ describe("data and help commands", () => {
     mocked.backupExport.mockResolvedValue({ bytes: 10, recordings: 3, activities: 40 });
     expect(runCommand("data.exportBackup")).toBe(true);
     await vi.waitFor(() => expect(mocked.backupExport).toHaveBeenCalledWith("/tmp/backup.json"));
-    await vi.waitFor(() => expect(state().toasts.map((t) => t.message)).toEqual(["Backup written: 3 recordings, 40 activity spans"]));
+    await vi.waitFor(() => expect(state().toasts.map((t) => t.message)).toEqual(["Backup written: 3 recordings, 40 activities"]));
   });
 
   it("data.exportBackup writes nothing when the save panel is cancelled", async () => {

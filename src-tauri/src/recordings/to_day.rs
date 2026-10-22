@@ -273,7 +273,7 @@ mod tests {
         );
         assert_eq!(copied.days, [next_day()]);
         assert_eq!(w.rows().await, [original, copy.clone()]);
-        assert_eq!(w.status().await, undo_label("Record 1 h 30 min for Acme"));
+        assert_eq!(w.status().await, undo_label("Record 1h 30m for Acme"));
     }
 
     #[tokio::test]
@@ -561,7 +561,7 @@ mod tests {
             (&original.project_id, &original.note, &original.tag_id)
         );
         assert_eq!(w.rows().await, [original, copy]);
-        assert_eq!(w.status().await, undo_label("Record 2 h 30 min for Acme"));
+        assert_eq!(w.status().await, undo_label("Record 2h 30m for Acme"));
     }
 
     #[tokio::test]

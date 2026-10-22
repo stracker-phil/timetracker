@@ -25,7 +25,7 @@ use ts_rs::TS;
 use crate::db::projects::Project;
 pub use crate::db::recordings::Span;
 use crate::db::recordings::{self, Recording, RecordingPatch, RecordingSpan, respanned};
-use crate::db::time::{Day, Ms, now_ms};
+use crate::db::time::{Day, Ms, format_duration, now_ms};
 use crate::db::{Db, new_id};
 use crate::error::AppResult;
 use checks::{check_tag, checked_note, require_finished, snapped_spans, usable_project};
@@ -84,15 +84,6 @@ fn new_spans(spans: &[Span]) -> Vec<RecordingSpan> {
         .iter()
         .map(|s| RecordingSpan::new(s.start, Some(s.end)))
         .collect()
-}
-
-/// `1 h 05 min`, `45 min`.
-fn duration_text(ms: Ms) -> String {
-    let minutes = ms / MINUTE_MS;
-    match (minutes / 60, minutes % 60) {
-        (0, m) => format!("{m} min"),
-        (h, m) => format!("{h} h {m:02} min"),
-    }
 }
 
 /// The local days a span touches; an empty span its start's day.
@@ -190,7 +181,7 @@ impl Recordings<'_> {
         let (recording, project) = self.new_recording(input).await?;
         let label = format!(
             "Record {} for {}",
-            duration_text(recording.duration(recording.start())),
+            format_duration(recording.duration(recording.start())),
             project.name
         );
         let base = Op::Create {
@@ -576,10 +567,10 @@ mod tests {
     #[tokio::test]
     async fn create_is_labelled_with_the_duration_and_the_project() {
         for (minutes, label) in [
-            (45, "Record 45 min for Acme"),
-            (60, "Record 1 h 00 min for Acme"),
-            (65, "Record 1 h 05 min for Acme"),
-            (120, "Record 2 h 00 min for Acme"),
+            (45, "Record 45m for Acme"),
+            (60, "Record 1h 00m for Acme"),
+            (65, "Record 1h 05m for Acme"),
+            (120, "Record 2h 00m for Acme"),
         ] {
             let w = World::new().await;
 
@@ -629,7 +620,7 @@ mod tests {
         w.create_spans(&[(at(14, 25), at(15, 0)), (at(16, 5), at(20, 15))])
             .await;
 
-        assert_eq!(w.status().await, undo_label("Record 4 h 45 min for Acme"));
+        assert_eq!(w.status().await, undo_label("Record 4h 45m for Acme"));
     }
 
     #[tokio::test]
@@ -896,7 +887,7 @@ mod tests {
         }
 
         assert_eq!(w.rows().await, [saved]);
-        assert_eq!(w.status().await, undo_label("Record 1 h 00 min for Acme"));
+        assert_eq!(w.status().await, undo_label("Record 1h 00m for Acme"));
     }
 
     #[tokio::test]
@@ -977,21 +968,21 @@ mod tests {
 
         let undone = w.service().undo().await.unwrap();
 
-        assert_eq!(undone.value.as_deref(), Some("Record 1 h 00 min for Acme"));
+        assert_eq!(undone.value.as_deref(), Some("Record 1h 00m for Acme"));
         assert!(w.rows().await.is_empty());
         assert_eq!(
             w.status().await,
             UndoStatus {
                 undo_label: None,
-                redo_label: Some("Record 1 h 00 min for Acme".into())
+                redo_label: Some("Record 1h 00m for Acme".into())
             }
         );
 
         let redone = w.service().redo().await.unwrap();
 
-        assert_eq!(redone.value.as_deref(), Some("Record 1 h 00 min for Acme"));
+        assert_eq!(redone.value.as_deref(), Some("Record 1h 00m for Acme"));
         assert_eq!(w.rows().await, [saved]);
-        assert_eq!(w.status().await, undo_label("Record 1 h 00 min for Acme"));
+        assert_eq!(w.status().await, undo_label("Record 1h 00m for Acme"));
     }
 
     #[tokio::test]
@@ -1060,7 +1051,7 @@ mod tests {
 
         w.create(at(12, 0), at(13, 0)).await;
 
-        assert_eq!(w.status().await, undo_label("Record 1 h 00 min for Acme"));
+        assert_eq!(w.status().await, undo_label("Record 1h 00m for Acme"));
         assert_eq!(w.service().redo().await.unwrap().value, None);
     }
 

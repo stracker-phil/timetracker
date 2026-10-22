@@ -3,12 +3,13 @@
 use std::collections::HashMap;
 
 use super::{MINUTE, ReportData, ReportFilter, ReportRow};
+use crate::calendar::titles::day_title;
 use crate::db::clients::Client;
 use crate::db::projects::Project;
 use crate::db::recordings::{Recording, Span};
 use crate::db::tags::Tag;
 use crate::db::time::{Day, Ms, clip};
-use crate::store::settings::Rounding;
+use crate::store::settings::{DayTitle, Rounding};
 
 fn wanted(filter: &ReportFilter, project: &Project, recording: &Recording) -> bool {
     let kept = |ids: &[String], id: &String| ids.is_empty() || ids.contains(id);
@@ -60,6 +61,7 @@ pub(super) fn rows(
             rows.push(ReportRow {
                 id: recording.id.clone(),
                 day,
+                day_label: day_title(day, DayTitle::Short, Day::of(now)),
                 start,
                 end,
                 spans,
@@ -272,6 +274,8 @@ mod tests {
             (day("2026-10-21"), day("2026-10-21")),
             &data(vec![r]),
             at("2026-10-21", 11, 30),
+            DayTitle::Short,
+            day(TODAY),
         );
 
         assert_eq!(result.groups[0].rows[0].end, at("2026-10-21", 11, 30));
@@ -845,6 +849,8 @@ mod tests {
             (day(D), day(D)),
             &data(vec![r]),
             at(D, 11, 20),
+            DayTitle::Short,
+            day(TODAY),
         );
 
         let row = &result.groups[0].rows[0];

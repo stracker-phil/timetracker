@@ -48,6 +48,7 @@ describe("Settings Data page", () => {
         recordings: 7,
         projects: 3,
         firstActivity: new Date(2026, 0, 5, 12).getTime(),
+        firstActivityLabel: "January 5, 2026",
         sizeBytes: 1536,
       }),
     );
@@ -57,7 +58,8 @@ describe("Settings Data page", () => {
       expect(screen.getByText("12,345")).toBeInTheDocument();
       expect(screen.getByText("7")).toBeInTheDocument();
       expect(screen.getByText("3")).toBeInTheDocument();
-      expect(screen.getByText("2026-01-05")).toBeInTheDocument();
+      expect(screen.getByText("Activities")).toBeInTheDocument();
+      expect(screen.getByText("January 5, 2026")).toBeInTheDocument();
       expect(screen.getByText("1.5 KB")).toBeInTheDocument();
     });
 
@@ -77,7 +79,7 @@ describe("Settings Data page", () => {
 
     it("shows the error in an alert instead of the counts", () => {
       expect(screen.getByRole("alert")).toHaveTextContent("database is locked");
-      expect(screen.queryByText("Activity spans")).not.toBeInTheDocument();
+      expect(screen.queryByText("Activities")).not.toBeInTheDocument();
       expect(screen.queryByText("99")).not.toBeInTheDocument();
     });
 
@@ -232,7 +234,7 @@ describe("Settings Data page", () => {
       mocked.chooseSavePath.mockResolvedValue("/tmp/backup.json");
       mocked.backupExport.mockResolvedValue({ bytes: 10, recordings: 1234, activities: 56 });
       await userEvent.click(screen.getByRole("button", { name: /Export backup/ }));
-      expect(await screen.findByText("Backup written: 1,234 recordings, 56 activity spans")).toBeInTheDocument();
+      expect(await screen.findByText("Backup written: 1,234 recordings, 56 activities")).toBeInTheDocument();
       expect(mocked.chooseSavePath).toHaveBeenCalledWith(expect.stringMatching(/^timetracker-backup-\d{4}-\d{2}-\d{2}$/), "json");
       expect(mocked.backupExport).toHaveBeenCalledWith("/tmp/backup.json");
     });

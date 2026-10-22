@@ -151,8 +151,9 @@ Other apps write activity through the CLI, `timetracker://` links or the `activi
   zones (`chrono-tz`, dev only) and never the machine's.
 - `clip(start, end, bounds, now)` is the part of a span inside `bounds`; an open span ends at `now`; `None`
   when nothing is inside.
-- `format_hm(ms)` is a duration as `6:24` (hours unpadded, negative as zero), the one text form the CLI, the
-  report text, the billable line and the tray use.
+- `format_duration(ms)` is the UI's one duration format, `1h 05m`, `30m`, `0m` (negative as zero): undo labels
+  and the tray use it, and the page's `formatDuration` mirrors it. `format_hm(ms)` (`6:24`, hours unpadded) is
+  left to the CLI, the copied report text and the CLI's billable line.
 
 The page never computes day bounds or week starts; it only formats.
 

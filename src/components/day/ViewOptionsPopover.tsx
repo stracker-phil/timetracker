@@ -1,5 +1,5 @@
 import type { DayApp, HiddenApp } from "../../api";
-import { formatShortDuration } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { AppIcon } from "../AppIcon";
 import { Modal } from "../Modal";
@@ -13,7 +13,7 @@ const NO_HIDDEN: HiddenApp[] = [];
 function AppLaneRow({ app }: { app: DayApp }) {
   const toggle = (ownLane: boolean) => void useStore.getState().setAppSetting(app.appKey, { ownLane });
   return (
-    <Row label={app.app} icon={<AppIcon app={app.app} bundleId={app.bundleId} size={16} />} description={formatShortDuration(app.activeMs)}>
+    <Row label={app.app} icon={<AppIcon app={app.app} bundleId={app.bundleId} size={16} />} description={formatDuration(app.activeMs)}>
       <input className="switch" type="checkbox" role="switch" aria-label={`${app.app} lane`} checked={app.ownLane} onChange={(e) => toggle(e.target.checked)} />
     </Row>
   );
@@ -23,7 +23,7 @@ function HiddenApps({ apps }: { apps: HiddenApp[] }) {
   const unhide = (appKey: string) => void useStore.getState().setAppSetting(appKey, { hidden: false });
   return (
     <Group title={apps.length > 0 ? `Hidden apps (${apps.length})` : "Hidden apps"}>
-      {apps.length === 0 && <Row label="No hidden apps" description="A block's menu hides its app." />}
+      {apps.length === 0 && <Row label="No hidden apps" description="An activity's menu hides its app." />}
       {apps.map((app) => (
         <Row key={app.appKey} label={app.app}>
           <button type="button" className="btn" onClick={() => unhide(app.appKey)}>
@@ -52,8 +52,8 @@ export function ViewOptionsPopover() {
         <Switch label="Summary" description={`The main app of every ${timeline.summaryMinutes} minutes.`} checked={timeline.summaryLane} onChange={(summaryLane) => saveTimeline({ summaryLane })} />
         <Switch label="Activity" description="Everything tracked, app by app." checked={timeline.showAllActivity} onChange={(showAllActivity) => saveTimeline({ showAllActivity })} />
       </Group>
-      <Group title="Blocks">
-        <Switch label="Compact" description="Shorter rows, one line of text per block." checked={timeline.compact} onChange={(compact) => saveTimeline({ compact })} />
+      <Group title="Activity">
+        <Switch label="Compact" description="Shorter rows, one line of text per activity." checked={timeline.compact} onChange={(compact) => saveTimeline({ compact })} />
         <Segmented label="Titles" description="The document or page name, or the app." options={TITLES} value={timeline.titles} onChange={(titles) => saveTimeline({ titles })} />
       </Group>
       <Group title="App lanes">

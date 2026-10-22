@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ChartSlice, ReportCharts } from "../../api";
-import { formatHours, plural } from "../../lib/format";
+import { formatDuration, plural } from "../../lib/format";
 import { accentColor, AccentDot } from "../Accent";
 
 type ChartBy = "client" | "project" | "tag";
@@ -30,7 +30,7 @@ function labelPosition(slice: ChartSlice) {
 
 function Donut({ slices, totalMs, caption, name }: { slices: ChartSlice[]; totalMs: number; caption: string; name: string }) {
   const gap = slices.length > 1 ? GAP : 0;
-  const summary = slices.map((s) => `${s.label} ${formatHours(s.roundedMs)} (${percentLabel(s)})`).join(", ");
+  const summary = slices.map((s) => `${s.label} ${formatDuration(s.roundedMs)} (${percentLabel(s)})`).join(", ");
   return (
     <svg className="donut" viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label={`${name}: ${summary}`}>
       <circle className="donut-track" cx={CENTER} cy={CENTER} r={RADIUS} />
@@ -56,7 +56,7 @@ function Donut({ slices, totalMs, caption, name }: { slices: ChartSlice[]; total
           </text>
         ))}
       <text className="donut-total" x={CENTER} y={CENTER - 6}>
-        {formatHours(totalMs)}
+        {formatDuration(totalMs)}
       </text>
       <text className="donut-caption" x={CENTER} y={CENTER + 16}>
         {caption}
@@ -90,7 +90,7 @@ export function ReportChart({ charts, totalMs, initial }: { charts: ReportCharts
             <li key={s.key}>
               <AccentDot accent={s.color} shade={s.shade} />
               <span className="grow-text">{s.label}</span>
-              <span className="report-hours">{formatHours(s.roundedMs)}</span>
+              <span className="report-hours">{formatDuration(s.roundedMs)}</span>
             </li>
           ))}
         </ul>

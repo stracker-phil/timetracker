@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::calendar::titles::moments_label;
 use crate::db::Db;
 use crate::db::activities::{self, ActivityRow};
 use crate::db::away::{self, AwayRow};
@@ -40,12 +41,14 @@ pub struct DeleteResult {
 }
 
 /// How many spans deleting a range would remove.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct ActivityCount {
     pub activities: usize,
     pub away: usize,
+    /// The range, `Wed, Oct 21 09:30 – Thu, Oct 22 10:00` (`titles::moments_label`).
+    pub range_label: String,
 }
 
 /// The last delete of this run; a new one replaces it.
@@ -75,11 +78,13 @@ fn validate(from: Ms, to: Ms) -> AppResult<()> {
     Ok(())
 }
 
-pub async fn count(db: &Db, from: Ms, to: Ms) -> AppResult<ActivityCount> {
+/// What deleting `[from, to)` would remove, with the range labelled for `today`.
+pub async fn count(db: &Db, from: Ms, to: Ms, today: Day) -> AppResult<ActivityCount> {
     validate(from, to)?;
     Ok(ActivityCount {
         activities: activities::count_range(db, from, to).await? as usize,
         away: away::count_range(db, from, to).await? as usize,
+        range_label: moments_label(from, to, today),
     })
 }
 
@@ -182,6 +187,25 @@ mod tests {
     const T: Ms = 1_800_000_000_000;
     const HOUR: Ms = 3_600_000;
 
+    async fn counted(db: &Db, from: Ms, to: Ms) -> AppResult<ActivityCount> {
+        count(db, from, to, Day::parse("2026-10-22").unwrap()).await
+    }
+
+    fn assert_moments_shape(label: &str) {
+        let parts: Vec<&str> = label.split(" \u{2013} ").collect();
+        assert_eq!(parts.len(), 2, "{label}");
+        for part in parts {
+            let (title, clock) = part.rsplit_once(' ').unwrap();
+            assert!(title.contains(", "), "{label}");
+            assert!(
+                clock.len() == 5
+                    && clock.as_bytes()[2] == b':'
+                    && clock.replace(':', "").bytes().all(|b| b.is_ascii_digit()),
+                "{label}"
+            );
+        }
+    }
+
     async fn away_span(db: &Db, start: Ms, end: Option<Ms>) -> AwayRow {
         let id = away::insert(
             db,
@@ -249,18 +273,13 @@ mod tests {
         seeded(&db).await;
         let (from, to) = (T + 2 * HOUR, T + 4 * HOUR);
 
-        let counted = count(&db, from, to).await.unwrap();
+        let counted = counted(&db, from, to).await.unwrap();
         let outcome = delete(&db, &DeleteBuffer::default(), None, from, to, T + 7 * HOUR)
             .await
             .unwrap();
 
-        assert_eq!(
-            counted,
-            ActivityCount {
-                activities: 2,
-                away: 2
-            }
-        );
+        assert_eq!((counted.activities, counted.away), (2, 2));
+        assert_moments_shape(&counted.range_label);
         assert_eq!(
             (outcome.result.activities, outcome.result.away),
             (counted.activities, counted.away)
@@ -272,13 +291,10 @@ mod tests {
         let db = Db::open_memory().await.unwrap();
         seeded(&db).await;
 
-        assert_eq!(
-            count(&db, T + 10 * HOUR, T + 11 * HOUR).await.unwrap(),
-            ActivityCount {
-                activities: 0,
-                away: 0
-            }
-        );
+        let empty = counted(&db, T + 10 * HOUR, T + 11 * HOUR).await.unwrap();
+
+        assert_eq!((empty.activities, empty.away), (0, 0));
+        assert_moments_shape(&empty.range_label);
     }
 
     #[tokio::test]
@@ -312,13 +328,8 @@ mod tests {
         let away_starts = away_span(&db, T + 2 * HOUR, Some(T + 3 * HOUR)).await;
 
         let range = (T + HOUR, T + 2 * HOUR);
-        assert_eq!(
-            count(&db, range.0, range.1).await.unwrap(),
-            ActivityCount {
-                activities: 0,
-                away: 0
-            }
-        );
+        let touching = counted(&db, range.0, range.1).await.unwrap();
+        assert_eq!((touching.activities, touching.away), (0, 0));
         delete(
             &db,
             &DeleteBuffer::default(),
@@ -391,11 +402,11 @@ mod tests {
 
         for (from, to) in [(T, T), (T + HOUR, T), (T, T + year + 1)] {
             let buffer = DeleteBuffer::default();
-            let counted = count(&db, from, to).await.unwrap_err();
+            let refused = counted(&db, from, to).await.unwrap_err();
             let deleted = delete(&db, &buffer, None, from, to, T).await.unwrap_err();
             assert!(
-                matches!(counted, AppError::InvalidInput(_)),
-                "{from} {to}: {counted:?}"
+                matches!(refused, AppError::InvalidInput(_)),
+                "{from} {to}: {refused:?}"
             );
             assert!(
                 matches!(deleted, AppError::InvalidInput(_)),
@@ -403,7 +414,7 @@ mod tests {
             );
             assert_eq!(activity_ids(&db).await, [row.id], "{from} {to}");
         }
-        assert!(count(&db, T, T + year).await.is_ok());
+        assert!(counted(&db, T, T + year).await.is_ok());
     }
 
     #[tokio::test]
@@ -604,10 +615,15 @@ mod tests {
         assert_eq!(
             serde_json::to_value(ActivityCount {
                 activities: 2,
-                away: 1
+                away: 1,
+                range_label: "Wed, Oct 21 09:30 \u{2013} Thu, Oct 22 10:00".into(),
             })
             .unwrap(),
-            serde_json::json!({"activities": 2, "away": 1})
+            serde_json::json!({
+                "activities": 2,
+                "away": 1,
+                "rangeLabel": "Wed, Oct 21 09:30 \u{2013} Thu, Oct 22 10:00"
+            })
         );
     }
 

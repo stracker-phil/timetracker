@@ -54,7 +54,7 @@ export function Dialogs() {
     case "datePicker":
       return <DatePickerPopover />;
     case "deleteActivity":
-      return <DeleteActivityDialog key={`${dialog.day}-${dialog.range}`} day={dialog.day} bounds={dialog.bounds} range={dialog.range} />;
+      return <DeleteActivityDialog key={`${dialog.day}-${dialog.range}`} label={dialog.label} bounds={dialog.bounds} range={dialog.range} />;
     case "rule":
       return <RuleSheet key={dialog.id ?? ""} id={dialog.id} draft={dialog.draft} onClose={useStore.getState().closeDialog} />;
     case "client":

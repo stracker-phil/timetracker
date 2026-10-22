@@ -55,7 +55,7 @@ impl Recordings<'_> {
         let mut spans = current.spans.clone();
         spans.push(RecordingSpan::new(span.start, Some(span.end)));
         let after = with_spans(&current, spans)?;
-        self.replace(&mut undo, current, after, overlap, "Add span")
+        self.replace(&mut undo, current, after, overlap, "Add time")
             .await
     }
 
@@ -150,7 +150,7 @@ impl Recordings<'_> {
             after: after.clone(),
         };
         let change = self
-            .commit(&mut undo, "Remove span".into(), op, &after.id)
+            .commit(&mut undo, "Remove time".into(), op, &after.id)
             .await?;
         Ok(change.map(Some))
     }
@@ -177,7 +177,7 @@ impl Recordings<'_> {
             before: current,
             after: after.clone(),
         };
-        self.commit(&mut undo, "Split span".into(), op, &after.id)
+        self.commit(&mut undo, "Split time".into(), op, &after.id)
             .await
     }
 
@@ -252,7 +252,7 @@ mod tests {
         assert_eq!(added.value.spans[0].id, saved.spans[0].id);
         assert_eq!(w.rows().await, [added.value.clone()]);
         assert!(added.days.contains(&Day::of(at(12, 5))));
-        assert_round_trip(&w, "Add span", &before).await;
+        assert_round_trip(&w, "Add time", &before).await;
     }
 
     #[tokio::test]
@@ -391,7 +391,7 @@ mod tests {
         assert_eq!(w.rows().await, [saved]);
         assert_eq!(
             w.status().await.undo_label.as_deref(),
-            Some("Record 2 h 00 min for Acme")
+            Some("Record 2h 00m for Acme")
         );
     }
 
@@ -743,7 +743,7 @@ mod tests {
         assert_eq!(times(&rest), [(at(13, 0), at(14, 0))]);
         assert_eq!(rest.spans[0].id, saved.spans[1].id);
         assert_eq!(w.rows().await, [rest]);
-        assert_round_trip(&w, "Remove span", &before).await;
+        assert_round_trip(&w, "Remove time", &before).await;
     }
 
     #[tokio::test]
@@ -810,7 +810,7 @@ mod tests {
         );
         assert_eq!(split.spans[1].id, saved.spans[1].id);
         assert_ne!(split.spans[2].id, saved.spans[1].id);
-        assert_round_trip(&w, "Split span", &before).await;
+        assert_round_trip(&w, "Split time", &before).await;
     }
 
     #[tokio::test]
@@ -838,7 +838,7 @@ mod tests {
         assert_eq!(w.rows().await, [saved]);
         assert_eq!(
             w.status().await.undo_label.as_deref(),
-            Some("Record 1 h 00 min for Acme")
+            Some("Record 1h 00m for Acme")
         );
     }
 
@@ -922,7 +922,7 @@ mod tests {
         assert_eq!(w.rows().await, [saved]);
         assert_eq!(
             w.status().await.undo_label.as_deref(),
-            Some("Record 1 h 00 min for Acme")
+            Some("Record 1h 00m for Acme")
         );
     }
 

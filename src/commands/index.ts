@@ -53,7 +53,7 @@ const shownDayView = () => {
 
 function openDeleteActivity(range: boolean) {
   const view = shownDayView();
-  if (view) useStore.getState().openDialog({ type: "deleteActivity", day: view.day, bounds: view.bounds, range });
+  if (view) useStore.getState().openDialog({ type: "deleteActivity", day: view.day, label: view.label, bounds: view.bounds, range });
 }
 
 /** Takes the focus off a Tabbed-to button, which would keep ↵ and Space (`activatesControl`). */
@@ -230,7 +230,6 @@ const APP_COMMANDS: Command[] = [
   { id: "palette.toggle", title: "Command palette", scope: "global", defaultBinding: "Mod+K", menu: true, run: togglePalette },
   { id: "sidebar.toggle", title: "Toggle sidebar", scope: "global", defaultBinding: "Mod+Ctrl+S", menu: true, run: () => useStore.getState().toggleSidebar() },
   ...VIEWS.map(({ id, label }, i): Command => ({ id: `view.${id}`, title: `Show ${label}`, scope: "global", defaultBinding: `Mod+${i + 1}`, menu: true, checked: () => useStore.getState().view === id, run: () => useStore.getState().setView(id) })),
-  { id: "view.hours", title: "Show Hours (today's Day view)", scope: "global", menu: true, run: () => useStore.getState().showHours() },
   { id: "zoom.in", title: "Zoom in", scope: "global", defaultBinding: "Mod+=", menu: true, run: zoomIn },
   { id: "zoom.out", title: "Zoom out", scope: "global", defaultBinding: "Mod+-", menu: true, run: zoomOut },
   { id: "zoom.reset", title: "Reset zoom", scope: "global", defaultBinding: "Mod+0", menu: true, run: resetZoom },
@@ -241,15 +240,15 @@ const APP_COMMANDS: Command[] = [
   { id: "nav.next", title: "Next day, week, month or period", scope: "dated", defaultBinding: "N", menu: true, run: () => useStore.getState().step(1) },
   { id: "nav.today", title: "Go to today", scope: "dated", defaultBinding: "O", menu: true, run: () => useStore.getState().goToday() },
   { id: "nav.goToDate", title: "Go to date…", scope: "dated", menu: true, run: () => useStore.getState().openDialog({ type: "datePicker" }) },
-  { id: "day.nextBlock", title: "Next block", scope: "day", defaultBinding: "J", menu: true, run: () => moveFocus(stepBlock, 1) },
-  { id: "day.prevBlock", title: "Previous block", scope: "day", defaultBinding: "K", menu: true, run: () => moveFocus(stepBlock, -1) },
-  { id: "day.prevLane", title: "Block in the lane to the left", scope: "day", defaultBinding: "H", run: () => moveFocus(stepLane, -1) },
-  { id: "day.nextLane", title: "Block in the lane to the right", scope: "day", defaultBinding: "L", run: () => moveFocus(stepLane, 1) },
-  { id: "day.details", title: "Block details", scope: "day", defaultBinding: "Space", when: hasFocusedBlock, run: () => useStore.getState().toggleDetails() },
-  { id: "day.blockMenu", title: "Block actions…", scope: "day", defaultBinding: "Ctrl+Enter", when: hasFocusedBlock, run: () => useStore.getState().requestBlockMenu() },
-  { id: "day.selectBlock", title: "Select block", scope: "day", defaultBinding: "V", when: hasFocusedBlock, run: selectFocusedBlock },
-  { id: "day.extendNext", title: "Extend selection to the next block", scope: "day", defaultBinding: "Shift+J", run: () => extendToBlock(1) },
-  { id: "day.extendPrev", title: "Extend selection to the previous block", scope: "day", defaultBinding: "Shift+K", run: () => extendToBlock(-1) },
+  { id: "day.nextBlock", title: "Next activity", scope: "day", defaultBinding: "J", menu: true, run: () => moveFocus(stepBlock, 1) },
+  { id: "day.prevBlock", title: "Previous activity", scope: "day", defaultBinding: "K", menu: true, run: () => moveFocus(stepBlock, -1) },
+  { id: "day.prevLane", title: "Activity in the lane to the left", scope: "day", defaultBinding: "H", run: () => moveFocus(stepLane, -1) },
+  { id: "day.nextLane", title: "Activity in the lane to the right", scope: "day", defaultBinding: "L", run: () => moveFocus(stepLane, 1) },
+  { id: "day.details", title: "Activity details", scope: "day", defaultBinding: "Space", when: hasFocusedBlock, run: () => useStore.getState().toggleDetails() },
+  { id: "day.blockMenu", title: "Activity actions…", scope: "day", defaultBinding: "Ctrl+Enter", when: hasFocusedBlock, run: () => useStore.getState().requestBlockMenu() },
+  { id: "day.selectBlock", title: "Select activity", scope: "day", defaultBinding: "V", when: hasFocusedBlock, run: selectFocusedBlock },
+  { id: "day.extendNext", title: "Extend selection to the next activity", scope: "day", defaultBinding: "Shift+J", run: () => extendToBlock(1) },
+  { id: "day.extendPrev", title: "Extend selection to the previous activity", scope: "day", defaultBinding: "Shift+K", run: () => extendToBlock(-1) },
   { id: "day.settings", title: "View options", scope: "day", menu: true, run: () => useStore.getState().openDialog({ type: "viewOptions" }) },
   { id: "activity.deleteDay", title: "Delete activity for this day…", scope: "day", menu: true, when: () => !!shownDayView(), run: () => openDeleteActivity(false) },
   { id: "activity.deleteRange", title: "Delete activity in a range…", scope: "day", menu: true, when: () => !!shownDayView(), run: () => openDeleteActivity(true) },
@@ -273,8 +272,8 @@ const APP_COMMANDS: Command[] = [
   { id: "timer.stop", title: "Stop timer", scope: "global", defaultBinding: "Mod+Shift+.", menu: true, when: timerRuns, run: () => void useStore.getState().stopTimer() },
   ...SUGGESTION_COMMANDS,
   { id: "timer.toggle", title: "Start or stop timer", scope: "global", run: () => (timerRuns() ? void useStore.getState().stopTimer() : void api.timerPickerOpen()) },
-  { id: "edit.undo", title: "Undo recording change", scope: "global", defaultBinding: "Mod+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(false) },
-  { id: "edit.redo", title: "Redo recording change", scope: "global", defaultBinding: "Mod+Shift+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(true) },
+  { id: "edit.undo", title: "Undo", scope: "global", defaultBinding: "Mod+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(false) },
+  { id: "edit.redo", title: "Redo", scope: "global", defaultBinding: "Mod+Shift+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(true) },
   { id: "reports.copyText", title: "Copy report as text", scope: "reports", defaultBinding: "Mod+Shift+C", menu: true, run: () => void copyReport() },
   { id: "reports.copyNotes", title: "Copy report notes", scope: "reports", defaultBinding: "Mod+Alt+C", menu: true, run: () => void copyReportNotes() },
   { id: "reports.save", title: "Save report…", scope: "reports", run: promptSaveReport },

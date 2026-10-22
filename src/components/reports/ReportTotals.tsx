@@ -1,5 +1,5 @@
 import type { ReportResult } from "../../api";
-import { formatCount, formatHours } from "../../lib/format";
+import { formatCount, formatDuration } from "../../lib/format";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -18,13 +18,13 @@ export function ReportTotals({ result }: { result: ReportResult }) {
     <dl className="report-totals" aria-label="Totals">
       <div className="report-stat report-stat--total">
         <dt>Total</dt>
-        <dd>{formatHours(result.totalRoundedMs)}</dd>
-        {roundedAway && <dd className="report-stat-note">{formatHours(result.totalMs)} before rounding</dd>}
+        <dd>{formatDuration(result.totalRoundedMs)}</dd>
+        {roundedAway && <dd className="report-stat-note">{formatDuration(result.totalMs)} before rounding</dd>}
       </div>
       <Stat label="Recordings" value={formatCount(result.recordingCount)} />
       <Stat label="Projects" value={formatCount(result.projectCount)} />
-      {result.untaggedRoundedMs > 0 && <Stat label="Untagged" value={formatHours(result.untaggedRoundedMs)} />}
-      {billable.percent != null && <Stat label="Billable" value={`${formatHours(billable.billableMs)} · ${billable.percent} %`} />}
+      {result.untaggedRoundedMs > 0 && <Stat label="Untagged" value={formatDuration(result.untaggedRoundedMs)} />}
+      {billable.percent != null && <Stat label="Billable" value={`${formatDuration(billable.billableMs)} · ${billable.percent} %`} />}
     </dl>
   );
 }

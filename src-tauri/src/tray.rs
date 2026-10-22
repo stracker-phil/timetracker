@@ -8,7 +8,7 @@ use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Wry};
 
-use crate::db::time::{format_hm, now_ms};
+use crate::db::time::{format_duration, now_ms};
 use crate::error::AppResult;
 use crate::lock::MutexExt;
 use crate::recordings::timer::TimerInput;
@@ -147,7 +147,7 @@ fn try_set_timer(
     };
     let mut current = handle.0.lock_unpoisoned();
     current.timer = TimerMenu {
-        running: running.map(|t| format!("{}, {}", t.project_name, format_hm(t.elapsed_ms))),
+        running: running.map(|t| format!("{}, {}", t.project_name, format_duration(t.elapsed_ms))),
         recent,
     };
     let text = current.status.text()?;
@@ -158,7 +158,7 @@ fn try_set_timer(
     Ok(())
 }
 
-/// `⏱ 1:23 Project`, the project cut short.
+/// `⏱ 1h 23m Project`, the project cut short.
 fn title(timer: &RunningTimer) -> String {
     let mut project: String = timer
         .project_name
@@ -168,7 +168,7 @@ fn title(timer: &RunningTimer) -> String {
     if timer.project_name.chars().count() > TITLE_PROJECT_CHARS {
         project.push('…');
     }
-    format!("⏱ {} {project}", format_hm(timer.elapsed_ms))
+    format!("⏱ {} {project}", format_duration(timer.elapsed_ms))
 }
 
 fn build_menu(
@@ -378,12 +378,12 @@ mod tests {
     #[test]
     fn the_title_shows_the_elapsed_time_and_the_project() {
         for (elapsed_ms, expected) in [
-            (0, "⏱ 0:00 Acme"),
-            (59_999, "⏱ 0:00 Acme"),
-            (60_000, "⏱ 0:01 Acme"),
-            (83 * 60_000, "⏱ 1:23 Acme"),
-            (26 * 3_600_000, "⏱ 26:00 Acme"),
-            (-5_000, "⏱ 0:00 Acme"),
+            (0, "⏱ 0m Acme"),
+            (59_999, "⏱ 0m Acme"),
+            (60_000, "⏱ 1m Acme"),
+            (83 * 60_000, "⏱ 1h 23m Acme"),
+            (26 * 3_600_000, "⏱ 26h 00m Acme"),
+            (-5_000, "⏱ 0m Acme"),
         ] {
             assert_eq!(
                 title(&running("Acme", elapsed_ms)),
@@ -398,14 +398,14 @@ mod tests {
         let exact = "a".repeat(24);
         let long = "b".repeat(25);
 
-        assert_eq!(title(&running(&exact, 60_000)), format!("⏱ 0:01 {exact}"));
+        assert_eq!(title(&running(&exact, 60_000)), format!("⏱ 1m {exact}"));
         assert_eq!(
             title(&running(&long, 60_000)),
-            format!("⏱ 0:01 {}…", "b".repeat(24))
+            format!("⏱ 1m {}…", "b".repeat(24))
         );
         assert_eq!(
             title(&running(&"é".repeat(30), 60_000)),
-            format!("⏱ 0:01 {}…", "é".repeat(24))
+            format!("⏱ 1m {}…", "é".repeat(24))
         );
     }
 }

@@ -23,7 +23,7 @@ function renderPopover(view: Partial<DayView> = {}) {
 describe("ViewOptionsPopover", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  describe("lanes and blocks", () => {
+  describe("lanes and activity", () => {
     it.each([
       ["Summary", "summaryLane", false],
       ["Activity", "showAllActivity", false],
@@ -71,6 +71,7 @@ describe("ViewOptionsPopover", () => {
       renderPopover();
       expect(screen.getByRole("heading", { name: "Hidden apps" })).toBeInTheDocument();
       expect(screen.getByText("No hidden apps")).toBeInTheDocument();
+      expect(screen.getByText("An activity's menu hides its app.")).toBeInTheDocument();
     });
 
     it("counts the hidden apps in the heading and lists them", () => {

@@ -143,12 +143,12 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `reveal_path` | `path: String` | – (Finder shows the enclosing folder with `path` selected) | `io` |
 | `open_readme` (`help.rs`) | – | – (opens the README, see [Native menu](#native-menu)) | `not_found` (none in this build), `io` |
 | `menu_sync` (`menu/sync.rs`) | `state: MenuState { enabled, checked }` | – (greys out and checks the menu items) | – |
-| `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, available, error, binaryPath }` (`binaryPath`: `~/.local/bin/timetracker` when that link exists, else this executable; for the `claude mcp add` line) | – (errors are reported inside) |
+| `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, firstActivityLabel, available, error, binaryPath }` (`binaryPath`: `~/.local/bin/timetracker` when that link exists, else this executable; for the `claude mcp add` line) | – (errors are reported inside) |
 | `data_move` (`db/commands.rs`) | `path: String` | `DataInfo` of the new folder ([data.md](data.md#moving-the-data-folder)) | `invalid_input` (a refused folder), `io`, `db` |
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes, recordings, activities }` | `db`, `io`, `invalid_input` |
 | `report_run` (`reports/commands.rs`) | `filter: ReportFilter` | `ReportResult` (see [Reports](#reports)) | `invalid_input` (a range that ends before it starts), `db` |
 | `report_text` | `filter: ReportFilter` | the report as text (`reports::text`) | the same |
-| `period_totals` | `range: Range` | `PeriodTotals { label, recordedMs, billableMs, billablePercent }` (`reports/period.rs`): every recording of the range, archived projects included, no other filter (`reports::billable`); `billablePercent` is `null` when nothing is recorded. `label` (`period_label`) names the days: Today, Yesterday, This week, Last week, This month, Last month, else `Mon, Oct 19`, `Week 43`, `October` or `Oct 1 – Oct 14`, with the year when it is not the current one. The status bar's numbers for the shown period | `invalid_input`, `db` |
+| `period_totals` | `range: Range` | `PeriodTotals { label, recordedMs, billableMs, billablePercent }` (`reports/period.rs`): every recording of the range, archived projects included, no other filter (`reports::billable`); `billablePercent` is `null` when nothing is recorded. `label` (`period_label`) names the days: Today, Yesterday, This week, Last week, This month, Last month, else `Mon, Oct 19`, `Week 43`, `October` or `Oct 1 – 14` (`titles::range_label`, in the region's date order), with the year when it is not the current one. The status bar's numbers for the shown period | `invalid_input`, `db` |
 | `report_range_shift` | `range: Range, anchor: Day \| null, by: i32` | `Range`: the period of the range's unit `by` steps away (`reports::shift`, see [Reports](#reports)); P, N, O and the date picker in Reports | `invalid_input` |
 | `saved_reports_list` | – | `SavedReport[] { id, name, filter, position }`, by position | `db` |
 | `saved_report_save` | `name, filter` | `SavedReport` (appended) | `invalid_input` (`field: name`), `db` |
@@ -189,7 +189,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `calendar_period` (`calendar/commands.rs`) | `unit: PeriodUnit` (`day`, `week`, `month`), `day: Day` | `Period { from, to, holdsToday }`: the day, Monday-to-Sunday week or month holding `day` (`calendar::period::period`); the billable ratio and the date picker's selection | `invalid_input` |
 | `calendar_mini_month` | `shownDay: Day`, `offset: i32` (months from `shownDay`'s, the ‹ › paging), `shown: Shown` (`{ kind: "period", unit, day }` for the Day, Week or Month view, `{ kind: "report", range }`, `{ kind: "none" }`) | `MiniMonth { monthStart, monthName, year, monthSelected, weeks: MiniWeek[] }` (`monthName` short or full by `calendarTitle`), six weeks from the Monday on or before the 1st; `MiniWeek { number (ISO), start, selected, days: MiniDay[] }`; `MiniDay { day, dayOfMonth, inMonth, isToday, hasRecordings, selected }` (see [Week and month](#week-and-month)); the sidebar's calendar | `invalid_input` (a report range that ends before it starts, a month out of range), `db` |
 | `calendar_picker` | `month: Day` (any day of it), `selected: [Day, Day] \| null` | `PickerMonth { monthStart, weeks: PickerDay[][] }` (whole weeks Monday to Sunday); `PickerDay { day, outside, isToday, selected }` (`calendar::period::picker_month`); the date picker | `invalid_input` |
-| `calendar_jumps` | `text: string` | `DateJump[] { name: string \| null, unit: PeriodUnit, from: Day, to: Day }` (`calendar::jump::jumps`): a typed date (`2026-10-12`, `12.10.`, `12.10.2026`, `oct 12`, `12 october 2026`; without a year the latest on or before today) as one day without a name, else the date words starting with `text` or one of whose words does (Today, Yesterday, This week, Last week, This month, Last month, a weekday: the latest on or before today, a month name: the latest on or before this month); `""` gives Today, Yesterday, This week, This month; the palette | – |
+| `calendar_jumps` | `text: string` | `DateJump[] { name: string \| null, unit: PeriodUnit, from: Day, to: Day, label: string }` (`calendar::jump::jumps`): a typed date (`2026-10-12`, `12.10.`, `12.10.2026`, `oct 12`, `12 october 2026`; without a year the latest on or before today) as one day without a name, else the date words starting with `text` or one of whose words does (Today, Yesterday, This week, Last week, This month, Last month, a weekday: the latest on or before today, a month name: the latest on or before this month); `""` gives Today, Yesterday, This week, This month; the palette | – |
 | `calendar_step` | `unit: PeriodUnit, day: Day, by: i32` | `Day`: `by` days, weeks or months from `day` (a month step lands on the 1st; `calendar::period::step`); P and N, the date picker's keys, moving a recording a day | `invalid_input` (out of the date range) |
 | `calendar_parse_time` | `text: string, on: Ms` | `Ms \| null` (`cli::time::typed`): a clock time (`9:30`, `09:30`, `930`, `0930`) on the local day of `on`, or a date and time (`2026-10-21T09:30`) as the CLI reads it; `null` while it is neither; the editor's and the away prompt's From / To, the Delete activity range | – |
 | `recordings_list` | `from: Ms, to: Ms` | `Recording[]` with a span sharing time with the range, each with all its spans | `db` |
@@ -225,7 +225,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `activity_start` | `input: ActivityInput` | `ActivityRow` (open) | `invalid_input`, `overlap`, `db` |
 | `activity_stop` | `source: String, end: Ms \| null` | `ActivityRow \| null` | `invalid_input`, `db` |
 | `activity_sources` | – | `string[]`: external source names, the latest first | `db` |
-| `activity_count` | `from: Ms, to: Ms` | `ActivityCount { activities, away }`: the spans `activity_delete` would remove | `invalid_input` (from ≥ to, over a year), `db` |
+| `activity_count` | `from: Ms, to: Ms` | `ActivityCount { activities, away, rangeLabel }`: the spans `activity_delete` would remove, and the range as text | `invalid_input` (from ≥ to, over a year), `db` |
 | `activity_delete` | `from: Ms, to: Ms` | `DeleteResult { activities, away, undoUntil }` | `invalid_input` (from ≥ to, over a year), `db` |
 | `activity_delete_undo` | – | `DeleteResult` of the restored rows | `not_found` "Nothing to undo", `db` |
 
@@ -359,9 +359,9 @@ clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `co
   `db::recordings::put_on` (the row and all its spans exactly as given, timestamps, tag and span ids included)
   and `remove_on`, then refuses with `overlap` if any span it wrote shares time with another recording's;
   then nothing is written.
-- **Undo** (`undo.rs`): `UndoStack` keeps the last 100 changes of this run with their labels (`Record 45 min
-  for Acme`, `Move recording`, `Resize recording`, `Edit recording`, `Delete recording`, `Add span`, `Remove
-  span`, `Split span`, `Merge recordings`, `Approve suggestion`, `Approve n suggestions`, `Dismiss suggestion`, `Dismiss n suggestions`, from
+- **Undo** (`undo.rs`): `UndoStack` keeps the last 100 changes of this run with their labels (`Record 45m
+  for Acme`, `Move recording`, `Resize recording`, `Edit recording`, `Delete recording`, `Add time`, `Remove
+  time`, `Split time`, `Merge recordings`, `Approve suggestion`, `Approve n suggestions`, `Dismiss suggestion`, `Dismiss n suggestions`, from
   `recordings::suggestions_label`); a new change clears
   the redo list. `undo` applies the inverse, `redo` the op again; one that would now overlap is refused and
   the stack stays as it was. `Recordings::undo`/`redo` live in `undo.rs`; `record_dismissals` (one `Op::Batch` of
@@ -382,10 +382,24 @@ both days, several spans on one day add up. `entries::height_units` gives a Week
 quarter hour (`CARD_UNIT_MS`), at least `CARD_MIN_UNITS` (a title over the foot) and at most `CARD_MAX_UNITS`
 (six hours); the page multiplies it by its unit size. The Month uses the same entries as equal-height lines.
 
-`calendar/titles.rs` formats the titles the settings choose: `day_title(day, DayTitle, today)` gives
-`Wednesday, November 11, 2026` (Long) or `Wed, Nov 11` (Short, with `, 2025` when not today's year), which
-`day::view` puts in `DayView.label` (`ViewSettings.day_title`); `month_name(month, CalendarTitle)` gives `Nov`
-or `November` for `MiniMonth.monthName`.
+`calendar/titles.rs` formats every date label the page shows, in the order of the macOS region
+(`calendar/locale.rs`: `DateOrder::system()` reads `NSDateFormatter`'s `yMMMd` pattern for the current
+`NSLocale` once per run, day first when its `d` comes before its `M`; month first where it cannot be read and
+always in tests, so their labels do not depend on the machine). `day_title(day, DayTitle, today)` gives
+`Wednesday, November 11, 2026` (Long) or `Wed, Nov 11` (Short, with `, 2025` when not today's year; day first
+`Wednesday, 11 November 2026`, `Wed, 11 Nov`), which `day::view` puts in `DayView.label`
+(`ViewSettings.day_title`); `range_label(from, to, DayTitle, year)` gives `Oct 19 – 25, 2026`, `Oct 26 –
+Nov 1, 2026` or `Dec 29, 2025 – Jan 4, 2026` (`19 – 25 Oct 2026` day first) for `WeekView.label` (`Week 43 ·
+…`); `range_title(from, to, DayTitle, today)` adds the year always in Long and in Short only outside today's
+year (the status bar's custom periods); `month_title` gives `October 2026`; `period_title(from, to, DayTitle,
+today)` names a day, a month or a range with them: the Reports title (`ReportResult.title`, set once by
+`reports::build`; `report_run` calls `run_titled` with the Day title setting, `run` titles Long) and, in
+Short, `DateJump.label`; `date_label(day)` is `October 21, 2026`
+(`DataInfo.firstActivityLabel`); `moments_label(from, to, today)` is `Wed, Oct 21 09:30 – Thu, Oct 22 10:00`
+(`ActivityCount.rangeLabel`). `ReportRow.dayLabel` and `PreviewHit.dayLabel` are short day titles. The `_in`
+variants take the order as a parameter. `month_name(month, CalendarTitle)` gives `Nov` or `November` for
+`MiniMonth.monthName`. The copied report text (`reports/text.rs`, `reports/groups.rs`) keeps its own fixed
+dates.
 
 `calendar/mini_month.rs` builds the sidebar's month calendar. `highlight(shown, today)` turns `Shown` into
 the highlighted range, a `PeriodUnit` and its first day: a view's period directly, a report range (resolved
@@ -732,7 +746,7 @@ menu bar), tooltip `TimeTracker`, menu on left click:
 | Pause Tracking ▸ For 15 Minutes, For 1 Hour, Until Tomorrow, Until Resumed | `pause-15`, `pause-60`, `pause-tomorrow`, `pause-resumed` | `Tracker::pause` (hidden while paused) |
 | Resume Tracking | `resume` | `Tracker::resume` (only while paused) |
 | Start Timer… | `timer.start` | `timers::picker::open` |
-| Stop Timer (Acme, 1:23) | `timer.stop` | `timers::commands::stop` (disabled without a timer) |
+| Stop Timer (Acme, 1h 23m) | `timer.stop` | `timers::commands::stop` (disabled without a timer) |
 | Recent Timers ▸ `Project · note` | `timer.recent.<n>` | starts that combination |
 | Open TimeTracker | `open` | `window::show_main` |
 | Quit TimeTracker | `quit` | `app.exit(0)` |
@@ -741,7 +755,7 @@ menu bar), tooltip `TimeTracker`, menu on left click:
 follows `TrayIcon::of(state)`: `icons/tray/tray@2x.png` (running or away), `paused@2x.png` (a pause sign in
 the clock) and `attention@2x.png` (an exclamation mark: the permission is missing). `sync` only relabels the
 status item while the icon stays the same, and rebuilds menu and icon when it changes, so an open menu is not
-replaced every few seconds. `tray::set_timer` shows a running timer as the item's title, `⏱ 1:23 Acme` (the
+replaced every few seconds. `tray::set_timer` shows a running timer as the item's title, `⏱ 1h 23m Acme` (the
 project cut to 24 characters), and rebuilds the timer items. The tray's click events go to
 `tauri_plugin_positioner::on_tray_event`, so the picker can open under the icon.
 

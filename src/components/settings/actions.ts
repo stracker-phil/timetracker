@@ -10,7 +10,7 @@ export async function exportBackup() {
     if (!path) return;
     const written = await api.backupExport(path);
     const count = (n: number) => n.toLocaleString("en-US");
-    useStore.getState().toast("success", `Backup written: ${count(written.recordings)} recordings, ${count(written.activities)} activity spans`);
+    useStore.getState().toast("success", `Backup written: ${count(written.recordings)} recordings, ${count(written.activities)} activities`);
   } catch (e) {
     fail(e, "Backup failed");
   }

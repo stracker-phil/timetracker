@@ -24,7 +24,7 @@ describe("StatusBar", () => {
   it("shows the snapped selection with its length", () => {
     resetStore({ selectionSnap: { start: at("09:00"), end: at("10:30") } });
     render(<StatusBar />);
-    expect(screen.getByLabelText("Selection")).toHaveTextContent("09:00–10:30 · 1:30");
+    expect(screen.getByLabelText("Selection")).toHaveTextContent("09:00–10:30 · 1h 30m");
   });
 
   it("shows no selection without one", () => {
@@ -52,7 +52,7 @@ describe("StatusBar", () => {
     it("reads the label, the recorded time and the billable share", async () => {
       resetStore({ view: "week" });
       render(<StatusBar />);
-      expect(await shown()).toHaveTextContent("This week · recorded 8:00 · Billable 80 %");
+      expect(await shown()).toHaveTextContent("This week · recorded 8h 00m · Billable 80 %");
     });
 
     it("shows the share as a meter with its hours", async () => {
@@ -60,14 +60,14 @@ describe("StatusBar", () => {
       render(<StatusBar />);
       const meter = await screen.findByRole("meter", { name: "Billable" });
       expect(meter).toHaveAttribute("aria-valuenow", "80");
-      expect(meter).toHaveAttribute("title", "Billable 6:24 / 8:00");
+      expect(meter).toHaveAttribute("title", "Billable 6h 24m / 8h 00m");
     });
 
     it("shows no meter when Rust has no billable share", async () => {
       mocked.periodTotals.mockResolvedValue({ ...week, billableMs: 0, billablePercent: null });
       resetStore({ view: "week" });
       render(<StatusBar />);
-      expect(await shown()).toHaveTextContent(/^This week · recorded 8:00$/);
+      expect(await shown()).toHaveTextContent(/^This week · recorded 8h 00m$/);
       expect(screen.queryByRole("meter")).not.toBeInTheDocument();
     });
 
@@ -99,7 +99,7 @@ describe("StatusBar", () => {
       await shown();
       mocked.periodTotals.mockResolvedValue({ ...week, recordedMs: 90 * MINUTE_MS, billablePercent: null });
       act(() => useStore.getState().dataChanged({ kind: "recordings", day: "2026-03-10" }));
-      await vi.waitFor(() => expect(screen.getByLabelText("Shown period")).toHaveTextContent("This week · recorded 1:30"));
+      await vi.waitFor(() => expect(screen.getByLabelText("Shown period")).toHaveTextContent("This week · recorded 1h 30m"));
     });
   });
 
@@ -133,7 +133,7 @@ describe("StatusBar", () => {
     it("shows the project and the elapsed time", () => {
       resetStore({ timer: runningStatus({ projectName: "Docs" }) });
       render(<StatusBar />);
-      expect(screen.getByRole("button", { name: "⏱ Docs 1:23" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "⏱ Docs 1h 23m" })).toBeInTheDocument();
     });
 
     it("shows nothing without a running timer", () => {

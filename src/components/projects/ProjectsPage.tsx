@@ -2,7 +2,7 @@ import { Plus } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
 import type { Client, ProjectListItem } from "../../api";
 import { copyText } from "../../lib/clipboard";
-import { formatHm, formatHours, plural, relativeTime } from "../../lib/format";
+import { formatDuration, plural, relativeTime } from "../../lib/format";
 import { groupProjects } from "../../state/slices/projects";
 import { useStore } from "../../state/store";
 import { AccentDot } from "../Accent";
@@ -11,8 +11,8 @@ import { Toolbar } from "../Toolbar";
 
 function Hours({ ms, label }: { ms: number; label: string }) {
   return (
-    <span className={ms > 0 ? "project-hours" : "project-hours o3"} title={`${label}: ${formatHours(ms)}`}>
-      {formatHm(ms)}
+    <span className={ms > 0 ? "project-hours" : "project-hours o3"} title={`${label}: ${formatDuration(ms)}`}>
+      {formatDuration(ms)}
     </span>
   );
 }

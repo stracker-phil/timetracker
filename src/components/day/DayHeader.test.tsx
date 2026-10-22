@@ -6,7 +6,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { installCommands, runCommand } from "../../commands";
-import { formatDayLabel, today } from "../../lib/day";
+import { today } from "../../lib/day";
 import { resetStore } from "../../state/store";
 import { DAY, dayView } from "../../test/dayFixtures";
 import { settings } from "../../test/settings";
@@ -15,7 +15,7 @@ import { DayHeader } from "./DayHeader";
 
 const mocked = vi.mocked(api, true);
 
-function renderHeader(patch: Parameters<typeof resetStore>[0] = { dayView: dayView(), day: DAY }) {
+function renderHeader(patch: Parameters<typeof resetStore>[0] = { dayView: dayView({ label: "Tuesday, March 10, 2026" }), day: DAY }) {
   resetStore({ settings: settings(), ...patch });
   installCommands();
   return render(
@@ -31,7 +31,7 @@ const openMenu = () => userEvent.click(screen.getByRole("button", { name: "More 
 describe("DayHeader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocked.activityCount.mockResolvedValue({ activities: 4, away: 0 });
+    mocked.activityCount.mockResolvedValue({ activities: 4, away: 0, rangeLabel: "Tue, Mar 10 00:00 – Wed, Mar 11 00:00" });
   });
 
   describe("date and totals", () => {
@@ -50,18 +50,18 @@ describe("DayHeader", () => {
 
     it("shows the totals of a past day", () => {
       renderFor("Tuesday, March 10");
-      expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 1:00 · tracked 2:00 · away 0:10");
+      expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 1h 00m · tracked 2h 00m · away 10m");
     });
 
     it("shows the totals on today too", () => {
       renderFor("Today", totals, today());
-      expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 1:00 · tracked 2:00 · away 0:10");
+      expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 1h 00m · tracked 2h 00m · away 10m");
     });
 
     it.each([
-      ["recorded", { recordedMs: 0, trackedMs: 7_200_000, awayMs: 600_000 }, "tracked 2:00 · away 0:10"],
-      ["tracked", { recordedMs: 3_600_000, trackedMs: 0, awayMs: 600_000 }, "recorded 1:00 · away 0:10"],
-      ["away", { recordedMs: 3_600_000, trackedMs: 7_200_000, awayMs: 0 }, "recorded 1:00 · tracked 2:00"],
+      ["recorded", { recordedMs: 0, trackedMs: 7_200_000, awayMs: 600_000 }, "tracked 2h 00m · away 10m"],
+      ["tracked", { recordedMs: 3_600_000, trackedMs: 0, awayMs: 600_000 }, "recorded 1h 00m · away 10m"],
+      ["away", { recordedMs: 3_600_000, trackedMs: 7_200_000, awayMs: 0 }, "recorded 1h 00m · tracked 2h 00m"],
     ])("leaves out the %s part when it is zero", (_part, shown, expected) => {
       renderFor("Tuesday, March 10", shown);
       expect(screen.getByLabelText("Totals")).toHaveTextContent(new RegExp(`^${expected}$`));
@@ -112,8 +112,8 @@ describe("DayHeader", () => {
       await openMenu();
       await userEvent.click(screen.getByRole("menuitem", { name: "Delete activity for this day…" }));
 
-      expect(await screen.findByRole("heading", { name: `Delete activity for ${formatDayLabel(DAY)}` })).toBeInTheDocument();
-      expect(await screen.findByText(/Deletes 4 activity spans/)).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "Delete activity for Tuesday, March 10, 2026" })).toBeInTheDocument();
+      expect(await screen.findByText(/Deletes 4 activities/)).toBeInTheDocument();
     });
 
     it("opens the range dialog from the range entry", async () => {

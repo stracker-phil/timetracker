@@ -63,10 +63,10 @@ chrono-tz = "0.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # The capture source (capture/macos.rs): frontmost app, window title and document, browser addresses,
-# idle time, sleep and lock; app icons (app_icons.rs).
+# idle time, sleep and lock; app icons (app_icons.rs); the locale's date order (calendar/locale.rs).
 objc2 = "0.6"
 block2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSNotification", "NSOperation", "NSString", "NSDistributedNotificationCenter", "NSAppleScript", "NSAppleEventDescriptor", "NSDictionary", "NSValue", "NSURL", "NSData", "NSGeometry"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSNotification", "NSOperation", "NSString", "NSDistributedNotificationCenter", "NSAppleScript", "NSAppleEventDescriptor", "NSDictionary", "NSValue", "NSURL", "NSData", "NSGeometry", "NSDateFormatter", "NSFormatter", "NSLocale"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSWorkspace", "NSRunningApplication", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSGraphics", "NSGraphicsContext"] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFString", "CFDictionary", "CFNumber"] }
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGEventSource", "CGEventTypes"] }

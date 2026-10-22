@@ -440,9 +440,9 @@ mod tests {
         let after_undo = w.rows().await;
         let redone = w.service().redo().await.unwrap();
 
-        assert_eq!(undone.value.as_deref(), Some("Record 1 h 10 min for Acme"));
+        assert_eq!(undone.value.as_deref(), Some("Record 1h 10m for Acme"));
         assert_eq!(after_undo, before);
-        assert_eq!(redone.value.as_deref(), Some("Record 1 h 10 min for Acme"));
+        assert_eq!(redone.value.as_deref(), Some("Record 1h 10m for Acme"));
         assert_eq!(w.rows().await, replaced);
     }
 

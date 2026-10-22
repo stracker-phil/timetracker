@@ -1,6 +1,6 @@
 import { History, Layers, Plug } from "lucide-react";
 import type { Lane } from "../../api";
-import { formatShortDuration } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
 import { AppIcon } from "../AppIcon";
 
 function LaneIcon({ lane }: { lane: Lane }) {
@@ -27,7 +27,7 @@ export function LaneHeader({ lanes, trackedMs }: { lanes: Lane[]; trackedMs: num
           <span key={lane.id} className={`lane-head lane-head--${lane.kind}`} role="columnheader" title={lane.label}>
             <LaneIcon lane={lane} />
             <span className="lane-head-label">{lane.label}</span>
-            {lane.kind === "activity" && <span className="lane-head-total">{formatShortDuration(trackedMs)}</span>}
+            {lane.kind === "activity" && <span className="lane-head-total">{formatDuration(trackedMs)}</span>}
           </span>
         ))}
       </div>

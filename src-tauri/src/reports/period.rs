@@ -6,7 +6,7 @@ use ts_rs::TS;
 
 use super::range::add_days;
 use super::{Range, billable, resolve};
-use crate::calendar::titles::day_title;
+use crate::calendar::titles::{day_title, range_title};
 use crate::db::Db;
 use crate::db::time::{Day, Ms};
 use crate::error::AppResult;
@@ -36,7 +36,7 @@ pub async fn period_totals(db: &Db, range: &Range, today: Day, now: Ms) -> AppRe
 }
 
 /// Today, Yesterday, This week, Last week, This month or Last month; else the day (`Mon, Oct 19`), the week
-/// (`Week 43`), the month (`October`) or the days (`Oct 1 – Oct 14`), with the year when it is not `today`'s.
+/// (`Week 43`), the month (`October`) or the days (`Oct 1 – 14`), with the year when it is not `today`'s.
 pub fn period_label(from: Day, to: Day, today: Day) -> String {
     let other_year =
         |day: Day| (day.date().year() != today.date().year()).then(|| day.date().year());
@@ -69,11 +69,7 @@ pub fn period_label(from: Day, to: Day, today: Day) -> String {
             },
         };
     }
-    let short = |day: Day| match other_year(day) {
-        Some(year) => format!("{}, {year}", day.date().format("%b %-d")),
-        None => day.date().format("%b %-d").to_string(),
-    };
-    format!("{} \u{2013} {}", short(from), short(to))
+    range_title(from, to, DayTitle::Short, today)
 }
 
 #[cfg(test)]
@@ -146,9 +142,15 @@ mod tests {
     #[test]
     fn any_other_range_names_its_first_and_last_day() {
         for (from, to, expected) in [
-            ("2026-10-01", "2026-10-14", "Oct 1 \u{2013} Oct 14"),
-            ("2026-10-20", "2026-10-22", "Oct 20 \u{2013} Oct 22"),
-            ("2025-12-20", "2026-01-05", "Dec 20, 2025 \u{2013} Jan 5"),
+            ("2026-10-01", "2026-10-14", "Oct 1 \u{2013} 14"),
+            ("2026-10-20", "2026-10-22", "Oct 20 \u{2013} 22"),
+            ("2026-09-28", "2026-10-14", "Sep 28 \u{2013} Oct 14"),
+            (
+                "2025-12-20",
+                "2026-01-05",
+                "Dec 20, 2025 \u{2013} Jan 5, 2026",
+            ),
+            ("2025-10-01", "2025-10-14", "Oct 1 \u{2013} 14, 2025"),
         ] {
             assert_eq!(
                 period_label(day(from), day(to), day(TODAY)),
@@ -243,7 +245,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(totals.label, "Oct 1 \u{2013} Oct 14");
+        assert_eq!(totals.label, "Oct 1 \u{2013} 14");
     }
 
     #[tokio::test]

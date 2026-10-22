@@ -11,6 +11,7 @@ use super::away::AwayRow;
 use super::backup::{self, BackupWritten};
 use super::time::{Day, Ms, now_ms};
 use super::{DataStore, Db, activities, away, projects, recordings, relocate};
+use crate::calendar::titles::date_label;
 use crate::error::AppResult;
 use crate::state::AppState;
 use crate::timers;
@@ -29,6 +30,8 @@ pub struct DataInfo {
     pub recordings: i64,
     pub projects: i64,
     pub first_activity: Option<Ms>,
+    /// Its local date, `October 21, 2026` (`titles::date_label`).
+    pub first_activity_label: Option<String>,
     pub available: bool,
     pub error: Option<String>,
     /// The `timetracker` command for `claude mcp add`: the installed link, else this executable.
@@ -100,6 +103,7 @@ pub async fn info(store: &DataStore) -> DataInfo {
         recordings: counts.recordings,
         projects: counts.projects,
         first_activity: counts.first_activity,
+        first_activity_label: counts.first_activity.map(|ms| date_label(Day::of(ms))),
         available,
         error,
         binary_path: binary_path(),
@@ -179,6 +183,7 @@ mod tests {
         assert_eq!(info.dir, file.parent().unwrap().display().to_string());
         assert_eq!((info.activities, info.recordings, info.projects), (0, 0, 0));
         assert_eq!(info.first_activity, None);
+        assert_eq!(info.first_activity_label, None);
         assert!(info.size_bytes > 0);
         store.close().await;
     }
@@ -197,6 +202,23 @@ mod tests {
 
         assert_eq!((info.activities, info.recordings, info.projects), (2, 1, 1));
         assert_eq!(info.first_activity, Some(1000));
+        store.close().await;
+    }
+
+    #[tokio::test]
+    async fn info_labels_the_first_activity_with_its_date() {
+        let tmp = temp_config_dir();
+        let store = DataStore::open(tmp.path().join("data").join(DB_FILE)).await;
+        let db = store.db().unwrap();
+        let noon_utc = 1_792_584_000_000;
+        activity(&db, noon_utc, Some(noon_utc + 1000), "Xcode", "main.rs").await;
+
+        let info = info(&store).await;
+
+        assert_eq!(
+            info.first_activity_label.as_deref(),
+            Some("October 21, 2026")
+        );
         store.close().await;
     }
 

@@ -1,7 +1,7 @@
 import { memo, type CSSProperties, type KeyboardEvent } from "react";
 import { Tag } from "lucide-react";
 import type { TimesheetCard as CardData } from "../../api";
-import { formatShortDuration } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { AccentDot, shadeColor } from "../Accent";
 import { Card } from "../Card";
@@ -42,7 +42,7 @@ export const TimesheetCard = memo(function TimesheetCard({ card, focused, hovere
       style={{ "--card-minutes": Math.round(card.durationMs / MINUTE_MS) } as CSSProperties}
       role="button"
       tabIndex={0}
-      aria-label={`${title}, ${project}, ${formatShortDuration(card.durationMs)}`}
+      aria-label={`${title}, ${project}, ${formatDuration(card.durationMs)}`}
       aria-pressed={focused}
       data-sheet-card={card.id}
       title={title}
@@ -62,10 +62,10 @@ export const TimesheetCard = memo(function TimesheetCard({ card, focused, hovere
               {card.tag}
             </>
           )}
-          {card.spanIds.length > 1 && <span>{card.spanIds.length} spans</span>}
+          {card.spanIds.length > 1 && <span>{card.spanIds.length} times</span>}
         </>
       }
-      trailing={formatShortDuration(card.durationMs)}
+      trailing={formatDuration(card.durationMs)}
       onClick={edit}
       onKeyDown={onKeyDown}
       onPointerEnter={() => useStore.getState().hoverRecording(card.id)}

@@ -142,7 +142,7 @@ pub fn respanned(current: &[RecordingSpan], spans: &[Span]) -> Vec<RecordingSpan
 pub fn check_spans(spans: &[RecordingSpan]) -> AppResult<()> {
     if spans.is_empty() {
         return Err(AppError::InvalidInput(
-            "A recording needs at least one span".into(),
+            "A recording needs at least one time".into(),
         ));
     }
     for span in spans {
@@ -205,6 +205,16 @@ mod tests {
             let err = check_spans(&spans(case)).unwrap_err();
             assert_eq!(err.kind(), ErrorKind::InvalidInput, "{case:?}");
         }
+    }
+
+    #[test]
+    fn a_recording_without_spans_is_refused_as_needing_one_time() {
+        let err = check_spans(&[]).unwrap_err();
+
+        assert!(
+            matches!(&err, AppError::InvalidInput(m) if m == "A recording needs at least one time"),
+            "{err:?}"
+        );
     }
 
     #[test]

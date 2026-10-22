@@ -3,7 +3,7 @@ import { Activity, Copy, Database, Download, EyeOff, FolderInput, FolderOpen, Ga
 import { useState } from "react";
 import { api, DEFAULT_FONTS, LOG_LEVELS, TEXT_SIZES, toAppError, type DataInfo, type LogLevel, type Scheme } from "../../api";
 import { copyText } from "../../lib/clipboard";
-import { capitalize, formatBytes, formatCount, formatDay } from "../../lib/format";
+import { capitalize, formatBytes, formatCount } from "../../lib/format";
 import { schemeLook, systemIsDark, type Tone } from "../../lib/theme";
 import { useApiResult } from "../../lib/useApiResult";
 import { registerSettingsPage, type SettingsPageProps } from "../../registry/settingsPages";
@@ -242,15 +242,15 @@ function DataPage({ s, set }: SettingsPageProps) {
       <FolderGroup info={info} onMoved={reload} />
       {info.available && (
         <Group title="Contents">
-          <CountRow label="Activity spans" value={formatCount(info.activities)} />
+          <CountRow label="Activities" value={formatCount(info.activities)} />
           <CountRow label="Recordings" value={formatCount(info.recordings)} />
           <CountRow label="Projects" value={formatCount(info.projects)} />
-          <CountRow label="First activity" value={info.firstActivity === null ? "None yet" : formatDay(info.firstActivity)} />
+          <CountRow label="First activity" value={info.firstActivityLabel ?? "None yet"} />
           <CountRow label="Size on disk" value={formatBytes(info.sizeBytes)} />
         </Group>
       )}
       <Group title="Backup">
-        <Row label="JSON backup" description="Every client, project, tag, activity span and recording in one file.">
+        <Row label="JSON backup" description="Every client, project, tag, activity and recording in one file.">
           <button type="button" className="btn" disabled={!info.available} onClick={() => void exportBackup()}>
             <Download size="1.077rem" /> Export backup…
           </button>

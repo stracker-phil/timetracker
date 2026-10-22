@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api } from "../api";
-import { today } from "../lib/day";
 import { resetStore, useStore, type View } from "../state/store";
 import { defaultFilter } from "../state/slices/reports";
 import { conflicts, handleKeydown, installCommands, runCommand } from "./index";
@@ -51,11 +50,8 @@ describe("view commands", () => {
     expect(state().view).toBe(view);
   });
 
-  it("view.hours shows today's Day view from any other view and day", () => {
-    resetStore({ view: "projects", day: "2026-03-10" });
-    expect(runCommand("view.hours")).toBe(true);
-    expect(state().view).toBe("day");
-    expect(state().day).toBe(today());
+  it("has no view.hours command", () => {
+    expect(runCommand("view.hours")).toBe(false);
   });
 });
 

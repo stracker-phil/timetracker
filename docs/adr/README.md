@@ -16,7 +16,7 @@ and a dated amendment under Status only corrects facts that changed.
 | [0008](0008-capture-behind-a-source-trait.md) | macOS capture sits behind a `Source` trait; objc2 bindings live in one module | Accepted (2026-10-21), implemented, amended |
 | [0009](0009-external-activity-with-a-source.md) | External activity enters through CLI, socket and deep link; every activity carries a `source` | Accepted (2026-10-21), implemented |
 | [0010](0010-recordings-never-overlap-ops-with-undo.md) | Recordings never overlap; edits are Rust-side operations with inverses | Accepted (2026-10-21), implemented, superseded in part by 0020 |
-| [0011](0011-utc-milliseconds-local-days.md) | Timestamps are UTC milliseconds; days are local calendar days computed in Rust | Accepted (2026-10-21), implemented |
+| [0011](0011-utc-milliseconds-local-days.md) | Timestamps are UTC milliseconds; days are local calendar days computed in Rust | Accepted (2026-10-21), implemented, superseded in part by 0025 |
 | [0012](0012-timeline-layout-in-rust.md) | Timeline layout and timeline settings are pure Rust functions | Accepted (2026-10-21), implemented, amended |
 | [0013](0013-no-network.md) | No network: no network code, CSP allows IPC only | Accepted (2026-10-21), implemented |
 | [0014](0014-panic-unwind.md) | Keep `panic = "unwind"` | Accepted (2026-10-21), implemented, amended |
@@ -30,3 +30,4 @@ and a dated amendment under Status only corrects facts that changed.
 | [0022](0022-a-scheme-per-system-mode.md) | Appearance follows macOS, with one scheme per mode | Accepted (2026-10-22), implemented |
 | [0023](0023-week-and-month-are-lists.md) | The Week and Month list recordings per day; a Week drag moves a recording's day | Accepted (2026-10-22), implemented |
 | [0024](0024-native-macos-look.md) | The app looks native: system font, inset groups, a unified toolbar, AppKit control metrics | Accepted (2026-10-22), implemented |
+| [0025](0025-rust-labels-dates-and-durations.md) | Rust labels dates in the region's order; one duration format | Accepted (2026-10-22), implemented |

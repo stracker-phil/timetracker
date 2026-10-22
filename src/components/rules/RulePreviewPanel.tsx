@@ -1,6 +1,5 @@
 import { api, type RuleInput } from "../../api";
 import { formatClock, formatDuration } from "../../lib/format";
-import { formatDayLabel } from "../../lib/day";
 import { useApiResult } from "../../lib/useApiResult";
 
 export const PREVIEW_DAYS = 7;
@@ -23,10 +22,10 @@ export function RulePreviewPanel({ input }: { input: RuleInput }) {
         <>
           <p className="o2">{data.hits.length === 0 ? "Nothing matches" : `${formatDuration(data.totalMs)} on ${data.days === 1 ? "1 day" : `${data.days} days`}`}</p>
           <ul className="rule-hits">
-            {data.hits.map(({ block, day }) => (
+            {data.hits.map(({ block, day, dayLabel }) => (
               <li key={`${day}:${block.id}`}>
                 <span className="o2">
-                  {formatDayLabel(day)} {formatClock(block.start)}
+                  {dayLabel} {formatClock(block.start)}
                 </span>
                 <span className="rule-hit-app">{block.app}</span>
                 <span className="grow-text">{block.title}</span>

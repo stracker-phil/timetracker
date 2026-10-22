@@ -59,7 +59,7 @@ describe("MonthView", () => {
     it("shows the month's label and the recorded total", async () => {
       renderMonth(busyMonth());
       expect(await screen.findByRole("heading", { level: 1, name: "March 2026" })).toBeInTheDocument();
-      expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 2:00");
+      expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 2h 00m");
     });
 
     it("has no buttons to change the month", async () => {
@@ -121,14 +121,14 @@ describe("MonthView", () => {
     it("names the day and its recorded time", async () => {
       renderMonth(busyMonth());
       await grid();
-      expect(within(cell("2026-03-10")).getByRole("button", { name: "2026-03-10, 1:30 recorded" })).toBeInTheDocument();
+      expect(within(cell("2026-03-10")).getByRole("button", { name: "2026-03-10, 1h 30m recorded" })).toBeInTheDocument();
       expect(within(cell("2026-03-12")).getByRole("button", { name: "2026-03-12" })).toBeInTheDocument();
     });
 
     it("opens the day in the Day view", async () => {
       renderMonth(busyMonth());
       await grid();
-      await userEvent.click(screen.getByRole("button", { name: "2026-03-10, 1:30 recorded" }));
+      await userEvent.click(screen.getByRole("button", { name: "2026-03-10, 1h 30m recorded" }));
       expect(useStore.getState().view).toBe("day");
       expect(useStore.getState().day).toBe("2026-03-10");
     });
@@ -146,26 +146,26 @@ describe("MonthView", () => {
       renderMonth(busyMonth([landing, docs]));
       await grid();
       const busy = within(cell("2026-03-10"));
-      expect(busy.getByRole("button", { name: "Website: Landing page, 1:30" })).toHaveTextContent("Landing page1:30");
-      expect(busy.getByRole("button", { name: "Docs, 0:20" })).toHaveTextContent("Docs0:20");
-      expect(within(cell("2026-03-12")).queryByRole("button", { name: /, \d+:\d\d$/ })).not.toBeInTheDocument();
+      expect(busy.getByRole("button", { name: "Website: Landing page, 1h 30m" })).toHaveTextContent("Landing page1h 30m");
+      expect(busy.getByRole("button", { name: "Docs, 20m" })).toHaveTextContent("Docs20m");
+      expect(within(cell("2026-03-12")).queryByRole("button", { name: /, (\d+h )?\d+m$/ })).not.toBeInTheDocument();
     });
 
     it("shows every recording of a busy day", async () => {
       const many = Array.from({ length: 9 }, (_, i) => calendarEntry({ id: `m${i}`, projectName: `Project ${i}`, spanIds: [`m${i}-s1`] }));
       renderMonth(busyMonth(many));
       await grid();
-      expect(within(cell("2026-03-10")).getAllByRole("button", { name: /^Project \d, 0:45$/ })).toHaveLength(9);
+      expect(within(cell("2026-03-10")).getAllByRole("button", { name: /^Project \d, 45m$/ })).toHaveLength(9);
     });
 
     it("opens the editor on the recording of a clicked line", async () => {
       mocked.recordingsList.mockResolvedValue([recording({ id: "r1", projectId: "p-site", note: "Landing page", start: at("09:00"), end: at("10:30") })]);
       renderMonth(busyMonth());
       await grid();
-      await userEvent.click(screen.getByRole("button", { name: "Website: Landing page, 1:30" }));
+      await userEvent.click(screen.getByRole("button", { name: "Website: Landing page, 1h 30m" }));
       const dialog = within(await screen.findByRole("dialog", { name: "Edit recording" }));
-      expect(await dialog.findByLabelText("Span 1 from")).toHaveValue("09:00");
-      expect(await dialog.findByLabelText("Span 1 to")).toHaveValue("10:30");
+      expect(await dialog.findByLabelText("Time 1 from")).toHaveValue("09:00");
+      expect(await dialog.findByLabelText("Time 1 to")).toHaveValue("10:30");
     });
   });
 
@@ -177,7 +177,7 @@ describe("MonthView", () => {
       await userEvent.click(within(cell("2026-03-10")).getByRole("button", { name: "New recording on Tue 10" }));
       const dialog = within(await screen.findByRole("dialog", { name: "New recording" }));
       expect(mocked.recordingDefaultSpan).toHaveBeenCalledWith("2026-03-10");
-      expect(await dialog.findByLabelText("Span 1 from")).toHaveValue("14:00");
+      expect(await dialog.findByLabelText("Time 1 from")).toHaveValue("14:00");
     });
 
     it("is on every cell, also of a neighboring month", async () => {

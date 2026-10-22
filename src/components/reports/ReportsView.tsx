@@ -1,7 +1,6 @@
 import { Copy, Save } from "lucide-react";
 import { api, type Group, type ReportResult } from "../../api";
 import { useBindingLabel } from "../../commands";
-import { formatRangeLabel } from "../../lib/day";
 import { useApiResult } from "../../lib/useApiResult";
 import { defaultFilter } from "../../state/slices/reports";
 import { useStore } from "../../state/store";
@@ -49,7 +48,7 @@ export function ReportsView() {
 
   return (
     <section className="reports-page" aria-label="Reports">
-      <Toolbar title={result && formatRangeLabel(result.from, result.to)}>
+      <Toolbar title={result?.title}>
         <select className="input" aria-label="Group copied text by" value={filter.groupBy} onChange={(e) => setReportFilter({ groupBy: e.target.value as Group })}>
           {TEXT_GROUPS.map((group) => (
             <option key={group} value={group}>

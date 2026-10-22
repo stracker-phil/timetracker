@@ -280,6 +280,7 @@ mod tests {
             filter: ReportFilter::default(),
             from: day,
             to: day,
+            title: "Tuesday, October 20, 2026".into(),
             groups,
             total_ms: ms(recorded_minutes),
             total_rounded_ms: ms(recorded_minutes),
@@ -313,6 +314,10 @@ mod tests {
         for output in [ReportOutput::Text, ReportOutput::Notes] {
             let reported = reported(result_with(480, 384), output).unwrap();
 
+            assert_eq!(
+                reported.result["title"], "Tuesday, October 20, 2026",
+                "{output:?}"
+            );
             assert_eq!(reported.result["groups"][0]["key"], "Portal", "{output:?}");
             assert_eq!(reported.result["groups"][0]["roundedMs"], 28_800_000);
         }

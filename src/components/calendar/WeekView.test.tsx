@@ -73,9 +73,9 @@ describe("WeekView", () => {
 
   describe("header", () => {
     it("shows the week's label and its recorded and tracked totals", async () => {
-      renderWeek(recordedWeek());
-      expect(await screen.findByRole("heading", { level: 1, name: "Week of 2026-03-09" })).toBeInTheDocument();
-      expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 0:45 · tracked 1:00");
+      renderWeek(recordedWeek([standup], { label: "Week 11 · Mar 9 – 15, 2026" }));
+      expect(await screen.findByRole("heading", { level: 1, name: "Week 11 · Mar 9 – 15, 2026" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 45m · tracked 1h 00m");
     });
 
     it("has no buttons to change the week", async () => {
@@ -95,20 +95,20 @@ describe("WeekView", () => {
     it("shows seven heads with the weekday, the date and the recorded time", async () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
-      expect(heads().map((h) => h.textContent)).toEqual(["Mon 90:00", "Tue 100:45", "Wed 110:00", "Thu 120:00", "Fri 130:00", "Sat 140:00", "Sun 150:00"]);
+      expect(heads().map((h) => h.textContent)).toEqual(["Mon 90m", "Tue 1045m", "Wed 110m", "Thu 120m", "Fri 130m", "Sat 140m", "Sun 150m"]);
     });
 
     it("names each head by its day and recorded time", async () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
-      expect(screen.getByRole("columnheader", { name: "Mon 9, 0:00 recorded" })).toBeInTheDocument();
-      expect(screen.getByRole("columnheader", { name: "Tue 10, 0:45 recorded" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Mon 9, 0m recorded" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Tue 10, 45m recorded" })).toBeInTheDocument();
     });
 
     it("reads Today on today's head, which keeps its day in the label", async () => {
       renderWeek(weekView({ today: DAY }));
       await screen.findAllByRole("columnheader");
-      const head = screen.getByRole("columnheader", { name: "Tue 10, 0:00 recorded" });
+      const head = screen.getByRole("columnheader", { name: "Tue 10, 0m recorded" });
       expect(head).toHaveTextContent("Today");
       expect(head).not.toHaveTextContent("Tue 10");
       expect(heads()[0]).toHaveTextContent("Mon 9");
@@ -154,11 +154,11 @@ describe("WeekView", () => {
       expect(within(column("Wed 11")).queryByRole("button", { name: "Website: standup" })).not.toBeInTheDocument();
     });
 
-    it("shows the project, note, tag, span count and duration on a card", async () => {
+    it("shows the project, note, tag, times count and duration on a card", async () => {
       renderWeek(recordedWeek([calendarEntry({ id: "r1", note: "standup", tag: "support", spanIds: ["r1-s1", "r1-s2"] })]));
       await screen.findAllByRole("columnheader");
       const el = within(card());
-      for (const text of ["Website", "standup", "support", "2 spans", "0:45"]) expect(el.getByText(text)).toBeInTheDocument();
+      for (const text of ["Website", "standup", "support", "2 times", "45m"]) expect(el.getByText(text)).toBeInTheDocument();
     });
 
     it("sets a card's height through --units", async () => {
@@ -183,7 +183,7 @@ describe("WeekView", () => {
       await screen.findAllByRole("columnheader");
       await userEvent.dblClick(card());
       const dialog = within(await screen.findByRole("dialog", { name: "Edit recording" }));
-      expect(await dialog.findByLabelText("Span 1 from")).toHaveValue("09:00");
+      expect(await dialog.findByLabelText("Time 1 from")).toHaveValue("09:00");
     });
 
     it("opens the editor with ↵ on a focused card", async () => {
@@ -230,7 +230,7 @@ describe("WeekView", () => {
       await userEvent.click(screen.getByRole("button", { name: "New recording on Mon 9" }));
       const dialog = within(await screen.findByRole("dialog", { name: "New recording" }));
       expect(mocked.recordingDefaultSpan).toHaveBeenCalledWith("2026-03-09");
-      expect(await dialog.findByLabelText("Span 1 from")).toHaveValue("14:00");
+      expect(await dialog.findByLabelText("Time 1 from")).toHaveValue("14:00");
       expect(screen.queryByRole("complementary", { name: "Timesheet" })).not.toBeInTheDocument();
     });
 

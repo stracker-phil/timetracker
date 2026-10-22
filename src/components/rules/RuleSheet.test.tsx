@@ -197,16 +197,17 @@ describe("RuleSheet", () => {
     it("lists the matching activity of the last 7 days with the total", async () => {
       mocked.rulePreview.mockResolvedValue(
         rulePreview({
-          hits: [previewHit("2026-03-10", { id: "h1", app: "Safari", title: "Docs home", start: at("09:15"), end: at("09:45") }), previewHit("2026-03-09", { id: "h2", app: "Safari", title: "Docs API", start: at("14:00", "2026-03-09"), end: at("15:00", "2026-03-09") })],
+          hits: [previewHit("2026-03-10", { id: "h1", app: "Safari", title: "Docs home", start: at("09:15"), end: at("09:45") }, "Tue, Mar 10"), previewHit("2026-03-09", { id: "h2", app: "Safari", title: "Docs API", start: at("14:00", "2026-03-09"), end: at("15:00", "2026-03-09") }, "Mon, Mar 9")],
           totalMs: 90 * 60_000,
           days: 2,
         }),
       );
       renderSheet({ draft });
-      expect(await preview().findByText("1 h 30 min on 2 days")).toBeInTheDocument();
+      expect(await preview().findByText("1h 30m on 2 days")).toBeInTheDocument();
       expect(preview().getByText("Docs home")).toBeInTheDocument();
       expect(preview().getByText("Docs API")).toBeInTheDocument();
-      expect(preview().getByText(/09:15/)).toBeInTheDocument();
+      expect(preview().getByText("Tue, Mar 10 09:15")).toBeInTheDocument();
+      expect(preview().getByText("Mon, Mar 9 14:00")).toBeInTheDocument();
       expect(mocked.rulePreview).toHaveBeenLastCalledWith(expect.objectContaining({ conditions: draft.conditions }), 7);
     });
 
@@ -218,7 +219,7 @@ describe("RuleSheet", () => {
     it("says 1 day for a single day", async () => {
       mocked.rulePreview.mockResolvedValue(rulePreview({ hits: [previewHit("2026-03-10", { id: "h1" })], totalMs: 30 * 60_000, days: 1 }));
       renderSheet({ draft });
-      expect(await preview().findByText("30 min on 1 day")).toBeInTheDocument();
+      expect(await preview().findByText("30m on 1 day")).toBeInTheDocument();
     });
 
     it("asks again with the typed value after the typing paused", async () => {

@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { Settings2 } from "lucide-react";
 import type { ActivityBlock as ActivityBlockData } from "../../api";
-import { formatShortDuration } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
 import { AppIcon } from "../AppIcon";
 import { Block } from "../Block";
 
@@ -57,7 +57,7 @@ function SummaryBlock({ block, top, height, focused, selected }: BlockProps) {
           </>
         ) : undefined
       }
-      trailing={height >= ONE_LINE_PX ? formatShortDuration(block.activeMs) : undefined}
+      trailing={height >= ONE_LINE_PX ? formatDuration(block.activeMs) : undefined}
     >
       {text && <Gear block={block} />}
     </Block>
@@ -76,7 +76,7 @@ function MemoryBlock({ block, top, height, focused, selected }: BlockProps) {
           <AppIcon app={block.app} bundleId={block.bundleId} size={16} />
           <span className="memory-text">
             <span className="memory-title">{block.label}</span>
-            <span className="memory-duration">{formatShortDuration(block.activeMs)}</span>
+            <span className="memory-duration">{formatDuration(block.activeMs)}</span>
           </span>
           <Gear block={block} />
         </>

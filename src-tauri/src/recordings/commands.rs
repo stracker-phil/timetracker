@@ -217,7 +217,7 @@ pub fn recording_draft_toggle(
     draft::toggled_on_grid(&spans, block, &others, snap_minutes(&state), &Local)
 }
 
-/// The editor's spans and one more after the last (Add span).
+/// The editor's spans and one more after the last (Add time).
 #[tauri::command]
 pub fn recording_draft_add(state: State<'_, AppState>, spans: Vec<Span>) -> DraftSpans {
     draft::with_added(&spans, now_ms(), snap_minutes(&state), &Local)

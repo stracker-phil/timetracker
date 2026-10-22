@@ -59,8 +59,8 @@ const editorForm = (name: "New recording" | "Edit recording" | "Edit suggestion"
 const sheetOf = () => screen.getByRole("complementary", { name: "Timesheet" });
 /** The From and To of the editor's `row`th span row (1-based). */
 function expectSpan(form: HTMLElement, from: string, to: string, row = 1) {
-  expect(within(form).getByLabelText(`Span ${row} from`)).toHaveValue(from);
-  expect(within(form).getByLabelText(`Span ${row} to`)).toHaveValue(to);
+  expect(within(form).getByLabelText(`Time ${row} from`)).toHaveValue(from);
+  expect(within(form).getByLabelText(`Time ${row} to`)).toHaveValue(to);
 }
 const scrollBox = () => screen.getByRole("row").parentElement as HTMLElement;
 /** The element that takes the press of a selection drag: the parent of the lanes. */
@@ -148,13 +148,13 @@ describe("DayPage", () => {
     it("shows the totals of the day", async () => {
       const totals = { recordedMs: 0, trackedMs: (6 * 60 + 12) * 60_000, awayMs: (60 + 5) * 60_000 };
       renderDay(dayView({ lanes: [lane({ blocks: [docs] })], totals }));
-      expect(await screen.findByText("tracked 6:12 · away 1:05")).toBeInTheDocument();
+      expect(await screen.findByText("tracked 6h 12m · away 1h 05m")).toBeInTheDocument();
     });
 
     it("shows the recorded time of the day and leaves out the zero parts", async () => {
       const totals = { recordedMs: 90 * MINUTE_MS, trackedMs: 0, awayMs: 0 };
       renderDay(dayView({ lanes: [lane({ blocks: [docs] })], recordings: [meeting], totals }));
-      expect(await screen.findByLabelText("Totals")).toHaveTextContent(/^recorded 1:30$/);
+      expect(await screen.findByLabelText("Totals")).toHaveTextContent(/^recorded 1h 30m$/);
     });
 
     it("has no buttons to change the day", async () => {
@@ -166,7 +166,7 @@ describe("DayPage", () => {
     it("shows the totals on today too", async () => {
       const totals = { recordedMs: 0, trackedMs: 60 * MINUTE_MS, awayMs: 0 };
       renderDay(dayView({ day: today(), totals }));
-      expect(await screen.findByLabelText("Totals")).toHaveTextContent("tracked 1:00");
+      expect(await screen.findByLabelText("Totals")).toHaveTextContent("tracked 1h 00m");
     });
 
     it("shows no totals on a day with everything at zero", async () => {
@@ -193,7 +193,6 @@ describe("DayPage", () => {
       renderDay(dayView({ lanes: [laneOf(sparse)] }));
       const el = await blockEl("Preview: Report.pdf");
       expect(within(el).getByText("20m")).toBeInTheDocument();
-      expect(within(el).queryByText("0:20")).not.toBeInTheDocument();
     });
 
     it("shows hours in the duration of a long block", async () => {
@@ -573,7 +572,7 @@ describe("DayPage", () => {
       const card = within(screen.getByRole("dialog", { name: "Safari details" }));
       expect(card.getByText("Docs")).toBeInTheDocument();
       expect(card.getByRole("button", { name: "https://example.com/docs" })).toBeInTheDocument();
-      expect(card.getByText("09:12–09:40 · 28 min")).toBeInTheDocument();
+      expect(card.getByText("09:12–09:40 · 28m")).toBeInTheDocument();
     });
 
     it("opens the url of the card through the api", async () => {
@@ -598,7 +597,7 @@ describe("DayPage", () => {
       renderDay(busyDay());
       await hover("Planner: Standup");
       await advance(350);
-      expect(screen.getByText("10:00–11:00 · 1 h 00 min · planner")).toBeInTheDocument();
+      expect(screen.getByText("10:00–11:00 · 1h 00m · planner")).toBeInTheDocument();
     });
 
     it("disappears after the pointer left", async () => {
@@ -804,7 +803,7 @@ describe("DayPage", () => {
       await userEvent.click(screen.getByLabelText("Notes: Todo"));
       await waitFor(() => expectSpan(form, "10:00", "10:30", 2));
       await userEvent.click(screen.getByLabelText("Safari: Docs"));
-      await waitFor(() => expect(within(form).queryByLabelText("Span 2 from")).not.toBeInTheDocument());
+      await waitFor(() => expect(within(form).queryByLabelText("Time 2 from")).not.toBeInTheDocument());
       expectSpan(form, "10:00", "10:30");
     });
 
@@ -948,7 +947,7 @@ describe("DayPage", () => {
       expect(screen.getByLabelText("Recordings")).toContainElement(screen.getByLabelText("Website: standup"));
       expect(el.getByText("11:00")).toBeInTheDocument();
       expect(el.getByText("11:45")).toBeInTheDocument();
-      for (const text of ["Website", "standup", "support", "45m", "0:45"]) expect(el.queryByText(text)).not.toBeInTheDocument();
+      for (const text of ["Website", "standup", "support", "45m"]) expect(el.queryByText(text)).not.toBeInTheDocument();
     });
 
     it("shows each span of a recording with several by its own times", async () => {
@@ -1173,12 +1172,12 @@ describe("DayPage", () => {
       expect(card.getByText("1h 05m")).toBeInTheDocument();
     });
 
-    it("counts the spans of a recording with several", async () => {
+    it("counts the times of a recording with several", async () => {
       const split = timesheetCard({ id: "r3", note: "pairing", spanIds: ["r3-s1", "r3-s2"] });
       renderDay(sheetDay([planning, split]));
       await screen.findByRole("complementary", { name: "Timesheet" });
-      expect(within(cardOf("pairing, Website, 45m")).getByText("2 spans")).toBeInTheDocument();
-      expect(within(cardOf("planning, Website, 30m")).queryByText(/spans/)).not.toBeInTheDocument();
+      expect(within(cardOf("pairing, Website, 45m")).getByText("2 times")).toBeInTheDocument();
+      expect(within(cardOf("planning, Website, 30m")).queryByText(/times/)).not.toBeInTheDocument();
     });
 
     it("shows the recorded time of the day as the total", async () => {
@@ -1388,7 +1387,7 @@ describe("DayPage", () => {
         renderDay(withSuggestions(), withProject);
         await userEvent.click(within(await standupCard()).getByRole("button", { name: "Approve" }));
         expect(mocked.suggestionApprove).toHaveBeenCalledWith(DAY, standupIdea.id);
-        expect(await screen.findByText("Recorded 45 min for Website")).toBeInTheDocument();
+        expect(await screen.findByText("Recorded 45m for Website")).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
         expect(screen.queryByRole("form")).not.toBeInTheDocument();
       });
@@ -1746,9 +1745,9 @@ describe("DayPage", () => {
         });
         const day = within(within(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).getByRole("region", { name: "Day" }));
         for (const [title, keys] of [
-          ["Select block", "V"],
-          ["Extend selection to the next block", "⇧J"],
-          ["Extend selection to the previous block", "⇧K"],
+          ["Select activity", "V"],
+          ["Extend selection to the next activity", "⇧J"],
+          ["Extend selection to the previous activity", "⇧K"],
           ["Next recording or suggestion", "]"],
           ["Previous recording or suggestion", "["],
           ["Move recording to the previous day", "⌥←"],

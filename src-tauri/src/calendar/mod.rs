@@ -3,6 +3,7 @@
 pub mod commands;
 pub mod entries;
 pub mod jump;
+pub mod locale;
 pub mod mini_month;
 pub mod period;
 pub mod titles;
@@ -15,15 +16,16 @@ use crate::day::{Names, tracked_ms};
 use crate::db::activities::ActivityRow;
 use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms};
-use crate::reports::week_label;
+use crate::store::settings::DayTitle;
 use entries::{CalendarEntry, entries};
+use titles::{month_title, range_label};
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct WeekView {
     pub week_start: Day,
-    /// `Week 43 · 19 – 25 Oct 2026`.
+    /// `Week 43 · Oct 19 – 25, 2026`, in the locale's date order (`titles::range_label`).
     pub label: String,
     pub days: Vec<DayColumn>,
     pub total_ms: i64,
@@ -100,6 +102,16 @@ pub fn month_days(day: Day) -> (Day, Day) {
     (first.week_start(), add_days(last.week_start(), 6))
 }
 
+/// `Week 43 · Oct 19 – 25, 2026`, `Week 44 · Oct 26 – Nov 1, 2026`.
+fn week_label(start: Day) -> String {
+    let end = add_days(start, 6);
+    format!(
+        "Week {} · {}",
+        start.date().iso_week().week(),
+        range_label(start, end, DayTitle::Short, true)
+    )
+}
+
 fn add_days(day: Day, days: u64) -> Day {
     Day::from_date(day.date() + Days::new(days))
 }
@@ -158,7 +170,7 @@ pub fn month(day: Day, input: &CalendarInput) -> MonthView {
         .collect();
     MonthView {
         month_start: first,
-        label: first.date().format("%B %Y").to_string(),
+        label: month_title(first, DayTitle::Long),
         total_ms: cells
             .iter()
             .filter(|c| c.in_month)
@@ -314,7 +326,7 @@ mod tests {
     fn a_week_is_labelled_with_its_number_and_range_and_each_column_with_its_weekday() {
         let view = week(day("2026-10-21"), &input(vec![], vec![]));
 
-        assert_eq!(view.label, "Week 43 · 19 – 25 Oct 2026");
+        assert_eq!(view.label, "Week 43 · Oct 19 – 25, 2026");
         let labels: Vec<String> = view
             .days
             .iter()
@@ -604,7 +616,7 @@ mod tests {
 
         let value = serde_json::to_value(&view).unwrap();
         assert_eq!(value["weekStart"], json!("2026-10-19"));
-        assert_eq!(value["label"], json!("Week 43 · 19 – 25 Oct 2026"));
+        assert_eq!(value["label"], json!("Week 43 · Oct 19 – 25, 2026"));
         assert_eq!(value["totalMs"], json!(HOUR));
         assert_eq!(value["trackedMs"], json!(0));
         let column = &value["days"][0];
@@ -628,7 +640,7 @@ mod tests {
     fn a_week_label_across_months_names_both() {
         let view = week(day("2026-10-30"), &input(vec![], vec![]));
 
-        assert_eq!(view.label, "Week 44 · 26 Oct – 1 Nov 2026");
+        assert_eq!(view.label, "Week 44 · Oct 26 – Nov 1, 2026");
     }
 
     #[test]

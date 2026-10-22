@@ -114,7 +114,8 @@ pub fn day_label(day: Day) -> String {
     day.date().format("%a %Y-%m-%d").to_string()
 }
 
-/// `Week 43 · 20 – 26 Oct 2026`; the month and year repeat only where the week crosses them.
+/// `Week 43 · 20 – 26 Oct 2026`; the month and year repeat only where the week crosses them. The copied text
+/// keeps this fixed format on purpose, whatever the region (the UI's labels are in `calendar::titles`).
 pub(crate) fn week_label(start: Day) -> String {
     let (first, last) = (start.date(), add_days(start, 6).date());
     let span = if first.year() != last.year() {

@@ -7,7 +7,6 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api, type DateJump } from "../api";
 import { installCommands } from "../commands";
-import { today as currentDay } from "../lib/day";
 import { registerSettingsPage } from "../registry/settingsPages";
 import { resetStore, useStore, type Store } from "../state/store";
 import { client, projectItem, projectsStore } from "../test/projectFixtures";
@@ -26,7 +25,7 @@ const solo = projectItem({ project: { id: "p-solo", name: "Solo" } });
 const archived = projectItem({ project: { id: "p-old", name: "Promo archive", archivedAt: 5 } });
 const weekly = savedReport({ id: "s1", name: "Weekly" });
 
-const today: DateJump = { name: "Today", unit: "day", from: "2026-03-10", to: "2026-03-10" };
+const today: DateJump = { name: "Today", unit: "day", from: "2026-03-10", to: "2026-03-10", label: "Tue, Mar 10" };
 
 async function openPalette(query = "", patch: Partial<Store> = {}) {
   resetStore({ ...projectsStore({ projects: [promo, solo, archived], clients: [acme, oldClient] }), paletteOpen: true, view: "projects", ...patch });
@@ -64,7 +63,6 @@ describe("CommandPalette", () => {
         expect.stringMatching(/^Projects/),
         expect.stringMatching(/^Tags/),
         expect.stringMatching(/^Rules/),
-        expect.stringMatching(/^Hours/),
         expect.stringMatching(/^Today/),
         expect.stringContaining("Acme / Promo"),
         expect.stringMatching(/^Weekly/),
@@ -125,22 +123,18 @@ describe("CommandPalette", () => {
       expect(useStore.getState().paletteOpen).toBe(false);
     });
 
-    it("shows today in the Day view for Hours, listed once under Go to", async () => {
-      await openPalette("hours", { view: "projects", day: "2026-03-10" });
-      expect(options()).toEqual([expect.stringMatching(/^Hours/)]);
-      expect(screen.getByText("Go to")).toBeInTheDocument();
-      await userEvent.keyboard("{Enter}");
-      expect(useStore.getState().view).toBe("day");
-      expect(useStore.getState().day).toBe(currentDay());
-      expect(useStore.getState().paletteOpen).toBe(false);
+    it("lists the Day view once and has no Hours entry", async () => {
+      await openPalette("day", { view: "projects", day: "2026-03-10" });
+      expect(options().filter((o) => /^Day/.test(o))).toHaveLength(1);
+      expect(screen.queryByRole("option", { name: /^Hours/ })).not.toBeInTheDocument();
     });
 
     it.each([
-      ["Yesterday", "day", "day", "2026-03-09"],
-      ["Last week", "week", "week", "2026-03-02"],
-      ["March", "month", "month", "2026-03-01"],
-    ] as const)("shows the day of the date %s in its own view", async (name, unit, view, from) => {
-      mocked.calendarJumps.mockResolvedValue([{ name, unit, from, to: from }]);
+      ["Yesterday", "day", "day", "2026-03-09", "Mon, Mar 9"],
+      ["Last week", "week", "week", "2026-03-02", "Mar 2 – 8"],
+      ["March", "month", "month", "2026-03-01", "March 2026"],
+    ] as const)("shows the day of the date %s in its own view", async (name, unit, view, from, label) => {
+      mocked.calendarJumps.mockResolvedValue([{ name, unit, from, to: from, label }]);
       await openPalette(name.toLowerCase(), { view: "projects" });
       await screen.findByRole("option", { name: new RegExp(`^${name}`) });
       await userEvent.keyboard("{Enter}");
@@ -216,7 +210,7 @@ describe("CommandPalette", () => {
     it("lists only commands after >, the views' commands included", async () => {
       await openPalette(">", { recent: [promo.project], savedReports: [weekly] });
       expect(indexOfOption(/^Show Week/i)).toBeGreaterThanOrEqual(0);
-      expect(indexOfOption(/^Show Hours/)).toBeGreaterThanOrEqual(0);
+      expect(indexOfOption(/^Show Hours/)).toBe(-1);
       expect(indexOfOption(/^New project/)).toBeGreaterThanOrEqual(0);
       ["Go to", "Recent projects", "Projects", "Saved reports"].forEach((name) => expect(screen.queryByText(name)).not.toBeInTheDocument());
     });
@@ -232,7 +226,7 @@ describe("CommandPalette", () => {
     });
 
     it("lists only dates after @ and looks up the text behind it", async () => {
-      mocked.calendarJumps.mockResolvedValue([{ name: "Monday", unit: "day", from: "2026-03-09", to: "2026-03-09" }]);
+      mocked.calendarJumps.mockResolvedValue([{ name: "Monday", unit: "day", from: "2026-03-09", to: "2026-03-09", label: "Mon, Mar 9" }]);
       await openPalette("@ mon", { savedReports: [savedReport({ name: "Monthly" })] });
       await screen.findByRole("option", { name: /^Monday/ });
       expect(options()).toHaveLength(1);

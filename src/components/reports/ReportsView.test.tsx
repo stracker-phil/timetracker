@@ -6,7 +6,6 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api, type Range, type ReportFilter, type Rounding } from "../../api";
 import { installCommands, runCommand } from "../../commands";
-import { formatDayLabel, formatRangeLabel } from "../../lib/day";
 import { defaultFilter } from "../../state/slices/reports";
 import { resetStore, useStore } from "../../state/store";
 import { DAY } from "../../test/dayFixtures";
@@ -41,20 +40,15 @@ describe("ReportsView", () => {
   });
 
   describe("result", () => {
-    it("titles a one-day report with the day", async () => {
+    it("titles the report with the title Rust sends", async () => {
+      mocked.reportRun.mockResolvedValue(reportResult({ from: "2026-03-09", to: "2026-03-15", title: "Mar 9 – 15" }));
       await renderView();
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(formatDayLabel(DAY));
-    });
-
-    it("titles a multi-day report with its range", async () => {
-      mocked.reportRun.mockResolvedValue(reportResult({ from: "2026-03-09", to: "2026-03-15" }));
-      await renderView();
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(formatRangeLabel("2026-03-09", "2026-03-15"));
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Mar 9 – 15");
     });
 
     it("shows the totals, the charts and the table of the report", async () => {
       await renderView();
-      expect(screen.getByLabelText("Totals")).toHaveTextContent("0:45 h");
+      expect(screen.getByLabelText("Totals")).toHaveTextContent("45m");
       expect(screen.getByRole("region", { name: "By client" })).toBeInTheDocument();
       expect(screen.getByRole("region", { name: "By tag" })).toBeInTheDocument();
       expect(screen.getByRole("region", { name: "Recordings by project" })).toBeInTheDocument();
