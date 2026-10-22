@@ -36,7 +36,10 @@ describe("DeleteActivityDialog", () => {
     mocked.activityDelete.mockResolvedValue({ activities: 12, away: 1, undoUntil: Date.now() + 30_000 });
   });
 
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    mocked.calendarParseTime.mockReset();
+  });
 
   describe("whole day", () => {
     it("shows the day and how many spans the day holds", async () => {
@@ -161,6 +164,35 @@ describe("DeleteActivityDialog", () => {
       await userEvent.click(deleteButton());
       expect(mocked.activityDelete).toHaveBeenCalledWith(at("10:00"), at("11:30"));
       expect(await screen.findByText(/^Deleted activity for .*10:00 – .*11:30$/)).toBeInTheDocument();
+    });
+
+    it("counts and deletes the range Rust read from the fields, not the typed text", async () => {
+      const reading: Record<string, number> = {
+        [`${DAY}T00:00`]: bounds[0],
+        "2026-03-11T00:00": bounds[1],
+        [`${DAY}T10:00`]: at("10:15"),
+        [`${DAY}T11:30`]: at("11:45"),
+      };
+      mocked.calendarParseTime.mockImplementation(async (text) => reading[text] ?? null);
+      renderDialog(true);
+      await screen.findByText(/Deletes 12 activity spans/);
+      fireEvent.change(screen.getByLabelText("From"), { target: { value: `${DAY}T10:00` } });
+      fireEvent.change(screen.getByLabelText("To"), { target: { value: `${DAY}T11:30` } });
+
+      await vi.waitFor(() => expect(mocked.activityCount).toHaveBeenLastCalledWith(at("10:15"), at("11:45")));
+      expect(mocked.calendarParseTime).toHaveBeenCalledWith(`${DAY}T10:00`, bounds[0]);
+      await userEvent.click(deleteButton());
+      await vi.waitFor(() => expect(mocked.activityDelete).toHaveBeenCalledWith(at("10:15"), at("11:45")));
+    });
+
+    it("disables Delete while Rust reads a field as no time", async () => {
+      mocked.calendarParseTime.mockImplementation(async (text) => (text.endsWith("T10:00") ? null : bounds[0]));
+      renderDialog(true);
+      await screen.findByText(/Deletes 12 activity spans/);
+      await vi.waitFor(() => expect(deleteButton()).toBeEnabled());
+      fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-03-11T10:00" } });
+
+      await vi.waitFor(() => expect(deleteButton()).toBeDisabled());
     });
 
     it("disables Delete while a field is empty", async () => {

@@ -110,7 +110,7 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
         &[
             &["recording.new"],
             &["timer.start", "timer.stop"],
-            &["projects.new", "clients.new", "rules.new"],
+            &["projects.new", "clients.new", "tags.new", "rules.new"],
             &["data.exportBackup"],
             &["window.hide"],
         ],
@@ -131,6 +131,7 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
     let view = sub(
         "View",
         &[
+            &["view.hours"],
             &[
                 "view.day",
                 "view.week",

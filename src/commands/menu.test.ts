@@ -97,7 +97,7 @@ describe("menuState", () => {
   });
 
   describe("checkmarks", () => {
-    it.each(VIEWS.map((v) => v.id))("checks only view.%s while that view shows", (view) => {
+    it.each(VIEWS.map((v) => v.id))("checks only view.%s while that view shows, never view.hours", (view) => {
       resetStore({ view });
       expect(checked().filter((id) => id.startsWith("view."))).toEqual([`view.${view}`]);
     });
@@ -133,6 +133,8 @@ describe("menuState", () => {
       ["projects.new", ["projects"]],
       ["clients.new", ["projects"]],
       ["rules.new", ["rules"]],
+      ["tags.new", ["tags"]],
+      ["view.hours", ALL],
       ["day.settings", ["day"]],
       ["nav.prev", DATED],
       ["nav.next", DATED],

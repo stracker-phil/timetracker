@@ -3,16 +3,16 @@
 
 use std::collections::BTreeSet;
 
-use chrono::{Datelike, Months};
+use chrono::Datelike;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::period::PeriodUnit;
+use super::period::{PeriodUnit, step};
 use super::titles::month_name;
 use super::{add_days, month_range, week_days};
 use crate::db::time::{Day, Ms};
 use crate::db::{Db, recordings};
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::reports::{Range, resolve};
 use crate::store::settings::CalendarTitle;
 
@@ -85,7 +85,7 @@ pub async fn load_mini_month(
     today: Day,
     now: Ms,
 ) -> AppResult<MiniMonth> {
-    let month = add_months(shown_day.month_start(), offset)?;
+    let month = step(PeriodUnit::Month, shown_day, offset)?;
     let (from, to) = mini_month_days(month);
     let days = Day::range(&from, &to);
     let spans = match db {
@@ -101,17 +101,6 @@ pub async fn load_mini_month(
         today,
         title,
     ))
-}
-
-fn add_months(first: Day, offset: i32) -> AppResult<Day> {
-    let months = Months::new(offset.unsigned_abs());
-    let date = if offset < 0 {
-        first.date().checked_sub_months(months)
-    } else {
-        first.date().checked_add_months(months)
-    };
-    date.map(Day::from_date)
-        .ok_or_else(|| AppError::InvalidInput(format!("No month {offset} months from {first}")))
 }
 
 /// The first and the last day the mini month of `month` covers.

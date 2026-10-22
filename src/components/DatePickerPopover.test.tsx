@@ -6,7 +6,6 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api, type PeriodUnit, type PickerMonth, type Range } from "../api";
 import { installCommands, runCommand } from "../commands";
-import { addDays, addMonths } from "../lib/day";
 import { defaultFilter } from "../state/slices/reports";
 import { resetStore, useStore, type View } from "../state/store";
 import { mondayOf } from "../test/calendarFixtures";
@@ -18,10 +17,19 @@ const mocked = vi.mocked(api, true);
 /** Wed 21 Oct 2026. */
 const TODAY = "2026-10-21";
 
+const dayString = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+/** `day` moved by whole days. */
+function shiftDay(day: string, by: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return dayString(new Date(y, m - 1, d + by));
+}
+
 /** What Rust answers for the period of `unit` around `day`. */
 function period(unit: PeriodUnit, day: string) {
-  const from = unit === "day" ? day : unit === "week" ? mondayOf(day) : addMonths(day, 0);
-  const to = unit === "day" ? day : unit === "week" ? addDays(from, 6) : addDays(addMonths(day, 1), -1);
+  const [y, m] = day.split("-").map(Number);
+  const from = unit === "day" ? day : unit === "week" ? mondayOf(day) : `${day.slice(0, 7)}-01`;
+  const to = unit === "day" ? day : unit === "week" ? shiftDay(from, 6) : dayString(new Date(y, m, 0));
   return { from, to, holdsToday: from <= TODAY && TODAY <= to };
 }
 
@@ -31,7 +39,7 @@ function pickerMonth(month: string, selected: [string, string] | null): PickerMo
   const start = mondayOf(monthStart);
   const weeks = Array.from({ length: 6 }, (_, w) =>
     Array.from({ length: 7 }, (_, d) => {
-      const day = addDays(start, w * 7 + d);
+      const day = shiftDay(start, w * 7 + d);
       return { day, outside: day.slice(0, 7) !== monthStart.slice(0, 7), isToday: day === TODAY, selected: !!selected && selected[0] <= day && day <= selected[1] };
     }),
   );
@@ -154,11 +162,25 @@ describe("DatePickerPopover", () => {
     it("shows the previous and next month without changing the shown day", async () => {
       const picker = await openPicker("day");
       await userEvent.click(picker.getByRole("button", { name: "Previous month" }));
-      expect(picker.getByRole("grid", { name: "September 2026" })).toBeInTheDocument();
+      expect(await picker.findByRole("grid", { name: "September 2026" })).toBeInTheDocument();
       await userEvent.click(picker.getByRole("button", { name: "Next month" }));
       await userEvent.click(picker.getByRole("button", { name: "Next month" }));
-      expect(picker.getByRole("grid", { name: "November 2026" })).toBeInTheDocument();
+      expect(await picker.findByRole("grid", { name: "November 2026" })).toBeInTheDocument();
       expect(shown().day).toBe(TODAY);
+    });
+
+    it("steps through Rust from the month it was turned to, so quick clicks add up", async () => {
+      const picker = await openPicker("day");
+      await userEvent.click(picker.getByRole("button", { name: "Next month" }));
+      await userEvent.click(picker.getByRole("button", { name: "Next month" }));
+      await userEvent.click(picker.getByRole("button", { name: "Next month" }));
+      expect(await picker.findByRole("grid", { name: "January 2027" })).toBeInTheDocument();
+    });
+
+    it("turns back across a year end", async () => {
+      const picker = await openPicker("day", "2026-01-15");
+      await userEvent.click(picker.getByRole("button", { name: "Previous month" }));
+      expect(await picker.findByRole("grid", { name: "December 2025" })).toBeInTheDocument();
     });
 
     it("asks the backend for the grid of the month it was turned to", async () => {
@@ -179,16 +201,38 @@ describe("DatePickerPopover", () => {
     it("focuses the shown day, moves by arrow keys and picks with ↵", async () => {
       const picker = await openPicker("day");
       expect(picker.getByRole("gridcell", { name: TODAY })).toHaveFocus();
-      await userEvent.keyboard("{ArrowDown}{ArrowLeft}{Enter}");
+      await userEvent.keyboard("{ArrowDown}{ArrowLeft}");
+      await vi.waitFor(() => expect(picker.getByRole("gridcell", { name: "2026-10-27" })).toHaveFocus());
+      await userEvent.keyboard("{Enter}");
       expect(shown().day).toBe("2026-10-27");
+    });
+
+    it.each([
+      ["{ArrowRight}", "2026-10-22"],
+      ["{ArrowLeft}", "2026-10-20"],
+      ["{ArrowDown}", "2026-10-28"],
+      ["{ArrowUp}", "2026-10-14"],
+      ["{ArrowRight}{ArrowRight}{ArrowRight}", "2026-10-24"],
+      ["{ArrowUp}{ArrowUp}", "2026-10-07"],
+    ])("moves the focus on %s to %s", async (keys, expected) => {
+      const picker = await openPicker("day");
+      await userEvent.keyboard(keys);
+      await vi.waitFor(() => expect(picker.getByRole("gridcell", { name: expected })).toHaveFocus());
     });
 
     it("turns the month when an arrow key leaves it, and with PageDown", async () => {
       const picker = await openPicker("day", "2026-10-30");
       await userEvent.keyboard("{ArrowRight}{ArrowRight}");
-      expect(picker.getByRole("grid", { name: "November 2026" })).toBeInTheDocument();
+      expect(await picker.findByRole("grid", { name: "November 2026" })).toBeInTheDocument();
       await userEvent.keyboard("{PageDown}");
-      expect(picker.getByRole("grid", { name: "December 2026" })).toBeInTheDocument();
+      expect(await picker.findByRole("grid", { name: "December 2026" })).toBeInTheDocument();
+    });
+
+    it("turns to the previous month with PageUp", async () => {
+      const picker = await openPicker("day");
+      await userEvent.keyboard("{PageUp}");
+      expect(await picker.findByRole("grid", { name: "September 2026" })).toBeInTheDocument();
+      expect(shown().day).toBe(TODAY);
     });
 
     it("closes with Escape and keeps the shown day", async () => {

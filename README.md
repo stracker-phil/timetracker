@@ -10,12 +10,16 @@ it never captures keystrokes, screenshots, audio, the clipboard or page content.
 It runs on macOS on Apple Silicon. Published as source, as-is: no releases, no binaries, no support. To
 build it or port it, point a coding agent at [AGENTS.md](AGENTS.md).
 
-![The Day view in light mode](docs/screens/default-light-day.png)
+![The Day view in the Default scheme](docs/screens/default-light-day.png)
 
-![The Day view in dark mode](docs/screens/dark-dark-day.png)
+![The Day view in the Dark scheme](docs/screens/dark-light-day.png)
 
-The Day view in light mode (Default scheme) and dark mode (Dark scheme), the default look of each; Settings →
-Appearance picks one of three schemes per macOS mode, and `scripts/dev/screenshot-looks.sh` captures every look.
+![The Reports screen](docs/screens/default-light-reports.png)
+
+The Day view in the Default scheme (dark sidebar, light content) and in the Dark scheme, then Reports: a
+recording in the timesheet on the left, the month calendar in the sidebar, the activity lanes on the right.
+Settings → Appearance picks one of three schemes per macOS mode, and `scripts/dev/screenshot-looks.sh`
+captures every look.
 
 ## Install
 
@@ -43,8 +47,11 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 
 ## The Day view
 
-- Time runs top to bottom: the recordings column on the left, activity lanes on the right (one for the
-  tracker, one per external source); the lanes show only activity, away time adds to the day's totals.
+- The timesheet on the left lists the day's recordings as cards in the project's color, with the day's total
+  on top. Beside it the timeline runs top to bottom: the hour axis, the time column with the recordings'
+  spans, a summary lane (the main app of every 5 minutes) and the activity lanes (one for the tracker, one per app
+  given its own lane, one per external source); the lanes show only activity, away time adds to the
+  day's totals. ⌘⇧L shows the day as a list instead.
 - Drag over time or click activity (or J/K, V and ↵): the editor opens in the timesheet, snapped to the grid,
   for a one-line note, a project (often proposed), a tag and the spans. Each further click on a block adds its
   span or takes it out again, so scattered blocks make one recording with the time between them left out.
@@ -55,10 +62,20 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
   marks days with recordings. P, N and O step back, ahead and to today. Below it: Hours (today's Day view),
   Reports, then Projects, Tags and Rules, and at the bottom the tracking status with play / pause and the
   Settings gear (in the status bar while the sidebar is hidden, ⌘⌃S).
-- ⌘1 to ⌘7 switch to Day, Week, Month, Reports, Projects, Tags and Rules.
+- ⌘1 to ⌘7 switch to Day, Week, Month, Reports, Projects, Tags and Rules. Week and Month list the recordings
+  per day (Week as cards, Month as one line each, Monday first); a card drags to another day.
+- Each recording has at most one tag (Tags has a page of its own), for kinds of work across projects.
 - Everything works from the keyboard: ⌘K opens the command palette, ? lists the shortcuts.
 - A project is billable or not (a switch in its sheet; no rates). The status bar shows the billable share of
   the recorded time for the shown day, week, month or report period, e.g. `Billable 80 %`.
+
+## Reports
+
+Reports show a period (today, a week, a month or custom dates, P and N to step it) filtered by client,
+project and tag: the total on top, donuts by client and by tag, then a table of every recording grouped by
+client and project with their hours. Each project has **Copy notes**: its notes of the period, one per line in
+time order, for pasting into a company dashboard. ⌘⇧C copies the whole report as text, ⌥⌘C all its notes;
+reports can be saved under a name and sit under Reports in the sidebar.
 
 ## CLI
 

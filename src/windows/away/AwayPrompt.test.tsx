@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
@@ -107,7 +107,7 @@ describe("AwayPrompt", () => {
     it("answers with the last used project, the suggested times and the trimmed note on Enter", async () => {
       await renderPrompt();
       await userEvent.type(field("Note"), "  lunch {Enter}");
-      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: at("12:05"), end: at("12:45") }], note: "lunch", tagId: null });
+      await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: at("12:05"), end: at("12:45") }], note: "lunch", tagId: null }));
     });
 
     it("answers with the edited times and the chosen tag when Record is clicked", async () => {
@@ -118,7 +118,44 @@ describe("AwayPrompt", () => {
       await userEvent.type(field("To"), "12:40");
       await userEvent.type(screen.getByRole("combobox", { name: "Tag" }), "res{Enter}");
       await userEvent.click(recordButton());
-      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: at("12:10"), end: at("12:40") }], note: "", tagId: "tag-research" });
+      await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: at("12:10"), end: at("12:40") }], note: "", tagId: "tag-research" }));
+    });
+
+    describe("while Rust has not read a typed time yet", () => {
+      afterEach(() => void mocked.calendarParseTime.mockReset());
+
+      it("answers with the typed time once Rust has read it", async () => {
+        await renderPrompt();
+        const readings: ((ms: number | null) => void)[] = [];
+        mocked.calendarParseTime.mockImplementation(() => new Promise((resolve) => readings.push(resolve)));
+        await userEvent.clear(field("To"));
+        await userEvent.type(field("To"), "12:30{Enter}");
+        expect(mocked.awayPromptAnswer).not.toHaveBeenCalled();
+        act(() => readings.forEach((read) => read(at("12:30"))));
+        await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: at("12:05"), end: at("12:30") }] })));
+      });
+
+      it("answers with the old time when the typed text is not a time", async () => {
+        await renderPrompt();
+        mocked.calendarParseTime.mockResolvedValue(null);
+        await userEvent.clear(field("To"));
+        await userEvent.type(field("To"), "later");
+        await userEvent.click(recordButton());
+        await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: at("12:05"), end: at("12:45") }] })));
+      });
+
+      it("keeps the newest typed time when an older reading answers after it", async () => {
+        await renderPrompt();
+        await userEvent.clear(field("To"));
+        let older: (ms: number | null) => void = () => {};
+        mocked.calendarParseTime.mockReturnValueOnce(new Promise((resolve) => (older = resolve)));
+        await userEvent.type(field("To"), "1");
+        mocked.calendarParseTime.mockResolvedValue(at("12:30"));
+        await userEvent.type(field("To"), "2");
+        act(() => older(at("12:10")));
+        await userEvent.click(recordButton());
+        await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: at("12:05"), end: at("12:30") }] })));
+      });
     });
 
     it("answers with the spans Rust drafted from the times", async () => {
@@ -126,7 +163,7 @@ describe("AwayPrompt", () => {
       mocked.recordingDraftSpans.mockResolvedValueOnce(drafted).mockResolvedValueOnce(drafted);
       await renderPrompt();
       await userEvent.click(recordButton());
-      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ spans: drafted.spans }));
+      await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ spans: drafted.spans })));
     });
 
     it("leaves an end before the start to Rust and sends the typed times to be drafted", async () => {
@@ -150,7 +187,7 @@ describe("AwayPrompt", () => {
       await renderPrompt();
       await userEvent.click(screen.getAllByRole("option", { name: "Docs" })[0]);
       await userEvent.click(recordButton());
-      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p-docs" }));
+      await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p-docs" })));
     });
   });
 
@@ -215,7 +252,7 @@ describe("AwayPrompt", () => {
       await userEvent.clear(field("From"));
       await userEvent.type(field("From"), "12:30");
       await userEvent.click(recordButton());
-      expect(mocked.awayPromptAnswer).toHaveBeenLastCalledWith(expect.objectContaining({ spans: [{ start: at("12:30"), end: at("12:45") }] }));
+      await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenLastCalledWith(expect.objectContaining({ spans: [{ start: at("12:30"), end: at("12:45") }] })));
     });
 
     it.each([
@@ -268,7 +305,7 @@ describe("AwayPrompt", () => {
       emitChanged(newer);
       await screen.findByRole("heading", { name: "You were away 20 min" });
       await userEvent.click(recordButton());
-      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: at("15:00"), end: at("15:20") }] }));
+      await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: at("15:00"), end: at("15:20") }] })));
     });
 
     it("reloads the prompt when the window gains focus", async () => {

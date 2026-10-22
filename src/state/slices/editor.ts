@@ -51,7 +51,8 @@ export interface EditorSlice {
   closeEditor: () => void;
   patchDraft: (patch: Partial<Pick<Draft, "projectId" | "note" | "tagId">>) => void;
   /** New times for one span; shown at once, then as Rust rolls them. */
-  setDraftSpan: (index: number, span: Span) => void;
+  /** Resolves once Rust has answered for the new spans. */
+  setDraftSpan: (index: number, span: Span) => Promise<void>;
   removeDraftSpan: (index: number) => void;
   /** A span after the last (Add span), placed by Rust. */
   addDraftSpan: () => void;
@@ -161,7 +162,7 @@ export const editorSlice: Slice<EditorSlice> = {
 
       setDraftSpan(index, span) {
         const spans = spansNow().map((s, i) => (i === index ? span : s));
-        void respan(spans, () => api.recordingDraftSpans(spans));
+        return respan(spans, () => api.recordingDraftSpans(spans));
       },
 
       removeDraftSpan(index) {

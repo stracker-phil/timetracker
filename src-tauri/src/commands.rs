@@ -3,6 +3,7 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::autostart;
+use crate::db::time::Day;
 use crate::error::{AppError, AppResult};
 use crate::events::{self, DataKind};
 use crate::launch::LaunchEvent;
@@ -140,7 +141,7 @@ pub async fn set_keybindings(
 
 #[tauri::command]
 pub fn get_ui_state(state: State<'_, AppState>) -> UiState {
-    state.ui_state.get()
+    state.ui_state.get().restorable(Day::today())
 }
 
 #[tauri::command]

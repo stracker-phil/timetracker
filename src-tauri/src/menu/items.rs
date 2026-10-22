@@ -46,6 +46,7 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("timer.stop", "Stop Timer", "Mod+Shift+."),
     item("projects.new", "New Project…", "Mod+N"),
     item("clients.new", "New Client…", ""),
+    item("tags.new", "New Tag…", "Mod+N"),
     item("rules.new", "New Rule…", "Mod+N"),
     item("data.exportBackup", "Export Backup…", ""),
     item("window.hide", "Close Window", "Mod+W"),
@@ -56,6 +57,7 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("reports.copyText", "Copy Report as Text", "Mod+Shift+C"),
     item("reports.copyNotes", "Copy Report Notes", "Mod+Alt+C"),
     // View
+    item("view.hours", "Hours", ""),
     check("view.day", "Day", "Mod+1"),
     check("view.week", "Week", "Mod+2"),
     check("view.month", "Month", "Mod+3"),
@@ -128,7 +130,7 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
 /// other, so at most one of them is enabled and macOS gives the key to that one.
 #[cfg(test)]
 pub const SHARED_ACCELERATORS: &[&[&str]] = &[
-    &["projects.new", "rules.new"],
+    &["projects.new", "tags.new", "rules.new"],
     &["recording.create", "suggestion.approve"],
     &["recording.delete", "suggestion.dismiss"],
 ];
@@ -170,6 +172,7 @@ mod tests {
         "timer.stop",
         "projects.new",
         "clients.new",
+        "tags.new",
         "rules.new",
         "data.exportBackup",
         "window.hide",
@@ -178,6 +181,7 @@ mod tests {
         "recording.delete",
         "reports.copyText",
         "reports.copyNotes",
+        "view.hours",
         "view.day",
         "view.week",
         "view.month",
@@ -277,6 +281,27 @@ mod tests {
                 .collect();
             assert!(bindings.iter().all(|b| *b == bindings[0]), "{group:?}");
         }
+    }
+
+    #[test]
+    fn the_new_items_of_the_list_views_share_mod_n() {
+        let groups: Vec<Vec<&str>> = SHARED_ACCELERATORS.iter().map(|g| g.to_vec()).collect();
+
+        assert!(groups.contains(&vec!["projects.new", "tags.new", "rules.new"]));
+        for id in ["projects.new", "tags.new", "rules.new"] {
+            assert_eq!(default_binding(id), Some("Mod+N"), "{id}");
+        }
+        assert_eq!(menu_item("tags.new").unwrap().label, "New Tag…");
+    }
+
+    #[test]
+    fn the_hours_view_item_is_a_plain_item_without_a_binding() {
+        let hours = menu_item("view.hours").unwrap();
+
+        assert_eq!(
+            (hours.label, hours.default_binding, hours.check),
+            ("Hours", "", false)
+        );
     }
 
     #[test]

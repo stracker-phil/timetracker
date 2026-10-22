@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api } from "../api";
-import { addMonths } from "../lib/day";
 import { resetStore, useStore } from "../state/store";
 import { defaultFilter } from "../state/slices/reports";
 import { miniMonth } from "../test/calendarFixtures";
@@ -20,7 +19,7 @@ const title = (name: string) => within(calendar()).findByRole("button", { name }
 describe("MiniCalendar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocked.calendarMiniMonth.mockImplementation(async (shownDay, offset) => miniMonth({ monthStart: addMonths(shownDay, offset), selected: DAY, recorded: ["2026-03-04"] }));
+    mocked.calendarMiniMonth.mockImplementation(async (shownDay, offset) => miniMonth({ monthStart: await api.calendarStep("month", shownDay, offset), selected: DAY, recorded: ["2026-03-04"] }));
     resetStore({ view: "day", day: DAY });
   });
 
@@ -43,7 +42,7 @@ describe("MiniCalendar", () => {
   });
 
   it("marks the title when the whole month is the highlighted range", async () => {
-    mocked.calendarMiniMonth.mockImplementation(async (shownDay, offset) => miniMonth({ monthStart: addMonths(shownDay, offset), monthSelected: true }));
+    mocked.calendarMiniMonth.mockImplementation(async (shownDay, offset) => miniMonth({ monthStart: await api.calendarStep("month", shownDay, offset), monthSelected: true }));
     resetStore({ view: "month", day: DAY });
     render(<MiniCalendar />);
     expect(await title("March 2026")).toHaveAttribute("aria-current", "true");

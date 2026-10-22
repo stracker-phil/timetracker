@@ -1,10 +1,12 @@
 //! The sidebar's date navigator and date picker: which days a shown period covers, and a month to pick from.
 
+use chrono::{Months, TimeDelta};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::{month_days, month_range, week_days};
 use crate::db::time::Day;
+use crate::error::{AppError, AppResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -57,6 +59,27 @@ pub fn period(unit: PeriodUnit, day: Day, today: Day) -> Period {
         to,
         holds_today: from <= today && today <= to,
     }
+}
+
+/// The day `by` days, weeks or months from `day` (back when negative); a month step lands on the 1st.
+pub fn step(unit: PeriodUnit, day: Day, by: i32) -> AppResult<Day> {
+    let date = day.date();
+    let stepped = match unit {
+        PeriodUnit::Day => date.checked_add_signed(TimeDelta::days(i64::from(by))),
+        PeriodUnit::Week => date.checked_add_signed(TimeDelta::weeks(i64::from(by))),
+        PeriodUnit::Month => {
+            let first = day.month_start().date();
+            let months = Months::new(by.unsigned_abs());
+            if by < 0 {
+                first.checked_sub_months(months)
+            } else {
+                first.checked_add_months(months)
+            }
+        }
+    };
+    stepped
+        .map(Day::from_date)
+        .ok_or_else(|| AppError::InvalidInput(format!("No date {by} {unit:?} steps from {day}")))
 }
 
 /// The whole weeks covering `day`'s month, with the days `from..=to` of `selected` marked.
@@ -142,6 +165,76 @@ mod tests {
             let p = span(unit, "2026-10-22", today);
 
             assert_eq!(p.holds_today, expected, "{unit:?} {today}");
+        }
+    }
+
+    #[test]
+    fn stepping_moves_by_days_weeks_or_months_in_both_directions() {
+        for (unit, from, by, expected) in [
+            (PeriodUnit::Day, "2026-10-22", 1, "2026-10-23"),
+            (PeriodUnit::Day, "2026-10-22", -1, "2026-10-21"),
+            (PeriodUnit::Day, "2026-10-22", 0, "2026-10-22"),
+            (PeriodUnit::Day, "2026-10-31", 1, "2026-11-01"),
+            (PeriodUnit::Day, "2028-02-28", 1, "2028-02-29"),
+            (PeriodUnit::Day, "2026-10-22", 10, "2026-11-01"),
+            (PeriodUnit::Week, "2026-10-22", 1, "2026-10-29"),
+            (PeriodUnit::Week, "2026-10-22", -1, "2026-10-15"),
+            (PeriodUnit::Week, "2026-10-22", -3, "2026-10-01"),
+            (PeriodUnit::Month, "2026-10-22", 1, "2026-11-01"),
+            (PeriodUnit::Month, "2026-10-22", -1, "2026-09-01"),
+            (PeriodUnit::Month, "2026-10-22", 0, "2026-10-01"),
+            (PeriodUnit::Month, "2026-10-31", 1, "2026-11-01"),
+            (PeriodUnit::Month, "2026-03-31", -1, "2026-02-01"),
+            (PeriodUnit::Month, "2026-10-22", 16, "2028-02-01"),
+        ] {
+            assert_eq!(
+                step(unit, day(from), by).unwrap(),
+                day(expected),
+                "{unit:?} {from} {by}"
+            );
+        }
+    }
+
+    #[test]
+    fn stepping_crosses_the_year_end() {
+        for (unit, from, by, expected) in [
+            (PeriodUnit::Day, "2026-12-31", 1, "2027-01-01"),
+            (PeriodUnit::Day, "2027-01-01", -1, "2026-12-31"),
+            (PeriodUnit::Week, "2026-12-30", 1, "2027-01-06"),
+            (PeriodUnit::Week, "2027-01-02", -1, "2026-12-26"),
+            (PeriodUnit::Month, "2026-12-15", 1, "2027-01-01"),
+            (PeriodUnit::Month, "2027-01-15", -1, "2026-12-01"),
+            (PeriodUnit::Month, "2026-11-30", 14, "2028-01-01"),
+        ] {
+            assert_eq!(
+                step(unit, day(from), by).unwrap(),
+                day(expected),
+                "{unit:?} {from} {by}"
+            );
+        }
+    }
+
+    #[test]
+    fn stepping_past_the_last_representable_date_is_invalid_input() {
+        let last = Day::from_date(chrono::NaiveDate::MAX);
+        let first = Day::from_date(chrono::NaiveDate::MIN);
+        for (unit, from, by) in [
+            (PeriodUnit::Day, last, 1),
+            (PeriodUnit::Week, last, 1),
+            (PeriodUnit::Month, last, 1),
+            (PeriodUnit::Day, first, -1),
+            (PeriodUnit::Week, first, -1),
+            (PeriodUnit::Month, first, -1),
+            (PeriodUnit::Day, day("2026-10-22"), i32::MAX),
+            (PeriodUnit::Month, day("2026-10-22"), i32::MIN),
+        ] {
+            let err = step(unit, from, by).unwrap_err();
+
+            assert_eq!(
+                err.kind(),
+                crate::error::ErrorKind::InvalidInput,
+                "{unit:?} {by}"
+            );
         }
     }
 

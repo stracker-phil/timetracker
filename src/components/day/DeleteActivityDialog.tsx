@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, toAppError, type ActivityCount } from "../../api";
 import { formatDayLabel } from "../../lib/day";
 import { formatClock, formatDay, plural } from "../../lib/format";
+import { useApiResult } from "../../lib/useApiResult";
 import { fail } from "../../state/requests";
 import { useStore } from "../../state/store";
 import { FormField } from "../Field";
@@ -17,13 +18,18 @@ interface Props {
 
 /** `2026-10-21T09:30`, the local value of a `datetime-local` input. */
 const toInput = (ms: number) => `${formatDay(ms)}T${formatClock(ms)}`;
-const fromInput = (value: string) => (value ? new Date(value).getTime() : NaN);
 
 const spans = (count: ActivityCount) => `${plural(count.activities, "activity span", "activity spans")} and ${plural(count.away, "away span", "away spans")}`;
 
 function rangeLabel(from: number, to: number) {
   const at = (ms: number) => `${formatDayLabel(formatDay(ms))} ${formatClock(ms)}`;
   return `${at(from)} – ${at(to)}`;
+}
+
+/** A `datetime-local` value as Rust reads it; null while it is empty, not a time, or still being read. */
+function useParsedTime(text: string | null, on: number): number | null {
+  const { data } = useApiResult(text ? `time:${on}:${text}` : null, () => api.calendarParseTime(text ?? "", on));
+  return data ?? null;
 }
 
 function undoDelete() {
@@ -38,14 +44,16 @@ export function DeleteActivityDialog({ day, bounds, range }: Props) {
   const close = useStore((s) => s.closeDialog);
   const [fromText, setFromText] = useState(() => toInput(bounds[0]));
   const [toText, setToText] = useState(() => toInput(bounds[1]));
-  const [from, to] = range ? [fromInput(fromText), fromInput(toText)] : bounds;
+  const fromMs = useParsedTime(range ? fromText : null, bounds[0]);
+  const toMs = useParsedTime(range ? toText : null, bounds[0]);
+  const [from, to] = range ? [fromMs, toMs] : bounds;
+  const picked = from !== null && to !== null ? { from, to } : null;
   const [count, setCount] = useState<ActivityCount | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const valid = Number.isFinite(from) && Number.isFinite(to);
 
   useEffect(() => {
-    if (!valid) return;
+    if (from === null || to === null) return;
     let current = true;
     const show = (c: ActivityCount | null, message: string | null) => {
       if (!current) return;
@@ -59,9 +67,11 @@ export function DeleteActivityDialog({ day, bounds, range }: Props) {
     return () => {
       current = false;
     };
-  }, [from, to, valid]);
+  }, [from, to]);
 
   const remove = async () => {
+    if (!picked) return;
+    const { from, to } = picked;
     setBusy(true);
     try {
       const deleted = await api.activityDelete(from, to);
@@ -99,7 +109,7 @@ export function DeleteActivityDialog({ day, bounds, range }: Props) {
         <button type="button" className="btn" onClick={close}>
           Cancel
         </button>
-        <button type="button" className="btn btn-danger" disabled={busy || !valid || !!error || !count} onClick={() => void remove()}>
+        <button type="button" className="btn btn-danger" disabled={busy || !picked || !!error || !count} onClick={() => void remove()}>
           Delete
         </button>
       </div>

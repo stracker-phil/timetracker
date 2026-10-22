@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { api, type Range } from "../api";
-import { addDays, addMonths, formatMonthLabel, today } from "../lib/day";
+import { api, type PeriodUnit, type Range } from "../api";
+import { formatMonthLabel, today } from "../lib/day";
+import { dayStepper } from "../lib/dayStepper";
 import { useApiResult } from "../lib/useApiResult";
 import { useStore } from "../state/store";
 import { useCalendarPeriod, useReportRange } from "./shownPeriod";
@@ -9,7 +10,14 @@ import { Modal } from "./Modal";
 import { useAnchoredStyle } from "./useAnchoredStyle";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-const ARROW_STEPS: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+const KEY_STEPS: Record<string, [PeriodUnit, number]> = {
+  ArrowLeft: ["day", -1],
+  ArrowRight: ["day", 1],
+  ArrowUp: ["week", -1],
+  ArrowDown: ["week", 1],
+  PageUp: ["month", -1],
+  PageDown: ["month", 1],
+};
 
 /** The days to mark: the shown day, week or month in the calendar views, a custom range in Reports, else none. */
 function useSelectedDays(): [string, string] | null {
@@ -35,6 +43,16 @@ export function DatePickerPopover() {
   const showDate = useStore((s) => s.showDate);
   const style = useAnchoredStyle("[data-date-heading]", "left");
   const [focus, setFocus] = useState(startDay);
+  const focusRef = useRef(focus);
+  const [step] = useState(() =>
+    dayStepper(
+      () => focusRef.current,
+      (day) => {
+        focusRef.current = day;
+        setFocus(day);
+      },
+    ),
+  );
   const selected = useSelectedDays();
   const gridRef = useRef<HTMLDivElement>(null);
   const month = focus.slice(0, 7);
@@ -55,23 +73,22 @@ export function DatePickerPopover() {
     showDate(day);
   };
   const onKeyDown = (e: KeyboardEvent) => {
-    const by = ARROW_STEPS[e.key];
-    if (by !== undefined) setFocus(addDays(focus, by));
-    else if (e.key === "PageUp" || e.key === "PageDown") setFocus(addMonths(focus, e.key === "PageUp" ? -1 : 1));
-    else return;
+    const keyStep = KEY_STEPS[e.key];
+    if (!keyStep) return;
     e.preventDefault();
+    step(...keyStep);
   };
 
   return (
     <Modal onClose={close} variant="popover" className="date-picker" label="Pick a date" style={style}>
       <div className="date-picker-head">
-        <button type="button" className="icon-btn" aria-label="Previous month" onClick={() => setFocus(addMonths(focus, -1))}>
+        <button type="button" className="icon-btn" aria-label="Previous month" onClick={() => step("month", -1)}>
           <ChevronLeft size="1.077rem" />
         </button>
         <span className="date-picker-month" aria-live="polite">
           {formatMonthLabel(focus)}
         </span>
-        <button type="button" className="icon-btn" aria-label="Next month" onClick={() => setFocus(addMonths(focus, 1))}>
+        <button type="button" className="icon-btn" aria-label="Next month" onClick={() => step("month", 1)}>
           <ChevronRight size="1.077rem" />
         </button>
       </div>

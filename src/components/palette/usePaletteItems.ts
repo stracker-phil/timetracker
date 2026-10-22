@@ -50,15 +50,20 @@ function showReport(filter: { clientIds: string[]; projectIds: string[] }) {
   s.setView("reports");
 }
 
+/** The views, and Hours: today's Day view. */
 function viewItems(custom: Keybindings, prefix: Prefix, needle: string): Item[] {
   if (prefix !== null) return [];
-  return VIEWS.map(({ id, label }) => ({
-    key: `view:${id}`,
+  const targets = [
+    ...VIEWS.map(({ id, label }) => ({ id: `view.${id}`, label, show: () => useStore.getState().setView(id) })),
+    { id: "view.hours", label: "Hours", show: () => useStore.getState().showHours() },
+  ];
+  return targets.map(({ id, label, show }) => ({
+    key: id,
     section: GO_TO,
     title: label,
-    keys: bindingLabel(bindingFor(`view.${id}`, custom)),
+    keys: bindingLabel(bindingFor(id, custom)),
     rank: score([label], needle),
-    go: closeThen(() => useStore.getState().setView(id)),
+    go: closeThen(show),
   }));
 }
 

@@ -6,7 +6,7 @@ vi.mock("./api", async (orig) => ({ ...(await orig<object>()), api: (await impor
 
 import App from "./App";
 import { api, EMPTY_UI_STATE } from "./api";
-import { addDays, addMonths, today } from "./lib/day";
+import { today } from "./lib/day";
 import { resetStore, useStore, type View } from "./state/store";
 import { activityRow, trackerStatus } from "./test/data";
 import { miniMonth } from "./test/calendarFixtures";
@@ -125,7 +125,7 @@ describe("App", () => {
     });
 
     it("reloads the shown day when its data changed", async () => {
-      const day = addDays(today(), -1);
+      const day = await api.calendarStep("day", today(), -1);
       await renderApp({ day });
       await screen.findByText("recorded 0:00 · tracked 0:00 · away 0:00");
       mocked.dayView.mockResolvedValue(dayView({ day, totals: { recordedMs: 0, trackedMs: 1_800_000, awayMs: 0 } }));
@@ -133,11 +133,15 @@ describe("App", () => {
       expect(await screen.findByText("recorded 0:00 · tracked 0:30 · away 0:00")).toBeInTheDocument();
     });
 
-    it("opens on the day shown last when it is recent", async () => {
-      const yesterday = addDays(today(), -1);
-      mocked.getUiState.mockResolvedValueOnce({ ...EMPTY_UI_STATE, lastDay: yesterday });
+    it("opens on the day Rust sends as the one shown last", async () => {
+      mocked.getUiState.mockResolvedValueOnce({ ...EMPTY_UI_STATE, lastDay: "2026-10-05" });
       await renderApp();
-      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith(yesterday));
+      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith("2026-10-05"));
+    });
+
+    it("opens on today when Rust sends no day shown last", async () => {
+      await renderApp();
+      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith(today()));
     });
   });
 
@@ -222,6 +226,25 @@ describe("App", () => {
     });
   });
 
+  describe("new tag", () => {
+    it("opens the new tag prompt with ⌘N in the Tags view and saves the typed name", async () => {
+      await renderApp({ view: "tags" });
+      await userEvent.keyboard("{Meta>}n{/Meta}");
+      const dialog = await screen.findByRole("dialog", { name: "New tag" });
+      await userEvent.type(within(dialog).getByLabelText("Name"), "billing");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+      await vi.waitFor(() => expect(mocked.tagsSave).toHaveBeenCalledWith(null, "billing"));
+      expect(screen.queryByRole("dialog", { name: "New tag" })).not.toBeInTheDocument();
+    });
+
+    it("opens no new tag prompt with ⌘N in the Rules view", async () => {
+      await renderApp({ view: "rules" });
+      await userEvent.keyboard("{Meta>}n{/Meta}");
+      expect(await screen.findByRole("dialog", { name: "New rule" })).toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "New tag" })).not.toBeInTheDocument();
+    });
+  });
+
   describe("rules", () => {
     it("lists the rules of the backend in the Rules view", async () => {
       mocked.rulesList.mockResolvedValueOnce([rule({ name: "Chat" })]);
@@ -266,7 +289,7 @@ describe("App", () => {
     });
 
     it("shows the Day view of a day clicked in the sidebar's calendar", async () => {
-      mocked.calendarMiniMonth.mockImplementation(async (shownDay, offset) => miniMonth({ monthStart: addMonths(shownDay, offset) }));
+      mocked.calendarMiniMonth.mockImplementation(async (shownDay, offset) => miniMonth({ monthStart: await api.calendarStep("month", shownDay, offset) }));
       await renderApp({ view: "projects" });
       await userEvent.click(await sidebar().findByRole("button", { name: today() }));
       expect(mainHeading("Day")).toBeInTheDocument();

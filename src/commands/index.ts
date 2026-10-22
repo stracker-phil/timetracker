@@ -3,7 +3,7 @@ import { exportBackup, revealDataFolder, showWelcomeAgain } from "../components/
 import { copyReport, copyReportNotes, promptDeleteSavedReport, promptRenameSavedReport, promptSaveReport } from "../components/reports/actions";
 import { VIEWS } from "../components/views";
 import { stepBlock, stepLane } from "../lib/blockFocus";
-import { addDays } from "../lib/day";
+import { stepThroughRust } from "../lib/dayStepper";
 import { sheetEntries } from "../lib/sheet";
 import { fail } from "../state/requests";
 import { TIMELINE_ZOOM, useStore, type View } from "../state/store";
@@ -158,8 +158,7 @@ function recordingToDay(by: 1 | -1, copy: boolean) {
   const s = useStore.getState();
   const id = s.focusedRecording;
   if (id === null) return;
-  const day = addDays(s.day, by);
-  void (copy ? s.copyRecording(id, null, day) : s.moveRecording(id, null, day));
+  stepThroughRust("day", () => s.day, by, (day) => (copy ? s.copyRecording(id, null, day) : s.moveRecording(id, null, day)));
 }
 
 /** The rule whose row holds the keyboard focus on the Rules screen. */
@@ -211,6 +210,11 @@ function toggleLaunchAtLogin() {
   if (s.settings) void s.setLaunchAtLogin(!s.settings.launchAtLogin);
 }
 
+function promptNewTag() {
+  const { openDialog, saveTag } = useStore.getState();
+  openDialog({ type: "prompt", title: "New tag", label: "Name", initial: "", confirmLabel: "Add", onSubmit: (name) => void saveTag(null, name).catch(() => {}) });
+}
+
 function toggleSettings() {
   const s = useStore.getState();
   if (s.dialog?.type === "settings") s.closeDialog();
@@ -231,6 +235,7 @@ const APP_COMMANDS: Command[] = [
   { id: "palette.toggle", title: "Command palette", scope: "global", defaultBinding: "Mod+K", menu: true, run: togglePalette },
   { id: "sidebar.toggle", title: "Toggle sidebar", scope: "global", defaultBinding: "Mod+Ctrl+S", menu: true, run: () => useStore.getState().toggleSidebar() },
   ...VIEWS.map(({ id, label }, i): Command => ({ id: `view.${id}`, title: `Show ${label}`, scope: "global", defaultBinding: `Mod+${i + 1}`, menu: true, checked: () => useStore.getState().view === id, run: () => useStore.getState().setView(id) })),
+  { id: "view.hours", title: "Show Hours (today's Day view)", scope: "global", menu: true, run: () => useStore.getState().showHours() },
   { id: "zoom.in", title: "Zoom in", scope: "global", defaultBinding: "Mod+=", menu: true, run: zoomIn },
   { id: "zoom.out", title: "Zoom out", scope: "global", defaultBinding: "Mod+-", menu: true, run: zoomOut },
   { id: "zoom.reset", title: "Reset zoom", scope: "global", defaultBinding: "Mod+0", menu: true, run: resetZoom },
@@ -283,6 +288,7 @@ const APP_COMMANDS: Command[] = [
   { id: "reports.delete", title: "Delete saved report…", scope: "reports", when: () => useStore.getState().openedReport !== null, run: promptDeleteSavedReport },
   { id: "projects.new", title: "New project…", scope: "projects", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "project" }) },
   { id: "clients.new", title: "New client…", scope: "projects", menu: true, run: () => useStore.getState().openDialog({ type: "client" }) },
+  { id: "tags.new", title: "New tag…", scope: "tags", defaultBinding: "Mod+N", menu: true, run: promptNewTag },
   { id: "rules.new", title: "New rule…", scope: "rules", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "rule" }) },
   { id: "rules.moveUp", title: "Move rule up", scope: "rules", defaultBinding: "Alt+ArrowUp", when: () => focusedRule() !== null, run: () => moveFocusedRule(-1) },
   { id: "rules.moveDown", title: "Move rule down", scope: "rules", defaultBinding: "Alt+ArrowDown", when: () => focusedRule() !== null, run: () => moveFocusedRule(1) },

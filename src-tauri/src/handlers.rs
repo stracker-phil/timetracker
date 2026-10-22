@@ -97,6 +97,8 @@ pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         calendar::commands::calendar_period,
         calendar::commands::calendar_picker,
         calendar::commands::calendar_jumps,
+        calendar::commands::calendar_step,
+        calendar::commands::calendar_parse_time,
         away_prompt::commands::away_prompt_current,
         away_prompt::commands::away_prompt_answer,
         away_prompt::commands::away_prompt_skip,

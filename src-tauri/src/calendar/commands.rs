@@ -2,10 +2,11 @@ use tauri::State;
 
 use super::jump::{DateJump, jumps};
 use super::mini_month::{MiniMonth, Shown, load_mini_month};
-use super::period::{Period, PeriodUnit, PickerMonth, period, picker_month};
+use super::period::{Period, PeriodUnit, PickerMonth, period, picker_month, step};
 use super::{CalendarInput, MonthView, WeekView, month, month_days, week, week_days};
+use crate::cli::time::typed;
 use crate::day::names;
-use crate::db::time::{Day, now_ms};
+use crate::db::time::{Day, Ms, now_ms};
 use crate::db::{Db, activities, recordings};
 use crate::error::AppResult;
 use crate::state::AppState;
@@ -80,4 +81,15 @@ pub fn calendar_picker(month: Day, selected: Option<(Day, Day)>) -> PickerMonth 
 #[tauri::command]
 pub fn calendar_jumps(text: String) -> Vec<DateJump> {
     jumps(&text, Day::today())
+}
+
+#[tauri::command]
+pub fn calendar_step(unit: PeriodUnit, day: Day, by: i32) -> AppResult<Day> {
+    step(unit, day, by)
+}
+
+/// A typed time field's value on the local day of `on`; `None` while it is not a time.
+#[tauri::command]
+pub fn calendar_parse_time(text: String, on: Ms) -> Option<Ms> {
+    typed(&text, on, &chrono::Local)
 }

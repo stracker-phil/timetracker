@@ -34,22 +34,22 @@ describe("nav slice", () => {
       expect(state().view).toBe("day");
     });
 
-    it("step moves one calendar day in the Day view, across month ends", () => {
+    it("step moves one calendar day in the Day view, across month ends", async () => {
       resetStore({ day: "2026-03-01" });
       state().step(-1);
-      expect(state().day).toBe("2026-02-28");
+      await vi.waitFor(() => expect(state().day).toBe("2026-02-28"));
       state().step(1);
       state().step(1);
-      expect(state().day).toBe("2026-03-02");
+      await vi.waitFor(() => expect(state().day).toBe("2026-03-02"));
     });
 
     it.each([
       [1, "2026-03-17"],
       [-1, "2026-03-03"],
-    ] as const)("step(%i) moves seven days in the Week view", (by, expected) => {
+    ] as const)("step(%i) moves seven days in the Week view", async (by, expected) => {
       resetStore({ day: "2026-03-10", view: "week" });
       state().step(by);
-      expect(state().day).toBe(expected);
+      await vi.waitFor(() => expect(state().day).toBe(expected));
       expect(state().view).toBe("week");
     });
 
@@ -58,17 +58,31 @@ describe("nav slice", () => {
       ["2026-03-10", -1, "2026-02-01"],
       ["2026-12-20", 1, "2027-01-01"],
       ["2026-01-31", -1, "2025-12-01"],
-    ] as const)("step from %s by %i goes to %s in the Month view", (from, by, expected) => {
+    ] as const)("step from %s by %i goes to %s in the Month view", async (from, by, expected) => {
       resetStore({ day: from, view: "month" });
       state().step(by);
-      expect(state().day).toBe(expected);
+      await vi.waitFor(() => expect(state().day).toBe(expected));
       expect(state().view).toBe("month");
     });
 
-    it("remembers the day a step arrives at", () => {
+    it.each(["week", "reports", "projects"] as const)("showHours shows today in the Day view from the %s view", (view) => {
+      resetStore({ day: "2026-01-05", view });
+      state().showHours();
+      expect(state().day).toBe("2026-10-21");
+      expect(state().view).toBe("day");
+    });
+
+    it("remembers the day a step arrives at", async () => {
       resetStore({ day: "2026-03-10", view: "week" });
       state().step(1);
-      expect(state().uiState.lastDay).toBe("2026-03-17");
+      await vi.waitFor(() => expect(state().uiState.lastDay).toBe("2026-03-17"));
+    });
+
+    it("adds up two quick steps, each from the day the one before arrived at", async () => {
+      resetStore({ day: "2026-03-10" });
+      state().step(1);
+      state().step(1);
+      await vi.waitFor(() => expect(state().day).toBe("2026-03-12"));
     });
 
     it.each(["day", "week", "month"] as const)("goToday returns to today and keeps the %s view", (view) => {
@@ -136,21 +150,14 @@ describe("nav slice", () => {
   describe("restoreDay", () => {
     const withLastDay = (lastDay: string | null, patch = {}) => resetStore({ uiState: { ...EMPTY_UI_STATE, lastDay }, ...patch });
 
-    it.each([
-      ["yesterday", "2026-10-20"],
-      ["30 days ago", "2026-09-21"],
-    ])("shows the day shown last when it was %s", (_name, last) => {
+    it.each(["2026-10-20", "2026-09-21", "2026-01-01", "2026-10-25"])("shows whatever day Rust sent as the day shown last: %s", (last) => {
       withLastDay(last);
       state().restoreDay();
       expect(state().day).toBe(last);
     });
 
-    it.each([
-      ["31 days ago", "2026-09-20"],
-      ["in the future", "2026-10-25"],
-      ["not remembered", null],
-    ])("stays on today when the day shown last is %s", (_name, last) => {
-      withLastDay(last);
+    it("stays on today when no day is remembered", () => {
+      withLastDay(null);
       state().restoreDay();
       expect(state().day).toBe("2026-10-21");
     });

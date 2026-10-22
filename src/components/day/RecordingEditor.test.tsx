@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
@@ -253,7 +253,7 @@ describe("RecordingEditor", () => {
       await editorForm("New recording");
       await userEvent.clear(field("Span 1 to"));
       await userEvent.type(field("Span 1 to"), "11:15");
-      expect(mocked.recordingDraftSpans).toHaveBeenLastCalledWith([{ start: START, end: at("11:15") }]);
+      await waitFor(() => expect(mocked.recordingDraftSpans).toHaveBeenLastCalledWith([{ start: START, end: at("11:15") }]));
     });
 
     it("counts a valid typed time at once, so Enter saves it without leaving the field", async () => {
@@ -309,11 +309,80 @@ describe("RecordingEditor", () => {
       mocked.recordingDraftSpans.mockResolvedValueOnce({ spans: [rolled], totalMs: rolled.end - rolled.start });
       await userEvent.clear(field("Span 1 to"));
       await userEvent.type(field("Span 1 to"), "08:00");
-      expect(mocked.recordingDraftSpans).toHaveBeenLastCalledWith([{ start: START, end: at("08:00") }]);
+      await waitFor(() => expect(mocked.recordingDraftSpans).toHaveBeenLastCalledWith([{ start: START, end: at("08:00") }]));
       await waitFor(() => expect(field("Hours")).toHaveValue("23"));
       expect(field("Minutes")).toHaveValue("0");
       await userEvent.click(button("Save"));
       await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [rolled] }), "cancel"));
+    });
+  });
+
+  describe("saving while Rust is still answering for a typed time", () => {
+    afterEach(() => void mocked.calendarParseTime.mockReset());
+
+    async function openWithProject() {
+      renderCreate();
+      await editorForm("New recording");
+      await chooseWebsite();
+    }
+
+    it.each([
+      ["Enter", "{Enter}"],
+      ["⌘Enter", "{Meta>}{Enter}{/Meta}"],
+    ])("%s waits for Rust to read the time and saves it", async (_name, keys) => {
+      await openWithProject();
+      const readings: ((ms: number | null) => void)[] = [];
+      mocked.calendarParseTime.mockImplementation(() => new Promise((resolve) => readings.push(resolve)));
+      await userEvent.clear(field("Span 1 to"));
+      await userEvent.type(field("Span 1 to"), `11:15${keys}`);
+      expect(mocked.recordingCreate).not.toHaveBeenCalled();
+      act(() => readings.forEach((read) => read(at("11:15"))));
+      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: START, end: at("11:15") }] }), "cancel"));
+    });
+
+    it("saves the new start time of an existing recording once Rust has read it", async () => {
+      mocked.recordingsList.mockResolvedValue([standupRow]);
+      renderEditor({ mode: "edit", id: "r1" });
+      await editorForm("Edit recording");
+      const readings: ((ms: number | null) => void)[] = [];
+      mocked.calendarParseTime.mockImplementation(() => new Promise((resolve) => readings.push(resolve)));
+      await userEvent.clear(field("Span 1 from"));
+      await userEvent.type(field("Span 1 from"), "1{Enter}");
+      expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+      act(() => readings.forEach((read) => read(at("10:45"))));
+      await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", expect.objectContaining({ spans: [{ start: at("10:45"), end: standupBlock.end }] }), "cancel"));
+    });
+
+    it("waits for Rust's answer about the spans and saves what it answered", async () => {
+      await openWithProject();
+      const rolled = { start: START, end: at("08:00", "2026-03-11") };
+      let answer: (draft: { spans: { start: number; end: number }[]; totalMs: number }) => void = () => {};
+      mocked.recordingDraftSpans.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+      await userEvent.clear(field("Span 1 to"));
+      await userEvent.type(field("Span 1 to"), "08:00{Enter}");
+      expect(mocked.recordingCreate).not.toHaveBeenCalled();
+      act(() => answer({ spans: [rolled], totalMs: rolled.end - rolled.start }));
+      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [rolled] }), "cancel"));
+    });
+
+    it("saves the old time when the typed text is not a time", async () => {
+      await openWithProject();
+      await userEvent.clear(field("Span 1 to"));
+      await userEvent.type(field("Span 1 to"), "later{Enter}");
+      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: START, end: END }] }), "cancel"));
+    });
+
+    it("saves the newest typed time when an older reading answers after it", async () => {
+      await openWithProject();
+      await userEvent.clear(field("Span 1 to"));
+      let older: (ms: number | null) => void = () => {};
+      mocked.calendarParseTime.mockReturnValueOnce(new Promise((resolve) => (older = resolve)));
+      await userEvent.type(field("Span 1 to"), "1");
+      mocked.calendarParseTime.mockResolvedValue(at("11:15"));
+      await userEvent.type(field("Span 1 to"), "2");
+      act(() => older(at("10:45")));
+      await userEvent.click(button("Save"));
+      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: START, end: at("11:15") }] }), "cancel"));
     });
   });
 

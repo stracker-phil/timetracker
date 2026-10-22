@@ -26,6 +26,32 @@ pub fn instant<Tz: TimeZone>(text: &str, now: Ms, tz: &Tz) -> Result<Ms, String>
         .ok_or_else(|| format!("`{text}` does not exist in the local time zone"))
 }
 
+/// What a time field holds: a clock time (`9:30`, `09:30`, `930`, `0930`) on the local day of `on`, or a
+/// date and time (`2026-10-21T09:30`) as `instant` reads it. `None` while it is neither.
+pub fn typed<Tz: TimeZone>(text: &str, on: Ms, tz: &Tz) -> Option<Ms> {
+    let text = text.trim();
+    if text.contains('T') {
+        return instant(text, on, tz).ok();
+    }
+    let local = Day::of_in(on, tz).date().and_time(clock(text)?);
+    tz.from_local_datetime(&local)
+        .earliest()
+        .map(|t| t.timestamp_millis())
+}
+
+/// Hours of one or two digits and minutes of two, with or without a colon.
+fn clock(text: &str) -> Option<NaiveTime> {
+    let (hours, minutes) = match text.split_once(':') {
+        Some(parts) => parts,
+        None => text.split_at_checked(text.len().checked_sub(2)?)?,
+    };
+    let digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit());
+    if !(1..=2).contains(&hours.len()) || minutes.len() != 2 || !digits(hours) || !digits(minutes) {
+        return None;
+    }
+    NaiveTime::from_hms_opt(hours.parse().ok()?, minutes.parse().ok()?, 0)
+}
+
 /// Two `instant`s joined by `-` or `–`: `14:25-15:00`, `2026-10-21T22:00-2026-10-22T01:00`.
 pub fn span<Tz: TimeZone>(text: &str, now: Ms, tz: &Tz) -> Result<Span, String> {
     text.char_indices()
@@ -209,6 +235,89 @@ mod tests {
             err,
             "`2026-03-29T02:30` does not exist in the local time zone"
         );
+    }
+
+    #[test]
+    fn typed_clock_times_land_on_the_local_day_of_the_reference() {
+        for text in ["9:30", "09:30", "930", "0930", " 9:30 "] {
+            assert_eq!(
+                typed(text, near_midnight(), &Vienna),
+                Some(ms("2026-10-21T07:30:00Z")),
+                "{text}"
+            );
+        }
+        for (text, expected) in [
+            ("0:00", "2026-10-20T22:00:00Z"),
+            ("000", "2026-10-20T22:00:00Z"),
+            ("23:59", "2026-10-21T21:59:00Z"),
+            ("1:05", "2026-10-20T23:05:00Z"),
+        ] {
+            assert_eq!(
+                typed(text, near_midnight(), &Vienna),
+                Some(ms(expected)),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn typed_date_and_time_is_read_as_an_instant() {
+        for (text, expected) in [
+            ("2026-10-22T09:30", "2026-10-22T07:30:00Z"),
+            ("2026-10-22T09:30:15", "2026-10-22T07:30:15Z"),
+            ("2026-10-22T09:30Z", "2026-10-22T09:30:00Z"),
+            ("2026-10-22T09:30+05:30", "2026-10-22T04:00:00Z"),
+        ] {
+            assert_eq!(
+                typed(text, near_midnight(), &Vienna),
+                Some(ms(expected)),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn typed_text_that_is_not_a_time_yet_is_none() {
+        for text in [
+            "",
+            "garbage",
+            "24:00",
+            "9:60",
+            "25:00",
+            "12",
+            "9",
+            "9:3",
+            "9:",
+            ":30",
+            "930a",
+            "12345",
+            "1:2:3",
+            "9.30",
+            "-9:30",
+            "now",
+            "2026-10-22T",
+            "2026-10-22T25:00",
+        ] {
+            assert_eq!(typed(text, near_midnight(), &Vienna), None, "{text}");
+        }
+    }
+
+    #[test]
+    fn typed_times_follow_the_zone_on_the_daylight_saving_days() {
+        let spring = ms("2026-03-29T10:00:00Z");
+        let autumn = ms("2026-10-25T10:00:00Z");
+        for (text, on, expected) in [
+            ("1:30", spring, Some("2026-03-29T00:30:00Z")),
+            ("2:30", spring, None),
+            ("3:30", spring, Some("2026-03-29T01:30:00Z")),
+            ("9:30", spring, Some("2026-03-29T07:30:00Z")),
+            ("1:30", autumn, Some("2026-10-24T23:30:00Z")),
+            ("2:30", autumn, Some("2026-10-25T00:30:00Z")),
+            ("3:30", autumn, Some("2026-10-25T02:30:00Z")),
+            ("9:30", autumn, Some("2026-10-25T08:30:00Z")),
+        ] {
+            assert_eq!(typed(text, on, &Vienna), expected.map(ms), "{text} on {on}");
+        }
     }
 
     #[test]

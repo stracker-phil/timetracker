@@ -121,6 +121,10 @@ export const api = {
   calendarPicker: (month: string, selected: [string, string] | null) => invoke<PickerMonth>("calendar_picker", { month, selected }),
   /** The palette's dates for `text`: a typed date, or the date words it starts; "" gives the Go to defaults. */
   calendarJumps: (text: string) => invoke<DateJump[]>("calendar_jumps", { text }),
+  /** The day `by` days, weeks or months from `day`; a month step lands on the 1st. */
+  calendarStep: (unit: PeriodUnit, day: string, by: number) => invoke<string>("calendar_step", { unit, day, by }),
+  /** A typed time on the local day of `on`, or null; see `calendar_parse_time`. */
+  calendarParseTime: (text: string, on: number) => invoke<number | null>("calendar_parse_time", { text, on }),
   /** The recording's spans on `from`, else all of them (the first landing on `day`), to `day` at the same time of day; Rust keeps the lengths. */
   recordingMove: (id: string, from: string | null, day: string, overlap: Overlap) => invoke<Recording>("recording_move", { id, from, day, overlap }),
   /** A new recording on `day` like `recordingMove` would place it. */

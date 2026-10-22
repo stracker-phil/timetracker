@@ -18,8 +18,8 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 6. `App.tsx` imports the stylesheets (`styles/index.ts`: the palettes, `theme.css`, then the
    stylesheets by layer) and calls
    `useBackendEvents()` once:
-   1. `loadUiState()` loads the window layout, then `restoreDay()` shows the last viewed day (within 30
-      days). `loadSettings()` loads settings and keybindings; `installCommands()` runs again to apply the user's
+   1. `loadUiState()` loads the window layout, then `restoreDay()` shows the last viewed day (`get_ui_state`
+      leaves out one older than 30 days). `loadSettings()` loads settings and keybindings; `installCommands()` runs again to apply the user's
       bindings, then `drainLaunches()` pulls the queued launch events (`take_launch_events`): `error` shows an error toast,
       `notice` an info toast (a migration that dropped tags), `showDay` calls `goToDay`.
    2. It subscribes to `launch` (drain again), `command` (menu and tray → `runMenuCommand`), `remote`
@@ -48,7 +48,7 @@ error's message, returning the `AppError`.
 |---|---|
 | `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings`, `saveTimeline(patch)` (timeline settings, saved quietly), `saveKeybindings`, `setLaunchAtLogin(enabled)` (resolves whether it is on now, `null` on a toasted failure) |
 | `ui` | `toasts` (an optional `action`, e.g. Undo, with an optional `ttlMs`; an action toast stays 10 s by default), `dialog` (`settings { page? }`, `shortcuts`, `confirm`, `project { id?, clientId? }`, `client { id? }`, `rule { id?, draft? }`, `deleteActivity { day, bounds, range }`, `timelineSettings`, `datePicker`), `paletteOpen`, `paletteSeed` |
-| `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`, `rules`), `setView`, `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `goToday` (keeps the view), `showDate(day)` (keeps the view; the date picker), `step(±1)` (a day, a week or a month by the view; `addDays`, `addMonths` in `lib/day.ts`); in Reports the three move the report's period instead (`shiftReportRange`); each remembers the day as `uiState.lastDay`, and `restoreDay` shows it again at boot when it is at most 30 days old |
+| `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`, `tags`, `rules`), `setView`, `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `showHours` (Hours: `goToDay` today; the sidebar, `view.hours` and the palette), `goToday` (keeps the view), `showDate(day)` (keeps the view; the date picker), `step(±1)` (a day, a week or a month by the view, through `stepThroughRust` in `lib/dayStepper.ts`: `calendarStep`, queued so quick presses add up, a failure toasts; the date picker and ⌥← ⌥→ use it too); in Reports the three move the report's period instead (`shiftReportRange`); each remembers the day as `uiState.lastDay`, and `restoreDay` shows it again at boot (Rust drops one older than 30 days) |
 | `day` | `dayView` (the shown day's `DayView`; the previous one stays while the next day loads), `dayError`, `loadDay` (drops answers for a day no longer shown), `focusedBlock`/`focusBlock`, `detailsBlock`/`toggleDetails` (the card opened by keyboard), `blockMenuRequest`/`requestBlockMenu`, `setAppSetting(appKey, patch)` (stores the returned settings; the Day view reloads on the `data_changed` it causes) |
 | `reports` | `reportFilter` (`null` follows `settings.reports` through `defaultFilter`), `setReportFilter(patch)`, `shiftReportRange(anchor, by)` (`api.reportRangeShift`: the period `by` steps of its unit away, from the period holding `anchor` when given, so `by = 0` is that period; failures toast), `savedReports`/`loadSavedReports` (boot), `saveReport(name)` (the shown filter), `renameSavedReport`, `deleteSavedReport`, `openSavedReport` (its filter, and the Reports view) |
 | `rules` | `rules` (by position), `loadRules` (the Rules view, and every `data_changed` of `rules`), `saveRule(id, input)` (rejects; toasted unless the error has a `field`), `deleteRule`, `reorderRules(ids)`, `setRuleEnabled`, `rulesToday` (`RuleDay[]`, loaded after the rules by `loadRules`; empty when it fails) |
@@ -145,6 +145,9 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   zoom the timeline (`TIMELINE_STEPS`) while the Day view shows and the text everywhere else.
 - **Projects.** `projects.new` (⌘N) and `clients.new` (no default) open the sheets while the Projects view
   shows; `view.projects` (⌘5) shows it.
+- **Tags.** `tags.new` (⌘N while the Tags view shows) asks for a name (`prompt` dialog) and saves it with `saveTag`.
+- **Hours.** `view.hours` (no default key) runs `showHours`, as the sidebar's Hours does; the palette lists
+  it under Go to.
 - **Reports.** `reports.copyText` (⌘⇧C), `reports.copyNotes` (⌥⌘C: every note of the report, `result.notes`),
   `reports.save`; `reports.rename`/`reports.delete` act on the saved
   report opened from the sidebar (`openedReport`, cleared when the filter changes).
@@ -266,7 +269,7 @@ Tracker components:
 | `EditorParts` | `DurationField`, `CoveredActivity` ("Activity n", opening the list of blocks with their start and time inside) and `OverlapNotice` (the recordings in the way, "Replace overlapped part" or Back, inside the editor) |
 | `useProposal` | `api.recordingProposal` for the draft's spans once they settle (150 ms) |
 | `useEditorSave` | the editor's `save`, `remove` and field `errors` |
-| `TimeField` | `HH:MM` typed (each valid time counts at once) or ↑↓ by the snap step; the typed text shows while it belongs to the value, else the value |
+| `TimeField` | `HH:MM` typed, read by Rust on the value's day (`calendarParseTime`; each valid time counts once it answers) or ↑↓ by the snap step; the editor's save and the away prompt's Record first await `typedTimesSettled` (every pending read and the `onChange` work it started, such as `setDraftSpan`), so ↵ right after typing saves the typed time; the typed text shows while it belongs to the value, else the value |
 | `OverlapDialog` | the recordings in the way, "Replace overlapped part" or Cancel, for writes made while no editor is open |
 | `useSelectionPress` | the press on the lanes, the axis and the time column: a drag selects a span (auto-scrolling near the edges; `moving` is the end under the pointer) and opens the editor on release; a click on a block toggles its span (`toggleBlock`), a click on nothing clears the selection. No modifier changes a click |
 | `useSnappedSpan` | a span on Rust's grid (`api.recordingSnap` with the span's own `moving` end, at most once per frame; the raw span stands in until the answer) |
@@ -396,7 +399,7 @@ ago`, then `weekMs` and `monthMs` as `h:mm` in two right-aligned columns (`--o3`
 
 `components/tags/TagsPage.tsx`, the `tags` view (⌘6): a `Toolbar` (`Tags` and its description), one row per
 tag from the `projects` slice's `tags` (name, the number of recordings, delete; a confirm first when
-recordings carry it) and a New tag field (Enter, `saveTag`).
+recordings carry it) and a New tag field (Enter, `saveTag`); `tags.new` (⌘N) asks for a name instead.
 
 ### Pickers
 

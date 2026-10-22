@@ -22,6 +22,23 @@ const sorted = (spans: Span[]) => [...spans].sort((a, b) => a.start - b.start);
 
 const withIds = (recordingId: string, spans: Span[], from = 1): RecordingSpan[] => spans.map((s, i) => ({ id: `${recordingId}-s${from + i}`, ...s }));
 
+/** What `calendar_step` answers: days and weeks by the calendar, a month step on the 1st. */
+function stepDay(unit: PeriodUnit, day: string, by: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  const date = unit === "month" ? new Date(y, m - 1 + by, 1) : new Date(y, m - 1, d + (unit === "week" ? 7 * by : by));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** What `calendar_parse_time` answers for a clock time (`9:30`, `0930`) on the local day of `on`, or a `YYYY-MM-DDTHH:MM` value on its own day. */
+function parseClock(text: string, on: number): number | null {
+  const match = /^(?:(\d{4})-(\d{2})-(\d{2})T)?(\d{1,2}):?(\d{2})$/.exec(text.trim());
+  if (!match || Number(match[4]) > 23 || Number(match[5]) > 59) return null;
+  const date = match[1] ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(on);
+  date.setHours(Number(match[4]), Number(match[5]), 0, 0);
+  return date.getTime();
+}
+
 /** An `api` where every call resolves to a valid default; override per test with mockResolvedValue. */
 export function createApiMock(): typeof realApi {
   return {
@@ -64,6 +81,8 @@ export function createApiMock(): typeof realApi {
     calendarMiniMonth: vi.fn(async (shownDay: string) => ({ monthStart: `${shownDay.slice(0, 7)}-01`, monthName: "Oct", year: Number(shownDay.slice(0, 4)), monthSelected: false, weeks: [] })),
     calendarPicker: vi.fn(async (month: string) => ({ monthStart: `${month.slice(0, 7)}-01`, weeks: [] })),
     calendarJumps: vi.fn(async (): Promise<DateJump[]> => []),
+    calendarStep: vi.fn(async (unit: PeriodUnit, day: string, by: number) => stepDay(unit, day, by)),
+    calendarParseTime: vi.fn(async (text: string, on: number) => parseClock(text, on)),
     recordingMove: vi.fn(async (id: string) => recording({ id })),
     recordingCopy: vi.fn(async () => recording({ id: "recording-copy" })),
     recordingCreate: vi.fn(async (input: RecordingInput) => recording({ ...input, id: "recording-new", spans: withIds("recording-new", input.spans) })),

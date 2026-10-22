@@ -7,6 +7,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api, type DateJump } from "../api";
 import { installCommands } from "../commands";
+import { today as currentDay } from "../lib/day";
 import { registerSettingsPage } from "../registry/settingsPages";
 import { resetStore, useStore, type Store } from "../state/store";
 import { client, projectItem, projectsStore } from "../test/projectFixtures";
@@ -63,6 +64,7 @@ describe("CommandPalette", () => {
         expect.stringMatching(/^Projects/),
         expect.stringMatching(/^Tags/),
         expect.stringMatching(/^Rules/),
+        expect.stringMatching(/^Hours/),
         expect.stringMatching(/^Today/),
         expect.stringContaining("Acme / Promo"),
         expect.stringMatching(/^Weekly/),
@@ -120,6 +122,16 @@ describe("CommandPalette", () => {
     it("switches to the view", async () => {
       await choose("week", { view: "day" });
       expect(useStore.getState().view).toBe("week");
+      expect(useStore.getState().paletteOpen).toBe(false);
+    });
+
+    it("shows today in the Day view for Hours, listed once under Go to", async () => {
+      await openPalette("hours", { view: "projects", day: "2026-03-10" });
+      expect(options()).toEqual([expect.stringMatching(/^Hours/)]);
+      expect(screen.getByText("Go to")).toBeInTheDocument();
+      await userEvent.keyboard("{Enter}");
+      expect(useStore.getState().view).toBe("day");
+      expect(useStore.getState().day).toBe(currentDay());
       expect(useStore.getState().paletteOpen).toBe(false);
     });
 
@@ -204,6 +216,7 @@ describe("CommandPalette", () => {
     it("lists only commands after >, the views' commands included", async () => {
       await openPalette(">", { recent: [promo.project], savedReports: [weekly] });
       expect(indexOfOption(/^Show Week/i)).toBeGreaterThanOrEqual(0);
+      expect(indexOfOption(/^Show Hours/)).toBeGreaterThanOrEqual(0);
       expect(indexOfOption(/^New project/)).toBeGreaterThanOrEqual(0);
       ["Go to", "Recent projects", "Projects", "Saved reports"].forEach((name) => expect(screen.queryByText(name)).not.toBeInTheDocument());
     });

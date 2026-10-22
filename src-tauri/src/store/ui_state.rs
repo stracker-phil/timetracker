@@ -8,7 +8,11 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::json_store::JsonStore;
+use crate::db::time::Day;
 use crate::error::AppResult;
+
+/// A remembered day older than this opens today instead.
+const RESTORE_DAYS: i64 = 30;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -49,6 +53,21 @@ impl Default for UiState {
             day_mode: DayMode::Timeline,
             onboarding_done: false,
         }
+    }
+}
+
+impl UiState {
+    /// The state the window opens with: `last_day` only while it lies within `RESTORE_DAYS` of `today`.
+    pub fn restorable(mut self, today: Day) -> Self {
+        let age = self
+            .last_day
+            .as_deref()
+            .and_then(|day| Day::parse(day).ok())
+            .map(|day| (today.date() - day.date()).num_days());
+        if !age.is_some_and(|age| (0..=RESTORE_DAYS).contains(&age)) {
+            self.last_day = None;
+        }
+        self
     }
 }
 
@@ -182,6 +201,51 @@ mod tests {
                 "onboardingDone": false
             })
         );
+    }
+
+    fn restored(last_day: Option<&str>) -> UiState {
+        UiState {
+            sidebar_width: 260,
+            last_day: last_day.map(str::to_string),
+            ..UiState::default()
+        }
+        .restorable(Day::parse("2026-10-22").unwrap())
+    }
+
+    #[test]
+    fn a_last_day_within_thirty_days_of_today_is_restored() {
+        for last_day in ["2026-10-22", "2026-10-21", "2026-09-22", "2026-09-23"] {
+            assert_eq!(restored(Some(last_day)).last_day.as_deref(), Some(last_day));
+        }
+    }
+
+    #[test]
+    fn a_last_day_that_is_older_in_the_future_or_unreadable_is_dropped() {
+        for last_day in [
+            "2026-09-21",
+            "2025-10-22",
+            "2026-10-23",
+            "2027-01-01",
+            "",
+            "yesterday",
+            "2026-13-01",
+            "2026-10-2",
+        ] {
+            assert_eq!(restored(Some(last_day)).last_day, None, "{last_day}");
+        }
+    }
+
+    #[test]
+    fn restoring_keeps_every_other_field_and_a_missing_last_day() {
+        assert_eq!(
+            restored(None),
+            UiState {
+                sidebar_width: 260,
+                ..UiState::default()
+            }
+        );
+        assert_eq!(restored(Some("2026-10-01")).sidebar_width, 260);
+        assert_eq!(restored(Some("2020-01-01")).sidebar_width, 260);
     }
 
     #[test]

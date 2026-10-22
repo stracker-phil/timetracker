@@ -164,7 +164,35 @@ describe("recording commands", () => {
       state().focusRecording("r1");
       await press("n");
       expect(state().focusedRecording).toBe("r1");
-      expect(state().day).toBe("2026-03-11");
+      await vi.waitFor(() => expect(state().day).toBe("2026-03-11"));
+    });
+
+    describe("moving and copying to another day", () => {
+      beforeEach(() => state().focusRecording("r1"));
+
+      it.each([
+        ["{Alt>}{ArrowLeft}{/Alt}", "recordingMove", "2026-03-09"],
+        ["{Alt>}{ArrowRight}{/Alt}", "recordingMove", "2026-03-11"],
+        ["{Alt>}{Shift>}{ArrowLeft}{/Shift}{/Alt}", "recordingCopy", "2026-03-09"],
+        ["{Alt>}{Shift>}{ArrowRight}{/Shift}{/Alt}", "recordingCopy", "2026-03-11"],
+      ] as const)("%s sends the day Rust steps to", async (keys, call, day) => {
+        await press(keys);
+        await vi.waitFor(() => expect(mocked[call]).toHaveBeenCalledWith("r1", null, day, "cancel"));
+      });
+
+      it("uses the day Rust answers, however the calendar steps", async () => {
+        mocked.calendarStep.mockResolvedValueOnce("2026-03-31");
+        expect(runCommand("recording.moveToNextDay")).toBe(true);
+        await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenCalledWith("r1", null, "2026-03-31", "cancel"));
+        expect(mocked.calendarStep).toHaveBeenCalledWith("day", DAY, 1);
+      });
+
+      it("moves nothing and toasts when Rust cannot step the day", async () => {
+        mocked.calendarStep.mockRejectedValueOnce({ kind: "io", message: "no calendar", code: null });
+        runCommand("recording.copyToPrevDay");
+        await vi.waitFor(() => expect(state().toasts.map((t) => t.message)).toEqual(["Could not change the date: no calendar"]));
+        expect(mocked.recordingCopy).not.toHaveBeenCalled();
+      });
     });
   });
 

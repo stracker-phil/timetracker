@@ -46,7 +46,7 @@ function NavEntry({ view }: { view: (typeof VIEWS)[number] }) {
 /** Today's Day view, ready to record today. */
 function HoursEntry() {
   const current = useStore((s) => s.view === "day" && s.day === today());
-  return <SidebarItem current={current} icon={Clock} label="Hours" onClick={() => useStore.getState().goToDay(today())} />;
+  return <SidebarItem current={current} icon={Clock} label="Hours" onClick={() => useStore.getState().showHours()} />;
 }
 
 const savedReportMenu = (report: SavedReport): MenuEntry[] => [

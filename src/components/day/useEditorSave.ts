@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { toAppError } from "../../api";
 import { useStore } from "../../state/store";
+import { typedTimesSettled } from "./TimeField";
 
 /** The editor's Save and Delete, with the field errors a save brought back. */
 export function useEditorSave() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   async function save() {
+    await typedTimesSettled();
     const { editor, draft, editing, createRecording, updateRecording, closeEditor } = useStore.getState();
     if (!draft) return;
     if (!draft.projectId) {

@@ -1,10 +1,11 @@
-import { addDays, addMonths, daysBetween, today } from "../../lib/day";
+import type { PeriodUnit } from "../../api";
+import { today } from "../../lib/day";
+import { dayStepper } from "../../lib/dayStepper";
 import type { Slice } from "../store";
 
 export type View = "day" | "week" | "month" | "reports" | "projects" | "tags" | "rules";
 
-/** A remembered day older than this opens today instead. */
-const RESTORE_DAYS = 30;
+const STEP_UNITS: Partial<Record<View, PeriodUnit>> = { week: "week", month: "month" };
 
 export interface NavSlice {
   view: View;
@@ -13,13 +14,15 @@ export interface NavSlice {
   setView: (view: View) => void;
   /** Shows `day` in the Day view. */
   goToDay: (day: string) => void;
+  /** Hours: today in the Day view. */
+  showHours: () => void;
   /** Today, in the view shown; in Reports the report's period that holds today. */
   goToday: () => void;
   /** Shows `day` (in Reports, the period holding it) without changing the view. */
   showDate: (day: string) => void;
   /** A day, week or month back (-1) or ahead (1), by the view shown; in Reports the report's period. */
   step: (by: 1 | -1) => void;
-  /** Shows the day the window showed last, when it lies within the last 30 days and no other day was shown. */
+  /** Shows the day the window showed last, unless another day was shown; Rust drops a day too old to restore. */
   restoreDay: () => void;
 }
 
@@ -32,6 +35,7 @@ export const navSlice: Slice<NavSlice> = {
       set({ day });
       get().rememberDay(day);
     };
+    const stepDay = dayStepper(() => get().day, stay);
     const show = (day: string) => {
       set({ view: "day" });
       stay(day);
@@ -45,24 +49,21 @@ export const navSlice: Slice<NavSlice> = {
       },
 
       goToDay: show,
+      showHours: () => show(today()),
       goToday: () => get().showDate(today()),
       showDate(day) {
         if (get().view === "reports") void get().shiftReportRange(day, 0);
         else stay(day);
       },
       step(by) {
-        const { view, day } = get();
+        const { view } = get();
         if (view === "reports") void get().shiftReportRange(null, by);
-        else if (view === "week") stay(addDays(day, 7 * by));
-        else if (view === "month") stay(addMonths(day, by));
-        else stay(addDays(day, by));
+        else stepDay(STEP_UNITS[view] ?? "day", by);
       },
 
       restoreDay() {
         const last = get().uiState.lastDay;
-        if (!last || shown) return;
-        const age = daysBetween(last, today());
-        if (age >= 0 && age <= RESTORE_DAYS) set({ day: last });
+        if (last && !shown) set({ day: last });
       },
     };
   },

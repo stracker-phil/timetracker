@@ -23,8 +23,8 @@ These rules hold everywhere in the code. Keep them when you change things.
 
 1. **Rust owns the logic; React only renders** ([ADR 0001](adr/0001-rust-owns-the-logic.md)). Timeline
    layout, grouping, snapping, overlap checks, report math, rule matching and report text are Rust. The page
-   asks, renders and forwards intent. Its only date math is formatting and stepping calendar days
-   (`lib/day.ts`).
+   asks, renders and forwards intent. Its only date math is formatting what Rust computed (`lib/day.ts`,
+   `lib/format.ts`); stepping days (`calendar_step`) and reading typed times (`calendar_parse_time`) are Rust.
 2. **IPC only in `api.ts` files** ([ADR 0002](adr/0002-ipc-in-api-files.md)). Only `src/api/index.ts` (and
    `src/<module>/api.ts` for an optional module) imports `@tauri-apps/api` or a `@tauri-apps/plugin-*`
    package. Everything else imports the `api` object, which is also what UI tests mock. A boundary test

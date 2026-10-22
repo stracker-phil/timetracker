@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api } from "../api";
+import { today } from "../lib/day";
 import { resetStore, useStore, type View } from "../state/store";
 import { defaultFilter } from "../state/slices/reports";
 import { conflicts, handleKeydown, installCommands, runCommand } from "./index";
@@ -49,6 +50,13 @@ describe("view commands", () => {
     expect(runCommand(`view.${view}`)).toBe(true);
     expect(state().view).toBe(view);
   });
+
+  it("view.hours shows today's Day view from any other view and day", () => {
+    resetStore({ view: "projects", day: "2026-03-10" });
+    expect(runCommand("view.hours")).toBe(true);
+    expect(state().view).toBe("day");
+    expect(state().day).toBe(today());
+  });
 });
 
 describe("date navigation commands", () => {
@@ -74,11 +82,21 @@ describe("date navigation commands", () => {
     ["week", "nav.prev", "2026-03-03"],
     ["month", "nav.next", "2026-04-01"],
     ["month", "nav.prev", "2026-02-01"],
-  ])("in the %s view %s goes to %s", (view, id, expected) => {
+  ])("in the %s view %s goes to %s", async (view, id, expected) => {
     resetStore({ view, day: "2026-03-10" });
     expect(runCommand(id)).toBe(true);
-    expect(state().day).toBe(expected);
+    await vi.waitFor(() => expect(state().day).toBe(expected));
     expect(state().view).toBe(view);
+  });
+
+  it.each<[string, string]>([
+    ["nav.next", "2026-03-12"],
+    ["nav.prev", "2026-03-08"],
+  ])("%s run twice in a row adds up to %s", async (id, expected) => {
+    resetStore({ view: "day", day: "2026-03-10" });
+    runCommand(id);
+    runCommand(id);
+    await vi.waitFor(() => expect(state().day).toBe(expected));
   });
 
   it.each<View>(["day", "week", "month"])("nav.today shows today in the %s view", (view) => {
@@ -102,8 +120,17 @@ describe("date navigation commands", () => {
     ])("in the %s view %s moves the day to %s", async (view, keys, expected) => {
       resetStore({ view, day: "2026-03-10" });
       await press(keys);
-      expect(state().day).toBe(expected);
+      await vi.waitFor(() => expect(state().day).toBe(expected));
       expect(state().view).toBe(view);
+    });
+
+    it.each([
+      ["nn", "2026-03-12"],
+      ["pp", "2026-03-08"],
+    ])("pressing %s quickly adds up to %s", async (keys, expected) => {
+      resetStore({ view: "day", day: "2026-03-10" });
+      await press(keys);
+      await vi.waitFor(() => expect(state().day).toBe(expected));
     });
 
     it.each<[string, string | null, number]>([

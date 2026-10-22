@@ -181,27 +181,43 @@ describe("editor slice", () => {
       it("shows the new times at once and asks Rust for them", async () => {
         const slow = deferred();
         mocked.recordingDraftSpans.mockReturnValueOnce(slow.promise);
-        state().setDraftSpan(0, { start: noon.start, end: at("12:00") });
+        const done = state().setDraftSpan(0, { start: noon.start, end: at("12:00") });
         expect(state().draft?.spans).toEqual([{ start: noon.start, end: at("12:00") }]);
         expect(mocked.recordingDraftSpans).toHaveBeenLastCalledWith([{ start: noon.start, end: at("12:00") }]);
         slow.answer({ spans: [{ start: noon.start, end: at("12:00") }], totalMs: 60 * MINUTE_MS });
-        await vi.waitFor(() => expect(state().draft?.totalMs).toBe(60 * MINUTE_MS));
+        await done;
+        expect(state().draft?.totalMs).toBe(60 * MINUTE_MS);
+      });
+
+      it("resolves only once Rust has answered", async () => {
+        const slow = deferred();
+        mocked.recordingDraftSpans.mockReturnValueOnce(slow.promise);
+        let resolved = false;
+        const done = state()
+          .setDraftSpan(0, { start: noon.start, end: at("12:00") })
+          .then(() => void (resolved = true));
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(resolved).toBe(false);
+        slow.answer({ spans: [{ start: noon.start, end: at("12:00") }], totalMs: 60 * MINUTE_MS });
+        await done;
+        expect(resolved).toBe(true);
+        expect(state().draft?.totalMs).toBe(60 * MINUTE_MS);
       });
 
       it("takes the times as Rust answers, e.g. an end rolled past midnight", async () => {
         const rolled = { start: noon.start, end: at("08:00", "2026-03-11") };
         mocked.recordingDraftSpans.mockResolvedValueOnce({ spans: [rolled], totalMs: rolled.end - rolled.start });
-        state().setDraftSpan(0, { start: noon.start, end: at("08:00") });
-        await vi.waitFor(() => expect(state().draft?.spans).toEqual([rolled]));
+        await state().setDraftSpan(0, { start: noon.start, end: at("08:00") });
+        expect(state().draft?.spans).toEqual([rolled]);
         expect(state().draft?.totalMs).toBe(rolled.end - rolled.start);
       });
 
       it("keeps the latest ask when an older answer arrives after it", async () => {
         const first = deferred();
         mocked.recordingDraftSpans.mockReturnValueOnce(first.promise);
-        state().setDraftSpan(0, { start: noon.start, end: at("12:00") });
-        state().setDraftSpan(0, { start: noon.start, end: at("12:30") });
-        await vi.waitFor(() => expect(state().draft?.totalMs).toBe(90 * MINUTE_MS));
+        void state().setDraftSpan(0, { start: noon.start, end: at("12:00") });
+        await state().setDraftSpan(0, { start: noon.start, end: at("12:30") });
+        expect(state().draft?.totalMs).toBe(90 * MINUTE_MS);
         first.answer({ spans: [{ start: noon.start, end: at("12:00") }], totalMs: 60 * MINUTE_MS });
         await new Promise((resolve) => setTimeout(resolve, 10));
         expect(state().draft?.spans).toEqual([{ start: noon.start, end: at("12:30") }]);
@@ -210,7 +226,7 @@ describe("editor slice", () => {
 
       it("toasts when Rust cannot answer and keeps the times shown", async () => {
         mocked.recordingDraftSpans.mockRejectedValueOnce({ kind: "io", message: "no answer", code: null });
-        state().setDraftSpan(0, { start: noon.start, end: at("12:00") });
+        await state().setDraftSpan(0, { start: noon.start, end: at("12:00") });
         await vi.waitFor(() => expect(toastMessages()).toEqual(["Could not change the times: no answer"]));
         expect(state().draft?.spans).toEqual([{ start: noon.start, end: at("12:00") }]);
       });

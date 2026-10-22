@@ -531,7 +531,7 @@ timeline), Hidden (gone from every lane; the Lanes popover lists hidden apps wit
 
 - A page of its own (⌘6): the toolbar reads `Tags` and `One per recording, for kinds of work across projects.`
   Below, one inset group with a row per tag (its name, the number of recordings, ✕ to delete; a confirm first
-  when recordings carry it), then the New tag field (↵ adds).
+  when recordings carry it), then the New tag field (↵ adds); ⌘N (`tags.new`) asks for a name in a sheet.
 
 ## Settings
 
@@ -638,6 +638,7 @@ recording commands'.
 | `palette.toggle` | Command palette | ⌘K | global |
 | `sidebar.toggle` | Toggle sidebar | ⌘⌃S | global |
 | `view.day` … `view.rules` | Show Day, Week, Month (each keeps the shown date), Reports, Projects, Tags, Rules | ⌘1 … ⌘7 | global |
+| `view.hours` | Show Hours: today's Day view, as the sidebar's Hours | menu | global |
 | `zoom.in` / `zoom.out` / `zoom.reset` | Zoom in / out / Reset zoom (the timeline in the Day view, the text elsewhere) | ⌘= / ⌘- / ⌘0 | global |
 | `window.hide` | Close window | ⌘W | global |
 | `tracker.pause` | Pause tracking (until resumed) | palette | global |
@@ -681,6 +682,7 @@ recording commands'.
 | `reports.rename` / `reports.delete` | Rename / Delete saved report… (the one opened from the sidebar, until the filter changes) | palette | reports |
 | `projects.new` | New project… | ⌘N | projects |
 | `clients.new` | New client… | menu | projects |
+| `tags.new` | New tag… (a name prompt) | ⌘N | tags |
 | `rules.new` | New rule… | ⌘N | rules |
 | `rules.moveUp` / `rules.moveDown` | Move rule up / down (the rule whose row has the focus) | ⌥↑ / ⌥↓ | rules |
 | `suggestion.approve` / `suggestion.edit` / `suggestion.dismiss` | Approve / Edit / Dismiss the focused suggestion | ↵ / E / ⌫ | suggestion |
@@ -711,25 +713,30 @@ CLI and the MCP server list the ids.
 
 ### Record a day
 
-From any view, with the documented default keys only:
+From any view, with the documented default keys only (the pointer ways in brackets):
 
-1. ⌘1 shows the Day view, O today.
+1. ⌘1 shows the Day view, O today (or Hours in the sidebar, `view.hours`; the sidebar calendar's days for
+   any other day).
 2. J focuses the first block of the day (K, H and L move on); Space shows its details.
 3. V selects the focused block's span; ⇧J (or ⇧K) grows the selection over the next (or previous) block, as
-   far as the work went. The status bar shows the span and its length; Escape clears it.
-4. ↵ opens the editor in the timesheet for the selection, with the note focused: type it, then Tab to the
-   project (often proposed already): type part of the name, ↑↓, ↵ picks it (or the last option,
-   `New project "x"…`, opens the project sheet). Tab on to the tag and the duration.
-5. Tab to the span's From and To: type `09:15` or press ↑↓ to move by one snap step; "Add span" adds another.
+   far as the work went. The status bar shows the snapped span and its length; Escape clears it. (Drag over
+   the time column or the lanes, or click a block: the editor opens on release.)
+4. ↵ opens the inline editor in the timesheet, at the recording's place among the cards, with the note
+   focused: type it, then Tab to the project (often proposed already): type part of the name, ↑↓, ↵ picks it
+   (or the last option, `New project "x"…`, opens the project sheet). Tab on to the tag and the duration.
+5. Tab to a span's From and To: type `09:15` (or `915`) or press ↑↓ to move by one snap step; "Add span"
+   adds another. (With the editor open, a click on a block adds its span, a second click takes it out again;
+   a drag adds a span.)
 6. ↵ in a field or ⌘↵ saves. If it overlaps a recording, the editor lists them: ↵ on "Replace overlapped
    part" replaces it, Back returns to the fields; Escape cancels the editor.
-7. The new recording has the focus: ⌥↑ ⌥↓ move it, ⌥⇧↓ ⌥⇧↑ change its end, ↵ edits it again, ⌫ deletes it,
-   ⌘Z undoes the last change. ] and [ step through the day's recordings.
-8. Back to step 2 for the next stretch (J moves on from the last focused block). Rule suggestions are
-   ghost cards in the timesheet: ] or [ to one, ↵ approves, E edits, ⌫ dismisses.
-9. P and N step to other days. ⌘2 shows the week (P N by week; Tab to a day head and ↵ opens it), ⌘3
-   the month (by month; Tab to a day and ↵ opens it).
-10. ⌘4 shows Reports (P N step its period, O goes back to the current one): Tab to the Period presets, on
+7. The new recording has the focus: ⌥↑ ⌥↓ move it, ⌥⇧↓ ⌥⇧↑ change its end, ⌥← ⌥→ move it to another day,
+   ↵ edits it again, ⌫ deletes it, ⌘Z undoes the last change. ] and [ step through the timesheet.
+8. Rule suggestions are ghost cards in the timesheet, in time order among the recordings: ] or [ to one,
+   ↵ approves, E opens it in the editor, ⌫ dismisses; the Day menu (or ⌘K) approves or dismisses all of them.
+9. Back to step 2 for the next stretch (J moves on from the last focused block). P and N step to other days.
+10. ⌘2 shows the week (P N by week; Tab to a day head and ↵ opens it, Tab to a card and ↵ edits it), ⌘3 the
+    month (by month; Tab to a day and ↵ opens it).
+11. ⌘4 shows Reports (P N step its period, O goes back to the current one): Tab to the Period presets, on
     to the client, project and tag pickers and Rounding, then the charts' By selects and the table's project
     rows (↵ unfolds one) and Copy notes buttons; ⌘⇧C copies the report as text, ⌥⌘C all its notes, ⌘K
     `> save` saves it under a name.
@@ -750,15 +757,15 @@ from every text field. The page's key handler runs them, with the rules above.
 | Menu | Items (command; key) |
 |---|---|
 | TimeTracker | About; Settings… (`settings.toggle`; ⌘,); Launch at Login (`app.launchAtLogin`, a check item); Show Welcome Again (`welcome.show`); Services; Hide, Hide Others, Show All; Quit TimeTracker (`app.quit`; ⌘Q) |
-| File | New Recording… (`recording.new`); Start Timer… (`timer.start`; ⌘T), Stop Timer (`timer.stop`; ⌘⇧.); New Project… (`projects.new`; ⌘N), New Client… (`clients.new`), New Rule… (`rules.new`; ⌘N); Export Backup… (`data.exportBackup`); Close Window (`window.hide`; ⌘W) |
+| File | New Recording… (`recording.new`); Start Timer… (`timer.start`; ⌘T), Stop Timer (`timer.stop`; ⌘⇧.); New Project… (`projects.new`; ⌘N), New Client… (`clients.new`), New Tag… (`tags.new`; ⌘N), New Rule… (`rules.new`; ⌘N); Export Backup… (`data.exportBackup`); Close Window (`window.hide`; ⌘W) |
 | Edit | Undo (`edit.undo`; ⌘Z), Redo (`edit.redo`; ⌘⇧Z); Cut, Copy, Paste, Select All (native); Delete Recording (`recording.delete`; ⌫); Copy Report as Text (`reports.copyText`; ⌘⇧C), Copy Report Notes (`reports.copyNotes`; ⌥⌘C) |
-| View | Day, Week, Month, Reports, Projects, Tags, Rules (`view.day` … `view.rules`; ⌘1 … ⌘7, the active view checked); Show as List (`day.toggleList`; ⌘⇧L, checked in List mode); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); Timeline Settings… (`day.settings`); Enter Full Screen (native) |
+| View | Hours (`view.hours`); Day, Week, Month, Reports, Projects, Tags, Rules (`view.day` … `view.rules`; ⌘1 … ⌘7, the active view checked); Show as List (`day.toggleList`; ⌘⇧L, checked in List mode); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); Timeline Settings… (`day.settings`); Enter Full Screen (native) |
 | Go | Previous (`nav.prev`; P), Next (`nav.next`; N), Today (`nav.today`; O), Go to Date… (`nav.goToDate`); Next Block (`day.nextBlock`; J), Previous Block (`day.prevBlock`; K); Next Recording (`recording.next`; ], recordings and suggestions), Previous Recording (`recording.prev`; [) |
 | Day | Record Selection (`recording.create`; ↵, the key of `recording.open`), Edit Recording… (`recording.edit`); Move Recording to Previous / Next Day (⌥← / ⌥→), Copy Recording to Previous / Next Day (⌥⇧← / ⌥⇧→); Approve Suggestion (↵), Edit Suggestion… (E), Dismiss Suggestion (⌫), Approve All Suggestions of Rule, Approve All Suggestions, Dismiss All Suggestions (`suggestion.*`); Delete Activity for This Day…, Delete Activity in a Range… (`activity.*`) |
 | Window | Minimize, Zoom, Bring All to Front (native) |
 | Help | Keyboard Shortcuts (`shortcuts.show`; ⇧?), Command Palette… (`palette.toggle`; ⌘K); Open Log Folder (`logs.open`), Show Data Folder (`data.reveal`), README (`help.readme`) |
 
-New Project and New Rule share ⌘N: only one of them is enabled at a time (Projects or Rules). Record Selection
+New Project, New Tag and New Rule share ⌘N: only one of them is enabled at a time (Projects, Tags or Rules). Record Selection
 and Approve Suggestion share ↵, Delete Recording and Dismiss Suggestion share ⌫: a focused suggestion clears the
 selection and the recording focus, so only one of each pair is enabled.
 
@@ -776,11 +783,12 @@ Commands left out of the menu, with keys and the palette only:
 
 ## Scheme audit
 
-The three schemes in both modes are checked on the Day view, List view, Week, Reports and Settings
+The three schemes in both modes are checked on Day, List, Week, Month, Reports, Projects, Tags, Rules and Settings
 (`docs/screens/<scheme>-<mode>-<view>.png`, captured by `scripts/dev/screenshot-looks.sh <dir> [view]`, which
 sets the current macOS mode's scheme to each of the three through `scripts/dev/js.sh` and restores the
 settings; the app follows macOS, so switch the system appearance and run it again for the other mode). Only
-the default look of each mode is committed: `default-light-day.png` and `dark-dark-day.png`. Each scheme is
+the README's are committed: `default-light-day.png`, `dark-light-day.png` (the Dark scheme with macOS in
+light mode) and `default-light-reports.png`. Each scheme is
 one look in either mode; the mode changes the native window chrome and, where the sidebar's tone matches it,
 lets the sidebar material show through. Fixes live in `src/styles/palettes/` only.
 

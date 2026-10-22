@@ -1,8 +1,8 @@
-import { useEffect, useId, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { api, toAppError, type AppError, type AwayPrompt as Prompt, type AwayReason, type ProjectListItem, type Recording } from "../../api";
 import { FormField } from "../../components/Field";
 import { NoteInput } from "../../components/NoteInput";
-import { TimeField } from "../../components/day/TimeField";
+import { TimeField, typedTimesSettled } from "../../components/day/TimeField";
 import { ProjectPicker } from "../../components/pickers/ProjectPicker";
 import { TagPicker } from "../../components/pickers/TagPicker";
 import { formatClock, formatDuration, MINUTE_MS } from "../../lib/format";
@@ -71,6 +71,16 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
   const [start, setStart] = useState(prompt.suggested.start);
   const [endValue, setEndValue] = useState(prompt.suggested.end);
+  // The latest times, which Record reads after the fields' typing has settled.
+  const times = useRef({ start, end: endValue });
+  const changeStart = (ms: number) => {
+    times.current.start = ms;
+    setStart(ms);
+  };
+  const changeEnd = (ms: number) => {
+    times.current.end = ms;
+    setEndValue(ms);
+  };
   const [note, setNote] = useState("");
   const [tagId, setTagId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -92,7 +102,8 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
     setFailure(null);
     setSaving(true);
     try {
-      const { spans } = await draftSpans();
+      await typedTimesSettled();
+      const { spans } = await api.recordingDraftSpans([times.current]);
       await api.awayPromptAnswer({ projectId, spans, note: note.trim(), tagId });
     } catch (e) {
       const failed = answerFailure(toAppError(e), projects);
@@ -120,10 +131,10 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
       </FormField>
       <div className="away-times">
         <FormField label="From" htmlFor={ids.start} error={errors.start}>
-          <TimeField id={ids.start} value={start} step={step} onChange={setStart} />
+          <TimeField id={ids.start} value={start} step={step} onChange={changeStart} />
         </FormField>
         <FormField label="To" htmlFor={ids.end} error={errors.end}>
-          <TimeField id={ids.end} value={endValue} step={step} onChange={setEndValue} />
+          <TimeField id={ids.end} value={endValue} step={step} onChange={changeEnd} />
         </FormField>
         {draft && <span className="away-length o2">{formatDuration(draft.totalMs)}</span>}
       </div>
