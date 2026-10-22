@@ -184,9 +184,9 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `recording_split_span` | `id, spanId, at: Ms` | `Recording` whose span is cut in two at the snapped `at`; both halves stay in it | `invalid_input` (`field`: `at` not inside the span; the running timer), `not_found`, `db` |
 | `recording_merge` | `into, from` | `Recording` `into` with the spans of `from` (which keeps its project, note and tag); `from` is deleted | `invalid_input` (`field`: `from` the same recording; a running one), `not_found`, `db` |
 | `recording_nudge` | `id, spanId, startSteps: i32, endSteps: i32, overlap` | `Recording` whose span's start and end moved by that many snap steps (`timeline.snapMinutes`; ⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓) from their nearest grid marks; an end moved alone stays a step from the other (`snap_moving`), through `update_span` | as `recording_update_span` |
-| `recording_move` / `recording_copy` | `id, spanId: string \| null, day: Day, overlap` | `Recording`: moved, or a new copy, to `day` at the same local time (`same_time_on`, DST-safe) with the same lengths (undoable). With `spanId` only that span (the copy is a new recording of it); without, every span, shifted by the days between the first span's day and `day` | `invalid_input` (the running timer), `overlap`, `not_found`, `db` |
-| `week_view` (`calendar/commands.rs`) | `day: Day` | `WeekView { weekStart, label, days: DayColumn[], totalMs, trackedMs }`; `DayColumn { day, bounds, weekday, dayOfMonth, isToday, isWeekend, recordings, totalMs, trackedMs }` | `invalid_input`, `db` |
-| `month_view` | `day: Day` | `MonthView { monthStart, label, weeks: MonthDay[][], totalMs }` (whole weeks Monday to Sunday; `totalMs` counts the month's own days); `MonthDay { day, dayOfMonth, inMonth, isToday, isWeekend, recordedMs, projects }` (the top three by time, `ProjectShare { projectId, name, color, shade, ms }`) | `invalid_input`, `db` |
+| `recording_move` / `recording_copy` | `id, from: Day \| null, day: Day, overlap` | `Recording`: moved, or a new copy, to `day` at the same local time (`same_time_on`, DST-safe) with the same lengths (undoable). With `from` the spans touching that day (the Week card's drag; the copy is a new recording of them), shifted by the days between `from` and `day`; without, every span, shifted by the days between the first span's day and `day` | `invalid_input` (the running timer), `overlap`, `not_found`, `db` |
+| `week_view` (`calendar/commands.rs`) | `day: Day` | `WeekView { weekStart, label, days: DayColumn[], totalMs, trackedMs }`; `DayColumn { day, weekday, dayOfMonth, isToday, isWeekend, entries: CalendarEntry[], totalMs, trackedMs }`; `CalendarEntry` is a `TimesheetCard` (one per recording, the day's parts of its spans added up, by start) plus `heightUnits` (the Week card's height, see Week and month) | `invalid_input`, `db` |
+| `month_view` | `day: Day` | `MonthView { monthStart, label, weeks: MonthDay[][], totalMs }` (whole weeks Monday to Sunday; `totalMs` counts the month's own days); `MonthDay { day, weekday, dayOfMonth, inMonth, isToday, isWeekend, recordedMs, entries: CalendarEntry[] }` (every recording of the day, by start) | `invalid_input`, `db` |
 | `calendar_period` (`calendar/commands.rs`) | `unit: PeriodUnit` (`day`, `week`, `month`), `day: Day` | `Period { from, to, holdsToday }`: the day, Monday-to-Sunday week or month holding `day` (`calendar::period::period`); the sidebar's date heading | `invalid_input` |
 | `calendar_picker` | `month: Day` (any day of it), `selected: [Day, Day] \| null` | `PickerMonth { monthStart, weeks: PickerDay[][] }` (whole weeks Monday to Sunday); `PickerDay { day, outside, isToday, selected }` (`calendar::period::picker_month`); the date picker | `invalid_input` |
 | `calendar_jumps` | `text: string` | `DateJump[] { name: string \| null, unit: PeriodUnit, from: Day, to: Day }` (`calendar::jump::jumps`): a typed date (`2026-10-12`, `12.10.`, `12.10.2026`, `oct 12`, `12 october 2026`; without a year the latest on or before today) as one day without a name, else the date words starting with `text` or one of whose words does (Today, Yesterday, This week, Last week, This month, Last month, a weekday: the latest on or before today, a month name: the latest on or before this month); `""` gives Today, Yesterday, This week, This month; the palette | – |
@@ -196,7 +196,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `recording_draft_total` | `spans: Span[], totalMs` | `DraftSpans` with the last span's end moved so they add up to `totalMs`; unchanged when that would end it at or before its start or a day or more after it; the editor's duration | – |
 | `recording_draft_add` | `spans: Span[]` | `DraftSpans` with a 30-minute span after the last (without spans, from the start of `default_span`); Add span | – |
 | `recording_proposal` | `spans: Span[]` | `RecordingProposal { projectId, activity: CoveredActivity[] }` (`recordings/proposal.rs`): the blocks of every lane but the summary on the spans' days that share time with them (`id`, `label`, `app`, `bundleId`, `start`, `end`, `insideMs`, `private`), and the project of the latest recording in the 14 days before the first span that covered the spans' main app (most time inside, private left out), else of the rule matching the most time inside; archived projects are never proposed. The editor's activity list and prefill | `db` |
-| `recording_default_span` | – | `Span`: the half hour up to now (`NEW_RECORDING_MINUTES`), snapped (`recordings::default_span`); File → New Recording… without a selection | – |
+| `recording_default_span` | `day: Day \| null` | `Span`: the half hour up to now (`NEW_RECORDING_MINUTES`), snapped (`recordings::default_span`); on another `day` the same clock times there (`recordings::default_span_on`). File → New Recording… without a selection, and the Week's and Month's + for a day | – |
 | `undo` / `redo` | – | the label undone or redone, `null` when there was none | `overlap`, `db` |
 | `undo_status` | – | `UndoStatus { undoLabel, redoLabel }` | – |
 | `activity_list` / `away_list` (`db/commands.rs`) | `day: Day` | `ActivityRow[]` / `AwayRow[]` of the day, cut to its bounds; open rows end now | `db`, `invalid_input` |
@@ -343,9 +343,10 @@ clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `co
 - **Spans** (`spans.rs`): `add_span`, `update_span` (by span id), `remove_span` (removing the last one deletes the
   recording), `split_span(at)` (two touching spans), `merge(into, from)` (the spans of `from` join `into`,
   `from` is deleted first so its span ids carry over). None of them edits the running timer.
-- **Move and copy** (`to_day.rs`: `move_to_day`, `copy_to_day`): one span by id (the Week view's drag), or the whole
-  recording (the Day view's menu commands): every span moves by the days between its first span's day and the
-  target day, each at its own local time and length. A copy is a new recording.
+- **Move and copy** (`to_day.rs`: `move_to_day`, `copy_to_day`, through `placed_on_day`): the spans touching a
+  `from` day (the Week card's drag: the recording's part on that day), or the whole recording (the Day view's
+  menu commands); each moves by the days between `from` (else its first span's day) and the target day, at its
+  own local time and length, and the other spans stay. A copy is a new recording of the moved spans.
 - **Operations** (`ops.rs`): `Op::Create | Update { before, after } | Delete | Batch` on whole recordings with
   their spans, and `Op::Dismiss | Undismiss` on a dismissed suggestion (so undo covers reviewing); `inverse()`
   swaps them (a batch reversed). `dismissal_days` adds a dismissal's day to the days a change touched. `apply` runs the op in one transaction through
@@ -369,8 +370,11 @@ and `totals.recordedMs` (the day's parts of the spans).
 ## Week and month
 
 `calendar/mod.rs` reads the range's recordings (and, for the week, activity) once and cuts them per day with
-the Day view's own `day::recording_blocks` and `day::tracked_ms`, so a span over midnight shows in both days'
-columns with its parts, and a recording shows on every day one of its spans touches.
+the Day view's own `day::recording_blocks`, `day::timesheet` and `day::tracked_ms`, so a recording is one
+entry per day it touches with that day's share (`calendar::entries::entries`): a span over midnight counts in
+both days, several spans on one day add up. `entries::height_units` gives a Week card one unit per started
+quarter hour (`CARD_UNIT_MS`), at least `CARD_MIN_UNITS` (a title over the foot) and at most `CARD_MAX_UNITS`
+(six hours); the page multiplies it by its unit size. The Month uses the same entries as equal-height lines.
 
 ## Reports
 

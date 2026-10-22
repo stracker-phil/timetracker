@@ -5,6 +5,9 @@
 Accepted (2026-10-22), implemented. Supersedes in part
 [0010](0010-recordings-never-overlap-ops-with-undo.md) (what overlaps and what a replace cuts).
 
+Superseded in part by [0023](0023-week-and-month-are-lists.md): the Week view's drag moves a recording's
+spans on one day (`from`), not one span by id.
+
 ## Context
 
 A recording was one stretch of time: `start` and `end`. In use the owner works on one thing in several

@@ -4,8 +4,9 @@ use chrono::{Duration, Local, LocalResult, NaiveTime, TimeZone, Timelike};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use super::to_day::span_on_day;
 use super::{MINUTE_MS, Span};
-use crate::db::time::Ms;
+use crate::db::time::{Day, Ms};
 
 /// The end of a span a drag moves; the other end keeps its place.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -90,6 +91,15 @@ pub fn default_span(now: Ms, minutes: u32) -> Span {
     snap_span(now - NEW_RECORDING_MINUTES * MINUTE_MS, now, minutes)
 }
 
+/// `default_span` on `day` (the Week's and Month's +): on another day than `now`'s at the same clock times.
+pub fn default_span_on(day: Option<Day>, now: Ms, minutes: u32) -> Span {
+    let span = default_span(now, minutes);
+    match day {
+        Some(day) if day != Day::of(now) => span_on_day(span, day),
+        _ => span,
+    }
+}
+
 /// An end that snapped onto or before the start lands one step after it.
 fn past_start(start: Ms, end: Ms, minutes: u32) -> Ms {
     if end <= start {
@@ -109,6 +119,7 @@ mod tests {
     use chrono_tz::Europe::Vienna;
 
     use super::*;
+    use crate::db::time::same_time_on;
     use crate::recordings::testing::*;
 
     fn vienna(year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> Ms {
@@ -320,6 +331,36 @@ mod tests {
                 end: at(13, 10)
             }
         );
+    }
+
+    #[test]
+    fn default_span_on_no_day_or_today_is_the_default_span() {
+        for now in [at(13, 12), at(13, 15), midnight().1 + 10 * MIN] {
+            let expected = default_span(now, 5);
+            assert_eq!(default_span_on(None, now, 5), expected, "{now}");
+            assert_eq!(
+                default_span_on(Some(Day::of(now)), now, 5),
+                expected,
+                "{now}"
+            );
+        }
+    }
+
+    #[test]
+    fn default_span_on_another_day_keeps_the_clock_times_and_length() {
+        let now = at(13, 12);
+        let span = default_span(now, 5);
+        for day in [
+            Day::of(now).next(),
+            Day::of(now).prev(),
+            Day::of(now).next().next(),
+        ] {
+            let on_day = default_span_on(Some(day), now, 5);
+
+            assert_eq!(on_day.start, same_time_on(span.start, day), "{day}");
+            assert_eq!(on_day.end - on_day.start, span.end - span.start, "{day}");
+            assert_eq!(Day::of(on_day.start), day, "{day}");
+        }
     }
 
     #[test]

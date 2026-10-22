@@ -100,10 +100,10 @@
 [data-accent="teal"], [data-accent="teal"] .sidebar { --accent: var(--a-teal); }
 [data-accent="graphite"], [data-accent="graphite"] .sidebar { --accent: var(--a-graphite); }
 
-/* A filled recording (a card, a suggestion, a project chip, a month cell's project bar): `--rec` is the project's
+/* A filled recording (a card, a suggestion, a project chip): `--rec` is the project's
    shade (`shadeColor`); the fill keeps its hue and, a little, its lightness step; the text is the hue at the
    palette's text lightness. Both meet 4.5:1 for every shade. */
-.card, .suggestion, .project-chip, .month-project {
+.card, .suggestion, .project-chip {
   --block-fill: oklch(from var(--rec) calc(var(--block-fill-l) + (l - 0.6) * var(--block-fill-spread)) min(c, var(--block-fill-c)) h);
   --block-text: oklch(from var(--rec) var(--block-text-l) min(c, var(--block-text-c)) h);
   --block-meta: color-mix(in srgb, var(--block-text) 75%, var(--block-fill));

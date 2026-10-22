@@ -133,7 +133,7 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   `recording.open` (Enter) edits the focused recording or opens the editor on the selection (`recordSelection`);
   `recording.create` (Record Selection) and `recording.edit` (menu and palette) do one of the two;
   `recording.new` (File → New Recording…, from any view) opens the editor on the Day view's selection, else
-  for the span `recording_default_span` proposes (the half hour up to now) on today's Day view (or this week's Week view);
+  for the span `recording_default_span` proposes (the half hour up to now) on today's Day view (or this week's Week view, this month's Month view; `openNewRecording` in the `editor` slice);
   `recording.delete` (⌫);
   `recording.nudgeEarlier`/`nudgeLater` (⌥↑ ⌥↓) move the focused recording's first span of the day and
   `recording.extend`/`shrink` (⌥⇧↓ ⌥⇧↑) change its end, by one snap step (`nudgeSpan`: the page sends step counts, `recording_nudge` computes the times);
@@ -246,12 +246,12 @@ Tracker components:
 | `Lane` | its blocks, absolutely placed: `top`/`height` from the times and the zoom, `left`/`width` from `col`/`cols`; only blocks within the visible part ± one screen (`useVisibleRange`, which moves in half-screen steps). The summary lane draws `summary` blocks, the others `memory` blocks |
 | `ActivityBlock` | `look="summary"`: a `Block` with the `AppIcon` (16 px) and the label as title and `activeMs` (`formatShortDuration`) at the bottom right when tall; `look="memory"`: the icon over a bar of the block's real height, the label and `activeMs` beside it (two lines, one line when short, only the bar when tiny); a gear on hover; `private`, `dimmed` (covered) and `focused` classes |
 | `HoverCard` | `AppIcon` and app, title, URL (http(s) opens through `api.openUrl`) or path, time and duration, the source when external; beside the block, else below or above it |
-| `RecordingsColumn` | the time column: the day's `SuggestionBlock`s (the edited suggestion gives way to the draft) under its `RecordingBlock`s (`look="times"`, `hovered` from `hoveredRecording`), while a span is selected a dashed outline where its recording would go, and the open editor's draft spans (cut to the day) as filled accent blocks with their times (`drawnParts`, for drawing only), in place of the edited recording's own blocks; its blocks get `editOnClick`. A press on empty time is `useSelectionPress`'s |
+| `RecordingsColumn` | the time column: the day's `SuggestionBlock`s (the edited suggestion gives way to the draft) under its `RecordingBlock`s (`hovered` from `hoveredRecording`), while a span is selected a dashed outline where its recording would go, and the open editor's draft spans (cut to the day) as filled accent blocks with their times (`drawnParts`, for drawing only), in place of the edited recording's own blocks. A press on empty time is `useSelectionPress`'s |
 | `SuggestionBlock` | a rule's suggestion in the time column: hatched in the project's fill, outlined dashed, with the project, the rule and the duration; `focused` adds the accent ring; a click `editSuggestion` |
 | `SuggestionCard` | a suggestion in the timesheet: a ghost `Card` (role group, Tab stop; focusing it `focusSuggestion`), note or project as title, project and client, "Suggested by <rule>" and the tag, the duration; ✓ `approveSuggestion`, ✕ `dismissSuggestions([id])`, a click `editSuggestion` |
 | `useRuleDrag` | ⌥-pressing an activity block (in `Timeline`, while no editor is open) shows the recent projects over the top of the recordings column; releasing over one opens the `rule` dialog with `draftFromBlock`: `<app> → <project>`, `app is <app>` and `domain is <host>` for a URL block, else `title contains <title>` |
-| `RecordingBlock` | one span of a recording (`spanId`; a recording with several spans has several blocks, all focused and hovered together): a `Card` in the project's shade; `look="card"` (Week view) shows project, note, tag and duration, `look="times"` (Day view) only the start and end. Dashed top or bottom edge when clipped to the day. `look` only styles it; with `editOnClick` (the Day view) a click focuses the recording and opens the editor, without it a click focuses and a double-click edits. Hovering sets `hoverRecording`; dragging the body moves the span and an edge resizes it (`pointerDrag`, pointer capture), with the ghost from `useSnappedSpan` (the dragged edge as `moving`); release sends the unsnapped span and `moving` to `updateSpan`, and Rust snaps it |
-| `RecordingEditor` | the editor as a form card in the timesheet (in the Week view inside a `Modal` sheet), on the `editor` slice's `draft`: an optional warning (the List view's gaps), the note as the title field (autofocus; one line, pasted line breaks become spaces), project (`ProjectPicker`), tag (`TagPicker`), the duration (`DurationField`, `0 h 20 m` from `draft.totalMs`; a change goes to `setDraftTotal`), the covered activity (`CoveredActivity`) and the spans (`EditorSpans`); Save (↵ or ⌘↵) and Delete (⌘⌫) come from `useEditorSave` (every span as Rust rolled it; a running recording keeps its spans and sends only the fields; field errors under their field), Cancel (Escape, wherever the focus is). Opened on a suggestion it shows "Suggested by <rule>. Approve records it.", the submit reads Approve and saves through `createRecording(input, suggestionId)`. Its form is named "New recording", "Edit suggestion" or "Edit recording" (`id` lets the Week view's sheet point at it). A new recording takes the project of `useProposal` while it has none. Scrolls into view when it opens |
+| `RecordingBlock` | one span of a recording in the Day view's time column (`spanId`; a recording with several spans has several blocks, all focused and hovered together): a `Card` in the project's shade with only its start and end. Dashed top or bottom edge when clipped to the day. A click focuses the recording and opens the editor. Hovering sets `hoverRecording`; dragging the body moves the span and an edge resizes it (`pointerDrag`, pointer capture), with the ghost from `useSnappedSpan` (the dragged edge as `moving`); release sends the unsnapped span and `moving` to `updateSpan`, and Rust snaps it |
+| `RecordingEditor` | the editor as a form card in the timesheet (in the Week and Month views inside `EditorSheet`), on the `editor` slice's `draft`: an optional warning (the List view's gaps), the note as the title field (autofocus; one line, pasted line breaks become spaces), project (`ProjectPicker`), tag (`TagPicker`), the duration (`DurationField`, `0 h 20 m` from `draft.totalMs`; a change goes to `setDraftTotal`), the covered activity (`CoveredActivity`) and the spans (`EditorSpans`); Save (↵ or ⌘↵) and Delete (⌘⌫) come from `useEditorSave` (every span as Rust rolled it; a running recording keeps its spans and sends only the fields; field errors under their field), Cancel (Escape, wherever the focus is). Opened on a suggestion it shows "Suggested by <rule>. Approve records it.", the submit reads Approve and saves through `createRecording(input, suggestionId)`. Its form is named "New recording", "Edit suggestion" or "Edit recording" (`id` lets `EditorSheet` point at it). A new recording takes the project of `useProposal` while it has none. Scrolls into view when it opens |
 | `EditorSpans` | the draft's spans as From / To rows (`TimeField`: `HH:MM`, ↑↓ by the snap step), each with ✕ while there are several, and "Add span" (`addDraftSpan`: Rust places it after the last); a running recording's spans are shown, not edited |
 | `EditorParts` | `DurationField`, `CoveredActivity` ("Activity n", opening the list of blocks with their start and time inside) and `OverlapNotice` (the recordings in the way, "Replace overlapped part" or Back, inside the editor) |
 | `useProposal` | `api.recordingProposal` for the draft's spans once they settle (150 ms) |
@@ -325,16 +325,21 @@ position) and their writes; a `data_changed` of kind `rules` reloads them.
 
 ### Week and Month
 
-`components/calendar/`: `CalendarHeader` (the title, totals). `WeekView` runs `weekView(day)` keyed
-by the day and `changeCount`: day heads (`DayHead`: weekday, the date large, today's in an accent circle,
-and the day's recorded `h:mm`; a click opens the day) over a `TimeAxis` and seven
-columns that place each day's `RecordingBlock`s from the column's bounds. A block keeps its vertical move
-and resize; released over another column (`onDrop`, found with `elementFromPoint`) its span moves there, with ⌥
-it is copied as a new recording (`moveRecording`/`copyRecording` with the block's `spanId`, in the `recordings`
-slice, which ask about overlaps like every write). A double-click on an empty spot opens the editor for an hour from there,
-as a `Modal` sheet around `RecordingEditor` (the Week view has no timesheet). `MonthView` runs
-`monthView(day)`: a seven-column grid of `DayCell`s (the day number, today's in an accent circle, the recorded
-`h:mm`, and a bar per top project, filled like its recordings with its name); a click opens the day.
+`components/calendar/`: `CalendarHeader` (the title, totals), `EditorSheet` (the editor as a `Modal` sheet
+around `RecordingEditor`: the Week and Month have no timesheet) and `entry.ts` (`editEntry`: the editor on an
+entry's recording, found by its `start`/`end` as `at`; `entryName`). `WeekView` runs `weekView(day)` keyed by
+the day and `changeCount`: day heads (`DayHead`: `Mon 19`, today as "Today" in accent, and the day's recorded
+`h:mm`; a click opens the day) over seven columns in one scroll box, each the day's `WeekCard`s in order and a
+"New recording" button (`openNewRecording(day)`, filling an empty column). `WeekCard` is a `Card` (project,
+note, tag, the spans count when several, the day's `h:mm`) whose height is `heightUnits` times `--week-unit`:
+a click focuses it (`focusRecording`), a double-click or ↵ `editEntry`, ⌫ `deleteRecording`. Dragged
+(`pointerDrag`) it dims, the column under the pointer (`elementFromPoint`, `data-day`) gets an accent ring, and
+released over another column it moves there, with ⌥ it is copied (`moveRecording`/`copyRecording` with the
+card's day as `from`, in the `recordings` slice, which ask about overlaps like every write); a running one
+does not drag. `MonthView` runs `monthView(day)`: a grid of week rows (`role="row"`, each as tall as its
+fullest cell) of `DayCell`s: the weekday and date (a button that opens the day; today's number in an accent
+circle), a + shown on hover or focus (`openNewRecording(day)`), the recorded `h:mm`, then an `EntryLine` per
+recording (a dot in the project's shade, the note or the project, the `h:mm`; a click `editEntry`).
 Weekend columns and cells (`isWeekend`) sit on `--bg-quiet`.
 
 The editor's `edit` request may carry `at` (a span of the recording), so views other than the Day view open it.

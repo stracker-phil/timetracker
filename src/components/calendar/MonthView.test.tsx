@@ -7,40 +7,49 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api, type MonthView as Month } from "../../api";
 import { handleKeydown, installCommands } from "../../commands";
 import { resetStore, useStore } from "../../state/store";
-import { monthView } from "../../test/calendarFixtures";
-import { DAY } from "../../test/dayFixtures";
+import { calendarEntry, monthView } from "../../test/calendarFixtures";
+import { at, DAY } from "../../test/dayFixtures";
+import { projectItem, projectsStore } from "../../test/projectFixtures";
+import { recording } from "../../test/recordingFixtures";
+import { settings } from "../../test/settings";
+import { Toasts } from "../Toasts";
 import { MonthView } from "./MonthView";
 
 const mocked = vi.mocked(api, true);
 
 const MINUTE_MS = 60_000;
-const busyMonth = () =>
+const website = projectItem({ project: { id: "p-site", name: "Website" } });
+
+const landing = calendarEntry({ id: "r1", note: "Landing page", durationMs: 90 * MINUTE_MS, start: at("09:00"), end: at("10:30") });
+const docs = calendarEntry({ id: "r2", projectId: "p-docs", projectName: "Docs", color: "green", durationMs: 20 * MINUTE_MS, spanIds: ["r2-s1"] });
+
+const busyMonth = (entries = [landing]) =>
   monthView({
     cells: {
-      "2026-03-10": { recordedMs: 90 * MINUTE_MS, projects: [{ projectId: "p-site", name: "Website", color: "blue", shade: 0, ms: 90 * MINUTE_MS }] },
-      "2026-03-11": {
-        recordedMs: 30 * MINUTE_MS,
-        projects: [
-          { projectId: "p-docs", name: "Docs", color: "green", shade: 0, ms: 20 * MINUTE_MS },
-          { projectId: "p-ops", name: "Ops", color: "red", shade: 0, ms: 10 * MINUTE_MS },
-        ],
-      },
+      "2026-03-10": { recordedMs: entries.reduce((sum, e) => sum + e.durationMs, 0), entries },
+      "2026-03-11": { recordedMs: 30 * MINUTE_MS, entries: [calendarEntry({ id: "r3", projectName: "Ops", durationMs: 30 * MINUTE_MS, spanIds: ["r3-s1"] })] },
     },
   });
 
 function renderMonth(month: Month | null = monthView()) {
   if (month) mocked.monthView.mockResolvedValue(month);
-  resetStore({ view: "month", day: DAY });
+  resetStore({ view: "month", day: DAY, settings: settings(), ...projectsStore({ projects: [website] }) });
   installCommands();
-  return render(<MonthView />);
+  return render(
+    <>
+      <MonthView />
+      <Toasts />
+    </>,
+  );
 }
 
 const grid = () => screen.findByRole("grid", { name: "March 2026" });
-const cell = (day: string) => screen.getByRole("button", { name: new RegExp(`^${day}`) });
+const cell = (day: string) => screen.getByRole("gridcell", { name: day });
 
 describe("MonthView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocked.recordingsList.mockResolvedValue([]);
     window.addEventListener("keydown", handleKeydown, true);
   });
 
@@ -56,7 +65,7 @@ describe("MonthView", () => {
     it("has no buttons to change the month", async () => {
       renderMonth();
       await grid();
-      for (const name of ["Previous month", "Next month", "Today"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+      for (const name of ["Previous month", "Next month"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     });
 
     it("shows the error when the month cannot be loaded", async () => {
@@ -67,36 +76,20 @@ describe("MonthView", () => {
   });
 
   describe("grid", () => {
-    it("shows the weekday names, Monday first, over six weeks of days", async () => {
+    it("shows rows of seven cells, the first starting on a Monday", async () => {
       renderMonth();
-      const days = within(await grid());
-      expect(days.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
-      expect(days.getAllByRole("button")).toHaveLength(42);
+      const rows = within(await grid()).getAllByRole("row");
+      expect(rows).toHaveLength(6);
+      for (const row of rows) expect(within(row).getAllByRole("gridcell")).toHaveLength(7);
+      expect(within(rows[0]).getAllByRole("gridcell")[0]).toHaveAccessibleName("2026-02-23");
+      expect(within(rows[0]).getAllByRole("gridcell")[6]).toHaveAccessibleName("2026-03-01");
     });
 
-    it("names a cell by its day and adds the recorded time when there is some", async () => {
-      renderMonth(busyMonth());
-      await grid();
-      expect(screen.getByRole("button", { name: "2026-03-10, 1:30 recorded" })).toHaveTextContent("1:30");
-      expect(screen.getByRole("button", { name: "2026-03-12" })).toHaveTextContent(/^12$/);
-    });
-
-    it("shows the day of the month as the cell's number, also for neighboring months", async () => {
+    it("shows each cell's weekday and day of the month, also for neighboring months", async () => {
       renderMonth();
       await grid();
-      expect(cell("2026-03-05")).toHaveTextContent(/^5$/);
-      expect(cell("2026-02-23")).toHaveTextContent(/^23$/);
-    });
-
-    it("shows a bar per top project with its name and time as the tooltip", async () => {
-      renderMonth(busyMonth());
-      await grid();
-      const busy = within(cell("2026-03-10, 1:30 recorded"));
-      expect(busy.getByTitle("Website · 1:30")).toHaveTextContent("Website");
-      const split = within(cell("2026-03-11, 0:30 recorded"));
-      expect(split.getByTitle("Docs · 0:20")).toHaveTextContent("Docs");
-      expect(split.getByTitle("Ops · 0:10")).toHaveTextContent("Ops");
-      expect(within(cell("2026-03-12")).queryByTitle(/·/)).not.toBeInTheDocument();
+      expect(cell("2026-03-05")).toHaveTextContent("Thu5");
+      expect(cell("2026-02-23")).toHaveTextContent("Mon23");
     });
 
     it("marks weekend cells only", async () => {
@@ -122,13 +115,95 @@ describe("MonthView", () => {
       expect(cell("2026-03-20")).toHaveClass("month-day--today");
       expect(cell("2026-03-19")).not.toHaveClass("month-day--today");
     });
+  });
 
-    it("opens a day in the Day view when its cell is clicked", async () => {
+  describe("date button", () => {
+    it("names the day and its recorded time", async () => {
+      renderMonth(busyMonth());
+      await grid();
+      expect(within(cell("2026-03-10")).getByRole("button", { name: "2026-03-10, 1:30 recorded" })).toBeInTheDocument();
+      expect(within(cell("2026-03-12")).getByRole("button", { name: "2026-03-12" })).toBeInTheDocument();
+    });
+
+    it("opens the day in the Day view", async () => {
+      renderMonth(busyMonth());
+      await grid();
+      await userEvent.click(screen.getByRole("button", { name: "2026-03-10, 1:30 recorded" }));
+      expect(useStore.getState().view).toBe("day");
+      expect(useStore.getState().day).toBe("2026-03-10");
+    });
+
+    it("also opens a day of a neighboring month", async () => {
       renderMonth();
       await grid();
-      await userEvent.click(cell("2026-02-24"));
-      expect(useStore.getState().view).toBe("day");
+      await userEvent.click(screen.getByRole("button", { name: "2026-02-24" }));
       expect(useStore.getState().day).toBe("2026-02-24");
+    });
+  });
+
+  describe("recording lines", () => {
+    it("shows a line per recording with its note or project and its time", async () => {
+      renderMonth(busyMonth([landing, docs]));
+      await grid();
+      const busy = within(cell("2026-03-10"));
+      expect(busy.getByRole("button", { name: "Website: Landing page, 1:30" })).toHaveTextContent("Landing page1:30");
+      expect(busy.getByRole("button", { name: "Docs, 0:20" })).toHaveTextContent("Docs0:20");
+      expect(within(cell("2026-03-12")).queryByRole("button", { name: /, \d+:\d\d$/ })).not.toBeInTheDocument();
+    });
+
+    it("shows every recording of a busy day", async () => {
+      const many = Array.from({ length: 9 }, (_, i) => calendarEntry({ id: `m${i}`, projectName: `Project ${i}`, spanIds: [`m${i}-s1`] }));
+      renderMonth(busyMonth(many));
+      await grid();
+      expect(within(cell("2026-03-10")).getAllByRole("button", { name: /^Project \d, 0:45$/ })).toHaveLength(9);
+    });
+
+    it("opens the editor on the recording of a clicked line", async () => {
+      mocked.recordingsList.mockResolvedValue([recording({ id: "r1", projectId: "p-site", note: "Landing page", start: at("09:00"), end: at("10:30") })]);
+      renderMonth(busyMonth());
+      await grid();
+      await userEvent.click(screen.getByRole("button", { name: "Website: Landing page, 1:30" }));
+      const dialog = within(await screen.findByRole("dialog", { name: "Edit recording" }));
+      expect(await dialog.findByLabelText("Span 1 from")).toHaveValue("09:00");
+      expect(await dialog.findByLabelText("Span 1 to")).toHaveValue("10:30");
+    });
+  });
+
+  describe("New recording button", () => {
+    it("opens the New recording sheet on Rust's default span for that day", async () => {
+      mocked.recordingDefaultSpan.mockResolvedValue({ start: at("14:00"), end: at("14:30") });
+      renderMonth();
+      await grid();
+      await userEvent.click(within(cell("2026-03-10")).getByRole("button", { name: "New recording on Tue 10" }));
+      const dialog = within(await screen.findByRole("dialog", { name: "New recording" }));
+      expect(mocked.recordingDefaultSpan).toHaveBeenCalledWith("2026-03-10");
+      expect(await dialog.findByLabelText("Span 1 from")).toHaveValue("14:00");
+    });
+
+    it("is on every cell, also of a neighboring month", async () => {
+      renderMonth();
+      await grid();
+      expect(screen.getAllByRole("button", { name: /^New recording on / })).toHaveLength(42);
+      expect(within(cell("2026-02-23")).getByRole("button", { name: "New recording on Mon 23" })).toBeInTheDocument();
+    });
+
+    it("closes the sheet with Escape without saving", async () => {
+      renderMonth();
+      await grid();
+      await userEvent.click(screen.getByRole("button", { name: "New recording on Tue 10" }));
+      await screen.findByRole("dialog", { name: "New recording" });
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(mocked.recordingCreate).not.toHaveBeenCalled();
+    });
+
+    it("shows an error toast and no sheet when the default span cannot be fetched", async () => {
+      mocked.recordingDefaultSpan.mockRejectedValueOnce({ kind: "io", message: "no snap", code: null });
+      renderMonth();
+      await grid();
+      await userEvent.click(screen.getByRole("button", { name: "New recording on Tue 10" }));
+      expect(await screen.findByText("Could not open a new recording: no snap")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 

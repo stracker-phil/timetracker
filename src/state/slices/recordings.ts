@@ -43,10 +43,10 @@ export interface RecordingsSlice {
   /** Moves the span's start and end by whole snap steps each. */
   nudgeSpan: (id: string, spanId: string, startSteps: number, endSteps: number) => Promise<Recording | null>;
   deleteRecording: (id: string) => Promise<void>;
-  /** The span `spanId`, else (null) the whole recording, to `day` at the same time of day. */
-  moveRecording: (id: string, day: string, spanId: string | null) => Promise<void>;
-  /** A copy of the span `spanId`, else (null) of the whole recording, on `day` at the same time of day. */
-  copyRecording: (id: string, day: string, spanId: string | null) => Promise<void>;
+  /** The recording's spans on `fromDay`, else (null) all of them, to `day` at the same time of day. */
+  moveRecording: (id: string, fromDay: string | null, day: string) => Promise<void>;
+  /** A copy of the recording's spans on `fromDay`, else (null) of all of them, on `day` at the same time of day. */
+  copyRecording: (id: string, fromDay: string | null, day: string) => Promise<void>;
   undo: () => Promise<void>;
   redo: () => Promise<void>;
 }
@@ -194,13 +194,13 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
         return saved;
       },
 
-      async moveRecording(id, day, spanId) {
-        const moved = await writing("Could not move the recording", (overlap) => api.recordingMove(id, spanId, day, overlap));
+      async moveRecording(id, fromDay, day) {
+        const moved = await writing("Could not move the recording", (overlap) => api.recordingMove(id, fromDay, day, overlap));
         if (moved) undoToast("Recording moved");
       },
 
-      async copyRecording(id, day, spanId) {
-        const copy = await writing("Could not copy the recording", (overlap) => api.recordingCopy(id, spanId, day, overlap));
+      async copyRecording(id, fromDay, day) {
+        const copy = await writing("Could not copy the recording", (overlap) => api.recordingCopy(id, fromDay, day, overlap));
         if (copy) undoToast("Recording copied");
       },
 

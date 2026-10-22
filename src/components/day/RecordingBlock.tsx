@@ -1,7 +1,6 @@
 import { memo, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Tag } from "lucide-react";
 import type { RecordingBlock as Block } from "../../api";
-import { formatClock, formatHm } from "../../lib/format";
+import { formatClock } from "../../lib/format";
 import { fail, useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
 import { Card } from "../Card";
@@ -30,19 +29,13 @@ interface Props {
   focused: boolean;
   /** Its recording is hovered here or in the timesheet. */
   hovered?: boolean;
-  /** `card`: project, note, tag and duration (the Week view); `times`: only its start and end (the Day view's time column). */
-  look?: "card" | "times";
-  /** A click opens the editor (the Day view); otherwise a click focuses and a double-click edits. */
-  editOnClick?: boolean;
-  /** A moved block released here; returns whether it took the drop (e.g. onto another day). */
-  onDrop?: (block: Block, e: PointerEvent) => boolean;
 }
 
 /**
- * One span of a recording, filled in its project's color: a click focuses it and, with `editOnClick`, edits it (else
- * a double-click does); drag the body to move it, an edge to resize it, both on the snap grid.
+ * One span of a recording in the Day view's time column, filled in its project's color and showing its start and end:
+ * a click focuses and edits it; drag the body to move it, an edge to resize it, both on the snap grid.
  */
-export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinute, focused, hovered = false, look = "card", editOnClick = false, onDrop }: Props) {
+export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinute, focused, hovered = false }: Props) {
   const [drag, setDrag] = useState<DraggedSpan | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -71,38 +64,22 @@ export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinu
     if (e.button !== 0) return;
     e.stopPropagation();
     useStore.getState().focusRecording(block.id);
-    const clicked = () => editOnClick && edit();
     if (!movable) {
-      clicked();
+      edit();
       return;
     }
     pointerDrag(e, {
       move: (dy) => setDrag(spanAfterDrag(block, grip, dy, pxPerMinute)),
-      end: (dy, dragged, ev) => {
+      end: (dy, dragged) => {
         setDrag(null);
-        if (!dragged) return clicked();
-        if (grip === "move" && onDrop?.(block, ev)) return;
+        if (!dragged) return edit();
         void save(spanAfterDrag(block, grip, dy, pxPerMinute));
       },
     });
   };
 
-  const classes = ["recording", `recording--${look}`, focused && "focused", hovered && "hovered", drag && "dragging", block.clippedStart && "clipped-start", block.clippedEnd && "clipped-end", block.running && "running"];
+  const classes = ["recording", focused && "focused", hovered && "hovered", drag && "dragging", block.clippedStart && "clipped-start", block.clippedEnd && "clipped-end", block.running && "running"];
   const label = `${block.projectName}${block.note ? `: ${block.note}` : ""}`;
-  const content =
-    look === "times"
-      ? { title: height >= TIMES_MIN_PX && formatClock(shown.start), trailing: height >= BOTH_TIMES_PX ? formatClock(shown.end) : undefined }
-      : {
-          title: block.projectName,
-          subtitle: block.note || undefined,
-          meta: block.tag && (
-            <>
-              <Tag size="0.846rem" aria-hidden="true" />
-              {block.tag}
-            </>
-          ),
-          trailing: formatHm(shown.end - shown.start),
-        };
   return (
     <Card
       className={classes.filter(Boolean).join(" ")}
@@ -111,11 +88,11 @@ export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinu
       aria-label={label}
       style={{ top, height }}
       color={shadeColor(block.color, block.shade)}
-      {...content}
+      title={height >= TIMES_MIN_PX ? formatClock(shown.start) : undefined}
+      trailing={height >= BOTH_TIMES_PX ? formatClock(shown.end) : undefined}
       onPointerDown={press("move")}
       onPointerEnter={() => useStore.getState().hoverRecording(block.id)}
       onPointerLeave={() => useStore.getState().hoverRecording(null)}
-      onDoubleClick={editOnClick ? undefined : edit}
     >
       {movable && <span className="grip start" aria-label="Drag to change the start" onPointerDown={press("start")} />}
       {movable && <span className="grip end" aria-label="Drag to change the end" onPointerDown={press("end")} />}

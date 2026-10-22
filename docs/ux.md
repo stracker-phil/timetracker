@@ -167,7 +167,7 @@ Spacing sits on a 4px grid (`--space-1` 4px to `--space-8` 32px, in rem so it zo
 
 | Component | Where | Look |
 |---|---|---|
-| `Card` (`components/Card.tsx`) | a recording in the timesheet, the time column and the Week view | filled with `--block-fill`, text `--block-text`: the title (600), the subtitle (500), a foot with meta (the tag, with an icon) and the duration in mono on the right |
+| `Card` (`components/Card.tsx`) | a recording in the timesheet, the time column and the Week view's columns | filled with `--block-fill`, text `--block-text`: the title (600), the subtitle (500), a foot with meta (the tag, with an icon) and the duration in mono on the right |
 | `Block` (`components/Block.tsx`) | a summary block on the timeline, placed by time (activity lanes draw memories, see Timeline) | `--activity-fill`, 1px `--bg` border, `--radius-block`: the app (500, `--text-strong`), the title (`--text`), the duration trailing at the bottom right (mono, `--o2`), as on a card; one line when short |
 | Buttons | `.btn` (secondary), `.btn-primary`, `.btn-danger`, `.icon-btn` | secondary: `--pop` with a `--field-line` border; primary and danger: the accent or `--style-red` with `--on-accent`; icon: a 2rem square |
 | `SegmentedControl` (`components/SegmentedControl.tsx`) | Day mode, Settings choices | a `--track` with the pressed segment raised on `--raised` with `--shadow-small` |
@@ -336,9 +336,8 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 - **Recording blocks** sit in the time column, one per span: a recording can hold several separate
   spans (14:25–15:00 and 16:05–20:15), each its own block, all lit up together with the recording's single
   timesheet card when one is hovered or focused; project, note and tag belong to the recording and show on
-  the card. In the Day view a span shows only its start (top left) and end (bottom right); the Week view
-  shows the full card. In the Day view a click on a span opens the editor; in the Week view a click focuses
-  and a double-click edits. Each is a `Card` filled in the project's shade (`--block-fill`, light in light palettes, a muted dark tint
+  the card. A span shows only its start (top left) and end (bottom right), and a click on it opens the
+  editor (the Week lists whole recordings as cards, see [Week and Month](#week-and-month)). Each is a `Card` filled in the project's shade (`--block-fill`, light in light palettes, a muted dark tint
   in dark ones) with `--block-text`, at least 4.5:1 for every accent and shade: the project name (600), the
   note (500), then the tag with a tag icon and the duration in mono at the bottom right. A dashed top or
   bottom edge means the span continues on another day. The top and bottom 6px resize the span; the body
@@ -346,7 +345,7 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   `--o2` label (memories); hover lifts it.
 - **Editor**, inline in the timesheet (Timely's): a card with a 2px accent ring at the new recording's place
   among the cards (in place of the card it edits), pushing the cards below down and scrolled into view; it is
-  never a sheet over the timeline (the Week view, without a timesheet, shows it as a sheet). Top to bottom: the
+  never a sheet over the timeline (the Week and Month views, without a timesheet, show it as a sheet). Top to bottom: the
   note as the title field (focused, "What did you work on?"), project (recent first, type to search, "New
   project…"), tag, the duration large as `0 h 20 m` (both numbers editable; a change moves the last span's
   end), "Activity n" (the activity blocks inside the spans; a click lists them), the spans as `FROM 10:00 TO
@@ -437,17 +436,26 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 
 ## Week and Month
 
-- **Week**: the time axis and seven day columns; each head shows the weekday (`--o2`) over the date in
-  `--fs-title` semibold and the day's recorded hours on the right; today's weekday is accent text and its date
-  sits in an accent circle with `--on-accent`. Today's column has a faint accent tint, Saturday and Sunday a
-  `--bg-quiet` one. Recordings drag as in the
-  Day view; a span dropped on another column moves there, with ⌥ it is copied as a new recording. A double-click on
-  an empty spot records an hour there, in the editor as a sheet. The header totals read `recorded 32:10 · tracked 41:05`.
-- **Month**: a calendar of whole weeks, cells divided by `--line` hairlines, weekends on `--bg-quiet`; each
-  cell has its number at the top right (`--o3` outside the month, today's in an accent circle), the recorded
-  hours at the top left (`--o2`, tabular), and below a small bar for each of the three projects with the
-  most time, filled like its recordings with the project's name (the hours in its tooltip). Days outside the
-  month are dimmed. A click opens the day.
+- **Week** (Timely's Week view): seven columns, Monday at the left, with no time axis and no empty hours.
+  Each head reads `Mon 19` (semibold; today as "Today" in accent text) with the day's recorded hours
+  (`--o2`, tabular) on the right; a click opens the day. Below, the day's recordings as filled `Card`s in
+  start order, a small gap apart: project, note, the tag with its icon, and the day's duration at the bottom
+  right. A card grows with its duration, from one line of title over the foot to a cap at six hours (Rust's
+  height units), so a 6 h recording is clearly taller than a 10 min one. A recording with several spans that
+  day is one card with its total and "n spans"; one past midnight shows in both days with each day's share.
+  A "New recording" button (+) follows the last card (in an empty column, a dashed slot at the top); it opens the editor as a
+  sheet on the default span on that day. A click on a card focuses it (accent ring), a double-click or ↵
+  edits it, ⌫ deletes it. Dragged to another column (the column under the pointer gets an accent ring) the
+  recording's time on that day moves there at the same clock times; with ⌥ it is copied. Times are edited in
+  the editor or the Day view; the Week has no resize. Today's column has a faint accent tint, Saturday and
+  Sunday a `--bg-quiet` one; the columns scroll together.
+- **Month**: whole weeks, Monday in the top-left cell, cells divided by `--line` hairlines, weekends on
+  `--bg-quiet`. A row is as tall as its fullest day, so a busy day makes its week taller and quiet weeks stay
+  compact. Each cell reads `Mon 19` at the top (today's number in an accent circle, days outside the month
+  dimmed; a click opens the day), a + on hover (the editor for that day, as in the Week) and the recorded
+  hours on the right, then one line per recording in start order, all the same height: a dot in the
+  project's shade, the note or the project (ellipsized) and the duration on the right; a click edits it. No
+  cap on the lines.
 - Both headers read the period's label and its totals, `recorded 32:10 · tracked 41:05` (Month: recorded).
 
 ## Projects
@@ -571,7 +579,7 @@ recording commands'.
 | `data.reveal` | Show data folder (the database file in Finder) | menu | global |
 | `data.exportBackup` | Export backup… | menu | global |
 | `help.readme` | Open README | menu | global |
-| `recording.new` | New recording… (the Day view's selection, else the half hour up to now on today) | menu | global |
+| `recording.new` | New recording… (the Day view's selection, else the half hour up to now on today; the Week and Month stay) | menu | global |
 | `app.quit` | Quit TimeTracker | ⌘Q | global |
 | `nav.prev` / `nav.next` | Previous / Next day, week, month or report period | P / N | dated |
 | `nav.today` | Go to today (this week, this month, the report's period that holds today) | O | dated |
@@ -618,13 +626,13 @@ Keys of controls, not commands (they act on the focused control and are not rebi
 | Timeline, pointer | drag or click opens the editor; ⇧-click extends, ⌘-click gathers blocks (the editor opens when ⌘ is released), ⌥-drag or ⌥-click adds a span to the open editor's recording |
 | Context menu (⌃↵ on a block) | ↑↓ items, ↵ runs, Escape closes |
 | Pickers in the Reports filter | type, ↑↓, ↵ adds, ⌫ on an empty field removes the last |
-| Week and Month | Tab to a day head (Week) or a day cell (Month), ↵ opens that day |
+| Week and Month | Tab to a day head (Week) or a day's date (Month), ↵ opens that day; Tab to a card (Week) or a line (Month), ↵ opens the editor; on a Week card ⌫ deletes it; Tab to + and ↵ opens the editor for that day |
 | Date picker (the sidebar's date heading) | ←→ by a day, ↑↓ by a week, PageUp / PageDown by a month, ↵ shows the day, Escape closes |
 | Settings → Shortcuts | a key field records the next key; Escape stops, ⌫ unbinds |
 
 Left to the pointer, each with a keyboard way to the same result: dragging a selection (V, ⇧J, ⇧K, or the
-List mode), ⌥-adding a span to the open recording ("Add span" and its From / To fields), dragging or resizing a recording (⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓), dragging a recording to another day in the
-Week view (⌥← ⌥→, ⌥⇧ to copy, in the Day view), double-clicking the Week view (select in the Day view and ↵),
+List mode), ⌥-adding a span to the open recording ("Add span" and its From / To fields), dragging or resizing a recording (⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓), dragging a card to another day in the
+Week view (⌥← ⌥→, ⌥⇧ to copy, in the Day view),
 ⌥-dragging a block onto a project (⌃↵ → Make a rule…), the rules' grip (⌥↑ ⌥↓), the hover card (Space), the
 saved reports' right-click menu (`reports.rename`, `reports.delete`), and the Projects screen's right-click
 menu (Edit and Archive are in the project sheet). Only the right-click "Copy id" of a project has no key; the

@@ -1,36 +1,55 @@
 import type { CSSProperties } from "react";
-import { api, type MonthDay } from "../../api";
+import { Plus } from "lucide-react";
+import { api, type CalendarEntry, type MonthDay } from "../../api";
 import { formatHm } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
 import { CalendarHeader } from "./CalendarHeader";
+import { EditorSheet } from "./EditorSheet";
+import { editEntry, entryName } from "./entry";
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-function DayCell({ cell }: { cell: MonthDay }) {
-  const classes = ["month-day", !cell.inMonth && "month-day--outside", cell.isToday && "month-day--today", cell.isWeekend && "month-day--weekend"];
-  const label = `${cell.day}${cell.recordedMs > 0 ? `, ${formatHm(cell.recordedMs)} recorded` : ""}`;
+/** One line per recording, the same height whatever its duration; a click edits it. */
+function EntryLine({ entry }: { entry: CalendarEntry }) {
   return (
-    <button type="button" className={classes.filter(Boolean).join(" ")} aria-label={label} onClick={() => useStore.getState().goToDay(cell.day)}>
-      <span className="month-day-head">
-        <span className="month-day-number">{cell.dayOfMonth}</span>
-        {cell.recordedMs > 0 && <span className="month-day-hours">{formatHm(cell.recordedMs)}</span>}
-      </span>
-      {cell.projects.length > 0 && (
-        <span className="month-projects" aria-hidden="true">
-          {cell.projects.map((p) => (
-            <span key={p.projectId} className="month-project" title={`${p.name} · ${formatHm(p.ms)}`} style={{ "--rec": shadeColor(p.color, p.shade) } as CSSProperties}>
-              {p.name}
-            </span>
-          ))}
-        </span>
-      )}
+    <button
+      type="button"
+      className="month-entry"
+      style={{ "--rec": shadeColor(entry.color, entry.shade) } as CSSProperties}
+      title={`${entryName(entry)} · ${formatHm(entry.durationMs)}`}
+      aria-label={`${entryName(entry)}, ${formatHm(entry.durationMs)}`}
+      onClick={() => editEntry(entry)}
+    >
+      <span className="month-entry-dot" aria-hidden="true" />
+      <span className="month-entry-name">{entry.note || entry.projectName}</span>
+      <span className="month-entry-time">{formatHm(entry.durationMs)}</span>
     </button>
   );
 }
 
-/** The month as a calendar: recorded hours per day and its main projects as filled bars; a click opens the day. */
+function DayCell({ cell }: { cell: MonthDay }) {
+  const classes = ["month-day", !cell.inMonth && "month-day--outside", cell.isToday && "month-day--today", cell.isWeekend && "month-day--weekend"];
+  const name = `${cell.weekday} ${cell.dayOfMonth}`;
+  return (
+    <div className={classes.filter(Boolean).join(" ")} role="gridcell" aria-label={cell.day}>
+      <div className="month-day-head">
+        <button type="button" className="month-day-date" aria-label={`${cell.day}${cell.recordedMs > 0 ? `, ${formatHm(cell.recordedMs)} recorded` : ""}`} onClick={() => useStore.getState().goToDay(cell.day)}>
+          <span className="month-day-weekday">{cell.weekday}</span>
+          <span className="month-day-number">{cell.dayOfMonth}</span>
+        </button>
+        <button type="button" className="month-day-add" aria-label={`New recording on ${name}`} title="New recording" onClick={() => void useStore.getState().openNewRecording(cell.day)}>
+          <Plus size="0.923rem" aria-hidden="true" />
+        </button>
+        {cell.recordedMs > 0 && <span className="month-day-hours">{formatHm(cell.recordedMs)}</span>}
+      </div>
+      {cell.entries.map((e) => (
+        <EntryLine key={e.id} entry={e} />
+      ))}
+    </div>
+  );
+}
+
+/** The month as rows of whole weeks, Monday first: each day lists its recordings, one line each; a busy day makes its week taller. */
 export function MonthView() {
   const day = useStore((s) => s.day);
   const changes = useStore((s) => s.changeCount);
@@ -48,16 +67,16 @@ export function MonthView() {
       {error && !month && <p className="settings-alert">{error.message}</p>}
       {month && (
         <div className="month-grid" role="grid" aria-label={month.label}>
-          {WEEKDAYS.map((w) => (
-            <span key={w} className="month-weekday" role="columnheader">
-              {w}
-            </span>
-          ))}
-          {month.weeks.flat().map((cell) => (
-            <DayCell key={cell.day} cell={cell} />
+          {month.weeks.map((week) => (
+            <div key={week[0].day} className="month-week" role="row">
+              {week.map((cell) => (
+                <DayCell key={cell.day} cell={cell} />
+              ))}
+            </div>
           ))}
         </div>
       )}
+      <EditorSheet />
     </section>
   );
 }

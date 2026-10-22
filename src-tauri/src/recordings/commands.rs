@@ -5,7 +5,7 @@ use super::draft::{self, DraftSpans};
 use super::proposal::{self, RecordingProposal};
 use super::undo::UndoStatus;
 use super::{
-    Change, Overlap, RecordingInput, Recordings, SnapEdge, Span, default_span, snap_moving,
+    Change, Overlap, RecordingInput, Recordings, SnapEdge, Span, default_span_on, snap_moving,
 };
 use crate::db::recordings::{self, Recording, RecordingPatch};
 use crate::db::time::{Day, Ms, now_ms};
@@ -51,35 +51,29 @@ pub async fn recording_update(
     changing(&app, async |s| s.update(&id, patch, overlap).await).await
 }
 
-/// Moves the span `spanId`, else the whole recording, to `day` at the same local time; spans keep their
-/// lengths.
+/// Moves the recording's spans on `from`, else all of them, to `day` at the same local times; spans keep
+/// their lengths.
 #[tauri::command]
 pub async fn recording_move(
     app: AppHandle,
     id: String,
-    span_id: Option<String>,
+    from: Option<Day>,
     day: Day,
     overlap: Overlap,
 ) -> AppResult<Recording> {
-    changing(&app, async |s| {
-        s.move_to_day(&id, span_id.as_deref(), day, overlap).await
-    })
-    .await
+    changing(&app, async |s| s.move_to_day(&id, from, day, overlap).await).await
 }
 
-/// A copy of the span `spanId`, else of the whole recording, on `day` at the same local time.
+/// A copy of the recording's spans on `from`, else of all of them, on `day` at the same local times.
 #[tauri::command]
 pub async fn recording_copy(
     app: AppHandle,
     id: String,
-    span_id: Option<String>,
+    from: Option<Day>,
     day: Day,
     overlap: Overlap,
 ) -> AppResult<Recording> {
-    changing(&app, async |s| {
-        s.copy_to_day(&id, span_id.as_deref(), day, overlap).await
-    })
-    .await
+    changing(&app, async |s| s.copy_to_day(&id, from, day, overlap).await).await
 }
 
 #[tauri::command]
@@ -220,10 +214,10 @@ pub async fn recording_proposal(
     proposal::propose(&state.data.db()?, &spans, &state.settings.get(), now_ms()).await
 }
 
-/// The span File → New Recording opens the editor on when nothing is selected.
+/// The default span, on `day` when given.
 #[tauri::command]
-pub fn recording_default_span(state: State<'_, AppState>) -> Span {
-    default_span(now_ms(), snap_minutes(&state))
+pub fn recording_default_span(state: State<'_, AppState>, day: Option<Day>) -> Span {
+    default_span_on(day, now_ms(), snap_minutes(&state))
 }
 
 fn snap_minutes(state: &AppState) -> u32 {

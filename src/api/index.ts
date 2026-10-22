@@ -86,8 +86,8 @@ export const api = {
   recordingDraftAdd: (spans: Span[]) => invoke<DraftSpans>("recording_draft_add", { spans }),
   /** The activity `spans` cover and the project to propose for them. */
   recordingProposal: (spans: Span[]) => invoke<RecordingProposal>("recording_proposal", { spans }),
-  /** The span New Recording opens on without a selection: the half hour up to now, snapped. */
-  recordingDefaultSpan: () => invoke<Span>("recording_default_span"),
+  /** The span New Recording opens on without a selection: the half hour up to now, snapped; on another `day` at the same clock times. */
+  recordingDefaultSpan: (day: string | null = null) => invoke<Span>("recording_default_span", { day }),
   /** Undoes the last recording change; its label, or null when there was none. */
   undo: () => invoke<string | null>("undo"),
   redo: () => invoke<string | null>("redo"),
@@ -115,10 +115,10 @@ export const api = {
   calendarPicker: (month: string, selected: [string, string] | null) => invoke<PickerMonth>("calendar_picker", { month, selected }),
   /** The palette's dates for `text`: a typed date, or the date words it starts; "" gives the Go to defaults. */
   calendarJumps: (text: string) => invoke<DateJump[]>("calendar_jumps", { text }),
-  /** The span `spanId`, else the whole recording (its first span landing on `day`), to `day` at the same time of day; Rust keeps the lengths. */
-  recordingMove: (id: string, spanId: string | null, day: string, overlap: Overlap) => invoke<Recording>("recording_move", { id, spanId, day, overlap }),
+  /** The recording's spans on `from`, else all of them (the first landing on `day`), to `day` at the same time of day; Rust keeps the lengths. */
+  recordingMove: (id: string, from: string | null, day: string, overlap: Overlap) => invoke<Recording>("recording_move", { id, from, day, overlap }),
   /** A new recording on `day` like `recordingMove` would place it. */
-  recordingCopy: (id: string, spanId: string | null, day: string, overlap: Overlap) => invoke<Recording>("recording_copy", { id, spanId, day, overlap }),
+  recordingCopy: (id: string, from: string | null, day: string, overlap: Overlap) => invoke<Recording>("recording_copy", { id, from, day, overlap }),
   reportRun: (filter: ReportFilter) => invoke<ReportResult>("report_run", { filter }),
   /** The period of the range's unit (month, week or its days) `by` steps away, from `anchor`'s period when given; presets where they match. */
   reportRangeShift: (range: Range, anchor: string | null, by: number) => invoke<Range>("report_range_shift", { range, anchor, by }),

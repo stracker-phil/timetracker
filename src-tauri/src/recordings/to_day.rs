@@ -1,13 +1,15 @@
-//! Moving and copying a recording, or one of its spans, to another day.
+//! Moving and copying a recording, or its part on one day, to another day.
+
+use chrono::TimeDelta;
 
 use super::checks::closed_span;
 use super::{Change, Overlap, RecordingInput, Recordings, Span};
 use crate::db::recordings::{self, Recording, RecordingPatch};
 use crate::db::time::{Day, same_time_on};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 /// `span` on `day`: the same local start time, the same length.
-fn span_on_day(span: Span, day: Day) -> Span {
+pub(super) fn span_on_day(span: Span, day: Day) -> Span {
     let start = same_time_on(span.start, day);
     Span {
         start,
@@ -15,70 +17,77 @@ fn span_on_day(span: Span, day: Day) -> Span {
     }
 }
 
-/// Every span of `recording` moved by whole days so that its first span lands on `day`, each at its own
-/// local start time and length.
-fn spans_on_day(recording: &Recording, day: Day) -> AppResult<Vec<Span>> {
-    let offset = day.date() - Day::of(recording.start()).date();
-    recording
-        .spans
-        .iter()
-        .map(|span| {
-            let span = closed_span(span)?;
-            Ok(span_on_day(
-                span,
-                Day::from_date(Day::of(span.start).date() + offset),
-            ))
-        })
-        .collect()
+fn touches(span: Span, day: Day) -> bool {
+    let (start, end) = day.bounds();
+    span.start < end && span.end > start
 }
 
-/// The span `span_id` of `recording` on `day`.
-fn moved_span(recording: &Recording, span_id: &str, day: Day) -> AppResult<Span> {
-    Ok(span_on_day(closed_span(recording.span(span_id)?)?, day))
+/// `span` `days` later, at its own local start time and length.
+fn shifted(span: Span, days: TimeDelta) -> Span {
+    span_on_day(span, Day::from_date(Day::of(span.start).date() + days))
+}
+
+/// Every span of `recording`, `true` with the ones that move: those touching `from` (all of them without),
+/// shifted by the days between `from` (else the first span's day) and `day`.
+fn placed_on_day(
+    recording: &Recording,
+    from: Option<Day>,
+    day: Day,
+) -> AppResult<Vec<(Span, bool)>> {
+    let origin = from.unwrap_or_else(|| Day::of(recording.start()));
+    let days = day.date() - origin.date();
+    let placed = recording
+        .spans
+        .iter()
+        .map(|s| {
+            let span = closed_span(s)?;
+            let moves = from.is_none_or(|from| touches(span, from));
+            Ok((if moves { shifted(span, days) } else { span }, moves))
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+    if !placed.iter().any(|&(_, moved)| moved) {
+        return Err(AppError::InvalidInput(format!(
+            "The recording has no time on {origin}"
+        )));
+    }
+    Ok(placed)
 }
 
 impl Recordings<'_> {
-    /// Moves the recording to `day` at the same local times, keeping its lengths: the span `span_id`
-    /// alone, else every span by the days between its first span's day and `day`.
+    /// Moves the recording's spans on `from` (all of its spans without) to `day` at the same local times,
+    /// keeping their lengths; see `placed_on_day`.
     pub async fn move_to_day(
         &self,
         id: &str,
-        span_id: Option<&str>,
+        from: Option<Day>,
         day: Day,
         overlap: Overlap,
     ) -> AppResult<Change<Recording>> {
         let current = recordings::get(self.db, id).await?;
-        match span_id {
-            Some(span_id) => {
-                let moved = moved_span(&current, span_id, day)?;
-                self.update_span(id, span_id, moved, overlap).await
-            }
-            None => {
-                let patch = RecordingPatch {
-                    spans: Some(spans_on_day(&current, day)?),
-                    ..RecordingPatch::default()
-                };
-                self.update(id, patch, overlap).await
-            }
-        }
+        let spans = placed_on_day(&current, from, day)?;
+        let patch = RecordingPatch {
+            spans: Some(spans.into_iter().map(|(span, _)| span).collect()),
+            ..RecordingPatch::default()
+        };
+        self.update(id, patch, overlap).await
     }
 
-    /// A new recording like `id` on `day` at the same local times: of the span `span_id` alone, else of
-    /// every span as `move_to_day` places them.
+    /// A new recording like `id` on `day`, of its spans on `from` (all of them without), placed as
+    /// `move_to_day` places them.
     pub async fn copy_to_day(
         &self,
         id: &str,
-        span_id: Option<&str>,
+        from: Option<Day>,
         day: Day,
         overlap: Overlap,
     ) -> AppResult<Change<Recording>> {
         let original = recordings::get(self.db, id).await?;
-        let spans = match span_id {
-            Some(span_id) => vec![moved_span(&original, span_id, day)?],
-            None => spans_on_day(&original, day)?,
-        };
+        let spans = placed_on_day(&original, from, day)?;
         let input = RecordingInput {
-            spans,
+            spans: spans
+                .into_iter()
+                .filter_map(|(span, moved)| moved.then_some(span))
+                .collect(),
             project_id: original.project_id,
             note: original.note,
             tag_id: original.tag_id,
@@ -92,6 +101,7 @@ mod tests {
     use chrono::{Local, NaiveTime};
 
     use super::*;
+    use crate::db::recordings::RecordingSpan;
     use crate::db::time::Ms;
     use crate::error::{AppError, ErrorKind};
     use crate::recordings::testing::*;
@@ -330,6 +340,14 @@ mod tests {
         assert_eq!(w.status().await, no_status());
     }
 
+    fn span_of<'a>(recording: &'a Recording, id: &str) -> &'a RecordingSpan {
+        recording
+            .spans
+            .iter()
+            .find(|s| s.id == id)
+            .expect("span in recording")
+    }
+
     fn local_time(ms: Ms) -> NaiveTime {
         chrono::DateTime::from_timestamp_millis(ms)
             .unwrap()
@@ -338,7 +356,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn move_to_day_without_a_span_shifts_every_span_by_the_same_days_at_its_local_time() {
+    async fn move_to_day_without_from_shifts_every_span_by_the_same_days_at_its_local_time() {
         let w = World::new().await;
         let first_day = Day::of(at(10, 0));
         let saved = w
@@ -375,37 +393,125 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn move_to_day_with_a_span_moves_only_that_span() {
+    async fn move_to_day_with_from_moves_only_the_spans_touching_that_day() {
         let w = World::new().await;
         let saved = w
-            .create_spans(&[(at(10, 0), at(11, 0)), (at(14, 0), at(15, 0))])
+            .create_spans(&[
+                (at(10, 0), at(11, 0)),
+                (at(14, 0) + NEXT_DAY, at(15, 0) + NEXT_DAY),
+            ])
             .await;
+        let target = Day::parse("2026-11-03").unwrap();
 
         let moved = w
             .service()
-            .move_to_day(
-                &saved.id,
-                Some(saved.spans[1].id.as_str()),
-                next_day(),
-                Overlap::Cancel,
-            )
+            .move_to_day(&saved.id, Some(next_day()), target, Overlap::Cancel)
             .await
             .unwrap()
             .value;
 
-        assert_eq!(moved.spans[0], saved.spans[0]);
-        assert_eq!(moved.spans[1].id, saved.spans[1].id);
-        assert_eq!(Day::of(moved.spans[1].start), next_day());
-        assert_eq!(
-            local_time(moved.spans[1].start),
-            local_time(saved.spans[1].start)
+        let (stayed, shifted) = (
+            span_of(&moved, &saved.spans[0].id),
+            span_of(&moved, &saved.spans[1].id),
         );
-        assert_eq!(moved.spans[1].end.unwrap() - moved.spans[1].start, HOUR);
+        assert_eq!(moved.spans.len(), 2);
+        assert_eq!(*stayed, saved.spans[0]);
+        assert_eq!(Day::of(shifted.start), target);
+        assert_eq!(local_time(shifted.start), local_time(saved.spans[1].start));
+        assert_eq!(shifted.end.unwrap() - shifted.start, HOUR);
         assert_eq!(w.rows().await, [moved]);
+        assert_eq!(w.status().await, undo_label("Move recording"));
     }
 
     #[tokio::test]
-    async fn copy_to_day_with_a_span_creates_a_single_span_recording() {
+    async fn move_to_day_with_from_also_moves_a_span_crossing_midnight_into_that_day() {
+        let w = World::new().await;
+        let (before, mid, after) = midnight();
+        let saved = w
+            .create_spans(&[(at(10, 0), at(10, 30)), (mid - HOUR, mid + HOUR)])
+            .await;
+        let target = Day::parse("2026-11-03").unwrap();
+
+        let moved = w
+            .service()
+            .move_to_day(&saved.id, Some(after), target, Overlap::Cancel)
+            .await
+            .unwrap()
+            .value;
+
+        let crossing = span_of(&moved, &saved.spans[1].id);
+        assert_eq!(*span_of(&moved, &saved.spans[0].id), saved.spans[0]);
+        assert_eq!(Day::of(crossing.start), target.prev());
+        assert_eq!(local_time(crossing.start), local_time(saved.spans[1].start));
+        assert_eq!(crossing.end.unwrap() - crossing.start, 2 * HOUR);
+        assert_eq!(Day::of(saved.spans[0].start), before);
+    }
+
+    #[tokio::test]
+    async fn move_to_day_with_from_follows_the_overlap_mode_on_the_target_day() {
+        let w = World::new().await;
+        let saved = w
+            .create_spans(&[
+                (at(9, 0), at(10, 0)),
+                (at(9, 0) + NEXT_DAY, at(10, 0) + NEXT_DAY),
+            ])
+            .await;
+        let target = Day::of(at(9, 0)).next().next();
+        let blocker = test_support::recording(
+            &w.db,
+            &w.project.id,
+            at(9, 30) + 2 * NEXT_DAY,
+            Some(at(10, 30) + 2 * NEXT_DAY),
+        )
+        .await;
+
+        let err = w
+            .service()
+            .move_to_day(&saved.id, Some(next_day()), target, Overlap::Cancel)
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Overlap);
+        assert_eq!(w.rows().await, [saved.clone(), blocker]);
+
+        w.service()
+            .move_to_day(&saved.id, Some(next_day()), target, Overlap::Replace)
+            .await
+            .unwrap();
+        assert_eq!(
+            spans(&w.rows().await),
+            [
+                (at(9, 0), at(10, 0)),
+                (at(9, 0) + 2 * NEXT_DAY, at(10, 0) + 2 * NEXT_DAY),
+                (at(10, 0) + 2 * NEXT_DAY, at(10, 30) + 2 * NEXT_DAY)
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn moving_or_copying_with_a_from_day_no_span_touches_is_invalid_input() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+        let empty_day = Day::parse("2026-01-01").unwrap();
+
+        let moved = w
+            .service()
+            .move_to_day(&saved.id, Some(empty_day), next_day(), Overlap::Cancel)
+            .await
+            .unwrap_err();
+        let copied = w
+            .service()
+            .copy_to_day(&saved.id, Some(empty_day), next_day(), Overlap::Cancel)
+            .await
+            .unwrap_err();
+
+        for err in [moved, copied] {
+            assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        }
+        assert_eq!(w.rows().await, [saved]);
+    }
+
+    #[tokio::test]
+    async fn copy_to_day_with_from_creates_a_recording_of_only_the_spans_touching_that_day() {
         let w = World::new().await;
         let original = w
             .service()
@@ -413,20 +519,28 @@ mod tests {
                 RecordingInput {
                     note: "copy me".into(),
                     tag_id: Some(w.alpha.id.clone()),
-                    ..input_of(&w, &[(at(10, 0), at(11, 0)), (at(14, 0), at(15, 30))])
+                    ..input_of(
+                        &w,
+                        &[
+                            (at(10, 0), at(11, 0)),
+                            (at(14, 0), at(15, 30)),
+                            (at(10, 0) + NEXT_DAY, at(11, 0) + NEXT_DAY),
+                        ],
+                    )
                 },
                 Overlap::Cancel,
             )
             .await
             .unwrap()
             .value;
+        let target = Day::of(at(10, 0)).next().next();
 
         let copy = w
             .service()
             .copy_to_day(
                 &original.id,
-                Some(original.spans[1].id.as_str()),
-                next_day(),
+                Some(Day::of(at(10, 0))),
+                target,
                 Overlap::Cancel,
             )
             .await
@@ -436,7 +550,10 @@ mod tests {
         assert_ne!(copy.id, original.id);
         assert_eq!(
             times(&copy),
-            [(at(14, 0) + NEXT_DAY, at(15, 30) + NEXT_DAY)]
+            [
+                (at(10, 0) + 2 * NEXT_DAY, at(11, 0) + 2 * NEXT_DAY),
+                (at(14, 0) + 2 * NEXT_DAY, at(15, 30) + 2 * NEXT_DAY)
+            ]
         );
         assert_ne!(copy.spans[0].id, original.spans[1].id);
         assert_eq!(
@@ -444,11 +561,11 @@ mod tests {
             (&original.project_id, &original.note, &original.tag_id)
         );
         assert_eq!(w.rows().await, [original, copy]);
-        assert_eq!(w.status().await, undo_label("Record 1 h 30 min for Acme"));
+        assert_eq!(w.status().await, undo_label("Record 2 h 30 min for Acme"));
     }
 
     #[tokio::test]
-    async fn copy_to_day_without_a_span_copies_every_span_into_a_new_recording() {
+    async fn copy_to_day_without_from_copies_every_span_into_a_new_recording() {
         let w = World::new().await;
         let original = w
             .create_spans(&[(at(10, 0), at(11, 0)), (at(14, 0), at(15, 0))])
@@ -478,19 +595,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn moving_or_copying_the_open_span_of_a_running_recording_asks_to_stop_the_timer() {
+    async fn moving_or_copying_the_running_timer_from_its_day_asks_to_stop_it() {
         let w = World::new().await;
         let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
-        let open = timer.spans[0].id.clone();
+        let from = Some(Day::of(at(10, 0)));
 
         let moved = w
             .service()
-            .move_to_day(&timer.id, Some(open.as_str()), next_day(), Overlap::Cancel)
+            .move_to_day(&timer.id, from, next_day(), Overlap::Cancel)
             .await
             .unwrap_err();
         let copied = w
             .service()
-            .copy_to_day(&timer.id, Some(open.as_str()), next_day(), Overlap::Cancel)
+            .copy_to_day(&timer.id, from, next_day(), Overlap::Cancel)
             .await
             .unwrap_err();
 

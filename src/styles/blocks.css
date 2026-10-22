@@ -57,14 +57,13 @@
 .card-foot { display: flex; align-items: center; gap: var(--space-2); margin-top: auto; color: var(--block-meta); font-size: var(--fs-meta); }
 .card-meta { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-trailing { flex: none; font-size: var(--data-font-size); font-variant-numeric: tabular-nums; color: var(--block-text); }
-.recording { position: absolute; left: 4px; right: 4px; border: 1px solid var(--bg); cursor: grab; touch-action: none; }
+/* In the Day view's time column: only the start (top left) and the end (bottom right). */
+.recording { position: absolute; left: 4px; right: 4px; padding: 3px var(--space-1) 2px; border: 1px solid var(--bg); cursor: grab; touch-action: none; }
 .recording.dragging { cursor: grabbing; opacity: 0.85; z-index: 2; }
 .recording.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
 .recording.hovered:not(.focused) { box-shadow: 0 0 0 2px var(--block-meta); z-index: 2; }
-/* In the Day view's time column: only the start (top left) and the end (bottom right). */
-.recording--times { padding: 3px var(--space-1) 2px; }
-.recording--times .card-title { font-size: var(--fs-caption); font-weight: 600; font-variant-numeric: tabular-nums; }
-.recording--times .card-trailing { font-size: var(--fs-caption); font-weight: 600; }
+.recording .card-title { font-size: var(--fs-caption); font-weight: 600; font-variant-numeric: tabular-nums; }
+.recording .card-trailing { font-size: var(--fs-caption); font-weight: 600; }
 .recording.clipped-start { border-top: 2px dashed var(--block-text); border-top-left-radius: 0; border-top-right-radius: 0; }
 .recording.clipped-end { border-bottom: 2px dashed var(--block-text); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .recording-duration { position: absolute; right: var(--space-2); bottom: 3px; font-size: var(--data-font-size); }
@@ -73,12 +72,12 @@
 .recording .grip.end { bottom: 0; }
 
 /* A running timer: a pulsing dot at its growing edge. */
-.recording.running::after, .sheet-card.running::after {
+.recording.running::after, .sheet-card.running::after, .week-card.running::after {
   content: ""; position: absolute; right: 0.462rem; top: 0.462rem; width: 6px; height: 6px; border-radius: 50%;
   background: var(--accent); animation: pulse 1.6s ease-in-out infinite;
 }
 @keyframes pulse { 50% { opacity: 0.25; } }
-@media (prefers-reduced-motion: reduce) { .recording.running::after, .sheet-card.running::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .recording.running::after, .sheet-card.running::after, .week-card.running::after { animation: none; } }
 
 /* Suggestions: a rule's proposed recording, hatched in its project's color and outlined dashed: not a recording yet. */
 .suggestion {

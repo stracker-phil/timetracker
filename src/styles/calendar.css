@@ -1,55 +1,76 @@
-/* ---------- week: day heads over seven columns of filled recordings ---------- */
-.week-head, .week-body { display: grid; grid-template-columns: var(--timeline-axis-w) repeat(7, minmax(7rem, 1fr)); min-width: min-content; }
+/* ---------- week: seven columns of filled cards in time order, no time axis ---------- */
+.week { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.week-head, .week-body { display: grid; grid-template-columns: repeat(7, minmax(8rem, 1fr)); min-width: min-content; }
 .week-head { position: sticky; top: 0; z-index: 3; background: var(--bg); border-bottom: 1px solid var(--line); }
 .week-day-head {
-  display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; align-items: center; column-gap: var(--space-2);
-  padding: var(--space-2) var(--space-3); border: none; border-left: 1px solid var(--line); background: none; color: var(--text); text-align: left;
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2); border: none; border-left: 1px solid var(--line); background: none; color: var(--text); text-align: left;
 }
+.week-day-head:first-child, .week-column:first-child { border-left: none; }
 .week-day-head:hover { background: var(--row-hover); }
 .week-day-head.weekend { background: var(--bg-quiet); }
 .week-day-head.weekend:hover { background: var(--row-hover); }
-.week-day-name { grid-column: 1 / 3; font-size: var(--fs-meta); font-weight: 500; color: var(--o2); }
-.week-day-number {
-  display: inline-grid; place-items: center; min-width: 2rem; height: 2rem; margin-left: calc(-1 * var(--space-1)); padding: 0 var(--space-1);
-  border-radius: 999px; font-size: var(--fs-title); font-weight: 600; color: var(--text-strong); font-variant-numeric: tabular-nums;
-}
+.week-day-name { font-weight: 600; color: var(--text-strong); white-space: nowrap; }
 .week-day-head.today .week-day-name { color: var(--accent-text); }
-.week-day-head.today .week-day-number { background: var(--accent); color: var(--on-accent); }
-.week-day-total { justify-self: end; font-size: var(--fs-meta); font-weight: 500; color: var(--o2); font-variant-numeric: tabular-nums; }
-.week-body {
-  position: relative;
-  background-image: repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px var(--hour-px));
-}
-.week-column { position: relative; border-left: 1px solid var(--line); }
+.week-day-total { font-size: var(--fs-meta); font-weight: 500; color: var(--o2); font-variant-numeric: tabular-nums; }
+.week-body { flex: 1 0 auto; }
+.week-column { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-left: 1px solid var(--line); }
 .week-column--weekend { background: color-mix(in oklab, var(--bg-quiet) 70%, transparent); }
 .week-column--today { background: color-mix(in oklab, var(--accent) 5%, transparent); }
+.week-column--drop { box-shadow: inset 0 0 0 2px var(--accent); }
+/* One height unit per started quarter hour (Rust's `heightUnits`, capped); the fewest still fit the title and the foot. */
+.week-card {
+  --week-unit: 1.231rem;
+  flex: none; position: relative; height: calc(var(--units) * var(--week-unit)); padding: var(--space-1) var(--space-2) 3px;
+  cursor: grab; touch-action: none;
+}
+.week-card .card-title { flex: none; }
+.week-card.dragging { cursor: grabbing; opacity: 0.6; }
+.week-card.focused, .week-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.week-add {
+  flex: none; display: flex; align-items: center; justify-content: center; gap: var(--space-1); padding: var(--space-1) var(--space-2);
+  border: 1px dashed transparent; border-radius: var(--radius-card); background: none; color: var(--o3); font-size: var(--fs-meta); font-weight: 500;
+}
+.week-add:hover, .week-add:focus-visible { border-color: var(--line); background: var(--row-hover); color: var(--text); }
+/* An empty day: the + is a card-sized slot at the top, like a first entry. */
+.week-add--empty { min-height: 3.5rem; border-color: var(--line); }
 
-/* ---------- month: whole weeks of day cells, hairlines between them ---------- */
-.month-grid {
-  flex: 1; overflow: auto; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: auto; grid-auto-rows: minmax(6.154rem, 1fr);
-  padding: var(--space-3) var(--space-5) var(--space-5);
-}
-.month-weekday { padding: var(--space-1) var(--space-2) var(--space-2); font-size: var(--fs-meta); font-weight: 500; color: var(--o2); text-align: right; }
+/* ---------- month: rows of whole weeks, each as tall as its fullest day; one line per recording ---------- */
+.month-grid { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; padding: var(--space-3) var(--space-5) var(--space-5); }
+.month-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-height: 6.154rem; }
+.month-week:last-child .month-day { border-bottom: 1px solid var(--line); }
 .month-day {
-  position: relative; display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; padding: var(--space-1) var(--space-1) var(--space-2);
-  border: none; border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: var(--bg); color: var(--text); text-align: left; overflow: hidden;
+  display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: var(--space-1) var(--space-1) var(--space-2);
+  border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: var(--bg); color: var(--text);
 }
-.month-day:nth-child(7n) { border-right: 1px solid var(--line); }
-.month-day:nth-last-child(-n + 7) { border-bottom: 1px solid var(--line); }
+.month-day:last-child { border-right: 1px solid var(--line); }
 .month-day--weekend { background: var(--bg-quiet); }
-.month-day:hover { background: var(--row-hover); }
-.month-day-head { display: flex; flex-direction: row-reverse; align-items: center; justify-content: space-between; gap: var(--space-1); }
+.month-day-head { display: flex; align-items: center; gap: var(--space-1); min-height: 1.692rem; margin-bottom: 2px; }
+.month-day-date {
+  display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-1) 0 var(--space-1); border: none; border-radius: 999px;
+  background: none; color: var(--o2); font-size: var(--fs-meta); font-weight: 500;
+}
+.month-day-date:hover { background: var(--row-hover); color: var(--text); }
 .month-day-number {
-  display: inline-grid; place-items: center; min-width: 1.692rem; height: 1.692rem; padding: 0 var(--space-1); border-radius: 999px;
-  font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-strong);
+  display: inline-grid; place-items: center; min-width: 1.538rem; height: 1.538rem; padding: 0 2px; border-radius: 999px;
+  font-size: var(--fs-body); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-strong);
 }
-.month-day-hours { padding-left: var(--space-1); font-size: var(--fs-meta); font-weight: 500; color: var(--o2); font-variant-numeric: tabular-nums; }
-.month-day--outside .month-day-number { color: var(--o3); font-weight: 500; }
-.month-day--outside .month-day-hours, .month-day--outside .month-projects { opacity: 0.55; }
+.month-day--today .month-day-weekday { color: var(--accent-text); }
 .month-day--today .month-day-number { background: var(--accent); color: var(--on-accent); }
-.month-projects { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-/* A project's share of the day: a small bar filled like its recordings (theme.css derives the fill from `--rec`). */
-.month-project {
-  display: block; padding: 1px var(--space-2); border-radius: var(--radius-sm); background: var(--block-fill); color: var(--block-text);
-  font-size: var(--fs-caption); font-weight: 500; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.month-day--outside .month-day-number { color: var(--o3); font-weight: 500; }
+.month-day--outside .month-entry, .month-day--outside .month-day-hours { opacity: 0.55; }
+.month-day-add {
+  display: grid; place-items: center; width: 1.538rem; height: 1.538rem; border: none; border-radius: 999px; background: none; color: var(--o2);
+  opacity: 0;
 }
+.month-day:hover .month-day-add, .month-day-add:focus-visible { opacity: 1; }
+.month-day-add:hover { background: var(--row-hover); color: var(--text); }
+.month-day-hours { margin-left: auto; padding-right: var(--space-1); font-size: var(--fs-meta); font-weight: 500; color: var(--o2); font-variant-numeric: tabular-nums; }
+.month-entry {
+  display: flex; align-items: center; gap: var(--space-1); min-width: 0; padding: 1px var(--space-1); border: none; border-radius: var(--radius-sm);
+  background: none; color: var(--text); font-size: var(--fs-caption); line-height: 1.4; text-align: left;
+}
+.month-entry:hover { background: var(--row-hover); }
+.month-entry-dot { flex: none; width: 0.538rem; height: 0.538rem; border-radius: 50%; background: var(--rec); }
+.month-entry-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.month-entry-time { flex: none; color: var(--o2); font-variant-numeric: tabular-nums; }

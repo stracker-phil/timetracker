@@ -4,11 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, type WeekView as Week } from "../../api";
+import { api, type CalendarEntry, type WeekView as Week } from "../../api";
 import { handleKeydown, installCommands } from "../../commands";
 import { resetStore, useStore } from "../../state/store";
-import { dayColumn, weekView } from "../../test/calendarFixtures";
-import { at, DAY, recordingBlock } from "../../test/dayFixtures";
+import { calendarEntry, dayColumn, weekView } from "../../test/calendarFixtures";
+import { at, DAY } from "../../test/dayFixtures";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
 import { settings } from "../../test/settings";
@@ -20,17 +20,17 @@ const mocked = vi.mocked(api, true);
 
 const HOUR_MS = 3_600_000;
 const NEXT_DAY = "2026-03-11";
-/** The default timeline zoom. */
-const PX_PER_MINUTE = 2.5;
 
 const website = projectItem({ project: { id: "p-site", name: "Website" } });
-const standup = recordingBlock({ id: "r1", projectId: "p-site", projectName: "Website", start: at("09:00"), end: at("09:45") });
+const standup = calendarEntry({ id: "r1", note: "standup", heightUnits: 4 });
+const docs = calendarEntry({ id: "r2", projectId: "p-docs", projectName: "Docs", color: "green", start: at("13:00"), end: at("13:30"), durationMs: 30 * 60_000, spanIds: ["r2-s1"] });
 
-/** The week of `DAY` (Mon 9 to Sun 15) with a recording on Tue 10 and its totals. */
-const recordedWeek = (extra: Partial<Week> & { today?: string } = {}) => {
+/** The week of `DAY` (Mon 9 to Sun 15) with `entries` on Tue 10. */
+const recordedWeek = (entries: CalendarEntry[] = [standup], extra: Partial<Week> & { today?: string } = {}) => {
   const base = weekView(extra);
-  const days = base.days.map((d) => (d.day === DAY ? dayColumn({ ...d, recordings: [standup], totalMs: 45 * 60_000, trackedMs: HOUR_MS }) : d));
-  return weekView({ ...extra, days, totalMs: 45 * 60_000, trackedMs: HOUR_MS });
+  const totalMs = entries.reduce((sum, e) => sum + e.durationMs, 0);
+  const days = base.days.map((d) => (d.day === DAY ? dayColumn({ ...d, entries, totalMs, trackedMs: HOUR_MS }) : d));
+  return weekView({ ...extra, days, totalMs, trackedMs: HOUR_MS });
 };
 
 function renderWeek(week: Week | null = weekView(), patch: Parameters<typeof resetStore>[0] = {}) {
@@ -48,14 +48,14 @@ function renderWeek(week: Week | null = weekView(), patch: Parameters<typeof res
 
 const heads = () => screen.getAllByRole("columnheader");
 const column = (label: string) => screen.getByLabelText(label);
-const recordingEl = () => screen.getByLabelText("Website");
+const card = (name = "Website: standup") => screen.getByRole("button", { name });
 
-/** Presses the recording, moves it `dx`/`dy` px and releases it over `over` (null: over nothing). */
-function drag(el: HTMLElement, over: HTMLElement | null, { dx = 120, dy = 0, altKey = false } = {}) {
+/** Presses the card, moves it `dx` px and releases it over `over` (null: over nothing). */
+function drag(el: HTMLElement, over: HTMLElement | null, { dx = 120, altKey = false } = {}) {
   vi.mocked(document.elementFromPoint).mockReturnValue(over);
   fireEvent.pointerDown(el, { button: 0, clientX: 100, clientY: 1000 });
-  fireEvent.pointerMove(el, { clientX: 100 + dx, clientY: 1000 + dy });
-  fireEvent.pointerUp(el, { clientX: 100 + dx, clientY: 1000 + dy, altKey });
+  fireEvent.pointerMove(el, { clientX: 100 + dx, clientY: 1000 });
+  fireEvent.pointerUp(el, { clientX: 100 + dx, clientY: 1000, altKey });
 }
 
 describe("WeekView", () => {
@@ -81,7 +81,7 @@ describe("WeekView", () => {
     it("has no buttons to change the week", async () => {
       renderWeek();
       await screen.findAllByRole("columnheader");
-      for (const name of ["Previous week", "Next week", "Today"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+      for (const name of ["Previous week", "Next week"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     });
 
     it("shows the error when the week cannot be loaded", async () => {
@@ -91,26 +91,27 @@ describe("WeekView", () => {
     });
   });
 
-  describe("days", () => {
-    it("shows seven day heads with the weekday, the date and the recorded time", async () => {
+  describe("day heads", () => {
+    it("shows seven heads with the weekday, the date and the recorded time", async () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
-      expect(heads().map((h) => h.textContent)).toEqual(["Mon90:00", "Tue100:45", "Wed110:00", "Thu120:00", "Fri130:00", "Sat140:00", "Sun150:00"]);
+      expect(heads().map((h) => h.textContent)).toEqual(["Mon 90:00", "Tue 100:45", "Wed 110:00", "Thu 120:00", "Fri 130:00", "Sat 140:00", "Sun 150:00"]);
     });
 
     it("names each head by its day and recorded time", async () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
-      expect(heads().map((h) => h.getAttribute("aria-label"))).toEqual([
-        "Mon 9, 0:00 recorded",
-        "Tue 10, 0:45 recorded",
-        "Wed 11, 0:00 recorded",
-        "Thu 12, 0:00 recorded",
-        "Fri 13, 0:00 recorded",
-        "Sat 14, 0:00 recorded",
-        "Sun 15, 0:00 recorded",
-      ]);
+      expect(screen.getByRole("columnheader", { name: "Mon 9, 0:00 recorded" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Tue 10, 0:45 recorded" })).toBeInTheDocument();
+    });
+
+    it("reads Today on today's head, which keeps its day in the label", async () => {
+      renderWeek(weekView({ today: DAY }));
+      await screen.findAllByRole("columnheader");
+      const head = screen.getByRole("columnheader", { name: "Tue 10, 0:00 recorded" });
+      expect(head).toHaveTextContent("Today");
+      expect(head).not.toHaveTextContent("Tue 10");
+      expect(heads()[0]).toHaveTextContent("Mon 9");
     });
 
     it("marks the weekend heads and columns only", async () => {
@@ -118,24 +119,14 @@ describe("WeekView", () => {
       await screen.findAllByRole("columnheader");
       expect(heads().map((h) => h.classList.contains("weekend"))).toEqual([false, false, false, false, false, true, true]);
       expect(column("Sat 14")).toHaveClass("week-column--weekend");
-      expect(column("Sun 15")).toHaveClass("week-column--weekend");
       expect(column("Fri 13")).not.toHaveClass("week-column--weekend");
     });
 
-    it("marks today's head and column", async () => {
+    it("marks today's column", async () => {
       renderWeek(weekView({ today: DAY }));
       await screen.findAllByRole("columnheader");
-      expect(heads()[1]).toHaveClass("today");
-      expect(heads()[0]).not.toHaveClass("today");
       expect(column("Tue 10")).toHaveClass("week-column--today");
       expect(column("Mon 9")).not.toHaveClass("week-column--today");
-    });
-
-    it("places the recordings of a day in its column", async () => {
-      renderWeek(recordedWeek());
-      await screen.findAllByRole("columnheader");
-      expect(within(column("Tue 10")).getByLabelText("Website")).toBeInTheDocument();
-      expect(within(column("Wed 11")).queryByLabelText("Website")).not.toBeInTheDocument();
     });
 
     it("opens a day in the Day view when its head is clicked", async () => {
@@ -144,6 +135,188 @@ describe("WeekView", () => {
       await userEvent.click(heads()[2]);
       expect(useStore.getState().view).toBe("day");
       expect(useStore.getState().day).toBe(NEXT_DAY);
+    });
+  });
+
+  describe("cards", () => {
+    it("lists a day's cards in order, then its New recording button", async () => {
+      renderWeek(recordedWeek([standup, docs]));
+      await screen.findAllByRole("columnheader");
+      const names = within(column("Tue 10"))
+        .getAllByRole("button")
+        .map((b) => b.getAttribute("aria-label"));
+      expect(names).toEqual(["Website: standup", "Docs", "New recording on Tue 10"]);
+    });
+
+    it("keeps a day's cards out of the other columns", async () => {
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      expect(within(column("Wed 11")).queryByRole("button", { name: "Website: standup" })).not.toBeInTheDocument();
+    });
+
+    it("shows the project, note, tag, span count and duration on a card", async () => {
+      renderWeek(recordedWeek([calendarEntry({ id: "r1", note: "standup", tag: "support", spanIds: ["r1-s1", "r1-s2"] })]));
+      await screen.findAllByRole("columnheader");
+      const el = within(card());
+      for (const text of ["Website", "standup", "support", "2 spans", "0:45"]) expect(el.getByText(text)).toBeInTheDocument();
+    });
+
+    it("sets a card's height through --units", async () => {
+      renderWeek(recordedWeek([standup, calendarEntry({ id: "r2", heightUnits: 9, projectName: "Docs", spanIds: ["r2-s1"] })]));
+      await screen.findAllByRole("columnheader");
+      expect(card().style.getPropertyValue("--units")).toBe("4");
+      expect(card("Docs").style.getPropertyValue("--units")).toBe("9");
+    });
+
+    it("marks only the clicked card as pressed, without opening the editor", async () => {
+      renderWeek(recordedWeek([standup, docs]));
+      await screen.findAllByRole("columnheader");
+      await userEvent.click(card());
+      expect(card()).toHaveAttribute("aria-pressed", "true");
+      expect(card("Docs")).toHaveAttribute("aria-pressed", "false");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("opens the editor on a double-click", async () => {
+      mocked.recordingsList.mockResolvedValue([recording({ id: "r1", projectId: "p-site", start: at("09:00"), end: at("09:45") })]);
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      await userEvent.dblClick(card());
+      const dialog = within(await screen.findByRole("dialog", { name: "Edit recording" }));
+      expect(await dialog.findByLabelText("Span 1 from")).toHaveValue("09:00");
+    });
+
+    it("opens the editor with ↵ on a focused card", async () => {
+      mocked.recordingsList.mockResolvedValue([recording({ id: "r1", projectId: "p-site", start: at("09:00"), end: at("09:45") })]);
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      await userEvent.click(card());
+      await userEvent.keyboard("{Enter}");
+      expect(await screen.findByRole("dialog", { name: "Edit recording" })).toBeInTheDocument();
+    });
+
+    it("deletes a focused card with ⌫ and offers Undo", async () => {
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      await userEvent.click(card());
+      await userEvent.keyboard("{Backspace}");
+      await vi.waitFor(() => expect(mocked.recordingDelete).toHaveBeenCalledWith("r1"));
+      expect(await screen.findByText("Recording deleted")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+    });
+  });
+
+  describe("New recording button", () => {
+    it("ends every column", async () => {
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      for (const label of ["Mon 9", "Tue 10", "Wed 11", "Thu 12", "Fri 13", "Sat 14", "Sun 15"]) {
+        const buttons = within(column(label)).getAllByRole("button");
+        expect(buttons[buttons.length - 1]).toHaveAccessibleName(`New recording on ${label}`);
+      }
+    });
+
+    it("is the empty variant only on a day without recordings", async () => {
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      expect(screen.getByRole("button", { name: "New recording on Mon 9" })).toHaveClass("week-add--empty");
+      expect(screen.getByRole("button", { name: "New recording on Tue 10" })).not.toHaveClass("week-add--empty");
+    });
+
+    it("opens a New recording sheet on Rust's default span for that day", async () => {
+      mocked.recordingDefaultSpan.mockResolvedValue({ start: at("14:00", "2026-03-09"), end: at("14:30", "2026-03-09") });
+      renderWeek();
+      await screen.findAllByRole("columnheader");
+      await userEvent.click(screen.getByRole("button", { name: "New recording on Mon 9" }));
+      const dialog = within(await screen.findByRole("dialog", { name: "New recording" }));
+      expect(mocked.recordingDefaultSpan).toHaveBeenCalledWith("2026-03-09");
+      expect(await dialog.findByLabelText("Span 1 from")).toHaveValue("14:00");
+      expect(screen.queryByRole("complementary", { name: "Timesheet" })).not.toBeInTheDocument();
+    });
+
+    it("closes the sheet with Escape without saving", async () => {
+      renderWeek();
+      await screen.findAllByRole("columnheader");
+      await userEvent.click(screen.getByRole("button", { name: "New recording on Mon 9" }));
+      await screen.findByRole("dialog", { name: "New recording" });
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(mocked.recordingCreate).not.toHaveBeenCalled();
+    });
+
+    it("shows an error toast and no sheet when the default span cannot be fetched", async () => {
+      mocked.recordingDefaultSpan.mockRejectedValueOnce({ kind: "io", message: "no snap", code: null });
+      renderWeek();
+      await screen.findAllByRole("columnheader");
+      await userEvent.click(screen.getByRole("button", { name: "New recording on Mon 9" }));
+      expect(await screen.findByText("Could not open a new recording: no snap")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("dragging a card onto another column", () => {
+    it("moves its time on that day there and offers Undo", async () => {
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      drag(card(), column("Wed 11"));
+      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenCalledWith("r1", DAY, NEXT_DAY, "cancel"));
+      expect(await screen.findByText("Recording moved")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+    });
+
+    it("copies it there when ⌥ is held", async () => {
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      drag(card(), column("Wed 11"), { altKey: true });
+      await vi.waitFor(() => expect(mocked.recordingCopy).toHaveBeenCalledWith("r1", DAY, NEXT_DAY, "cancel"));
+      expect(await screen.findByText("Recording copied")).toBeInTheDocument();
+      expect(mocked.recordingMove).not.toHaveBeenCalled();
+    });
+
+    it("finds the column from an element inside it", async () => {
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      const inner = document.createElement("span");
+      column("Fri 13").append(inner);
+      drag(card(), inner);
+      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenCalledWith("r1", DAY, "2026-03-13", "cancel"));
+    });
+
+    it("asks before replacing on an overlap and retries with replace", async () => {
+      const inTheWay = recording({ id: "r9", projectId: "p-site", start: at("09:15", NEXT_DAY), end: at("09:30", NEXT_DAY) });
+      mocked.recordingMove.mockRejectedValueOnce({ kind: "overlap", message: "Overlaps", code: null, details: [inTheWay] });
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      drag(card(), column("Wed 11"));
+      const dialog = within(await screen.findByRole("dialog"));
+      expect(dialog.getByText("This overlaps a recording")).toBeInTheDocument();
+      await userEvent.click(dialog.getByRole("button", { name: "Replace overlapped part" }));
+      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenLastCalledWith("r1", DAY, NEXT_DAY, "replace"));
+    });
+
+    it("does nothing when dropped on its own column", async () => {
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      drag(card(), column("Tue 10"));
+      expect(mocked.recordingMove).not.toHaveBeenCalled();
+      expect(mocked.recordingCopy).not.toHaveBeenCalled();
+      expect(screen.queryByText("Recording moved")).not.toBeInTheDocument();
+    });
+
+    it("does nothing when dropped over no column", async () => {
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      drag(card(), null);
+      expect(mocked.recordingMove).not.toHaveBeenCalled();
+      expect(mocked.recordingCopy).not.toHaveBeenCalled();
+    });
+
+    it("does not drag a running card", async () => {
+      renderWeek(recordedWeek([calendarEntry({ id: "r1", running: true })]));
+      await screen.findAllByRole("columnheader");
+      drag(card("Website"), column("Wed 11"));
+      expect(mocked.recordingMove).not.toHaveBeenCalled();
+      expect(mocked.recordingCopy).not.toHaveBeenCalled();
     });
   });
 
@@ -169,145 +342,6 @@ describe("WeekView", () => {
       mocked.weekView.mockClear();
       act(() => useStore.getState().dataChanged({ kind: "recordings", day: DAY }));
       await vi.waitFor(() => expect(mocked.weekView).toHaveBeenCalledWith(DAY));
-    });
-  });
-
-  describe("dropping a recording on another day", () => {
-    it("moves it there and offers Undo", async () => {
-      renderWeek(recordedWeek());
-      await screen.findAllByRole("columnheader");
-      drag(recordingEl(), column("Wed 11"));
-      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenCalledWith("r1", "r1-s1", NEXT_DAY, "cancel"));
-      expect(await screen.findByText("Recording moved")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
-      expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
-    });
-
-    it("moves only the dropped block's span when the recording has several", async () => {
-      const second = { ...standup, spanId: "r1-s2", spanCount: 2 };
-      const base = weekView();
-      const days = base.days.map((d) => (d.day === DAY ? dayColumn({ ...d, recordings: [second] }) : d));
-      renderWeek(weekView({ days }));
-      await screen.findAllByRole("columnheader");
-      drag(recordingEl(), column("Wed 11"));
-      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenCalledWith("r1", "r1-s2", NEXT_DAY, "cancel"));
-    });
-
-    it("copies it there when ⌥ is held", async () => {
-      renderWeek(recordedWeek());
-      await screen.findAllByRole("columnheader");
-      drag(recordingEl(), column("Wed 11"), { altKey: true });
-      await vi.waitFor(() => expect(mocked.recordingCopy).toHaveBeenCalledWith("r1", "r1-s1", NEXT_DAY, "cancel"));
-      expect(await screen.findByText("Recording copied")).toBeInTheDocument();
-      expect(mocked.recordingMove).not.toHaveBeenCalled();
-    });
-
-    it("finds the column from an element inside it", async () => {
-      renderWeek(recordedWeek());
-      await screen.findAllByRole("columnheader");
-      const inner = document.createElement("span");
-      column("Fri 13").append(inner);
-      drag(recordingEl(), inner);
-      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenCalledWith("r1", "r1-s1", "2026-03-13", "cancel"));
-    });
-
-    it("asks before replacing on an overlap and retries with replace", async () => {
-      const inTheWay = recording({ id: "r9", projectId: "p-site", start: at("09:15", NEXT_DAY), end: at("09:30", NEXT_DAY) });
-      mocked.recordingMove.mockRejectedValueOnce({ kind: "overlap", message: "Overlaps", code: null, details: [inTheWay] });
-      renderWeek(recordedWeek());
-      await screen.findAllByRole("columnheader");
-      drag(recordingEl(), column("Wed 11"));
-      const dialog = within(await screen.findByRole("dialog"));
-      expect(dialog.getByText("This overlaps a recording")).toBeInTheDocument();
-      await userEvent.click(dialog.getByRole("button", { name: "Replace overlapped part" }));
-      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenLastCalledWith("r1", "r1-s1", NEXT_DAY, "replace"));
-    });
-
-    it("moves it in time when released over its own day", async () => {
-      renderWeek(recordedWeek());
-      await screen.findAllByRole("columnheader");
-      drag(recordingEl(), column("Tue 10"), { dx: 0, dy: 25 });
-      await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at("09:10"), end: at("09:55") }, null, "cancel"));
-      expect(mocked.recordingMove).not.toHaveBeenCalled();
-      expect(mocked.recordingCopy).not.toHaveBeenCalled();
-    });
-
-    it("moves it in time when released over no day", async () => {
-      renderWeek(recordedWeek());
-      await screen.findAllByRole("columnheader");
-      drag(recordingEl(), null, { dx: 0, dy: 25 });
-      await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at("09:10"), end: at("09:55") }, null, "cancel"));
-      expect(mocked.recordingMove).not.toHaveBeenCalled();
-    });
-
-    it("changes nothing when released where it was pressed", async () => {
-      renderWeek(recordedWeek());
-      await screen.findAllByRole("columnheader");
-      drag(recordingEl(), column("Wed 11"), { dx: 0 });
-      expect(mocked.recordingMove).not.toHaveBeenCalled();
-      expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("recording editor", () => {
-    it("opens a new recording an hour long, snapped down, from a double-click on an empty spot", async () => {
-      renderWeek();
-      await screen.findAllByRole("columnheader");
-      fireEvent.doubleClick(column("Wed 11"), { clientY: (9 * 60 + 7) * PX_PER_MINUTE });
-      const dialog = within(await screen.findByRole("dialog", { name: "New recording" }));
-      expect(dialog.getByLabelText("Span 1 from")).toHaveValue("09:05");
-      expect(dialog.getByLabelText("Span 1 to")).toHaveValue("10:05");
-    });
-
-    it("shows the editor in a sheet, not in a timesheet", async () => {
-      renderWeek();
-      await screen.findAllByRole("columnheader");
-      fireEvent.doubleClick(column("Wed 11"), { clientY: 9 * 60 * PX_PER_MINUTE });
-      const dialog = await screen.findByRole("dialog", { name: "New recording" });
-      expect(within(dialog).getByRole("form", { name: "New recording" })).toBeInTheDocument();
-      expect(screen.queryByRole("complementary", { name: "Timesheet" })).not.toBeInTheDocument();
-    });
-
-    it("closes the sheet with Escape without saving", async () => {
-      renderWeek();
-      await screen.findAllByRole("columnheader");
-      fireEvent.doubleClick(column("Wed 11"), { clientY: 9 * 60 * PX_PER_MINUTE });
-      await screen.findByRole("dialog", { name: "New recording" });
-      await userEvent.keyboard("{Escape}");
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(mocked.recordingCreate).not.toHaveBeenCalled();
-    });
-
-    it("saves the recording of the sheet with the project and the span", async () => {
-      renderWeek();
-      await screen.findAllByRole("columnheader");
-      fireEvent.doubleClick(column("Wed 11"), { clientY: 9 * 60 * PX_PER_MINUTE });
-      const dialog = within(await screen.findByRole("dialog", { name: "New recording" }));
-      await userEvent.type(dialog.getByRole("combobox", { name: "Project" }), "Web{Enter}");
-      await userEvent.click(dialog.getByRole("button", { name: "Save" }));
-      await vi.waitFor(() =>
-        expect(mocked.recordingCreate).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: at("09:00", NEXT_DAY), end: at("10:00", NEXT_DAY) }], note: "", tagId: null }, "cancel"),
-      );
-      await vi.waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    });
-
-    it("only focuses a recording on a single click", async () => {
-      renderWeek(recordedWeek());
-      await screen.findAllByRole("columnheader");
-      await userEvent.click(recordingEl());
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(useStore.getState().focusedRecording).toBe("r1");
-    });
-
-    it("opens the recording that is double-clicked, found by its span", async () => {
-      mocked.recordingsList.mockResolvedValue([recording({ id: "r1", projectId: "p-site", start: at("09:00"), end: at("09:45") })]);
-      renderWeek(recordedWeek());
-      await screen.findAllByRole("columnheader");
-      await userEvent.dblClick(recordingEl());
-      const dialog = within(await screen.findByRole("dialog", { name: "Edit recording" }));
-      expect(await dialog.findByLabelText("Span 1 from")).toHaveValue("09:00");
-      expect(mocked.recordingsList).toHaveBeenCalledWith(at("09:00"), at("09:45"));
-      expect(screen.queryByRole("dialog", { name: "New recording" })).not.toBeInTheDocument();
     });
   });
 });

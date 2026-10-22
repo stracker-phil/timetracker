@@ -326,20 +326,20 @@ describe("recordings slice", () => {
     { name: "copyRecording", call: "recordingCopy", done: "Recording copied", failed: "Could not copy the recording" },
   ] as const)("$name", ({ name, call, done, failed }) => {
     it("sends the day with overlap cancel and toasts with Undo", async () => {
-      await state()[name]("r1", "2026-03-12", null);
+      await state()[name]("r1", null, "2026-03-12");
       expect(mocked[call]).toHaveBeenCalledWith("r1", null, "2026-03-12", "cancel");
       expect(toastMessages()).toEqual([done]);
       expect(state().toasts[0].action?.label).toBe("Undo");
     });
 
-    it("sends the span id when one span is meant", async () => {
-      await state()[name]("r1", "2026-03-12", "r1-s2");
-      expect(mocked[call]).toHaveBeenCalledWith("r1", "r1-s2", "2026-03-12", "cancel");
+    it("sends the source day when one day's time is meant", async () => {
+      await state()[name]("r1", "2026-03-10", "2026-03-12");
+      expect(mocked[call]).toHaveBeenCalledWith("r1", "2026-03-10", "2026-03-12", "cancel");
     });
 
     it("asks before replacing on an overlap and retries with replace on Replace", async () => {
       mocked[call].mockRejectedValueOnce(overlapError);
-      const writing = state()[name]("r1", "2026-03-12", null);
+      const writing = state()[name]("r1", null, "2026-03-12");
       (await overlapDialog()).onReplace();
       await writing;
       expect(mocked[call]).toHaveBeenLastCalledWith("r1", null, "2026-03-12", "replace");
@@ -348,7 +348,7 @@ describe("recordings slice", () => {
 
     it("changes nothing and says nothing when the overlap is cancelled", async () => {
       mocked[call].mockRejectedValueOnce(overlapError);
-      const writing = state()[name]("r1", "2026-03-12", null);
+      const writing = state()[name]("r1", null, "2026-03-12");
       (await overlapDialog()).onCancel();
       await writing;
       expect(mocked[call]).not.toHaveBeenCalledWith("r1", null, "2026-03-12", "replace");
@@ -357,7 +357,7 @@ describe("recordings slice", () => {
 
     it("toasts any other error", async () => {
       mocked[call].mockRejectedValueOnce({ kind: "db", message: "Database locked", code: null });
-      await state()[name]("r1", "2026-03-12", null);
+      await state()[name]("r1", null, "2026-03-12");
       expect(toastMessages()).toEqual([`${failed}: Database locked`]);
     });
   });

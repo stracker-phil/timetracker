@@ -121,18 +121,13 @@ function toggleList() {
   s.setDayMode(s.uiState.dayMode === "list" ? "timeline" : "list");
 }
 
-/** Opens the editor on the Day view's selection, else on Rust's default span (the half hour up to now) on today's Day or Week view. */
-async function newRecording() {
+/** Opens the editor on the Day view's selection, else on Rust's default span (the half hour up to now) on today's Day, Week or Month view. */
+function newRecording() {
   const s = useStore.getState();
   if (s.view === "day" && hasSelection()) return s.recordSelection();
-  if (s.view !== "week") s.setView("day");
+  if (s.view !== "week" && s.view !== "month") s.setView("day");
   s.goToday();
-  try {
-    const { start, end } = await api.recordingDefaultSpan();
-    useStore.getState().openEditor({ mode: "create", start, end });
-  } catch (e) {
-    fail(e, "Could not open a new recording");
-  }
+  return s.openNewRecording();
 }
 
 /** Edits the focused recording, else opens the editor for the selection. */
@@ -164,7 +159,7 @@ function recordingToDay(by: 1 | -1, copy: boolean) {
   const id = s.focusedRecording;
   if (id === null) return;
   const day = addDays(s.day, by);
-  void (copy ? s.copyRecording(id, day, null) : s.moveRecording(id, day, null));
+  void (copy ? s.copyRecording(id, null, day) : s.moveRecording(id, null, day));
 }
 
 /** The rule whose row holds the keyboard focus on the Rules screen. */

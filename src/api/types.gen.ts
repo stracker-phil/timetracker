@@ -122,6 +122,31 @@ export type Billable = { recordedMs: number, billableMs: number,
  */
 percent: number | null, };
 
+/**
+ * A recording on one day: its parts of the day added up, as the timesheet cards are.
+ */
+export type CalendarEntry = { 
+/**
+ * The Week card's height, `CARD_MIN_UNITS` to `CARD_MAX_UNITS`, one per started `CARD_UNIT_MS`.
+ */
+heightUnits: number, 
+/**
+ * The recording's id.
+ */
+id: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, note: string, tag: string | null, 
+/**
+ * The day's part of its spans.
+ */
+durationMs: number, 
+/**
+ * Its first span's start and its last span's end on the day.
+ */
+start: number, end: number, 
+/**
+ * Its spans on the day, by start.
+ */
+spanIds: Array<string>, running: boolean, };
+
 export type CaptureSettings = { 
 /**
  * Bundle ids the tracker never records.
@@ -223,7 +248,11 @@ export type DayApp = { appKey: string, app: string, bundleId: string | null,
  */
 activeMs: number, ownLane: boolean, };
 
-export type DayColumn = { day: Day, bounds: [number, number], weekday: string, dayOfMonth: number, isToday: boolean, isWeekend: boolean, recordings: Array<RecordingBlock>, totalMs: number, trackedMs: number, };
+export type DayColumn = { day: Day, weekday: string, dayOfMonth: number, isToday: boolean, isWeekend: boolean, 
+/**
+ * The day's recordings, by start.
+ */
+entries: Array<CalendarEntry>, totalMs: number, trackedMs: number, };
 
 /**
  * How the Day view shows the day.
@@ -381,11 +410,11 @@ exposeActivity: boolean, };
  */
 export type MenuState = { enabled: Array<string>, checked: Array<string>, };
 
-export type MonthDay = { day: Day, dayOfMonth: number, inMonth: boolean, isToday: boolean, isWeekend: boolean, recordedMs: number, 
+export type MonthDay = { day: Day, weekday: string, dayOfMonth: number, inMonth: boolean, isToday: boolean, isWeekend: boolean, recordedMs: number, 
 /**
- * The projects with the most time that day, most first.
+ * The day's recordings, by start.
  */
-projects: Array<ProjectShare>, };
+entries: Array<CalendarEntry>, };
 
 export type MonthView = { monthStart: Day, 
 /**
@@ -480,8 +509,6 @@ weekMs: number,
  * Recorded time this month, likewise.
  */
 monthMs: number, };
-
-export type ProjectShare = { projectId: string, name: string, color: string, shade: number, ms: number, };
 
 /**
  * Presets stay relative, so a saved "this month" report shows the current month.

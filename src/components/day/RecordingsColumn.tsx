@@ -60,7 +60,7 @@ export function RecordingsColumn({ ref, recordings, suggestions, y, bounds, pxPe
       {recordings
         .filter((r) => r.id !== edited || r.running)
         .map((r) => (
-          <RecordingBlock key={r.spanId} block={r} y={y} pxPerMinute={pxPerMinute} focused={r.id === focused} hovered={r.id === hovered} look="times" editOnClick />
+          <RecordingBlock key={r.spanId} block={r} y={y} pxPerMinute={pxPerMinute} focused={r.id === focused} hovered={r.id === hovered} />
         ))}
       {drafts.map((s, i) => (
         <div key={i} className="recording-draft" style={{ top: y(s.start), height: Math.max(2, y(s.end) - y(s.start)) }} aria-label={`Draft ${formatClock(s.start)}–${formatClock(s.end)}`}>

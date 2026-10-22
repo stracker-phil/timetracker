@@ -1,6 +1,28 @@
 // Must not import the store or "../api" at runtime: apiMock.ts imports this file while the api module is mocked.
-import type { DayColumn, MonthDay, MonthView, WeekView } from "../api/types";
-import { dayBounds, DAY } from "./dayFixtures";
+import type { CalendarEntry, DayColumn, MonthDay, MonthView, WeekView } from "../api/types";
+import { at, DAY } from "./dayFixtures";
+
+/** A 45-minute recording of "Website" at 09:00 on `DAY`, as the Week and Month list it; `patch` overrides fields. */
+export function calendarEntry(patch: Partial<CalendarEntry> = {}): CalendarEntry {
+  const id = patch.id ?? "r1";
+  return {
+    heightUnits: 3,
+    id,
+    projectId: "p-site",
+    projectName: "Website",
+    clientName: null,
+    color: "blue",
+    shade: 0,
+    note: "",
+    tag: null,
+    durationMs: 45 * 60_000,
+    start: at("09:00"),
+    end: at("09:45"),
+    spanIds: [`${id}-s1`],
+    running: false,
+    ...patch,
+  };
+}
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -27,12 +49,11 @@ export function dayColumn(patch: Partial<DayColumn> = {}): DayColumn {
   const weekday = WEEKDAYS[(date.getDay() + 6) % 7];
   return {
     day,
-    bounds: dayBounds(day),
     weekday,
     dayOfMonth: date.getDate(),
     isToday: false,
     isWeekend: date.getDay() === 0 || date.getDay() === 6,
-    recordings: [],
+    entries: [],
     totalMs: 0,
     trackedMs: 0,
     ...patch,
@@ -57,11 +78,12 @@ export function weekView(patch: Partial<WeekView> & { today?: string } = {}): We
   };
 }
 
-/** A calendar cell without recordings; `patch` overrides fields. */
+/** A calendar cell without recordings; `patch` overrides fields. `weekday` defaults from the day. */
 export function monthDay(patch: Partial<MonthDay> = {}): MonthDay {
   const day = patch.day ?? DAY;
   const date = parse(day);
-  return { day, dayOfMonth: date.getDate(), inMonth: true, isToday: false, isWeekend: date.getDay() === 0 || date.getDay() === 6, recordedMs: 0, projects: [], ...patch };
+  const weekday = WEEKDAYS[(date.getDay() + 6) % 7];
+  return { day, weekday, dayOfMonth: date.getDate(), inMonth: true, isToday: false, isWeekend: date.getDay() === 0 || date.getDay() === 6, recordedMs: 0, entries: [], ...patch };
 }
 
 /**

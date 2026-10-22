@@ -1,22 +1,20 @@
-//! The Week and Month views: recordings over several days, cut per day like the Day view.
+//! The Week and Month views: each day's recordings as a list, cut per day like the Day view.
 
 pub mod commands;
+pub mod entries;
 pub mod jump;
 pub mod period;
-
-use std::collections::HashMap;
 
 use chrono::{Datelike, Days, Months, Weekday};
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::day::{Names, RecordingBlock, recording_blocks, tracked_ms};
+use crate::day::{Names, tracked_ms};
 use crate::db::activities::ActivityRow;
 use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms};
 use crate::reports::week_label;
-
-const MONTH_CELL_PROJECTS: usize = 3;
+use entries::{CalendarEntry, entries};
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -35,12 +33,12 @@ pub struct WeekView {
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct DayColumn {
     pub day: Day,
-    pub bounds: (Ms, Ms),
     pub weekday: String,
     pub day_of_month: u32,
     pub is_today: bool,
     pub is_weekend: bool,
-    pub recordings: Vec<RecordingBlock>,
+    /// The day's recordings, by start.
+    pub entries: Vec<CalendarEntry>,
     pub total_ms: i64,
     pub tracked_ms: i64,
 }
@@ -63,24 +61,14 @@ pub struct MonthView {
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct MonthDay {
     pub day: Day,
+    pub weekday: String,
     pub day_of_month: u32,
     pub in_month: bool,
     pub is_today: bool,
     pub is_weekend: bool,
     pub recorded_ms: i64,
-    /// The projects with the most time that day, most first.
-    pub projects: Vec<ProjectShare>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct ProjectShare {
-    pub project_id: String,
-    pub name: String,
-    pub color: String,
-    pub shade: u8,
-    pub ms: i64,
+    /// The day's recordings, by start.
+    pub entries: Vec<CalendarEntry>,
 }
 
 /// What both views read for their days.
@@ -118,19 +106,29 @@ fn is_weekend(day: Day) -> bool {
     matches!(day.date().weekday(), Weekday::Sat | Weekday::Sun)
 }
 
+fn weekday(day: Day) -> String {
+    day.date().format("%a").to_string()
+}
+
+fn day_entries(day: Day, input: &CalendarInput) -> Vec<CalendarEntry> {
+    entries(&input.recordings, &input.names, day.bounds(), input.now)
+}
+
+fn recorded_ms(entries: &[CalendarEntry]) -> i64 {
+    entries.iter().map(|e| e.card.duration_ms).sum()
+}
+
 fn column(day: Day, input: &CalendarInput) -> DayColumn {
-    let bounds = day.bounds();
-    let recordings = recording_blocks(&input.recordings, &input.names, bounds, input.now);
+    let entries = day_entries(day, input);
     DayColumn {
         day,
-        bounds,
-        weekday: day.date().format("%a").to_string(),
+        weekday: weekday(day),
         day_of_month: day.date().day(),
         is_today: day == input.today,
         is_weekend: is_weekend(day),
-        total_ms: recordings.iter().map(|r| r.end - r.start).sum(),
-        tracked_ms: tracked_ms(&input.activities, bounds, input.now),
-        recordings,
+        total_ms: recorded_ms(&entries),
+        tracked_ms: tracked_ms(&input.activities, day.bounds(), input.now),
+        entries,
     }
 }
 
@@ -169,40 +167,17 @@ pub fn month(day: Day, input: &CalendarInput) -> MonthView {
 }
 
 fn month_day(day: Day, first: Day, input: &CalendarInput) -> MonthDay {
-    let blocks = recording_blocks(&input.recordings, &input.names, day.bounds(), input.now);
+    let entries = day_entries(day, input);
     MonthDay {
         day,
+        weekday: weekday(day),
         day_of_month: day.date().day(),
         in_month: day.month_start() == first,
         is_today: day == input.today,
         is_weekend: is_weekend(day),
-        recorded_ms: blocks.iter().map(|b| b.end - b.start).sum(),
-        projects: project_shares(&blocks),
+        recorded_ms: recorded_ms(&entries),
+        entries,
     }
-}
-
-/// The projects with the most time in `blocks`, most first.
-fn project_shares(blocks: &[RecordingBlock]) -> Vec<ProjectShare> {
-    let mut shares: HashMap<&str, ProjectShare> = HashMap::new();
-    for block in blocks {
-        shares
-            .entry(&block.project_id)
-            .or_insert_with(|| ProjectShare {
-                project_id: block.project_id.clone(),
-                name: block.project_name.clone(),
-                color: block.color.clone(),
-                shade: block.shade,
-                ms: 0,
-            })
-            .ms += block.end - block.start;
-    }
-    let mut projects: Vec<ProjectShare> = shares.into_values().collect();
-    projects.sort_by(|a, b| {
-        b.ms.cmp(&a.ms)
-            .then_with(|| a.project_id.cmp(&b.project_id))
-    });
-    projects.truncate(MONTH_CELL_PROJECTS);
-    projects
 }
 
 #[cfg(test)]
@@ -398,11 +373,17 @@ mod tests {
     }
 
     #[test]
-    fn a_column_carries_the_bounds_of_its_day() {
-        let view = week(day("2026-10-21"), &input(vec![], vec![]));
+    fn month_cells_carry_their_weekday_from_monday_to_sunday() {
+        let view = month(day("2026-10-21"), &input(vec![], vec![]));
 
-        for column in &view.days {
-            assert_eq!(column.bounds, column.day.bounds(), "{}", column.day);
+        for row in &view.weeks {
+            let weekdays: Vec<&str> = row.iter().map(|c| c.weekday.as_str()).collect();
+            assert_eq!(
+                weekdays,
+                ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+                "{}",
+                row[0].day
+            );
         }
     }
 
@@ -424,7 +405,7 @@ mod tests {
         assert!(
             view.days
                 .iter()
-                .all(|d| d.recordings.is_empty() && d.total_ms == 0 && d.tracked_ms == 0)
+                .all(|d| d.entries.is_empty() && d.total_ms == 0 && d.tracked_ms == 0)
         );
     }
 
@@ -444,29 +425,58 @@ mod tests {
         assert_eq!(totals, [HOUR + 30 * MIN, 0, 2 * HOUR, 0, 0, 0, 0]);
         assert_eq!(view.total_ms, 3 * HOUR + 30 * MIN);
         let ids: Vec<&str> = view.days[0]
-            .recordings
+            .entries
             .iter()
-            .map(|r| r.id.as_str())
+            .map(|e| e.card.id.as_str())
             .collect();
         assert_eq!(ids, ["a", "b"]);
+        let summed: i64 = view.days[0]
+            .entries
+            .iter()
+            .map(|e| e.card.duration_ms)
+            .sum();
+        assert_eq!(summed, view.days[0].total_ms);
     }
 
     #[test]
-    fn recording_blocks_in_a_column_carry_the_project_look() {
+    fn entries_come_one_per_recording_in_start_order_with_the_project_look() {
         let mon = start_of("2026-10-19");
-        let recordings = vec![recording("a", "p3", mon + HOUR, Some(mon + 2 * HOUR))];
+        let recordings = vec![
+            recording("late", "p3", mon + 14 * HOUR, Some(mon + 15 * HOUR)),
+            recording("early", "p1", mon + 8 * HOUR, Some(mon + 9 * HOUR)),
+        ];
 
         let view = week(day("2026-10-19"), &input(recordings, vec![]));
 
-        let block = &view.days[0].recordings[0];
+        let entries = &view.days[0].entries;
+        let ids: Vec<&str> = entries.iter().map(|e| e.card.id.as_str()).collect();
+        assert_eq!(ids, ["early", "late"]);
+        let card = &entries[1].card;
         assert_eq!(
-            (
-                block.project_name.as_str(),
-                block.color.as_str(),
-                block.shade
-            ),
+            (card.project_name.as_str(), card.color.as_str(), card.shade),
             ("Docs", "teal", 7)
         );
+    }
+
+    #[test]
+    fn several_spans_on_one_day_make_one_entry_with_the_summed_duration() {
+        let mon = start_of("2026-10-19");
+        let recordings = vec![spanned(
+            "a",
+            "p1",
+            &[
+                (mon + 9 * HOUR, Some(mon + 10 * HOUR)),
+                (mon + 14 * HOUR, Some(mon + 14 * HOUR + 30 * MIN)),
+            ],
+        )];
+
+        let view = week(day("2026-10-19"), &input(recordings, vec![]));
+
+        let entries = &view.days[0].entries;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].card.duration_ms, HOUR + 30 * MIN);
+        assert_eq!(entries[0].card.span_ids, ["a-span0", "a-span1"]);
+        assert_eq!(view.days[0].total_ms, HOUR + 30 * MIN);
     }
 
     #[test]
@@ -486,20 +496,13 @@ mod tests {
         assert_eq!(view.total_ms, 3 * HOUR);
         assert_eq!(
             (
-                mon.recordings[0].clipped_start,
-                mon.recordings[0].clipped_end
+                mon.entries[0].card.duration_ms,
+                tue.entries[0].card.duration_ms
             ),
-            (false, true)
+            (HOUR, 2 * HOUR)
         );
         assert_eq!(
-            (
-                tue.recordings[0].clipped_start,
-                tue.recordings[0].clipped_end
-            ),
-            (true, false)
-        );
-        assert_eq!(
-            (tue.recordings[0].start, tue.recordings[0].end),
+            (tue.entries[0].card.start, tue.entries[0].card.end),
             (mon_end, mon_end + 2 * HOUR)
         );
     }
@@ -516,7 +519,7 @@ mod tests {
         let view = week(day("2026-10-21"), &input(recordings, vec![]));
 
         assert_eq!(view.total_ms, 0);
-        assert!(view.days.iter().all(|d| d.recordings.is_empty()));
+        assert!(view.days.iter().all(|d| d.entries.is_empty()));
     }
 
     #[test]
@@ -533,7 +536,7 @@ mod tests {
         let tuesday = &view.days[1];
         assert_eq!(tuesday.total_ms, 2 * HOUR);
         assert_eq!(
-            (tuesday.recordings[0].running, tuesday.recordings[0].end),
+            (tuesday.entries[0].card.running, tuesday.entries[0].card.end),
             (true, tue + 3 * HOUR)
         );
         assert_eq!(view.days[2].total_ms, 0);
@@ -607,7 +610,16 @@ mod tests {
         assert_eq!(column["isToday"], json!(false));
         assert_eq!(column["totalMs"], json!(HOUR));
         assert_eq!(column["trackedMs"], json!(0));
-        assert_eq!(column["bounds"], json!([mon, day("2026-10-19").bounds().1]));
+        assert_eq!(column["weekday"], json!("Mon"));
+        assert!(column.get("bounds").is_none());
+        assert!(column.get("recordings").is_none());
+        let entry = &column["entries"][0];
+        assert_eq!(entry["id"], json!("a"));
+        assert_eq!(entry["projectName"], json!("Portal"));
+        assert_eq!(entry["durationMs"], json!(HOUR));
+        assert_eq!(entry["spanIds"], json!(["a-span0"]));
+        assert_eq!(entry["heightUnits"], json!(4));
+        assert!(entry.get("card").is_none());
     }
 
     #[test]
@@ -738,9 +750,9 @@ mod tests {
             .days
             .iter()
             .take(3)
-            .map(|d| (d.recordings.len(), d.total_ms))
+            .map(|d| (d.entries.len(), d.total_ms))
             .collect();
-        assert_eq!(per_day, [(3, 2 * HOUR + 30 * MIN), (1, HOUR), (0, 0)]);
+        assert_eq!(per_day, [(1, 2 * HOUR + 30 * MIN), (1, HOUR), (0, 0)]);
         assert_eq!(view.total_ms, 3 * HOUR + 30 * MIN);
     }
 
@@ -764,18 +776,18 @@ mod tests {
 
         let seventh = cell(&view, "2026-10-07");
         assert_eq!(seventh.recorded_ms, 5 * HOUR);
-        let shares: Vec<(&str, Ms)> = seventh
-            .projects
+        let durations: Vec<(&str, Ms)> = seventh
+            .entries
             .iter()
-            .map(|p| (p.project_id.as_str(), p.ms))
+            .map(|e| (e.card.id.as_str(), e.card.duration_ms))
             .collect();
-        assert_eq!(shares, [("p1", 4 * HOUR), ("p2", HOUR)]);
+        assert_eq!(durations, [("a", 4 * HOUR), ("b", HOUR)]);
         assert_eq!(cell(&view, "2026-10-08").recorded_ms, 30 * MIN);
         assert_eq!(view.total_ms, 5 * HOUR + 30 * MIN);
     }
 
     #[test]
-    fn a_cell_lists_its_projects_by_time_most_first_with_their_look() {
+    fn a_cell_lists_its_entries_in_start_order_and_its_total_is_their_sum() {
         let d = start_of("2026-10-07");
         let recordings = vec![
             recording("a", "p2", d + HOUR, Some(d + 3 * HOUR)),
@@ -788,55 +800,14 @@ mod tests {
         let view = month(day("2026-10-21"), &input(recordings, vec![]));
 
         let cell = cell(&view, "2026-10-07");
-        assert_eq!(cell.recorded_ms, 7 * HOUR);
-        assert_eq!(
-            cell.projects,
-            [
-                ProjectShare {
-                    project_id: "p1".into(),
-                    name: "Portal".into(),
-                    color: "blue".into(),
-                    shade: 4,
-                    ms: 3 * HOUR + 30 * MIN
-                },
-                ProjectShare {
-                    project_id: "p2".into(),
-                    name: "Admin".into(),
-                    color: "red".into(),
-                    shade: 2,
-                    ms: 2 * HOUR
-                },
-                ProjectShare {
-                    project_id: "p3".into(),
-                    name: "Docs".into(),
-                    color: "teal".into(),
-                    shade: 7,
-                    ms: HOUR
-                },
-            ]
-        );
+        let ids: Vec<&str> = cell.entries.iter().map(|e| e.card.id.as_str()).collect();
+        assert_eq!(ids, ["a", "b", "c", "d", "e"]);
+        let summed: i64 = cell.entries.iter().map(|e| e.card.duration_ms).sum();
+        assert_eq!((cell.recorded_ms, summed), (7 * HOUR, 7 * HOUR));
     }
 
     #[test]
-    fn projects_with_equal_time_are_ordered_by_id() {
-        let d = start_of("2026-10-07");
-        let recordings = vec![
-            recording("a", "p2", d + HOUR, Some(d + 2 * HOUR)),
-            recording("b", "p1", d + 3 * HOUR, Some(d + 4 * HOUR)),
-        ];
-
-        let view = month(day("2026-10-21"), &input(recordings, vec![]));
-
-        let ids: Vec<&str> = cell(&view, "2026-10-07")
-            .projects
-            .iter()
-            .map(|p| p.project_id.as_str())
-            .collect();
-        assert_eq!(ids, ["p1", "p2"]);
-    }
-
-    #[test]
-    fn empty_days_have_no_project_shares() {
+    fn empty_days_have_no_entries() {
         let d = start_of("2026-10-07");
         let recordings = vec![recording("a", "p1", d + HOUR, Some(d + 2 * HOUR))];
 
@@ -848,7 +819,7 @@ mod tests {
             .flatten()
             .filter(|c| c.day != day("2026-10-07"))
         {
-            assert!(c.projects.is_empty(), "{}", c.day);
+            assert!(c.entries.is_empty(), "{}", c.day);
             assert_eq!(c.recorded_ms, 0, "{}", c.day);
         }
     }
@@ -882,17 +853,27 @@ mod tests {
             cell,
             &json!({
                 "day": "2026-10-07",
+                "weekday": "Wed",
                 "dayOfMonth": 7,
                 "inMonth": true,
                 "isToday": false,
                 "isWeekend": false,
                 "recordedMs": HOUR,
-                "projects": [{
+                "entries": [{
+                    "id": "a",
                     "projectId": "p1",
-                    "name": "Portal",
+                    "projectName": "Portal",
+                    "clientName": null,
                     "color": "blue",
                     "shade": 4,
-                    "ms": HOUR
+                    "note": "",
+                    "tag": null,
+                    "durationMs": HOUR,
+                    "start": d + HOUR,
+                    "end": d + 2 * HOUR,
+                    "spanIds": ["a-span0"],
+                    "running": false,
+                    "heightUnits": 4
                 }]
             })
         );

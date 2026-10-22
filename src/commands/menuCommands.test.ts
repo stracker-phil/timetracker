@@ -50,6 +50,14 @@ describe("recording.new", () => {
     expect(state().day).toBe("2026-10-21");
   });
 
+  it("stays in the Month view, goes to today and opens the editor", async () => {
+    resetStore({ view: "month", day: DAY });
+    runCommand("recording.new");
+    await vi.waitFor(() => expect(state().editor).toMatchObject({ mode: "create" }));
+    expect(state().view).toBe("month");
+    expect(state().day).toBe("2026-10-21");
+  });
+
   it("ignores a selection that is not on the Day view", async () => {
     resetStore({ view: "week", day: DAY });
     state().setSelection({ start: at("09:00"), end: at("10:00"), blockIds: [] });

@@ -42,6 +42,8 @@ export interface EditorSlice {
   editing: Recording | null;
   editorOverlap: EditorOverlap | null;
   openEditor: (editor: Editor) => void;
+  /** A new recording on Rust's default span: the half hour up to now, on another `day` at the same clock times. */
+  openNewRecording: (day?: string) => Promise<void>;
   /** Closes the editor and drops its draft and the selection. */
   closeEditor: () => void;
   patchDraft: (patch: Partial<Pick<Draft, "projectId" | "note" | "tagId">>) => void;
@@ -115,6 +117,15 @@ export const editorSlice: Slice<EditorSlice> = {
             ? fill(editor, { projectId: editor.projectId ?? null, note: editor.note ?? "", tagId: editor.tagId ?? null }, [{ start: editor.start, end: editor.end }])
             : load(editor);
         opened.catch((e: unknown) => fail(e, "Could not open the recording"));
+      },
+
+      async openNewRecording(day) {
+        try {
+          const { start, end } = await api.recordingDefaultSpan(day);
+          get().openEditor({ mode: "create", start, end });
+        } catch (e) {
+          fail(e, "Could not open a new recording");
+        }
       },
 
       closeEditor() {
