@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { api, type MonthDay } from "../../api";
 import { formatHm } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
@@ -8,16 +9,20 @@ import { CalendarHeader } from "./CalendarHeader";
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function DayCell({ cell }: { cell: MonthDay }) {
-  const classes = ["month-day", !cell.inMonth && "month-day--outside", cell.isToday && "month-day--today"];
+  const classes = ["month-day", !cell.inMonth && "month-day--outside", cell.isToday && "month-day--today", cell.isWeekend && "month-day--weekend"];
   const label = `${cell.day}${cell.recordedMs > 0 ? `, ${formatHm(cell.recordedMs)} recorded` : ""}`;
   return (
     <button type="button" className={classes.filter(Boolean).join(" ")} aria-label={label} onClick={() => useStore.getState().goToDay(cell.day)}>
-      <span className="month-day-number">{Number(cell.day.slice(8))}</span>
-      {cell.recordedMs > 0 && <span className="month-day-hours mono">{formatHm(cell.recordedMs)}</span>}
+      <span className="month-day-head">
+        <span className="month-day-number">{cell.dayOfMonth}</span>
+        {cell.recordedMs > 0 && <span className="month-day-hours">{formatHm(cell.recordedMs)}</span>}
+      </span>
       {cell.projects.length > 0 && (
-        <span className="month-strip" aria-hidden="true">
+        <span className="month-projects" aria-hidden="true">
           {cell.projects.map((p) => (
-            <span key={p.projectId} style={{ flexGrow: p.ms, background: shadeColor(p.color, p.shade) }} />
+            <span key={p.projectId} className="month-project" title={`${p.name} · ${formatHm(p.ms)}`} style={{ "--rec": shadeColor(p.color, p.shade) } as CSSProperties}>
+              {p.name}
+            </span>
           ))}
         </span>
       )}
@@ -25,7 +30,7 @@ function DayCell({ cell }: { cell: MonthDay }) {
   );
 }
 
-/** The month as a calendar: recorded hours per day, the main projects as a color strip; a click opens the day. */
+/** The month as a calendar: recorded hours per day and its main projects as filled bars; a click opens the day. */
 export function MonthView() {
   const day = useStore((s) => s.day);
   const changes = useStore((s) => s.changeCount);
@@ -35,7 +40,7 @@ export function MonthView() {
     <section className="day-page" aria-label="Month">
       <CalendarHeader title={month?.label ?? ""}>
         {month && (
-          <span className="day-totals mono o2" aria-label="Totals">
+          <span className="day-totals o2" aria-label="Totals">
             recorded {formatHm(month.totalMs)}
           </span>
         )}
@@ -44,7 +49,7 @@ export function MonthView() {
       {month && (
         <div className="month-grid" role="grid" aria-label={month.label}>
           {WEEKDAYS.map((w) => (
-            <span key={w} className="month-weekday o3" role="columnheader">
+            <span key={w} className="month-weekday" role="columnheader">
               {w}
             </span>
           ))}

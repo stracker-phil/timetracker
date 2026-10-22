@@ -165,7 +165,7 @@ there are no `query!` macros (they need a database at compile time).
 | Module | Functions | Invariants |
 |---|---|---|
 | `clients.rs` | `list(include_archived)`, `get`, `insert(name)`, `update(id, name)`, `set_archived(id, bool)` | names unique (archived clients count); lists by name ignoring case; archiving keeps the first `archived_at` and archives the client's projects in the same transaction; restoring restores the client only |
-| `projects.rs` | `list`, `list_items(include_archived, now)`, `get`, `insert(ProjectInput)`, `update(id, ProjectInput)`, `set_archived`, `recent(limit)`, `resolve(name_or_id)`, `count` | see [Projects, clients and tags](#projects-clients-and-tags) |
+| `projects.rs` | `list`, `list_items(include_archived, now, windows)`, `get`, `insert(ProjectInput)`, `update(id, ProjectInput)`, `set_archived`, `recent(limit)`, `resolve(name_or_id)`, `count` | see [Projects, clients and tags](#projects-clients-and-tags) |
 | `tags.rs` | `list`, `list_with_usage`, `insert(name)`, `rename(id, name)`, `delete(id)`, `resolve_name(name)`, `resolve_optional_name(name?)` (the id, or `None` without a name), `seed_defaults` | names unique ignoring case: `insert` of a taken name returns the existing tag, `rename` to it is `invalid_input`; `DEFAULT_TAGS` are seeded once per data store (`meta.tags_seeded`), so deleting them all does not bring them back |
 | `activities.rs` | `apps_seen(from, now)`, `list_clipped(from, to, now)`, `close_stale(source, duration)`, `replace_open(id, NewActivity)`, `insert(NewActivity) -> id`, `close_open(source, end)`, `open_by_source`, `overlapping(source, start, end)`, `sources_with_prefix(prefix)` (latest first); `insert_on`, `get_on`, `close_open_on`, `open_by_source_on`, `overlapping_on` take a connection so a caller can combine them in a transaction; `list_for_range(from, to)`, `list_sources(from, to)`, `delete_range(from, to)`, `count_range(from, to)`, `count`, `first_start`; `take_range_on(from, to)` deletes and returns the rows, `restore_on(row)` inserts one under its id | ranges are `[from, to)` and include open spans; touching edges do not overlap; results are not clipped; `close_open` never sets an end before the start |
 | `away.rs` | `insert(NewAway) -> id`, `close_open(end)`, `open`, `list_for_range`, `delete_range`, `count_range`, `take_range_on`, `restore_on` | as for activities; `AwayReason` is stored and sent as `idle`, `sleep`, `lock`, `paused` |
@@ -202,9 +202,9 @@ the field:
 - Nothing is deleted except tags: recordings reference projects, so projects and clients are archived.
   Editing an archived project keeps it archived. Archiving a client archives its active projects (an earlier
   archive time stays); restoring a client leaves its projects archived.
-- `list_items` gives `ProjectListItem { project, client, lastUsed, recordedMs30d }` from one grouped query:
-  `lastUsed` is the latest recording start, `recordedMs30d` the recorded time in the 30 days before now (a
-  running recording counts until now).
+- `list_items(include_archived, now, UsageWindows { week, month })` gives `ProjectListItem { project, client, lastUsed, weekMs,
+  monthMs }` from one grouped query: `lastUsed` is the latest recording start, `weekMs` and `monthMs` the
+  recorded time inside each window (spans clipped to it; a running recording counts until now).
 - `recent(limit)`: active projects by their latest recording start, newest first.
 - `resolve(name_or_id)` (the CLI's `--project`, step 08): an exact id (archived too); else the active projects
   with exactly that name, ignoring case; else the active projects whose name starts with it. One match wins;

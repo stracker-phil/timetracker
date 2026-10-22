@@ -1,3 +1,4 @@
+import { Search } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { api, type ListRow as Row, type Project } from "../../../api";
 import { isTextInput } from "../../../commands";
@@ -5,6 +6,7 @@ import { formatHm } from "../../../lib/format";
 import { useApiResult } from "../../../lib/useApiResult";
 import { selectDayVersion, useStore } from "../../../state/store";
 import { useContextMenu } from "../../ContextMenu";
+import { InsetField } from "../../Field";
 import { pointerDrag } from "../pointerDrag";
 import { ListRow } from "./ListRow";
 import { MORE_TARGET, dropTargetAt, overflowItems, selectStripProjects } from "./dropTargets";
@@ -108,24 +110,25 @@ export function ListView({ day, reload }: { day: string; reload: number }) {
   return (
     <div className={drag ? "list-view dragging" : "list-view"}>
       <div className="list-tools">
-        <input
-          ref={searchRef}
-          className="input list-search"
-          type="search"
-          aria-label="Search activity"
-          placeholder="Search apps, titles, URLs and paths (/)"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape" && query) {
-              e.preventDefault();
-              setQuery("");
-            } else if (e.key === "ArrowDown") {
-              e.preventDefault();
-              focusRow(rows.findIndex((r) => r.key === focusedKey));
-            }
-          }}
-        />
+        <InsetField icon={<Search size="1.077rem" />} keys="/" className="list-search">
+          <input
+            ref={searchRef}
+            type="search"
+            aria-label="Search activity"
+            placeholder="Search apps, titles, URLs and paths"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && query) {
+                e.preventDefault();
+                setQuery("");
+              } else if (e.key === "ArrowDown") {
+                e.preventDefault();
+                focusRow(rows.findIndex((r) => r.key === focusedKey));
+              }
+            }}
+          />
+        </InsetField>
         <ProjectStrip over={drag?.over ?? null} onPick={pick} openMenu={menu.open} />
       </div>
       {rows.length === 0 ? (

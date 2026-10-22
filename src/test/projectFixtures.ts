@@ -15,7 +15,7 @@ export function client(patch: Partial<Client> = {}): Client {
 /** A listed project; `project` patches the project itself, the rest the list fields. */
 export function projectItem(patch: Omit<Partial<ProjectListItem>, "project"> & { project?: Partial<Project> } = {}): ProjectListItem {
   const { project: projectPatch, ...rest } = patch;
-  return { project: project(projectPatch), client: null, lastUsed: null, recordedMs30d: 0, ...rest };
+  return { project: project(projectPatch), client: null, lastUsed: null, weekMs: 0, monthMs: 0, ...rest };
 }
 
 /** A tag used by no recording; `patch` overrides fields. */

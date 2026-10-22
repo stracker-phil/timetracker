@@ -17,8 +17,14 @@ const MINUTE_MS = 60_000;
 const busyMonth = () =>
   monthView({
     cells: {
-      "2026-03-10": { recordedMs: 90 * MINUTE_MS, projects: [{ projectId: "p-site", color: "blue", shade: 0, ms: 90 * MINUTE_MS }] },
-      "2026-03-11": { recordedMs: 30 * MINUTE_MS },
+      "2026-03-10": { recordedMs: 90 * MINUTE_MS, projects: [{ projectId: "p-site", name: "Website", color: "blue", shade: 0, ms: 90 * MINUTE_MS }] },
+      "2026-03-11": {
+        recordedMs: 30 * MINUTE_MS,
+        projects: [
+          { projectId: "p-docs", name: "Docs", color: "green", shade: 0, ms: 20 * MINUTE_MS },
+          { projectId: "p-ops", name: "Ops", color: "red", shade: 0, ms: 10 * MINUTE_MS },
+        ],
+      },
     },
   });
 
@@ -73,6 +79,32 @@ describe("MonthView", () => {
       await grid();
       expect(screen.getByRole("button", { name: "2026-03-10, 1:30 recorded" })).toHaveTextContent("1:30");
       expect(screen.getByRole("button", { name: "2026-03-12" })).toHaveTextContent(/^12$/);
+    });
+
+    it("shows the day of the month as the cell's number, also for neighboring months", async () => {
+      renderMonth();
+      await grid();
+      expect(cell("2026-03-05")).toHaveTextContent(/^5$/);
+      expect(cell("2026-02-23")).toHaveTextContent(/^23$/);
+    });
+
+    it("shows a bar per top project with its name and time as the tooltip", async () => {
+      renderMonth(busyMonth());
+      await grid();
+      const busy = within(cell("2026-03-10, 1:30 recorded"));
+      expect(busy.getByTitle("Website · 1:30")).toHaveTextContent("Website");
+      const split = within(cell("2026-03-11, 0:30 recorded"));
+      expect(split.getByTitle("Docs · 0:20")).toHaveTextContent("Docs");
+      expect(split.getByTitle("Ops · 0:10")).toHaveTextContent("Ops");
+      expect(within(cell("2026-03-12")).queryByTitle(/·/)).not.toBeInTheDocument();
+    });
+
+    it("marks weekend cells only", async () => {
+      renderMonth();
+      await grid();
+      expect(cell("2026-03-14")).toHaveClass("month-day--weekend");
+      expect(cell("2026-03-15")).toHaveClass("month-day--weekend");
+      expect(cell("2026-03-13")).not.toHaveClass("month-day--weekend");
     });
 
     it("dims the days of the neighboring months", async () => {

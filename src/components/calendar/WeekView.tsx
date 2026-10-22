@@ -24,6 +24,26 @@ function startAt(e: MouseEvent<HTMLElement>, origin: number, pxPerMinute: number
   return origin + Math.floor(minutes / snapMinutes) * snapMinutes * MINUTE_MS;
 }
 
+/** `Mon 20`. */
+const columnName = (column: Column) => `${column.weekday} ${column.dayOfMonth}`;
+
+function DayHead({ column }: { column: Column }) {
+  const classes = ["week-day-head", column.isToday && "today", column.isWeekend && "weekend"];
+  return (
+    <button
+      type="button"
+      className={classes.filter(Boolean).join(" ")}
+      role="columnheader"
+      aria-label={`${columnName(column)}, ${formatHm(column.totalMs)} recorded`}
+      onClick={() => useStore.getState().goToDay(column.day)}
+    >
+      <span className="week-day-name">{column.weekday}</span>
+      <span className="week-day-number">{column.dayOfMonth}</span>
+      <span className={column.totalMs > 0 ? "week-day-total" : "week-day-total o3"}>{formatHm(column.totalMs)}</span>
+    </button>
+  );
+}
+
 function DayColumn({ column, pxPerMinute, focused }: { column: Column; pxPerMinute: number; focused: string | null }) {
   const [origin] = column.bounds;
   const y = (ms: number) => ((ms - origin) / MINUTE_MS) * pxPerMinute;
@@ -41,8 +61,9 @@ function DayColumn({ column, pxPerMinute, focused }: { column: Column; pxPerMinu
     void (e.altKey ? copyRecording(block.id, day, block.spanId) : moveRecording(block.id, day, block.spanId));
     return true;
   };
+  const classes = ["week-column", column.isToday && "week-column--today", column.isWeekend && "week-column--weekend"];
   return (
-    <div className={column.isToday ? "week-column week-column--today" : "week-column"} data-day={column.day} aria-label={column.label} onDoubleClick={create}>
+    <div className={classes.filter(Boolean).join(" ")} data-day={column.day} aria-label={columnName(column)} onDoubleClick={create}>
       {column.recordings.map((r) => (
         <RecordingBlock key={r.spanId} block={r} y={y} pxPerMinute={pxPerMinute} focused={r.id === focused} onDrop={onDrop} />
       ))}
@@ -59,7 +80,6 @@ export function WeekView() {
   const editor = useStore((s) => s.editor);
   const editorId = useId();
   const { data: week, error } = useApiResult(`week:${day}#${changes}`, () => api.weekView(day), { keepData: true });
-  const goToDay = useStore.getState().goToDay;
   const bounds = week?.days[0]?.bounds;
   const bodyStyle = bounds && ({ height: ((bounds[1] - bounds[0]) / MINUTE_MS) * pxPerMinute, "--hour-px": `${60 * pxPerMinute}px` } as CSSProperties);
 
@@ -67,7 +87,7 @@ export function WeekView() {
     <section className="day-page" aria-label="Week">
       <CalendarHeader title={week?.label ?? ""}>
         {week && (
-          <span className="day-totals mono o2" aria-label="Totals">
+          <span className="day-totals o2" aria-label="Totals">
             recorded {formatHm(week.totalMs)} · tracked {formatHm(week.trackedMs)}
           </span>
         )}
@@ -78,10 +98,7 @@ export function WeekView() {
           <div className="week-head" role="row">
             <span aria-hidden="true" />
             {week.days.map((d) => (
-              <button key={d.day} type="button" className={d.isToday ? "week-day-head today" : "week-day-head"} role="columnheader" onClick={() => goToDay(d.day)}>
-                <span>{d.label}</span>
-                <span className="mono o3">{formatHm(d.totalMs)}</span>
-              </button>
+              <DayHead key={d.day} column={d} />
             ))}
           </div>
           <div className="week-body" style={bodyStyle}>

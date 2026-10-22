@@ -9,37 +9,40 @@
 .settings-nav-heading { padding: 0 var(--space-2) var(--space-1); font-size: var(--fs-meta); font-weight: 500; color: var(--o3); }
 .settings-nav button {
   display: flex; align-items: center; gap: var(--space-2); height: 2rem; padding: 0 var(--space-2);
-  border: none; border-radius: 5px; background: transparent; color: var(--text); text-align: left;
+  border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text); text-align: left;
 }
 .settings-nav button svg { color: var(--o2); flex: none; }
 .settings-nav button:hover { background: var(--row-hover); }
-.settings-nav button[aria-current="page"] { background: var(--sel); }
+.settings-nav button[aria-current="page"] { background: var(--sel); font-weight: 500; }
+.settings-nav button[aria-current="page"] svg { color: var(--accent-text); }
 /* The title bar stays put; only the page below it scrolls. */
 .settings-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
 .settings-pane > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 0.769rem; padding: var(--space-4) var(--space-5) 0.769rem; border-bottom: 1px solid var(--line); }
-.settings-body { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: var(--space-3) var(--space-5) var(--space-6); display: flex; flex-direction: column; gap: var(--space-3); }
-.settings-pane h2 { margin: 0; font-size: 1.231rem; }
-.settings-intro { margin: 0 0 0.154rem; color: var(--o2); line-height: 1.45; }
-.settings-group { display: flex; flex-direction: column; gap: 0.462rem; }
-.settings-group h3 { margin: 0 0 0 var(--space-3); font-size: 0.923rem; font-weight: 600; }
+.settings-body { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: var(--space-4) var(--space-5) var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
+.settings-pane h2 { margin: 0; font-size: var(--fs-title); font-weight: 600; }
+.settings-intro { margin: 0; color: var(--o2); line-height: 1.45; }
+.settings-group { display: flex; flex-direction: column; gap: var(--space-2); }
+.settings-group h3 { margin: 0 0 0 var(--space-4); font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }
 .settings-card { background: var(--pop); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 0 var(--space-4); }
-.settings-row { display: flex; align-items: center; gap: var(--space-4); min-height: 2.923rem; padding: var(--space-2) 0; }
+.settings-row { display: flex; align-items: center; gap: var(--space-4); min-height: 3.077rem; padding: var(--space-3) 0; }
 .settings-row + .settings-row { border-top: 1px solid var(--line); }
-.settings-row.stacked { flex-direction: column; align-items: stretch; gap: 0.462rem; }
-.settings-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.154rem; }
+.settings-row.stacked { flex-direction: column; align-items: stretch; gap: var(--space-2); }
+.settings-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .settings-row-text label, .settings-row-label { color: var(--text); }
 .settings-row-label.with-icon { display: flex; align-items: center; gap: var(--space-2); }
 .settings-row-desc { font-size: var(--fs-meta); color: var(--o2); line-height: 1.4; }
-.settings-alert { margin: 0 0 1rem; color: var(--style-red); line-height: 1.4; }
-.settings-row-control { flex: none; display: flex; align-items: center; gap: 0.462rem; }
+.settings-alert { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-red) 12%, transparent); color: var(--style-red); line-height: 1.4; }
+/* The same alert where a view failed to load. */
+:is(.day-page, .day-main) > .settings-alert { margin: var(--space-4); }
+.settings-row-control { flex: none; display: flex; align-items: center; gap: var(--space-2); }
 .settings-row-control select.input { width: 9rem; }
-.settings-input { display: flex; align-items: center; gap: 0.462rem; }
+.settings-input { display: flex; align-items: center; gap: var(--space-2); }
 .settings-input .input { width: 12rem; }
 .range-value { min-width: 4rem; text-align: right; }
-.app-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.462rem var(--space-3); font-size: var(--fs-meta); }
-.inline-switch { display: flex; align-items: center; gap: 0.462rem; }
+.app-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); font-size: var(--fs-meta); }
+.inline-switch { display: flex; align-items: center; gap: var(--space-2); }
 .settings-input .input.number { width: 6.5rem; text-align: right; }
-.settings-search { flex: none; }
+.settings-search { flex: none; height: 2rem; }
 .shortcut-control { display: flex; align-items: center; gap: var(--space-1); }
 
 /* Settings → Appearance: one miniature window per scheme, in its light-mode look; the chosen one ringed. */

@@ -62,10 +62,28 @@ describe("AwayPrompt", () => {
       expect(field("To")).toHaveValue("12:45");
     });
 
-    it("takes the suggested end for the length of a span that is still open", async () => {
-      mocked.awayPromptCurrent.mockResolvedValue(awayPrompt({ span: { id: 1, start: at("12:03"), end: null, reason: "idle" } }));
+    it("takes the length and the end from Rust for a span that is still open", async () => {
+      mocked.awayPromptCurrent.mockResolvedValue(awayPrompt({ span: { id: 1, start: at("12:15"), end: null, reason: "idle" }, endedAt: at("13:30"), awayMs: 75 * 60_000 }));
       await renderPrompt();
-      expect(screen.getByRole("heading", { name: "You were away 42 min" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "You were away 1 h 15 min" })).toBeInTheDocument();
+      expect(screen.getByText("12:15–13:30 · idle")).toBeInTheDocument();
+    });
+
+    it("shows the length of the drafted span once Rust answered", async () => {
+      let answer: (draft: { spans: { start: number; end: number }[]; totalMs: number }) => void = () => {};
+      mocked.recordingDraftSpans.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+      await renderPrompt();
+      expect(screen.queryByText("25 min")).not.toBeInTheDocument();
+      act(() => answer({ spans: [{ start: at("12:05"), end: at("12:30") }], totalMs: 25 * 60_000 }));
+      expect(await screen.findByText("25 min")).toBeInTheDocument();
+    });
+
+    it("asks Rust for the length of the edited times", async () => {
+      await renderPrompt();
+      expect(await screen.findByText("40 min")).toBeInTheDocument();
+      await userEvent.clear(field("To"));
+      await userEvent.type(field("To"), "12:25");
+      expect(await screen.findByText("20 min")).toBeInTheDocument();
     });
 
     it("says there is nothing to record when no prompt is open, and Close skips", async () => {
@@ -103,12 +121,19 @@ describe("AwayPrompt", () => {
       expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: at("12:10"), end: at("12:40") }], note: "", tagId: "tag-research" });
     });
 
-    it("takes an end before the start as the next day", async () => {
+    it("answers with the spans Rust drafted from the times", async () => {
+      const drafted = { spans: [{ start: at("12:05"), end: at("12:45") }, { start: at("13:00"), end: at("13:10") }], totalMs: 50 * 60_000 };
+      mocked.recordingDraftSpans.mockResolvedValueOnce(drafted).mockResolvedValueOnce(drafted);
+      await renderPrompt();
+      await userEvent.click(recordButton());
+      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ spans: drafted.spans }));
+    });
+
+    it("leaves an end before the start to Rust and sends the typed times to be drafted", async () => {
       await renderPrompt();
       await userEvent.clear(field("To"));
       await userEvent.type(field("To"), "08:00");
-      await userEvent.click(recordButton());
-      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: at("12:05"), end: at("08:00", "2026-03-11") }] }));
+      await vi.waitFor(() => expect(mocked.recordingDraftSpans).toHaveBeenLastCalledWith([{ start: at("12:05"), end: at("08:00") }]));
     });
 
     it("asks for a project and answers nothing while none is known", async () => {
@@ -222,6 +247,8 @@ describe("AwayPrompt", () => {
   describe("a newer away span", () => {
     const newer = awayPrompt({
       span: { id: 2, start: at("15:00"), end: at("15:20"), reason: "lock" },
+      endedAt: at("15:20"),
+      awayMs: 20 * 60_000,
       suggested: { start: at("15:00"), end: at("15:20") },
     });
 

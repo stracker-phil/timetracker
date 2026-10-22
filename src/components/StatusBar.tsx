@@ -15,7 +15,7 @@ function RunningTimer() {
   if (!running) return null;
   return (
     <button className="status-text status-timer" title="Stop timer" onClick={() => void useStore.getState().stopTimer()}>
-      ⏱ {running.projectName} <span className="mono">{formatHm(running.elapsedMs)}</span>
+      ⏱ {running.projectName} <span className="tabular">{formatHm(running.elapsedMs)}</span>
     </button>
   );
 }
@@ -28,7 +28,7 @@ function TodayTotals() {
   const { data: totals } = useApiResult(`${day}#${version}#${tick}`, () => api.dayTotals(day), { keepData: true });
   if (!totals) return null;
   return (
-    <span className="mono" aria-label="Today">
+    <span className="tabular" aria-label="Today">
       recorded {formatHm(totals.recordedMs)} · tracked {formatHm(totals.trackedMs)}
     </span>
   );
@@ -87,7 +87,7 @@ export function StatusBar() {
       </button>
       <TrackerStatus />
       {selection && (
-        <span className="mono" aria-label="Selection">
+        <span className="tabular" aria-label="Selection">
           {formatClock(selection.start)}–{formatClock(selection.end)} · {formatHm(selection.end - selection.start)}
         </span>
       )}

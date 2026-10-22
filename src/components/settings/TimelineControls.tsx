@@ -34,7 +34,7 @@ function SummaryMinutes({ value }: { value: number }) {
             <option key={m} value={i} />
           ))}
         </datalist>
-        <span className="mono range-value">{value} min</span>
+        <span className="tabular range-value">{value} min</span>
       </div>
     </Row>
   );

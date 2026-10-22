@@ -29,6 +29,9 @@ const MINUTE_MS: Ms = 60_000;
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct AwayPrompt {
     pub span: AwayRow,
+    /// The span's end; prompts are only made for closed spans.
+    pub ended_at: Ms,
+    pub away_ms: i64,
     /// The span snapped as a recording would be.
     pub suggested: Span,
 }
@@ -105,8 +108,11 @@ pub fn prompt_for(
     tracker: &TrackerSettings,
     snap_minutes: u32,
 ) -> Option<AwayPrompt> {
+    let ended_at = span.end?;
     should_prompt(&span, tracker).then(|| AwayPrompt {
         suggested: suggestion(&span, snap_minutes),
+        ended_at,
+        away_ms: ended_at - span.start,
         span,
     })
 }
@@ -175,6 +181,8 @@ mod tests {
         let span = span(T - 2 * HOUR, Some(T - HOUR), AwayReason::Idle);
         AwayPrompt {
             suggested: suggestion(&span, 5),
+            ended_at: T - HOUR,
+            away_ms: HOUR,
             span,
         }
     }
@@ -249,12 +257,26 @@ mod tests {
             prompt_for(away.clone(), &TrackerSettings::default(), 15),
             Some(AwayPrompt {
                 span: away,
+                ended_at: T + 40 * MIN,
+                away_ms: 36 * MIN,
                 suggested: Span {
                     start: T,
                     end: T + 45 * MIN
                 },
             })
         );
+    }
+
+    #[test]
+    fn a_prompt_reports_when_the_span_ended_and_how_long_it_lasted() {
+        for (start, length) in [(T, 30 * MIN), (T + 7 * MIN, 95 * MIN), (T - HOUR, 3 * HOUR)] {
+            let away = span(start, Some(start + length), AwayReason::Lock);
+
+            let prompt = prompt_for(away, &TrackerSettings::default(), 15).unwrap();
+
+            assert_eq!(prompt.ended_at, start + length, "{start} {length}");
+            assert_eq!(prompt.away_ms, length, "{start} {length}");
+        }
     }
 
     #[test]

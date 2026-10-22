@@ -78,20 +78,20 @@ export function DeleteActivityDialog({ day, bounds, range }: Props) {
     <Modal onClose={close} labelledBy="delete-activity-title">
       <h2 id="delete-activity-title">{range ? "Delete activity in a range" : `Delete activity for ${formatDayLabel(day)}`}</h2>
       {range && (
-        <div className="form-row" style={{ gap: "0.615rem" }}>
+        <div className="form-row">
           <FormField label="From" htmlFor="delete-activity-from">
-            <input id="delete-activity-from" className="input mono" type="datetime-local" value={fromText} onChange={(e) => setFromText(e.target.value)} />
+            <input id="delete-activity-from" className="input tabular" type="datetime-local" value={fromText} onChange={(e) => setFromText(e.target.value)} />
           </FormField>
           <FormField label="To" htmlFor="delete-activity-to">
-            <input id="delete-activity-to" className="input mono" type="datetime-local" value={toText} onChange={(e) => setToText(e.target.value)} />
+            <input id="delete-activity-to" className="input tabular" type="datetime-local" value={toText} onChange={(e) => setToText(e.target.value)} />
           </FormField>
         </div>
       )}
-      <p className="muted" style={{ margin: 0 }}>
+      <p className="muted">
         {count && !error ? `Deletes ${spans(count)}. ` : ""}Spans that cross the range are deleted entirely. Recordings are not affected.
       </p>
       {error && (
-        <p className="form-field-error" role="alert" style={{ margin: 0 }}>
+        <p className="form-field-error" role="alert">
           {error}
         </p>
       )}

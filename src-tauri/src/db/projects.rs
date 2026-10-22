@@ -265,26 +265,57 @@ pub struct ProjectListItem {
     pub client: Option<Client>,
     /// The start of its latest recording span.
     pub last_used: Option<Ms>,
-    /// Recorded time in the 30 days before now; a running recording counts until now.
-    pub recorded_ms_30d: i64,
+    /// Recorded time this week, Monday to Sunday; a running recording counts until now.
+    pub week_ms: i64,
+    /// Recorded time this month, likewise.
+    pub month_ms: i64,
 }
 
-const USAGE_WINDOW: Ms = 30 * 24 * 3_600_000;
+/// This week and this month as `[start, end)`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct UsageWindows {
+    pub week: (Ms, Ms),
+    pub month: (Ms, Ms),
+}
 
-/// Per project: the latest span start and the time its spans recorded in the window before `now`.
-async fn usage_by_project(db: &Db, now: Ms) -> AppResult<HashMap<String, (Option<Ms>, i64)>> {
-    let rows: Vec<(String, Option<Ms>, i64)> = sqlx::query_as(
+#[derive(Clone, Copy, Default)]
+struct Usage {
+    last_used: Option<Ms>,
+    week_ms: i64,
+    month_ms: i64,
+}
+
+/// Per project: the latest span start and the time its spans recorded in each window, up to `now`.
+async fn usage_by_project(
+    db: &Db,
+    now: Ms,
+    windows: UsageWindows,
+) -> AppResult<HashMap<String, Usage>> {
+    let rows: Vec<(String, Option<Ms>, i64, i64)> = sqlx::query_as(
         r#"SELECT r.project_id, max(s.start),
-             coalesce(sum(max(0, min(coalesce(s."end", ?1), ?1) - max(s.start, ?2))), 0)
+             coalesce(sum(max(0, min(coalesce(s."end", ?1), ?1, ?3) - max(s.start, ?2))), 0),
+             coalesce(sum(max(0, min(coalesce(s."end", ?1), ?1, ?5) - max(s.start, ?4))), 0)
            FROM recordings r JOIN recording_spans s ON s.recording_id = r.id GROUP BY r.project_id"#,
     )
     .bind(now)
-    .bind(now - USAGE_WINDOW)
+    .bind(windows.week.0)
+    .bind(windows.week.1)
+    .bind(windows.month.0)
+    .bind(windows.month.1)
     .fetch_all(db.pool())
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, last_used, recorded)| (id, (last_used, recorded)))
+        .map(|(id, last_used, week_ms, month_ms)| {
+            (
+                id,
+                Usage {
+                    last_used,
+                    week_ms,
+                    month_ms,
+                },
+            )
+        })
         .collect())
 }
 
@@ -292,18 +323,19 @@ pub async fn list_items(
     db: &Db,
     include_archived: bool,
     now: Ms,
+    windows: UsageWindows,
 ) -> AppResult<Vec<ProjectListItem>> {
     let clients: HashMap<String, Client> = clients::list(db, true)
         .await?
         .into_iter()
         .map(|c| (c.id.clone(), c))
         .collect();
-    let usage = usage_by_project(db, now).await?;
+    let usage = usage_by_project(db, now, windows).await?;
     Ok(list(db, include_archived)
         .await?
         .into_iter()
         .map(|project| {
-            let (last_used, recorded_ms_30d) = usage.get(&project.id).copied().unwrap_or_default();
+            let project_usage = usage.get(&project.id).copied().unwrap_or_default();
             ProjectListItem {
                 client: project
                     .client_id
@@ -311,8 +343,9 @@ pub async fn list_items(
                     .and_then(|id| clients.get(id))
                     .cloned(),
                 project,
-                last_used,
-                recorded_ms_30d,
+                last_used: project_usage.last_used,
+                week_ms: project_usage.week_ms,
+                month_ms: project_usage.month_ms,
             }
         })
         .collect())
@@ -358,6 +391,15 @@ mod tests {
 
     fn names(projects: Vec<Project>) -> Vec<String> {
         projects.into_iter().map(|p| p.name).collect()
+    }
+
+    /// Both windows over the 30 days before `now`.
+    fn last_30_days(now: Ms) -> UsageWindows {
+        let window = (now - 30 * DAY, now);
+        UsageWindows {
+            week: window,
+            month: window,
+        }
     }
 
     #[tokio::test]
@@ -948,11 +990,13 @@ mod tests {
         )
         .await;
 
-        let items = list_items(&db, false, now).await.unwrap();
+        let items = list_items(&db, false, now, last_30_days(now))
+            .await
+            .unwrap();
 
         let summary: Vec<_> = items
             .iter()
-            .map(|i| (i.project.id.as_str(), i.last_used, i.recorded_ms_30d))
+            .map(|i| (i.project.id.as_str(), i.last_used, i.month_ms))
             .collect();
         assert_eq!(
             summary,
@@ -985,7 +1029,9 @@ mod tests {
         record(&db, &busy.id, 80 * DAY, Some(80 * DAY + HOUR / 2)).await;
         record(&db, &running.id, now - HOUR, None).await;
 
-        let items = list_items(&db, false, now).await.unwrap();
+        let items = list_items(&db, false, now, last_30_days(now))
+            .await
+            .unwrap();
 
         let summary: Vec<_> = items
             .iter()
@@ -994,7 +1040,7 @@ mod tests {
                     i.project.id.as_str(),
                     i.client.as_ref().map(|c| c.id.as_str()),
                     i.last_used,
-                    i.recorded_ms_30d,
+                    i.month_ms,
                 )
             })
             .collect();
@@ -1015,6 +1061,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_items_count_only_the_parts_of_spans_inside_each_window() {
+        let db = Db::open_memory().await.unwrap();
+        let now = 100 * DAY;
+        let windows = UsageWindows {
+            week: (90 * DAY, 97 * DAY),
+            month: (70 * DAY, 100 * DAY),
+        };
+        let busy = insert(&db, input("Busy")).await.unwrap();
+        let unused = insert(&db, input("Unused")).await.unwrap();
+        record_spans(
+            &db,
+            &busy.id,
+            &[
+                (90 * DAY - HOUR, Some(90 * DAY + 2 * HOUR)),
+                (75 * DAY, Some(75 * DAY + HOUR)),
+                (97 * DAY - HOUR, Some(97 * DAY + HOUR)),
+                (60 * DAY, Some(60 * DAY + HOUR)),
+            ],
+        )
+        .await;
+
+        let items = list_items(&db, false, now, windows).await.unwrap();
+
+        let summary: Vec<_> = items
+            .iter()
+            .map(|i| (i.project.id.as_str(), i.week_ms, i.month_ms))
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                (busy.id.as_str(), 3 * HOUR, 6 * HOUR),
+                (unused.id.as_str(), 0, 0),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_running_span_counts_to_now_clipped_to_each_window() {
+        let db = Db::open_memory().await.unwrap();
+        let now = 98 * DAY;
+        let windows = UsageWindows {
+            week: (90 * DAY, 97 * DAY),
+            month: (70 * DAY, 100 * DAY),
+        };
+        let timer = insert(&db, input("Timer")).await.unwrap();
+        record_spans(&db, &timer.id, &[(97 * DAY - 2 * HOUR, None)]).await;
+
+        let items = list_items(&db, false, now, windows).await.unwrap();
+
+        assert_eq!(
+            (items[0].week_ms, items[0].month_ms),
+            (2 * HOUR, DAY + 2 * HOUR)
+        );
+    }
+
+    #[tokio::test]
     async fn list_items_show_archived_projects_and_clients_only_when_asked() {
         let db = Db::open_memory().await.unwrap();
         let client = client(&db, "Acme").await;
@@ -1022,11 +1124,13 @@ mod tests {
         insert(&db, input("Active")).await.unwrap();
         let archived_client = clients::set_archived(&db, &client.id, true).await.unwrap();
 
-        let active = list_items(&db, false, DAY).await.unwrap();
+        let active = list_items(&db, false, DAY, last_30_days(DAY))
+            .await
+            .unwrap();
         let active_names: Vec<_> = active.iter().map(|i| i.project.name.as_str()).collect();
         assert_eq!(active_names, ["Active"]);
 
-        let all = list_items(&db, true, DAY).await.unwrap();
+        let all = list_items(&db, true, DAY, last_30_days(DAY)).await.unwrap();
         assert_eq!(all.len(), 2);
         let archived = all.iter().find(|i| i.project.id == project.id).unwrap();
         assert_eq!(archived.client, Some(archived_client));
@@ -1306,7 +1410,9 @@ mod tests {
         let project = insert(&db, input("P")).await.unwrap();
         record(&db, &project.id, 2 * HOUR, Some(3 * HOUR)).await;
 
-        let items = list_items(&db, false, 4 * HOUR).await.unwrap();
+        let items = list_items(&db, false, 4 * HOUR, last_30_days(4 * HOUR))
+            .await
+            .unwrap();
 
         assert_eq!(
             serde_json::to_value(&items[0]).unwrap(),
@@ -1323,7 +1429,8 @@ mod tests {
                 },
                 "client": null,
                 "lastUsed": 2 * HOUR,
-                "recordedMs30d": HOUR,
+                "weekMs": HOUR,
+                "monthMs": HOUR,
             })
         );
     }

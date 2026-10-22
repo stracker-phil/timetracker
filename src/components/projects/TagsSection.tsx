@@ -31,13 +31,18 @@ export function TagsSection() {
   }
 
   return (
-    <section className="projects-group" aria-label="Tags">
-      <h2 className="band">Tags</h2>
+    <section className="projects-card" aria-label="Tags">
+      <header className="client-head">
+        <span className="client-title">
+          <h2 className="client-name">Tags</h2>
+          <span className="o3">One per recording, for kinds of work across projects.</span>
+        </span>
+      </header>
       <ul className="tag-rows">
         {tags.map((tag) => (
-          <li key={tag.id} className="row">
+          <li key={tag.id} className="tag-row">
             <span className="grow-text">{tag.name}</span>
-            <span className="o2">{plural(tag.recordings, "recording", "recordings")}</span>
+            <span className="o2 tabular">{plural(tag.recordings, "recording", "recordings")}</span>
             <button type="button" className="icon-btn" aria-label={`Delete tag ${tag.name}`} title="Delete" onClick={() => remove(tag)}>
               <X size="1.077rem" />
             </button>

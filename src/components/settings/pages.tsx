@@ -78,7 +78,7 @@ function GeneralPage() {
       </Group>
       <Group title="Welcome">
         <Row label="Welcome sheet" description="What TimeTracker records, the Accessibility permission and how it starts.">
-          <button type="button" className="link-btn" onClick={showWelcomeAgain}>
+          <button type="button" className="btn" onClick={showWelcomeAgain}>
             Show welcome again
           </button>
         </Row>
@@ -201,7 +201,7 @@ function FolderGroup({ info, onMoved }: { info: DataInfo; onMoved: () => void })
 function CountRow({ label, value }: { label: string; value: string }) {
   return (
     <Row label={label}>
-      <span className="mono selectable">{value}</span>
+      <span className="tabular selectable">{value}</span>
     </Row>
   );
 }

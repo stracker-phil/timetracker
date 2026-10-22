@@ -8,9 +8,8 @@ import { TagPicker } from "../../components/pickers/TagPicker";
 import { formatClock, formatDuration, MINUTE_MS } from "../../lib/format";
 import { spansText } from "../../lib/recordings";
 import { applyAppearance, systemIsDark } from "../../lib/theme";
+import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
-
-const DAY_MS = 24 * 60 * MINUTE_MS;
 
 const REASONS: Record<AwayReason, string> = { idle: "idle", sleep: "asleep", lock: "locked", paused: "paused" };
 
@@ -80,8 +79,9 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
   const ids = { start: useId(), end: useId(), note: useId() };
 
   const projectId = picked === undefined ? lastProjectId : picked;
-  // An end at or before the start is on the next day.
-  const end = endValue > start ? endValue : endValue + DAY_MS;
+  // Rust rolls an end at or before the start to the next day.
+  const draftSpans = () => api.recordingDraftSpans([{ start, end: endValue }]);
+  const { data: draft } = useApiResult(`away-span:${start}-${endValue}`, draftSpans, { keepData: true });
 
   async function record() {
     if (!projectId) {
@@ -92,7 +92,8 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
     setFailure(null);
     setSaving(true);
     try {
-      await api.awayPromptAnswer({ projectId, spans: [{ start, end }], note: note.trim(), tagId });
+      const { spans } = await draftSpans();
+      await api.awayPromptAnswer({ projectId, spans, note: note.trim(), tagId });
     } catch (e) {
       const failed = answerFailure(toAppError(e), projects);
       if (failed.kind === "gone") onGone();
@@ -117,14 +118,14 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
       <FormField label="Project" error={errors.projectId}>
         <ProjectPicker value={projectId} autoFocus onChange={setPicked} />
       </FormField>
-      <div className="recording-times">
+      <div className="away-times">
         <FormField label="From" htmlFor={ids.start} error={errors.start}>
           <TimeField id={ids.start} value={start} step={step} onChange={setStart} />
         </FormField>
         <FormField label="To" htmlFor={ids.end} error={errors.end}>
           <TimeField id={ids.end} value={endValue} step={step} onChange={setEndValue} />
         </FormField>
-        <span className="recording-length mono o2">{formatDuration(end - start)}</span>
+        {draft && <span className="away-length o2">{formatDuration(draft.totalMs)}</span>}
       </div>
       <FormField label="Note" htmlFor={ids.note} error={errors.note}>
         <NoteInput id={ids.note} maxLength={500} value={note} onChange={setNote} />
@@ -163,14 +164,13 @@ function NothingToRecord() {
 }
 
 function PromptBody({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
-  const { span, suggested } = prompt;
-  const end = span.end ?? suggested.end;
+  const { span } = prompt;
   return (
     <>
       <header>
-        <h1>You were away {formatDuration(end - span.start)}</h1>
-        <p className="o2 mono">
-          {formatClock(span.start)}–{formatClock(end)} · {REASONS[span.reason]}
+        <h1>You were away {formatDuration(prompt.awayMs)}</h1>
+        <p className="o2 tabular">
+          {formatClock(span.start)}–{formatClock(prompt.endedAt)} · {REASONS[span.reason]}
         </p>
       </header>
       <AwayForm key={span.id} prompt={prompt} onGone={onGone} />

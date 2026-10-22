@@ -7,7 +7,7 @@ use super::AwayPromptState;
 
 pub const LABEL: &str = "away";
 const URL: &str = "src/windows/away/index.html";
-const SIZE: (f64, f64) = (420.0, 380.0);
+const SIZE: (f64, f64) = (420.0, 430.0);
 
 pub fn is_open(app: &AppHandle) -> bool {
     app.get_webview_window(LABEL).is_some()

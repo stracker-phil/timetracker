@@ -24,6 +24,7 @@ export function PromptDialog({ title, label, initial, confirmLabel, onSubmit }: 
     <Modal onClose={close} labelledBy="prompt-title">
       <h2 id="prompt-title">{title}</h2>
       <form
+        className="form-contents"
         onSubmit={(e) => {
           e.preventDefault();
           submit();

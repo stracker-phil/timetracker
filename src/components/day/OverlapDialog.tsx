@@ -24,7 +24,7 @@ export function OverlapDialog({ recordings, onReplace, onCancel }: Props) {
       <ul className="overlap-list">
         {recordings.map((r) => (
           <li key={r.id}>
-            <span className="mono">{spansText(r.spans)}</span> {nameOf(r.projectId)}
+            <span className="tabular">{spansText(r.spans)}</span> {nameOf(r.projectId)}
             {r.note && <span className="o2"> · {r.note}</span>}
           </li>
         ))}

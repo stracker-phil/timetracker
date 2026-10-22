@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Search } from "lucide-react";
 import { allCommands, bindingFor, bindingFromEvent, bindingLabel, conflicts, scopeLabel } from "../../commands";
 import { useStore } from "../../state/store";
+import { InsetField } from "../Field";
 import { Group, Row } from "./controls";
 
 function ShortcutField({ value, onChange }: { value: string | null; onChange: (binding: string | null) => void }) {
@@ -67,7 +68,9 @@ export function ShortcutsPage() {
   };
   return (
     <>
-      <input className="input settings-search" aria-label="Search shortcuts" placeholder="Search commands…" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <InsetField icon={<Search size="1.077rem" />} className="settings-search">
+        <input aria-label="Search shortcuts" placeholder="Search commands" value={search} onChange={(e) => setSearch(e.target.value)} />
+      </InsetField>
       {clashes.length > 0 && (
         <div className="shortcut-conflicts" role="alert">
           {clashes.map((c) => (

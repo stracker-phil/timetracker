@@ -1,17 +1,33 @@
-/* ---------- projects ---------- */
-.projects-page { flex: 1; overflow: auto; padding: var(--space-4) var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
+/* ---------- projects: a card per client, then the tags ---------- */
+.projects-page { flex: 1; overflow: auto; padding: var(--space-4) var(--space-6) var(--space-8); display: flex; flex-direction: column; gap: var(--space-5); }
 .projects-head { display: flex; align-items: center; gap: var(--space-2); }
 .projects-head h1 { margin: 0 auto 0 0; font-size: var(--fs-title); font-weight: 600; }
-.projects-archived { display: flex; align-items: center; gap: 0.462rem; color: var(--o2); }
-/* A section header band (docs/ux.md, Rows): the client's name over its projects. */
-.band { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--pad) var(--space-2); background: var(--band); border-radius: 5px; font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }
-.band-button { border: none; background: none; padding: 0; font: inherit; color: inherit; }
-.band-button:hover { color: var(--text); }
-.band-add { margin-left: auto; }
+.projects-archived { display: flex; align-items: center; gap: var(--space-2); margin-right: var(--space-2); color: var(--o2); }
+
+.projects-card { background: var(--pop); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--space-2) var(--space-4) var(--space-3); }
+/* The head and every row share the columns: the name, this week, this month, then + or Restore. */
+.client-head, .project-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 5.5rem 5.5rem 5.5rem; align-items: center; column-gap: var(--space-3);
+}
+.client-head { min-height: 2.769rem; padding: var(--space-1) 0 var(--space-2); }
+.client-title { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.client-name { display: flex; align-items: center; gap: var(--space-2); min-width: 0; margin: 0; font-size: var(--fs-body); font-weight: 600; color: var(--text-strong); }
+.client-name .accent-dot { width: 0.923rem; height: 0.923rem; border-radius: var(--radius-sm); }
+.client-edit { min-width: 0; padding: 0; border: none; background: none; font: inherit; color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.client-edit:hover { color: var(--accent-text); }
+.client-column { font-size: var(--fs-meta); font-weight: 500; color: var(--o2); text-align: right; }
+.project-row-end { display: flex; justify-content: flex-end; }
+
 .project-rows, .tag-rows { list-style: none; margin: 0; padding: 0; }
-.row { display: flex; align-items: center; gap: 0.769rem; min-height: var(--row-h); padding: 0 var(--space-2); border-bottom: 1px solid var(--line); }
-.row:hover { background: var(--row-hover); }
-.project-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); border: none; background: none; padding: 0; font: inherit; color: var(--text); text-align: left; }
-.project-meta { display: flex; gap: 1.077rem; font-size: var(--data-font-size); }
-.project-none { margin: 0.462rem var(--space-2); }
+.project-row, .tag-row { min-height: 2.462rem; padding: var(--space-1) var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-radius: var(--radius-sm); }
+.project-row + .project-row, .tag-row + .tag-row { box-shadow: inset 0 1px 0 var(--line); }
+.project-row:hover, .tag-row:hover { background: var(--row-hover); }
+.project-name { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.project-open { min-width: 0; display: flex; align-items: center; gap: var(--space-2); border: none; background: none; padding: 0; font: inherit; font-weight: 500; color: var(--text); text-align: left; }
+.project-open .accent-dot { width: 0.769rem; height: 0.769rem; }
+.project-last-used { flex: none; font-size: var(--fs-meta); white-space: nowrap; }
+.project-hours { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
+.project-none { margin: 0 0 var(--space-2); }
+
+.tag-row { display: flex; align-items: center; gap: var(--space-3); }
 .tag-add { margin-top: var(--space-2); max-width: 20rem; }

@@ -17,7 +17,7 @@ function ConfirmDialog({ title, message, confirmLabel, onConfirm }: { title: str
   return (
     <Modal onClose={close} labelledBy="confirm-title">
       <h2 id="confirm-title">{title}</h2>
-      <p className="muted" style={{ margin: 0 }}>{message}</p>
+      <p className="muted">{message}</p>
       <div className="actions">
         <button className="btn" onClick={close}>Cancel</button>
         <button

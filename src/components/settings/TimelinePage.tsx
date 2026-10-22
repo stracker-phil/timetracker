@@ -28,7 +28,7 @@ function AppSwitch({ label, checked, onChange }: { label: string; checked: boole
 function AppRow({ app, override }: { app: KnownApp; override: AppOverride | undefined }) {
   const set = (patch: AppSettingPatch) => void useStore.getState().setAppSetting(app.appKey, patch);
   return (
-    <Row label={app.app} icon={<AppIcon app={app.app} bundleId={app.appKey} />} description={<span className="mono">{app.totalMs > 0 ? formatHm(app.totalMs) : app.appKey}</span>} stacked>
+    <Row label={app.app} icon={<AppIcon app={app.app} bundleId={app.appKey} />} description={app.totalMs > 0 ? <span className="tabular">{formatHm(app.totalMs)}</span> : <span className="mono">{app.appKey}</span>} stacked>
       <div className="app-controls">
         <span className="o3">Group by app</span>
         <SegmentedControl

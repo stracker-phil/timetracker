@@ -23,7 +23,7 @@ function ListRowDetails({ row }: { row: Row }) {
         </>
       )}
       <dt>Spans</dt>
-      <dd className="mono">{spansText(row.spans)}</dd>
+      <dd className="tabular">{spansText(row.spans)}</dd>
     </dl>
   );
 }
@@ -69,7 +69,7 @@ export function ListRow({ row, focused, open, dragging, onPointerDown, onKeyDown
           {row.label}
         </button>
         {where && <span className="list-where mono o3">{where}</span>}
-        <span className="list-total mono">
+        <span className="list-total">
           <span>
             {formatHm(row.totalMs)}
             {row.spans.length > 1 && <span className="o3"> · {row.spans.length} spans</span>}

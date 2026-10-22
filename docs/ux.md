@@ -15,8 +15,8 @@ registries, CSS structure): [frontend.md](frontend.md#styling).
   only suggests.
 - Fully keyboard-usable, light and dark. Every action is a command with a rebindable shortcut and a palette
   entry.
-- Geist for all text, titles included; mono only for times and durations (tabular figures), and for machine
-  text such as paths, URLs and commands.
+- Geist for all text, titles included; times, durations and counts in tabular figures (`.tabular`); mono only
+  for machine text such as paths, URLs, ids and commands.
 - Hierarchy comes from weight, opacity and space: a strong title, then a normal subtitle, then meta in
   `--o2`. Recordings are filled cards in their project's color; activity is a soft grey surface.
 - The accent marks interactive things only: keys, links, focus, selection. A client's color is one of the
@@ -152,7 +152,7 @@ Settings → Appearance "UI font" and "Mono font" take any installed family name
 | `--fs-meta` | 12px | meta lines, labels, descriptions, counts, the status bar |
 | `--fs-caption` | 11px | hour labels, key caps |
 
-Times and durations are mono at `--data-font-size` (12px). Both sizes are settings: Appearance "UI size"
+Times and durations use tabular figures; `--data-font-size` (12px) sizes data values such as activity titles. Both sizes are settings: Appearance "UI size"
 (13px, 10–24) and "Data size" (12px, 9–28); ⌘= and ⌘- zoom both, except in the Day view, where they zoom
 the timeline. Chrome sizes are in rem of the UI size. Weights 400, 500 and 600. Numbers and times use
 tabular figures. Durations read `1 h 05 min` (`formatDuration`), clock times `09:30` (`formatClock`).
@@ -190,9 +190,10 @@ and below, a 1px `--line` hairline below, `--row-hover` on hover, `--sel` when s
 2px more padding, an 8px inset and a 6px radius; the active one is `--sidebar-selected` with its label in
 `--sidebar-strong` (500) and its icon in the accent.
 
-Lists grouped under a heading (the clients on the Projects screen) use a section header band: `--band`
-background, small semibold `--o2` text, 5px radius. Archived rows are dimmed (55% opacity) and keep a
-Restore action. A client band and a project row start with a color dot (`AccentDot`, a project's in its shade);
+Lists grouped under a heading sit on a card (`--pop`, a `--line` border, `--radius-lg`): the Projects screen
+has one per client and one for the tags, its head the client's rounded color swatch and name (600), and
+rows separated by hairlines that take `--row-hover` with `--radius-sm`. Archived rows are dimmed (55%
+opacity) and keep a Restore action. A project row starts with a color dot (`AccentDot`, in its shade);
 a billable project carries a small `billable` badge after its name. The project sheet has a Billable switch
 (a plain yes/no; there are no rates or amounts).
 Colors are chosen with nine round swatches (`AccentSwatches` for a hue, `ShadeSwatches` for a shade), the
@@ -372,16 +373,19 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 ## Away prompt
 
 - After an away span of at least the set minutes (Settings → Tracker; not after a pause), a small sheet on
-  `--pop` opens on top of everything: `You were away 42 min`, `12:03–12:45 · idle` (asleep, locked), then
-  project (the last used one), From and To (snapped), note, tag, and Record (↵) / Skip (Escape).
+  `--pop` with `--radius-lg` opens on top of everything: `You were away 42 min` in `--fs-title`,
+  `12:03–12:45 · idle` (asleep, locked), then project (the last used one), From and To side by side with the
+  length beside them (snapped), note, tag, and Record (↵) / Skip (Escape). A failure reads in red on a light
+  red tint above the buttons.
 - A recording in the way reads `A recording already covers 12:10–12:30 (Project)` above the buttons; the
   form stays, so the times can change. The sheet stays open when another app takes focus.
 
 ## List view
 
-- ⌘⇧L or Day mode → List shows the day as rows grouped like the timeline, longest first: app in `--o2`, the
-  label, URL or path below, the duration right with a thin covered bar (the accent over `--line`) and
-  `· 3 spans` when the activity came in parts. The timesheet with its cards stays on the left, as in the
+- ⌘⇧L or Day mode → List shows the day as rows grouped like the timeline, longest first: the app's icon and
+  name in `--o2`, the label (500), the URL or path (mono, `--o3`), the duration right (tabular) with a thin
+  covered bar (the accent over `--line`) and `· 3 spans` when the activity came in parts. Rows are separated
+  by hairlines and take `--row-hover` with rounded corners. The search is an inset field with its `/` key cap. The timesheet with its cards stays on the left, as in the
   timeline.
 - A strip of project chips (recent first, More… for the rest), each filled like a recording card, sits above
   the rows. Drag a row onto a chip
@@ -426,18 +430,44 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   recorded today continues that recording with a new span. The menu bar item's title reads `⏱ 1:23 Acme` while it runs, and the
   status bar shows `⏱ Acme 1:23` (a click stops it).
 - The picker (⌘⇧T from any app, ⌘T in the window, Start Timer… in the tray) is a small floating panel on
-  `--pop` under the tray icon: project, note, tag, Start (↵), Cancel (Escape), and the recent timers below.
-  While a timer runs it shows the timer with Stop and "Start another…". It hides when it loses focus.
+  `--pop` with `--radius-lg` under the tray icon: "Start timer", project, note, tag, Start (↵), Cancel
+  (Escape), and below a hairline the "Recent" timers as rows with their project's dot. While a timer runs it
+  shows the project and the elapsed time large, the note, Stop and "Start another…". It hides when it loses
+  focus.
 
 ## Week and Month
 
-- **Week**: the time axis and seven day columns (`--lane-min-w` like lanes); each head shows `Mon 20` and the
-  day's recorded hours, today's in accent text; today's column has a faint tint. Recordings drag as in the
+- **Week**: the time axis and seven day columns; each head shows the weekday (`--o2`) over the date in
+  `--fs-title` semibold and the day's recorded hours on the right; today's weekday is accent text and its date
+  sits in an accent circle with `--on-accent`. Today's column has a faint accent tint, Saturday and Sunday a
+  `--bg-quiet` one. Recordings drag as in the
   Day view; a span dropped on another column moves there, with ⌥ it is copied as a new recording. A double-click on
   an empty spot records an hour there, in the editor as a sheet. The header totals read `recorded 32:10 · tracked 41:05`.
-- **Month**: a calendar of whole weeks; each day a cell with its number (`--o3` outside the month, accent
-  on today), the recorded hours in mono, and a 3 px strip along the bottom of the three projects with the
-  most time, as wide as their shares. A click opens the day.
+- **Month**: a calendar of whole weeks, cells divided by `--line` hairlines, weekends on `--bg-quiet`; each
+  cell has its number at the top right (`--o3` outside the month, today's in an accent circle), the recorded
+  hours at the top left (`--o2`, tabular), and below a small bar for each of the three projects with the
+  most time, filled like its recordings with the project's name (the hours in its tooltip). Days outside the
+  month are dimmed. A click opens the day.
+- Both headers read the period's label and its totals, `recorded 32:10 · tracked 41:05` (Month: recorded).
+
+## Projects
+
+- A header with Show archived, New client and New project (primary). Below, one card per client (by name;
+  client-less projects under "No client" last): the head has the client's swatch, its name (a click edits
+  it), `3 projects` in `--o3`, the column labels This week and This month, and + for a new project of that
+  client. Each project row: its dot, the name (a click edits it), `billable`, `last used 2 d ago` in `--o3`,
+  then the hours this week and this month as `3:20` (tabular, `--o3` at zero; Rust computes both for the
+  current week and month). Right-click: Edit…, Archive or Restore, Copy id. The tags follow on a card of
+  their own.
+
+## Settings
+
+- A panel with the page list on `--chrome` (the current page on `--sel`, its icon in the accent) and the page
+  on `--bg`: the title in `--fs-title`, the intro in `--o2`, then groups. A group heading is small semibold
+  `--o2` text over its card (`--pop`, `--radius-card`); each row has the label and its description (`--o2`)
+  on the left and the control on the right, hairlines between rows. Counts and durations use tabular
+  figures; paths, bundle ids and commands are mono and selectable. A failure reads in red on a light red
+  tint.
 
 ## Reports
 

@@ -20,15 +20,18 @@ export function mondayOf(day: string): string {
   return shift(day, -((parse(day).getDay() + 6) % 7));
 }
 
-/** One day of a week; `patch` overrides fields. `label` defaults to `Tue 10`. */
+/** One day of a week; `patch` overrides fields. `weekday`, `dayOfMonth` and `isWeekend` default from the day. */
 export function dayColumn(patch: Partial<DayColumn> = {}): DayColumn {
   const day = patch.day ?? DAY;
   const date = parse(day);
+  const weekday = WEEKDAYS[(date.getDay() + 6) % 7];
   return {
     day,
     bounds: dayBounds(day),
-    label: `${WEEKDAYS[(date.getDay() + 6) % 7]} ${date.getDate()}`,
+    weekday,
+    dayOfMonth: date.getDate(),
     isToday: false,
+    isWeekend: date.getDay() === 0 || date.getDay() === 6,
     recordings: [],
     totalMs: 0,
     trackedMs: 0,
@@ -56,7 +59,9 @@ export function weekView(patch: Partial<WeekView> & { today?: string } = {}): We
 
 /** A calendar cell without recordings; `patch` overrides fields. */
 export function monthDay(patch: Partial<MonthDay> = {}): MonthDay {
-  return { day: DAY, inMonth: true, isToday: false, recordedMs: 0, projects: [], ...patch };
+  const day = patch.day ?? DAY;
+  const date = parse(day);
+  return { day, dayOfMonth: date.getDate(), inMonth: true, isToday: false, isWeekend: date.getDay() === 0 || date.getDay() === 6, recordedMs: 0, projects: [], ...patch };
 }
 
 /**

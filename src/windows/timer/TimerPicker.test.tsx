@@ -98,6 +98,7 @@ describe("TimerPicker", () => {
       mocked.timersRecent.mockResolvedValue([recentTimer({ projectId: "p-site", note: "standup", tagId: "tag-admin" }), recentTimer({ projectId: "p-docs", projectName: "Docs" })]);
       renderPicker();
       expect(await screen.findByRole("button", { name: "Docs" })).toBeInTheDocument();
+      expect(screen.getByText("Recent")).toBeInTheDocument();
       await userEvent.click(screen.getByRole("button", { name: "Website · standup" }));
       expect(mocked.timerStart).toHaveBeenCalledWith("p-site", "standup", "tag-admin");
       await vi.waitFor(() => expect(mocked.timerPickerClose).toHaveBeenCalled());
@@ -107,6 +108,7 @@ describe("TimerPicker", () => {
       renderPicker();
       await screen.findByRole("heading", { name: "Start timer" });
       expect(screen.queryByRole("list", { name: "Recent timers" })).not.toBeInTheDocument();
+      expect(screen.queryByText("Recent")).not.toBeInTheDocument();
     });
   });
 

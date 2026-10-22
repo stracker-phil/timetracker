@@ -93,6 +93,10 @@ export type AwayBlock = { id: number, start: number, end: number, reason: AwayRe
 
 export type AwayPrompt = { span: AwayRow, 
 /**
+ * The span's end; prompts are only made for closed spans.
+ */
+endedAt: number, awayMs: number, 
+/**
  * The span snapped as a recording would be.
  */
 suggested: Span, };
@@ -219,11 +223,7 @@ export type DayApp = { appKey: string, app: string, bundleId: string | null,
  */
 activeMs: number, ownLane: boolean, };
 
-export type DayColumn = { day: Day, bounds: [number, number], 
-/**
- * `Mon 20`.
- */
-label: string, isToday: boolean, recordings: Array<RecordingBlock>, totalMs: number, trackedMs: number, };
+export type DayColumn = { day: Day, bounds: [number, number], weekday: string, dayOfMonth: number, isToday: boolean, isWeekend: boolean, recordings: Array<RecordingBlock>, totalMs: number, trackedMs: number, };
 
 /**
  * How the Day view shows the day.
@@ -381,7 +381,7 @@ exposeActivity: boolean, };
  */
 export type MenuState = { enabled: Array<string>, checked: Array<string>, };
 
-export type MonthDay = { day: Day, inMonth: boolean, isToday: boolean, recordedMs: number, 
+export type MonthDay = { day: Day, dayOfMonth: number, inMonth: boolean, isToday: boolean, isWeekend: boolean, recordedMs: number, 
 /**
  * The projects with the most time that day, most first.
  */
@@ -473,11 +473,15 @@ export type ProjectListItem = { project: Project, client: Client | null,
  */
 lastUsed: number | null, 
 /**
- * Recorded time in the 30 days before now; a running recording counts until now.
+ * Recorded time this week, Monday to Sunday; a running recording counts until now.
  */
-recordedMs30d: number, };
+weekMs: number, 
+/**
+ * Recorded time this month, likewise.
+ */
+monthMs: number, };
 
-export type ProjectShare = { projectId: string, color: string, shade: number, ms: number, };
+export type ProjectShare = { projectId: string, name: string, color: string, shade: number, ms: number, };
 
 /**
  * Presets stay relative, so a saved "this month" report shows the current month.

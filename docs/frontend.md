@@ -300,7 +300,9 @@ buttons in `DayHeader`, or ⌘⇧L `day.toggleList`; `viewState.setDayMode` pers
 
 `windows/away/AwayPrompt.tsx`, the `away` window's page. It loads settings, projects and
 `awayPromptCurrent` on mount and on focus, and refills from `away_prompt_changed` (the form is keyed by the
-span, so a refresh of the same span keeps what was typed). Record sends `awayPromptAnswer`; an `overlap`
+span, so a refresh of the same span keeps what was typed). The header shows `awayMs` and `endedAt`; From and
+To go through `recordingDraftSpans`, which rolls an end at or before the start to the next day and gives the
+length. Record sends the drafted spans with `awayPromptAnswer`; an `overlap`
 shows which recordings are in the way and keeps the form; Escape or Skip sends `awayPromptSkip`. It has no
 toasts: unexpected errors are logged and shown inline. Settings → Tracker has the away prompt's switch and
 its minimum length.
@@ -324,14 +326,16 @@ position) and their writes; a `data_changed` of kind `rules` reloads them.
 ### Week and Month
 
 `components/calendar/`: `CalendarHeader` (the title, totals). `WeekView` runs `weekView(day)` keyed
-by the day and `changeCount`: day heads (label and total; a click opens the day) over a `TimeAxis` and seven
+by the day and `changeCount`: day heads (`DayHead`: weekday, the date large, today's in an accent circle,
+and the day's recorded `h:mm`; a click opens the day) over a `TimeAxis` and seven
 columns that place each day's `RecordingBlock`s from the column's bounds. A block keeps its vertical move
 and resize; released over another column (`onDrop`, found with `elementFromPoint`) its span moves there, with ⌥
 it is copied as a new recording (`moveRecording`/`copyRecording` with the block's `spanId`, in the `recordings`
 slice, which ask about overlaps like every write). A double-click on an empty spot opens the editor for an hour from there,
 as a `Modal` sheet around `RecordingEditor` (the Week view has no timesheet). `MonthView` runs
-`monthView(day)`: a seven-column grid of `DayCell`s (day number, recorded `h:mm`, a 3 px strip of the top
-three projects' shades by time); a click opens the day.
+`monthView(day)`: a seven-column grid of `DayCell`s (the day number, today's in an accent circle, the recorded
+`h:mm`, and a bar per top project, filled like its recordings with its name); a click opens the day.
+Weekend columns and cells (`isWeekend`) sit on `--bg-quiet`.
 
 The editor's `edit` request may carry `at` (a span of the recording), so views other than the Day view open it.
 
@@ -356,12 +360,14 @@ lists saved reports under Reports: a click opens one, right-click renames (promp
 
 ### Projects screen
 
-`components/projects/`: `ProjectsPage` (the `projects` view): a header (New project, New client, Show
-archived), a band per client by name with its color dot (every client, "No projects" when empty; clicking
-the name edits the client; a `+` creates a project for that client, except on archived clients),
-client-less projects under "No client" last, then `TagsSection`. A project row: color dot and name (click
-edits), a `billable` badge for a billable project, `last used 2 d ago` and `12:30 h / 30 d` in mono `--o2`; archived rows (with Show archived) are
-dimmed with Restore. The row's context menu: Edit…, Archive or Restore, Copy id.
+`components/projects/`: `ProjectsPage` (the `projects` view; it reloads the projects on `changeCount`, so the
+hours follow every recording): a header (Show archived, New client, New project), then a card per client by
+name (`ClientHead`: its color swatch, the name, which edits the client, the number of projects, the labels
+This week and This month, and a `+` that creates a project for that client, except on archived clients;
+"No projects" when empty), client-less projects under "No client" last, then `TagsSection` as a card. A
+project row: color dot and name (click edits), a `billable` badge for a billable project, `last used 2 d
+ago`, then `weekMs` and `monthMs` as `h:mm` in two right-aligned columns (`--o3` at zero); archived rows
+(with Show archived) are dimmed with Restore. The row's context menu: Edit…, Archive or Restore, Copy id.
 
 - `ProjectSheet` (`dialog: project`, an optional `clientId` preselects the client): name, client select
   with "New client…" (an inline name; Save creates the client first), the color (`AccentSwatches`, only
@@ -370,7 +376,7 @@ dimmed with Restore. The row's context menu: Edit…, Archive or Restore, Copy i
   under their field.
 - `ClientSheet` (`dialog: client`): name, color (none pressed on a new client lets Rust pick); Archive
   (also archives its projects) or Restore.
-- `TagsSection`: one row per tag (name in mono, the number of recordings, delete; a confirm first when
+- `TagsSection`: one row per tag (name, the number of recordings, delete; a confirm first when
   recordings carry it) and a New tag field (Enter).
 
 ### Pickers

@@ -144,32 +144,38 @@ describe("App", () => {
   describe("projects", () => {
     const website = projectItem({ project: { id: "p-site", name: "Website" } });
 
+    beforeEach(() => {
+      mocked.projectsList.mockResolvedValue([]);
+      mocked.tagsList.mockResolvedValue([]);
+    });
+
     it("loads the projects on boot", async () => {
-      mocked.projectsList.mockResolvedValueOnce([website]);
+      mocked.projectsList.mockResolvedValue([website]);
       await renderApp({ view: "projects" });
       expect(await screen.findByRole("button", { name: "Website" })).toBeInTheDocument();
     });
 
     it("reloads the projects when projects changed", async () => {
       await renderApp({ view: "projects" });
-      mocked.projectsList.mockResolvedValueOnce([website]);
+      mocked.projectsList.mockResolvedValue([website]);
       act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "projects", day: null }));
       expect(await screen.findByRole("button", { name: "Website" })).toBeInTheDocument();
     });
 
     it("reloads the tags when tags changed", async () => {
       await renderApp({ view: "projects" });
-      mocked.tagsList.mockResolvedValueOnce([tag({ name: "billing" })]);
+      mocked.tagsList.mockResolvedValue([tag({ name: "billing" })]);
       act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "tags", day: null }));
       expect(await screen.findByText("billing")).toBeInTheDocument();
     });
 
-    it("leaves the projects alone when other data changed", async () => {
+    it("shows the new hours on the Projects page when recordings changed", async () => {
+      mocked.projectsList.mockResolvedValue([projectItem({ project: { id: "p-site", name: "Website" }, weekMs: 3_600_000 })]);
       await renderApp({ view: "projects" });
-      mocked.projectsList.mockClear();
+      expect(await screen.findByTitle("This week: 1:00 h")).toBeInTheDocument();
+      mocked.projectsList.mockResolvedValue([projectItem({ project: { id: "p-site", name: "Website" }, weekMs: 7_200_000 })]);
       act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "recordings", day: null }));
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(mocked.projectsList).not.toHaveBeenCalled();
+      expect(await screen.findByTitle("This week: 2:00 h")).toBeInTheDocument();
     });
 
     it("opens the new project sheet with ⌘N in the Projects view", async () => {

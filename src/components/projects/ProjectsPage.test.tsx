@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,7 +20,11 @@ const solo = projectItem({ project: { id: "p-solo", name: "Solo work" } });
 const old = projectItem({ project: { id: "p-old", name: "Legacy", clientId: acme.id, archivedAt: 5 }, client: acme });
 
 function renderPage(store: Parameters<typeof projectsStore>[0]) {
-  resetStore(projectsStore(store));
+  const patch = projectsStore(store);
+  mocked.projectsList.mockResolvedValue(patch.projects ?? []);
+  mocked.clientsList.mockResolvedValue(patch.clients ?? []);
+  mocked.tagsList.mockResolvedValue(patch.tags ?? []);
+  resetStore(patch);
   render(
     <>
       <ProjectsPage />
@@ -61,11 +65,23 @@ describe("ProjectsPage", () => {
   });
 
   describe("project rows", () => {
-    it("shows when the project was last used and the recorded time of 30 days", () => {
-      const item = projectItem({ project: { name: "Retainer" }, lastUsed: Date.now() - 2 * 86_400_000, recordedMs30d: 45_000_000 });
+    it("shows when the project was last used", () => {
+      const item = projectItem({ project: { name: "Retainer" }, lastUsed: Date.now() - 2 * 86_400_000 });
       renderPage({ projects: [item] });
       expect(screen.getByText("last used 2 d ago")).toBeInTheDocument();
-      expect(screen.getByText("12:30 h / 30 d")).toBeInTheDocument();
+    });
+
+    it("shows the hours of this week and this month", () => {
+      const item = projectItem({ project: { name: "Retainer" }, weekMs: 5_400_000, monthMs: 45_000_000 });
+      renderPage({ projects: [item] });
+      expect(screen.getByTitle("This week: 1:30 h")).toHaveTextContent("1:30");
+      expect(screen.getByTitle("This month: 12:30 h")).toHaveTextContent("12:30");
+    });
+
+    it("shows zero hours for a project without recordings", () => {
+      renderPage({ projects: [projectItem()] });
+      expect(screen.getByTitle("This week: 0:00 h")).toHaveTextContent("0:00");
+      expect(screen.getByTitle("This month: 0:00 h")).toHaveTextContent("0:00");
     });
 
     it("badges a billable project only", () => {
@@ -80,7 +96,31 @@ describe("ProjectsPage", () => {
     it("omits last used for a project that was never recorded", () => {
       renderPage({ projects: [projectItem()] });
       expect(screen.queryByText(/last used/)).not.toBeInTheDocument();
-      expect(screen.getByText("0:00 h / 30 d")).toBeInTheDocument();
+    });
+
+    it("reloads the hours when recordings change", async () => {
+      const recorded = (weekMs: number) => projectItem({ project: { id: "p-site", name: "Website" }, weekMs });
+      renderPage({ projects: [recorded(3_600_000)] });
+      expect(await screen.findByTitle("This week: 1:00 h")).toBeInTheDocument();
+      mocked.projectsList.mockResolvedValue([recorded(7_200_000)]);
+      act(() => useStore.getState().dataChanged({ kind: "recordings", day: "2026-03-10" }));
+      expect(await screen.findByTitle("This week: 2:00 h")).toBeInTheDocument();
+      expect(screen.queryByTitle("This week: 1:00 h")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("client band head", () => {
+    it("labels the hours columns and counts the projects", () => {
+      renderPage({ projects: [site, projectItem({ project: { id: "p-two", name: "Intranet", clientId: acme.id }, client: acme })], clients: [acme] });
+      const band = within(screen.getByRole("region", { name: "Acme" }));
+      expect(band.getByText("This week")).toBeInTheDocument();
+      expect(band.getByText("This month")).toBeInTheDocument();
+      expect(band.getByText("2 projects")).toBeInTheDocument();
+    });
+
+    it("uses the singular for one project", () => {
+      renderPage({ projects: [site], clients: [acme] });
+      expect(within(screen.getByRole("region", { name: "Acme" })).getByText("1 project")).toBeInTheDocument();
     });
   });
 

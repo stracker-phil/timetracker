@@ -35,7 +35,7 @@ function ToastItem({ toast }: { toast: Toast }) {
       </span>
       {toast.action && (
         <button
-          className="link-btn"
+          className="link-btn toast-action"
           onClick={() => {
             dismiss(toast.id);
             toast.action?.run();
@@ -44,7 +44,7 @@ function ToastItem({ toast }: { toast: Toast }) {
           {toast.action.label}
         </button>
       )}
-      <button className="icon-btn" style={{ width: "1.385rem", height: 18 }} aria-label="Dismiss" onClick={() => dismiss(toast.id)}>
+      <button className="icon-btn tiny" aria-label="Dismiss" onClick={() => dismiss(toast.id)}>
         <X size="0.923rem" />
       </button>
     </div>

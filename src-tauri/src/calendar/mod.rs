@@ -6,7 +6,7 @@ pub mod period;
 
 use std::collections::HashMap;
 
-use chrono::{Days, Months};
+use chrono::{Datelike, Days, Months, Weekday};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -36,9 +36,10 @@ pub struct WeekView {
 pub struct DayColumn {
     pub day: Day,
     pub bounds: (Ms, Ms),
-    /// `Mon 20`.
-    pub label: String,
+    pub weekday: String,
+    pub day_of_month: u32,
     pub is_today: bool,
+    pub is_weekend: bool,
     pub recordings: Vec<RecordingBlock>,
     pub total_ms: i64,
     pub tracked_ms: i64,
@@ -62,8 +63,10 @@ pub struct MonthView {
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct MonthDay {
     pub day: Day,
+    pub day_of_month: u32,
     pub in_month: bool,
     pub is_today: bool,
+    pub is_weekend: bool,
     pub recorded_ms: i64,
     /// The projects with the most time that day, most first.
     pub projects: Vec<ProjectShare>,
@@ -74,6 +77,7 @@ pub struct MonthDay {
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct ProjectShare {
     pub project_id: String,
+    pub name: String,
     pub color: String,
     pub shade: u8,
     pub ms: i64,
@@ -110,14 +114,20 @@ fn add_days(day: Day, days: u64) -> Day {
     Day::from_date(day.date() + Days::new(days))
 }
 
+fn is_weekend(day: Day) -> bool {
+    matches!(day.date().weekday(), Weekday::Sat | Weekday::Sun)
+}
+
 fn column(day: Day, input: &CalendarInput) -> DayColumn {
     let bounds = day.bounds();
     let recordings = recording_blocks(&input.recordings, &input.names, bounds, input.now);
     DayColumn {
         day,
         bounds,
-        label: day.date().format("%a %-d").to_string(),
+        weekday: day.date().format("%a").to_string(),
+        day_of_month: day.date().day(),
         is_today: day == input.today,
+        is_weekend: is_weekend(day),
         total_ms: recordings.iter().map(|r| r.end - r.start).sum(),
         tracked_ms: tracked_ms(&input.activities, bounds, input.now),
         recordings,
@@ -162,8 +172,10 @@ fn month_day(day: Day, first: Day, input: &CalendarInput) -> MonthDay {
     let blocks = recording_blocks(&input.recordings, &input.names, day.bounds(), input.now);
     MonthDay {
         day,
+        day_of_month: day.date().day(),
         in_month: day.month_start() == first,
         is_today: day == input.today,
+        is_weekend: is_weekend(day),
         recorded_ms: blocks.iter().map(|b| b.end - b.start).sum(),
         projects: project_shares(&blocks),
     }
@@ -177,6 +189,7 @@ fn project_shares(blocks: &[RecordingBlock]) -> Vec<ProjectShare> {
             .entry(&block.project_id)
             .or_insert_with(|| ProjectShare {
                 project_id: block.project_id.clone(),
+                name: block.project_name.clone(),
                 color: block.color.clone(),
                 shade: block.shade,
                 ms: 0,
@@ -325,11 +338,61 @@ mod tests {
         let view = week(day("2026-10-21"), &input(vec![], vec![]));
 
         assert_eq!(view.label, "Week 43 · 19 – 25 Oct 2026");
-        let labels: Vec<&str> = view.days.iter().map(|d| d.label.as_str()).collect();
+        let labels: Vec<String> = view
+            .days
+            .iter()
+            .map(|d| format!("{} {}", d.weekday, d.day_of_month))
+            .collect();
         assert_eq!(
             labels,
             [
                 "Mon 19", "Tue 20", "Wed 21", "Thu 22", "Fri 23", "Sat 24", "Sun 25"
+            ]
+        );
+    }
+
+    #[test]
+    fn only_saturday_and_sunday_are_weekend_columns() {
+        let view = week(day("2026-10-21"), &input(vec![], vec![]));
+
+        let flags: Vec<bool> = view.days.iter().map(|d| d.is_weekend).collect();
+        assert_eq!(flags, [false, false, false, false, false, true, true]);
+    }
+
+    #[test]
+    fn only_saturday_and_sunday_are_weekend_cells_in_the_month() {
+        let view = month(day("2026-10-21"), &input(vec![], vec![]));
+
+        for row in &view.weeks {
+            let flags: Vec<bool> = row.iter().map(|c| c.is_weekend).collect();
+            assert_eq!(
+                flags,
+                [false, false, false, false, false, true, true],
+                "{}",
+                row[0].day
+            );
+        }
+    }
+
+    #[test]
+    fn a_column_carries_its_short_weekday_and_day_of_the_month() {
+        let view = week(day("2026-10-28"), &input(vec![], vec![]));
+
+        let columns: Vec<(&str, u32)> = view
+            .days
+            .iter()
+            .map(|d| (d.weekday.as_str(), d.day_of_month))
+            .collect();
+        assert_eq!(
+            columns,
+            [
+                ("Mon", 26),
+                ("Tue", 27),
+                ("Wed", 28),
+                ("Thu", 29),
+                ("Fri", 30),
+                ("Sat", 31),
+                ("Sun", 1)
             ]
         );
     }
@@ -731,18 +794,21 @@ mod tests {
             [
                 ProjectShare {
                     project_id: "p1".into(),
+                    name: "Portal".into(),
                     color: "blue".into(),
                     shade: 4,
                     ms: 3 * HOUR + 30 * MIN
                 },
                 ProjectShare {
                     project_id: "p2".into(),
+                    name: "Admin".into(),
                     color: "red".into(),
                     shade: 2,
                     ms: 2 * HOUR
                 },
                 ProjectShare {
                     project_id: "p3".into(),
+                    name: "Docs".into(),
                     color: "teal".into(),
                     shade: 7,
                     ms: HOUR
@@ -816,11 +882,14 @@ mod tests {
             cell,
             &json!({
                 "day": "2026-10-07",
+                "dayOfMonth": 7,
                 "inMonth": true,
                 "isToday": false,
+                "isWeekend": false,
                 "recordedMs": HOUR,
                 "projects": [{
                     "projectId": "p1",
+                    "name": "Portal",
                     "color": "blue",
                     "shade": 4,
                     "ms": HOUR

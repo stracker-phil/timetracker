@@ -2,27 +2,40 @@
 /* The picker window: transparent, so the panel draws its own rounded surface. */
 html:has(.timer-picker), html:has(.timer-picker) body { background: transparent; }
 .timer-picker {
-  box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3);
-  background: var(--pop); border: 1px solid var(--field-line); border-radius: var(--radius); overflow: hidden;
+  box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4);
+  background: var(--pop); border: 1px solid var(--field-line); border-radius: var(--radius-lg); overflow: hidden;
 }
-.timer-picker h1 { margin: 0; font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }
-.timer-picker .actions { margin-top: auto; }
+.timer-picker h1 { margin: 0; font-size: var(--fs-body); font-weight: 600; color: var(--text-strong); }
+.timer-form { display: flex; flex-direction: column; gap: var(--space-2); }
+.timer-form h1 { margin-bottom: var(--space-1); }
+.timer-picker .actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-1); }
 .timer-running { display: flex; align-items: center; gap: var(--space-2); }
 .timer-running .grow-text { font-weight: 600; }
-.timer-recent { margin: 0; padding: 0; list-style: none; overflow: auto; }
-.timer-recent button { display: flex; width: 100%; align-items: center; gap: 0.462rem; padding: var(--pad) 0.462rem; border: none; border-radius: 5px; background: none; color: var(--text); text-align: left; }
-.timer-recent button:hover { background: var(--row-hover); }
+.timer-elapsed { font-size: var(--fs-title); font-weight: 600; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+.timer-note { margin: 0; }
+.timer-running ~ .actions { margin-top: auto; }
+.timer-recent-label { padding-top: var(--space-2); border-top: 1px solid var(--line); font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }
+.timer-recent { margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) 0; padding: 0; list-style: none; overflow: auto; }
+.timer-recent button {
+  display: flex; width: 100%; align-items: center; gap: var(--space-2); min-height: 2rem; padding: var(--space-1) var(--space-2);
+  border: none; border-radius: var(--radius-sm); background: none; color: var(--text); text-align: left;
+}
+.timer-recent button:hover, .timer-recent button:focus-visible { background: var(--row-hover); }
 
 /* ---------- away prompt ---------- */
 html:has(.away-prompt), html:has(.away-prompt) body { background: transparent; }
 .away-prompt {
-  box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3);
-  background: var(--pop); border: 1px solid var(--field-line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: auto;
+  box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4);
+  background: var(--pop); border: 1px solid var(--field-line); border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: auto;
 }
-.away-prompt header { display: flex; flex-direction: column; gap: 0.154rem; }
-.away-prompt h1 { margin: 0; font-size: var(--fs-title); font-weight: 600; }
+.away-prompt header { display: flex; flex-direction: column; gap: var(--space-1); }
+.away-prompt h1 { margin: 0; font-size: var(--fs-title); font-weight: 600; color: var(--text-strong); }
 .away-prompt header p { margin: 0; font-size: var(--fs-meta); }
-.away-form { flex: 1; display: flex; flex-direction: column; gap: var(--space-2); }
-.away-failure { margin: 0; color: var(--style-red); font-size: var(--fs-meta); }
+.away-form { flex: 1; display: flex; flex-direction: column; gap: var(--space-3); }
+/* From and To side by side, the length beside them. */
+.away-times { display: flex; align-items: flex-start; gap: var(--space-3); }
+.away-times .form-field { width: 6.5rem; }
+.away-length { align-self: flex-end; height: 2rem; display: inline-flex; align-items: center; font-weight: 500; font-variant-numeric: tabular-nums; }
+.away-failure { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-red) 12%, transparent); color: var(--style-red); font-size: var(--fs-meta); }
 .away-empty { flex: 1; display: grid; place-items: center; margin: 0; }
 .away-prompt .actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: auto; }

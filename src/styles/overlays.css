@@ -20,7 +20,10 @@
 .form-contents { display: contents; }
 .dialog .actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-1); }
 .dialog .actions .actions-start { margin-right: auto; }
-.dialog.welcome p { margin: 0; }
+.dialog.sheet p { margin: 0; line-height: 1.5; }
+.dialog.welcome { gap: var(--space-3); }
+.dialog.welcome h2 { margin-bottom: var(--space-1); }
+.dialog.welcome .actions { margin-top: var(--space-3); }
 
 /* ---------- menus & toasts ---------- */
 /* The one context menu (ContextMenu.tsx), portaled to <body>; it sets its own type so no area restyles it. */
@@ -29,7 +32,7 @@
   background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow);
   font-family: var(--font-ui); font-size: var(--fs-body); font-weight: 400; line-height: normal; color: var(--text); white-space: nowrap;
 }
-.menu button { display: flex; width: 100%; align-items: center; gap: var(--space-2); height: 1.846rem; padding: 0 var(--space-2); border: none; border-radius: 5px; background: none; text-align: left; }
+.menu button { display: flex; width: 100%; align-items: center; gap: var(--space-2); height: 1.846rem; padding: 0 var(--space-2); border: none; border-radius: var(--radius-sm); background: none; text-align: left; }
 .menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--accent); color: var(--on-accent); outline: none; }
 .menu button:disabled { color: var(--o3); }
 .menu button.with-detail { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0.154rem; height: auto; min-height: 1.846rem; padding: var(--space-1) var(--space-2); }
@@ -47,6 +50,7 @@
 .toast.success svg:first-child { color: var(--style-green); }
 .toast.info svg:first-child { color: var(--accent-text); }
 .toast .text { flex: 1; user-select: text; line-height: 1.35; }
+.toast-action { flex: none; font-weight: 600; }
 .toast-title { display: block; margin-bottom: 0.154rem; }
 .toast-details { margin: 0.385rem 0 0; max-height: 10rem; overflow: auto; font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; word-break: break-word; color: var(--o2); }
 
@@ -74,9 +78,10 @@
 
 /* ---------- shortcut overview ---------- */
 .dialog.shortcuts { max-height: 80vh; }
-.shortcuts section { display: flex; flex-direction: column; gap: 0.769rem; }
+.shortcuts section { display: flex; flex-direction: column; gap: var(--space-2); }
 .shortcuts section + section { border-top: 1px solid var(--line); padding-top: var(--space-3); }
-.shortcuts h3 { margin: 12px 0 4px; font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }
+.shortcuts h3 { margin: var(--space-1) 0 0; font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }
 .shortcuts dl { margin: 0; }
-.shortcut-row { display: flex; justify-content: space-between; gap: 16px; padding: var(--pad) 0; border-bottom: 1px solid var(--line); }
+.shortcut-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); padding: var(--space-1) 0; }
+.shortcut-row + .shortcut-row { border-top: 1px solid var(--line); }
 .shortcut-row dd { margin: 0; }

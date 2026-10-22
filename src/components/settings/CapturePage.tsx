@@ -45,7 +45,7 @@ function AppPicker({ apps, excluded, onPick, onClose }: { apps: AppSeen[]; exclu
           <li key={appId(a)}>
             <button type="button" className="app-picker-row" onClick={() => onPick(appId(a))}>
               <span className="grow-text">{a.app}</span>
-              <span className="hint mono">{formatDuration(a.totalMs)}</span>
+              <span className="hint tabular">{formatDuration(a.totalMs)}</span>
             </button>
           </li>
         ))}

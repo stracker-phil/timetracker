@@ -50,9 +50,9 @@ function RunningTimer({ running, onAnother, onStop }: { running: Running; onAnot
       <div className="timer-running">
         <AccentDot accent={running.color} shade={running.shade} />
         <span className="grow-text">{running.projectName}</span>
-        <span className="mono">{formatHm(running.elapsedMs)}</span>
+        <span className="timer-elapsed">{formatHm(running.elapsedMs)}</span>
       </div>
-      {running.recording.note && <p className="o2">{running.recording.note}</p>}
+      {running.recording.note && <p className="timer-note o2">{running.recording.note}</p>}
       <div className="actions">
         <button type="button" className="btn" onClick={onAnother}>
           Start another…
@@ -95,16 +95,21 @@ function StartForm({ onStart }: { onStart: Start }) {
 
 function RecentTimers({ recent, onStart }: { recent: RecentTimer[]; onStart: Start }) {
   return (
-    <ul className="timer-recent" aria-label="Recent timers">
-      {recent.map((t) => (
-        <li key={`${t.projectId}:${t.note}:${t.tagId ?? ""}`}>
-          <button type="button" onClick={() => onStart(t.projectId, t.note, t.tagId)}>
-            <AccentDot accent={t.color} shade={t.shade} />
-            <span className="grow-text">{t.note ? `${t.projectName} · ${t.note}` : t.projectName}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <>
+      <span className="timer-recent-label" aria-hidden="true">
+        Recent
+      </span>
+      <ul className="timer-recent" aria-label="Recent timers">
+        {recent.map((t) => (
+          <li key={`${t.projectId}:${t.note}:${t.tagId ?? ""}`}>
+            <button type="button" onClick={() => onStart(t.projectId, t.note, t.tagId)}>
+              <AccentDot accent={t.color} shade={t.shade} />
+              <span className="grow-text">{t.note ? `${t.projectName} · ${t.note}` : t.projectName}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 

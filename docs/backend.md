@@ -185,8 +185,8 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `recording_merge` | `into, from` | `Recording` `into` with the spans of `from` (which keeps its project, note and tag); `from` is deleted | `invalid_input` (`field`: `from` the same recording; a running one), `not_found`, `db` |
 | `recording_nudge` | `id, spanId, startSteps: i32, endSteps: i32, overlap` | `Recording` whose span's start and end moved by that many snap steps (`timeline.snapMinutes`; ⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓) from their nearest grid marks; an end moved alone stays a step from the other (`snap_moving`), through `update_span` | as `recording_update_span` |
 | `recording_move` / `recording_copy` | `id, spanId: string \| null, day: Day, overlap` | `Recording`: moved, or a new copy, to `day` at the same local time (`same_time_on`, DST-safe) with the same lengths (undoable). With `spanId` only that span (the copy is a new recording of it); without, every span, shifted by the days between the first span's day and `day` | `invalid_input` (the running timer), `overlap`, `not_found`, `db` |
-| `week_view` (`calendar/commands.rs`) | `day: Day` | `WeekView { weekStart, label, days: DayColumn[], totalMs, trackedMs }`; `DayColumn { day, bounds, label, isToday, recordings, totalMs, trackedMs }` | `invalid_input`, `db` |
-| `month_view` | `day: Day` | `MonthView { monthStart, label, weeks: MonthDay[][], totalMs }` (whole weeks Monday to Sunday; `totalMs` counts the month's own days); `MonthDay { day, inMonth, isToday, recordedMs, projects }` (the top three by time, with color and shade) | `invalid_input`, `db` |
+| `week_view` (`calendar/commands.rs`) | `day: Day` | `WeekView { weekStart, label, days: DayColumn[], totalMs, trackedMs }`; `DayColumn { day, bounds, weekday, dayOfMonth, isToday, isWeekend, recordings, totalMs, trackedMs }` | `invalid_input`, `db` |
+| `month_view` | `day: Day` | `MonthView { monthStart, label, weeks: MonthDay[][], totalMs }` (whole weeks Monday to Sunday; `totalMs` counts the month's own days); `MonthDay { day, dayOfMonth, inMonth, isToday, isWeekend, recordedMs, projects }` (the top three by time, `ProjectShare { projectId, name, color, shade, ms }`) | `invalid_input`, `db` |
 | `calendar_period` (`calendar/commands.rs`) | `unit: PeriodUnit` (`day`, `week`, `month`), `day: Day` | `Period { from, to, holdsToday }`: the day, Monday-to-Sunday week or month holding `day` (`calendar::period::period`); the sidebar's date heading | `invalid_input` |
 | `calendar_picker` | `month: Day` (any day of it), `selected: [Day, Day] \| null` | `PickerMonth { monthStart, weeks: PickerDay[][] }` (whole weeks Monday to Sunday); `PickerDay { day, outside, isToday, selected }` (`calendar::period::picker_month`); the date picker | `invalid_input` |
 | `calendar_jumps` | `text: string` | `DateJump[] { name: string \| null, unit: PeriodUnit, from: Day, to: Day }` (`calendar::jump::jumps`): a typed date (`2026-10-12`, `12.10.`, `12.10.2026`, `oct 12`, `12 october 2026`; without a year the latest on or before today) as one day without a name, else the date words starting with `text` or one of whose words does (Today, Yesterday, This week, Last week, This month, Last month, a weekday: the latest on or before today, a month name: the latest on or before this month); `""` gives Today, Yesterday, This week, This month; the palette | – |
@@ -210,7 +210,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `clients_list` (`projects/mod.rs`) | `includeArchived: bool` | `Client[]` by name | `db` |
 | `clients_save` | `id: string \| null, input: ClientInput` | `Client`; `null` creates; a new color recolors its projects | `invalid_input` (`field`), `not_found`, `db` |
 | `clients_archive` | `id, archived: bool` | `Client`; archiving archives its projects | `not_found`, `db` |
-| `projects_list` | `includeArchived: bool` | `ProjectListItem[]` | `db` |
+| `projects_list` | `includeArchived: bool` | `ProjectListItem[]` (hours of this week and this month: `usage_windows` in `projects/mod.rs`) | `db` |
 | `projects_save` | `id: string \| null, input: ProjectInput` | `Project`; `null` creates | `invalid_input` (`field`), `not_found`, `db` |
 | `projects_archive` | `id, archived: bool` | `Project` | `not_found`, `db` |
 | `projects_recent` | `limit: u32` | `Project[]` by latest recording | `db` |
@@ -443,9 +443,9 @@ suggestions (`day::view_of`).
   reason are not sent, so a prompt only follows a live return.
 - `watch` (started with the tracker) checks `should_prompt`: the setting is on, the span is closed, at least
   `tracker.awayPromptMinutes` long, and not a pause (the user chose it). It stores the `AwayPrompt { span,
-  suggested }` (`suggestion`: both ends snapped, at least one snap step) in `AwayPromptState`, replacing an
+  endedAt, awayMs, suggested }` (`suggestion`: both ends snapped, at least one snap step) in `AwayPromptState`, replacing an
   open one, sends `away_prompt_changed` to an open window, and opens the window.
-- `window.rs`: label `away`, `src/windows/away/index.html`, 420×380, no decorations, always on top, centered,
+- `window.rs`: label `away`, `src/windows/away/index.html`, 420×430, no decorations, always on top, centered,
   built on the main thread (`run_on_main_thread`, since `watch` runs on a tokio task). It stays open when it
   loses focus; closing it clears the prompt. Capability `capabilities/away.json`.
 - `answer` records through the recordings service with `overlap: cancel`; an overlap keeps the prompt so the

@@ -92,10 +92,34 @@ describe("WeekView", () => {
   });
 
   describe("days", () => {
-    it("shows seven day heads with their labels and totals", async () => {
+    it("shows seven day heads with the weekday, the date and the recorded time", async () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
-      expect(heads().map((h) => h.textContent)).toEqual(["Mon 90:00", "Tue 100:45", "Wed 110:00", "Thu 120:00", "Fri 130:00", "Sat 140:00", "Sun 150:00"]);
+      expect(heads().map((h) => h.textContent)).toEqual(["Mon90:00", "Tue100:45", "Wed110:00", "Thu120:00", "Fri130:00", "Sat140:00", "Sun150:00"]);
+    });
+
+    it("names each head by its day and recorded time", async () => {
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      expect(heads().map((h) => h.getAttribute("aria-label"))).toEqual([
+        "Mon 9, 0:00 recorded",
+        "Tue 10, 0:45 recorded",
+        "Wed 11, 0:00 recorded",
+        "Thu 12, 0:00 recorded",
+        "Fri 13, 0:00 recorded",
+        "Sat 14, 0:00 recorded",
+        "Sun 15, 0:00 recorded",
+      ]);
+      expect(screen.getByRole("columnheader", { name: "Tue 10, 0:45 recorded" })).toBeInTheDocument();
+    });
+
+    it("marks the weekend heads and columns only", async () => {
+      renderWeek();
+      await screen.findAllByRole("columnheader");
+      expect(heads().map((h) => h.classList.contains("weekend"))).toEqual([false, false, false, false, false, true, true]);
+      expect(column("Sat 14")).toHaveClass("week-column--weekend");
+      expect(column("Sun 15")).toHaveClass("week-column--weekend");
+      expect(column("Fri 13")).not.toHaveClass("week-column--weekend");
     });
 
     it("marks today's head and column", async () => {
