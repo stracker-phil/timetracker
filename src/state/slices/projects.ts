@@ -99,3 +99,8 @@ export function searchProjects(projects: ProjectListItem[], query: string): Proj
   const active = projects.filter((p) => p.project.archivedAt === null);
   return fuzzyFilter(active, query, (p) => [projectLabel(p), p.project.name]);
 }
+
+/** The active projects among `recent`, most recent first. */
+export function recentProjects(projects: ProjectListItem[], recent: Project[]): ProjectListItem[] {
+  return recent.flatMap((r) => projects.filter((p) => p.project.id === r.id && p.project.archivedAt === null));
+}

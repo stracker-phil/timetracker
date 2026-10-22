@@ -18,17 +18,17 @@ const news = projectItem({ project: { id: "p-news", name: "Newsletter", clientId
 const solo = projectItem({ project: { id: "p-solo", name: "Solo" } });
 const legacy = projectItem({ project: { id: "p-legacy", name: "Legacy", clientId: acme.id, archivedAt: 5 }, client: acme });
 
-function renderPicker(store: Parameters<typeof projectsStore>[0] = {}, value: string | null = null) {
+function renderPicker(store: Parameters<typeof projectsStore>[0] = {}, value: string | null = null, showRecent = false) {
   const onChange = vi.fn();
   resetStore(projectsStore({ projects: [site, news, solo, legacy], clients: [acme, bolt], recent: [solo.project, site.project, legacy.project], ...store }));
-  render(<ProjectPicker value={value} onChange={onChange} />);
+  render(<ProjectPicker value={value} onChange={onChange} showRecent={showRecent} />);
   return { onChange };
 }
 
 const field = () => screen.getByRole("combobox", { name: "Project" });
 const open = async () => {
   await userEvent.click(field());
-  await userEvent.keyboard("{ArrowDown}");
+  if (field().getAttribute("aria-expanded") !== "true") await userEvent.keyboard("{ArrowDown}");
 };
 const options = () => within(screen.getByRole("listbox", { name: "Projects" })).getAllByRole("option");
 const optionTexts = () => options().map((o) => o.textContent);
@@ -70,16 +70,40 @@ describe("ProjectPicker", () => {
   });
 
   describe("opening", () => {
-    it("opens nothing on focus", async () => {
-      renderPicker();
+    it("opens nothing on focus when a project is chosen", async () => {
+      renderPicker({}, "p-site");
       await userEvent.tab();
       expect(field()).toHaveFocus();
       expect(field()).toHaveAttribute("aria-expanded", "false");
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     });
 
-    it("only focuses on the first click and opens the list on the second", async () => {
+    it("opens the list on Tab focus when no project is chosen", async () => {
       renderPicker();
+      await userEvent.tab();
+      expect(field()).toHaveFocus();
+      expect(field()).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("listbox", { name: "Projects" })).toBeInTheDocument();
+    });
+
+    it("opens the list on the first click when no project is chosen", async () => {
+      renderPicker();
+      await userEvent.click(field());
+      expect(field()).toHaveFocus();
+      expect(screen.getByRole("listbox", { name: "Projects" })).toBeInTheDocument();
+    });
+
+    it("closes the list with Escape and keeps focus when no project is chosen", async () => {
+      renderPicker();
+      await userEvent.tab();
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      expect(field()).toHaveFocus();
+      expect(field()).toHaveAttribute("aria-expanded", "false");
+    });
+
+    it("only focuses on the first click and opens the list on the second when a project is chosen", async () => {
+      renderPicker({}, "p-site");
       await userEvent.click(field());
       expect(field()).toHaveFocus();
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
@@ -89,7 +113,7 @@ describe("ProjectPicker", () => {
     });
 
     it("toggles the list with the chevron", async () => {
-      renderPicker();
+      renderPicker({}, "p-site");
       await userEvent.click(screen.getByRole("button", { name: "Show projects" }));
       expect(screen.getByRole("listbox", { name: "Projects" })).toBeInTheDocument();
       await userEvent.click(screen.getByRole("button", { name: "Show projects" }));
@@ -199,7 +223,7 @@ describe("ProjectPicker", () => {
       resetStore(projectsStore({ projects: [site] }));
       render(
         <form onSubmit={onSubmit}>
-          <ProjectPicker value={null} onChange={vi.fn()} />
+          <ProjectPicker value="p-site" onChange={vi.fn()} />
           <button type="submit">Go</button>
         </form>,
       );
@@ -220,6 +244,50 @@ describe("ProjectPicker", () => {
       await open();
       await userEvent.keyboard("{Enter}");
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("recent projects", () => {
+    const recentList = () => screen.getByRole("list", { name: "Recent projects" });
+
+    it("lists the active recent projects by name and client, skipping archived ones", () => {
+      renderPicker({}, null, true);
+      const buttons = within(recentList()).getAllByRole("button");
+      expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual(["Solo", "Acme / Website"]);
+    });
+
+    it("picks a project by clicking it", async () => {
+      const { onChange } = renderPicker({}, null, true);
+      await userEvent.click(within(recentList()).getByRole("button", { name: "Acme / Website" }));
+      expect(onChange).toHaveBeenCalledWith("p-site");
+    });
+
+    it("shows at most five", () => {
+      const many = Array.from({ length: 7 }, (_, i) => projectItem({ project: { id: `p-${i}`, name: `Project ${i}` } }));
+      renderPicker({ projects: many, recent: many.map((m) => m.project) }, null, true);
+      expect(within(recentList()).getAllByRole("button")).toHaveLength(5);
+    });
+
+    it("is not tabbable from the field", async () => {
+      renderPicker({}, null, true);
+      await userEvent.tab();
+      await userEvent.tab();
+      expect(within(recentList()).getByRole("button", { name: "Solo" })).not.toHaveFocus();
+    });
+
+    it("renders nothing without showRecent", () => {
+      renderPicker();
+      expect(screen.queryByRole("list", { name: "Recent projects" })).not.toBeInTheDocument();
+    });
+
+    it("renders nothing while a project is chosen", () => {
+      renderPicker({}, "p-site", true);
+      expect(screen.queryByRole("list", { name: "Recent projects" })).not.toBeInTheDocument();
+    });
+
+    it("renders nothing when no recent project is active", () => {
+      renderPicker({ recent: [legacy.project] }, null, true);
+      expect(screen.queryByRole("list", { name: "Recent projects" })).not.toBeInTheDocument();
     });
   });
 

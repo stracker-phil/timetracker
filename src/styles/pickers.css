@@ -14,6 +14,13 @@
   border: none; background: none; color: var(--o3); cursor: default;
 }
 .picker-chevron:hover { color: var(--text); }
+/* An empty project field's recent projects, as rows to click below it. */
+.recent-projects { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.recent-project {
+  display: flex; align-items: center; gap: var(--space-2); width: 100%; height: var(--control-h); padding: 0 var(--space-2);
+  border: 0; border-radius: var(--radius-sm); background: none; color: var(--text); text-align: left; cursor: default;
+}
+.recent-project:hover { background: var(--fill); }
 .accent-dot--none { box-sizing: border-box; border: 1px solid var(--o3); }
 .picker-list { position: fixed; z-index: 60; max-height: 18rem; background: var(--pop); border-radius: var(--radius); box-shadow: var(--shadow); }
 .picker-check { flex: none; color: var(--accent-text); }

@@ -358,8 +358,8 @@ text; a row's date or detail follows its title in `--o2`.
 
 The Day view reads like Timely's: the toolbar, the timesheet on the left, then the timeline.
 
-- **Toolbar:** the date, the day's totals (`recorded 1h 00m · tracked 6h 12m · away 1h 05m`, a part that is zero
-  left out), View options and the ⋯ menu, borderless toolbar buttons.
+- **Toolbar:** the date, a mark (a green check once the day has recorded time, else a grey dot), the day's
+  totals (`recorded 1h 00m · tracked 6h 12m`, a part that is zero left out; away time is not shown), View options and the ⋯ menu, borderless toolbar buttons.
 - **Timesheet** (left, about a quarter of the width, resizable with the splitter; kept as the `timesheet`
   pane size): "Timesheet", the day's recorded total large (`6h 05m`) and a + button (a new recording for the
   selection, else now; `recording.new`), hidden while the editor is open: the editor is that form, and + is
@@ -391,7 +391,7 @@ The Day view reads like Timely's: the toolbar, the timesheet on the left, then t
 - **Hover card** after 300 ms on `--pop` with `--shadow`: app, full title, URL or path (selectable; an
   http(s) URL opens in the browser), `09:12–09:40 · 28m`, and the source when external.
 - **Away time and gaps** draw nothing: the lanes show only the captured activity, and the body keeps one
-  background. Away time counts in the day's totals (`away 1h 05m`) and can be recorded from the away prompt.
+  background. Away time can be recorded from the away prompt.
 - **Now** is a 1px accent line on today, updated every 30 s.
 - **Empty day** (no activity and no recordings; away time alone is empty): the hour axis, the time column
   and the lanes stay, so a forgotten day can be recorded by dragging or with +. Over the lanes: "Nothing
@@ -473,12 +473,14 @@ timeline's for every app.
   among the cards (in place of the card it edits), pushing the cards below down and scrolled into view; it is
   never a sheet over the timeline (the Week and Month views, without a timesheet, show it as a sheet). Top to bottom: the
   note as the title field (focused, "What did you work on?"), project (recent first, type to search, "New
-  project…"), tag, the duration as `[0] h [20] m` (both numbers editable; a change moves the last span's
-  end), the spans as `From [10:00] to [10:20]` rows (✕ removes one while there are several; "Add time" adds one
+  project…"; while empty, up to 5 recent projects show below it as rows to click, and focusing it opens the
+  list), tag (only once a project is picked), the duration as `[0] h [20] m` behind a timer icon (both numbers
+  editable; a change moves the last span's end), the spans as `[10:00] – [10:20]` lines behind a clock icon (✕ removes one while there are several; "Add time" adds one
   after the last), then a trash icon for Delete at the leading end and Cancel and Save right-aligned. The note
-  is always one input styled as a 15px semibold title, its text flush with the labels; focus only adds the
-  field's surface, frame and ring, so nothing moves. The other rows put the label right-aligned in a leading
-  column, on the line of its control; every field (pickers, duration, times) is 22px high, rows 8px apart.
+  is always one input styled as a 15px semibold title, its text at the fields' leading edge; focus only adds
+  the field's surface, frame and ring, so nothing moves. There are no labels: every field spans the card's
+  width, so a long project name fits; the duration and times put an icon where the pickers show theirs. Every
+  field (pickers, duration, times) is 22px high, rows 8px apart.
   The editor shows no activity: activity is only a signal for recording, never linked to a recording. The draft's spans show in the time column as accent-filled blocks with their
   times and a short accent bar on the top and bottom edge (an edge in another day has none): dragging an edge
   moves that end from mark to mark while the block and the From and To fields follow; on release Rust merges
@@ -782,7 +784,7 @@ Keys of controls, not commands (they act on the focused control and are not rebi
 | Where | Keys |
 |---|---|
 | Ghost card (Tab reaches it) | focuses the suggestion: ↵ approve, E edit, ⌫ dismiss (the `suggestion` scope); ✓ and ✕ inside it |
-| Recording editor, away prompt, timer picker, rule sheet | project and tag pickers: Tab or a click only focuses; type (filters), ↓↑ or Space opens the list on the current value, ↓↑ move, ↵ picks (the last option creates), Escape closes the list and keeps the value; with the list closed ↵ and Escape belong to the form; ⌫ removes the tag; From and To: type `HH:MM` or ↑↓ by one snap step; ↵ saves, records or starts; in the editor also ⌘↵, and ⌘⌫ deletes; Escape cancels or skips |
+| Recording editor, away prompt, timer picker, rule sheet | project and tag pickers: Tab or a click only focuses (an empty project picker opens its list); type (filters), ↓↑ or Space opens the list on the current value, ↓↑ move, ↵ picks (the last option creates), Escape closes the list and keeps the value; with the list closed ↵ and Escape belong to the form; ⌫ removes the tag; From and To: type `HH:MM` or ↑↓ by one snap step; ↵ saves, records or starts; in the editor also ⌘↵, and ⌘⌫ deletes; Escape cancels or skips |
 | Timeline, pointer | drag or click opens the editor; with the editor open, a click on an activity adds its time or takes it out again, and a drag adds a time |
 | Context menu (⌃↵ on an activity) | ↑↓ items, ↵ runs, Escape closes |
 | Pickers in the Reports filter | type, ↑↓, ↵ adds, ⌫ on an empty field removes the last |

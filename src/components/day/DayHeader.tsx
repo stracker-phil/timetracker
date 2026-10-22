@@ -1,4 +1,4 @@
-import { Ellipsis, SlidersHorizontal } from "lucide-react";
+import { CircleCheck, Ellipsis, SlidersHorizontal } from "lucide-react";
 import type { DayTotals } from "../../api";
 import { runCommand, useBindingLabel } from "../../commands";
 import { formatDuration } from "../../lib/format";
@@ -8,17 +8,25 @@ import { Toolbar } from "../Toolbar";
 
 const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` : label);
 
-/** `recorded 1:00 · tracked 6:12 · away 1:05`, without the parts that are zero; empty when all are. */
+/** `recorded 1h 00m · tracked 6h 12m`, without the parts that are zero; empty when both are. */
 function totalsText(totals: DayTotals): string {
   const parts: [string, number][] = [
     ["recorded", totals.recordedMs],
     ["tracked", totals.trackedMs],
-    ["away", totals.awayMs],
   ];
   return parts
     .filter(([, ms]) => ms > 0)
     .map(([name, ms]) => `${name} ${formatDuration(ms)}`)
     .join(" · ");
+}
+
+/** A green check once the day has recorded time, else a grey dot. */
+function RecordedMark({ recorded }: { recorded: boolean }) {
+  return recorded ? (
+    <CircleCheck className="day-mark day-mark--recorded" size="1.077rem" role="img" aria-label="Recorded" />
+  ) : (
+    <span className="day-mark day-mark--empty" role="img" aria-label="Nothing recorded" />
+  );
 }
 
 /** `label` is the day's title from Rust, in the format of the day title setting. */
@@ -37,10 +45,15 @@ export function DayHeader({ label = "", totals }: { label?: string; totals: DayT
     <Toolbar
       title={label}
       detail={
-        text && (
-          <span className="toolbar-detail" aria-label="Totals">
-            {text}
-          </span>
+        totals && (
+          <>
+            <RecordedMark recorded={totals.recordedMs > 0} />
+            {text && (
+              <span className="toolbar-detail" aria-label="Totals">
+                {text}
+              </span>
+            )}
+          </>
         )
       }
     >

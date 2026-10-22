@@ -17,15 +17,17 @@ interface Props<T> {
   onPick: (value: T, query: string) => void;
   /** ⌫ on the field without a query: removes the value (pickers that allow none). */
   onClear?: () => void;
+  /** Focus opens the list (an empty field waiting for a pick). */
+  openOnFocus?: boolean;
   autoFocus?: boolean;
 }
 
 /**
- * A combobox that shows its value and only focuses on Tab or a first click. Typing, ↓ ↑, Space, a second
+ * A combobox that shows its value and only focuses on Tab or a first click (with `openOnFocus`, both open the list). Typing, ↓ ↑, Space, a second
  * click or the chevron open the list on the current option; ↵ picks, Esc closes the list and keeps the
  * value. With the list closed, ↵ and Esc belong to the form around it.
  */
-export function PickerField<T>({ label, listLabel, icon, text, placeholder, rowsFor, isCurrent, onPick, onClear, autoFocus }: Props<T>) {
+export function PickerField<T>({ label, listLabel, icon, text, placeholder, rowsFor, isCurrent, onPick, onClear, openOnFocus, autoFocus }: Props<T>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -107,6 +109,7 @@ export function PickerField<T>({ label, listLabel, icon, text, placeholder, rows
           spellCheck={false}
           placeholder={open ? (text ?? placeholder) : placeholder}
           value={open ? query : (text ?? "")}
+          onFocus={() => openOnFocus && !open && show("")}
           onBlur={close}
           onChange={(e) => show(e.target.value)}
           onKeyDown={onKeyDown}

@@ -160,7 +160,7 @@ describe("DayPage", () => {
     it("shows the totals of the day", async () => {
       const totals = { recordedMs: 0, trackedMs: (6 * 60 + 12) * 60_000, awayMs: (60 + 5) * 60_000 };
       renderDay(dayView({ lanes: [lane({ blocks: [docs] })], totals }));
-      expect(await screen.findByText("tracked 6h 12m · away 1h 05m")).toBeInTheDocument();
+      expect(await screen.findByLabelText("Totals")).toHaveTextContent(/^tracked 6h 12m$/);
     });
 
     it("shows the recorded time of the day and leaves out the zero parts", async () => {

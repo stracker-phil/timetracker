@@ -1,10 +1,10 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
-import { Sparkles, Trash2 } from "lucide-react";
+import { Sparkles, Timer, Trash2 } from "lucide-react";
 import { useStore } from "../../state/store";
 import { NOTE_PLACEHOLDER, NoteInput } from "../NoteInput";
 import { ProjectPicker } from "../pickers/ProjectPicker";
 import { TagPicker } from "../pickers/TagPicker";
-import { DurationField, EditorRow, OverlapNotice } from "./EditorParts";
+import { DurationField, EditorField, EditorLine, OverlapNotice } from "./EditorParts";
 import { EditorSpans } from "./EditorSpans";
 import { useEditorSave } from "./useEditorSave";
 import { useProposal } from "./useProposal";
@@ -50,6 +50,7 @@ export function RecordingEditor({ id }: { id?: string }) {
   if (!editor || !draft) return null;
   const open = editing?.spans.find((s) => s.end === null) ?? null;
   const suggestion = editor.mode === "create" ? editor.suggestion : undefined;
+  const showTag = draft.projectId !== null || draft.tagId !== null;
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (!e.metaKey) return;
@@ -80,23 +81,20 @@ export function RecordingEditor({ id }: { id?: string }) {
           Suggested by {suggestion.ruleName}. Approve records it.
         </p>
       )}
-      <div className="editor-note">
+      <EditorField className="editor-note" error={errors.note}>
         <NoteInput aria-label="Note" placeholder={NOTE_PLACEHOLDER} autoFocus maxLength={500} value={draft.note} onChange={(note) => patchDraft({ note })} />
-        {errors.note && (
-          <span className="form-field-error" role="alert">
-            {errors.note}
-          </span>
-        )}
-      </div>
-      <EditorRow label="Project" error={errors.projectId}>
-        <ProjectPicker value={draft.projectId} onChange={(picked) => patchDraft({ projectId: picked })} />
-      </EditorRow>
-      <EditorRow label="Tag" error={errors.tagId}>
-        <TagPicker value={draft.tagId} onChange={(tagId) => patchDraft({ tagId })} />
-      </EditorRow>
-      <EditorRow label="Duration">
+      </EditorField>
+      <EditorField error={errors.projectId}>
+        <ProjectPicker value={draft.projectId} onChange={(picked) => patchDraft({ projectId: picked })} showRecent />
+      </EditorField>
+      {showTag && (
+        <EditorField error={errors.tagId}>
+          <TagPicker value={draft.tagId} onChange={(tagId) => patchDraft({ tagId })} />
+        </EditorField>
+      )}
+      <EditorLine icon={<Timer size="1rem" />}>
         <DurationField total={draft.totalMs} readOnly={open !== null || draft.spans.length === 0} onChange={setDraftTotal} />
-      </EditorRow>
+      </EditorLine>
       <EditorSpans spans={draft.spans} step={step} runningSince={open?.start ?? null} error={errors.end ?? errors.start ?? errors.spans} />
       {overlap && <OverlapNotice overlap={overlap} />}
       <div className="editor-actions">

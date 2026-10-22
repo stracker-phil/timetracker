@@ -22,19 +22,28 @@ export function DurationField({ total, readOnly, onChange }: { total: number; re
   );
 }
 
-/** One row of the editor: the label in the leading column, the control and its error in the other. */
-export function EditorRow({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
+/** A full-width control of the editor with its error below. */
+export function EditorField({ error, className = "", children }: { error?: string; className?: string; children: ReactNode }) {
   return (
-    <div className="editor-row">
-      <span className="editor-label">{label}</span>
-      <div className="editor-control">
-        {children}
-        {error && (
-          <span className="form-field-error" role="alert">
-            {error}
-          </span>
-        )}
-      </div>
+    <div className={`editor-field ${className}`.trim()}>
+      {children}
+      {error && (
+        <span className="form-field-error" role="alert">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** An `EditorField` behind an icon in place of a label (none: just the indent), lined up with a picker's icon. */
+export function EditorLine({ icon, error, children }: { icon?: ReactNode; error?: string; children: ReactNode }) {
+  return (
+    <div className="editor-line">
+      <span className="editor-line-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <EditorField error={error}>{children}</EditorField>
     </div>
   );
 }

@@ -50,18 +50,22 @@ describe("DayHeader", () => {
 
     it("shows the totals of a past day", () => {
       renderFor("Tuesday, March 10");
-      expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 1h 00m · tracked 2h 00m · away 10m");
+      expect(screen.getByLabelText("Totals")).toHaveTextContent(/^recorded 1h 00m · tracked 2h 00m$/);
     });
 
     it("shows the totals on today too", () => {
       renderFor("Today", totals, today());
-      expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 1h 00m · tracked 2h 00m · away 10m");
+      expect(screen.getByLabelText("Totals")).toHaveTextContent(/^recorded 1h 00m · tracked 2h 00m$/);
+    });
+
+    it("never shows away time", () => {
+      renderFor("Tuesday, March 10");
+      expect(screen.getByLabelText("Totals")).not.toHaveTextContent(/away/);
     });
 
     it.each([
-      ["recorded", { recordedMs: 0, trackedMs: 7_200_000, awayMs: 600_000 }, "tracked 2h 00m · away 10m"],
-      ["tracked", { recordedMs: 3_600_000, trackedMs: 0, awayMs: 600_000 }, "recorded 1h 00m · away 10m"],
-      ["away", { recordedMs: 3_600_000, trackedMs: 7_200_000, awayMs: 0 }, "recorded 1h 00m · tracked 2h 00m"],
+      ["recorded", { recordedMs: 0, trackedMs: 7_200_000, awayMs: 600_000 }, "tracked 2h 00m"],
+      ["tracked", { recordedMs: 3_600_000, trackedMs: 0, awayMs: 600_000 }, "recorded 1h 00m"],
     ])("leaves out the %s part when it is zero", (_part, shown, expected) => {
       renderFor("Tuesday, March 10", shown);
       expect(screen.getByLabelText("Totals")).toHaveTextContent(new RegExp(`^${expected}$`));
@@ -70,6 +74,31 @@ describe("DayHeader", () => {
     it("shows no totals when everything is zero", () => {
       renderFor("Tuesday, March 10", { recordedMs: 0, trackedMs: 0, awayMs: 0 });
       expect(screen.queryByLabelText("Totals")).not.toBeInTheDocument();
+    });
+
+    it("shows no totals when only away time is left", () => {
+      renderFor("Tuesday, March 10", { recordedMs: 0, trackedMs: 0, awayMs: 600_000 });
+      expect(screen.queryByLabelText("Totals")).not.toBeInTheDocument();
+    });
+
+    it("marks the day as recorded when it has recorded time", () => {
+      renderFor("Tuesday, March 10");
+      expect(screen.getByRole("img", { name: "Recorded" })).toBeInTheDocument();
+      expect(screen.queryByRole("img", { name: "Nothing recorded" })).not.toBeInTheDocument();
+    });
+
+    it("marks the day as nothing recorded when only tracked time exists", () => {
+      renderFor("Tuesday, March 10", { recordedMs: 0, trackedMs: 7_200_000, awayMs: 0 });
+      expect(screen.getByRole("img", { name: "Nothing recorded" })).toBeInTheDocument();
+      expect(screen.queryByRole("img", { name: "Recorded" })).not.toBeInTheDocument();
+    });
+
+    it("shows no mark when there are no totals", () => {
+      resetStore({ settings: settings(), day: DAY });
+      installCommands();
+      render(<DayHeader label="Tuesday, March 10" totals={null} />);
+      expect(screen.queryByRole("img", { name: "Recorded" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("img", { name: "Nothing recorded" })).not.toBeInTheDocument();
     });
 
     it("has no buttons to change the day", () => {

@@ -66,11 +66,19 @@ describe("RecordingEditor", () => {
       expect(field("Minutes")).toHaveValue("30");
     });
 
-    it("labels the span row From and to", async () => {
+    it("shows no text labels beside the fields and joins the span times with a dash", async () => {
       renderCreate();
       const form = within(await editorForm("New recording"));
-      expect(form.getByText("From")).toBeInTheDocument();
-      expect(form.getByText("to")).toBeInTheDocument();
+      for (const label of ["Project", "Tag", "Duration", "From", "to"]) expect(form.queryByText(label)).not.toBeInTheDocument();
+      expect(form.getByRole("group", { name: "Times" })).toHaveTextContent("–");
+    });
+
+    it("opens the project list when the empty Project field is tabbed into", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      await userEvent.tab();
+      expect(projectField()).toHaveFocus();
+      expect(screen.getByRole("listbox", { name: "Projects" })).toBeInTheDocument();
     });
 
     it("focuses the note", async () => {
@@ -212,6 +220,58 @@ describe("RecordingEditor", () => {
     });
   });
 
+  describe("tag field", () => {
+    it("is absent for a new recording without a project", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      await waitFor(() => expect(mocked.recordingProposal).toHaveBeenCalled());
+      expect(screen.queryByRole("combobox", { name: "Tag" })).not.toBeInTheDocument();
+    });
+
+    it("appears once a project is picked", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      await chooseWebsite();
+      expect(tagField()).toBeInTheDocument();
+    });
+
+    it("is shown when a recording with a project is edited", async () => {
+      mocked.recordingsList.mockResolvedValue([standupRow]);
+      renderEditor({ mode: "edit", id: "r1" });
+      await editorForm("Edit recording");
+      expect(tagField()).toBeInTheDocument();
+    });
+  });
+
+  describe("recent projects", () => {
+    const withRecent = projectsStore({ projects: [website, intranet], clients: [acme], recent: [website.project, intranet.project] });
+    const recentList = () => screen.queryByRole("list", { name: "Recent projects" });
+
+    it("lists the recent projects below the Project field while none is picked", async () => {
+      renderCreate(withRecent);
+      await editorForm("New recording");
+      const list = within(screen.getByRole("list", { name: "Recent projects" }));
+      expect(list.getByRole("button", { name: "Acme / Website" })).toBeInTheDocument();
+      expect(list.getByRole("button", { name: "Intranet" })).toBeInTheDocument();
+    });
+
+    it("picks the clicked project, then hides the list and shows the Tag field", async () => {
+      renderCreate(withRecent);
+      await editorForm("New recording");
+      await userEvent.click(within(screen.getByRole("list", { name: "Recent projects" })).getByRole("button", { name: "Acme / Website" }));
+      expect(projectField()).toHaveValue("Acme / Website");
+      expect(recentList()).not.toBeInTheDocument();
+      expect(tagField()).toBeInTheDocument();
+    });
+
+    it("is not shown when the recording already has a project", async () => {
+      mocked.recordingsList.mockResolvedValue([standupRow]);
+      renderEditor({ mode: "edit", id: "r1" }, withRecent);
+      await editorForm("Edit recording");
+      expect(recentList()).not.toBeInTheDocument();
+    });
+  });
+
   describe("pickers", () => {
     it("keeps the editor open when Escape closes an open picker list", async () => {
       renderCreate();
@@ -235,6 +295,7 @@ describe("RecordingEditor", () => {
     it("closes the editor with Escape in a picker whose list is closed", async () => {
       renderCreate();
       await editorForm("New recording");
+      await chooseWebsite();
       await userEvent.click(tagField());
       await userEvent.keyboard("{Escape}");
       expect(screen.queryByRole("form")).not.toBeInTheDocument();
@@ -680,9 +741,8 @@ describe("RecordingEditor", () => {
         expect(screen.queryByLabelText("Time 1 from")).not.toBeInTheDocument();
         expect(screen.getByText("09:00")).toBeInTheDocument();
         expect(screen.getByText("11:00")).toBeInTheDocument();
-        expect(screen.getByText("running")).toBeInTheDocument();
-        expect(screen.getAllByText("From")).toHaveLength(2);
-        expect(screen.getByText("to")).toBeInTheDocument();
+        expect(screen.getByText("– running")).toBeInTheDocument();
+        expect(screen.getByText("–")).toBeInTheDocument();
         expect(screen.queryByRole("button", { name: "Add time" })).not.toBeInTheDocument();
         expect(field("Hours")).toHaveAttribute("readonly");
       });
