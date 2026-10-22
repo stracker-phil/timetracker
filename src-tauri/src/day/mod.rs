@@ -5,6 +5,7 @@ pub mod apps;
 pub mod commands;
 mod lanes;
 pub mod list;
+mod load;
 mod recordings;
 mod summary;
 #[cfg(test)]
@@ -21,6 +22,7 @@ use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms, clip};
 use crate::store::settings::{AppOverride, Settings, TimelineSettings};
 
+pub use load::{load, names, totals_of, view_of};
 pub use recordings::{recording_blocks, timesheet};
 pub use totals::{GAP_MIN, totals, tracked_ms};
 use totals::{gaps, union};

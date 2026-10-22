@@ -51,6 +51,39 @@ describe("recordings slice", () => {
       expect(state().selection).toBeNull();
     });
 
+    describe("toggleSelectionBlock", () => {
+      it("starts a selection from the block's span", () => {
+        state().toggleSelectionBlock("a2");
+        expect(state().selection).toEqual({ start: todo.start, end: todo.end, blockIds: ["a2"] });
+      });
+
+      it("adds another block and covers both", () => {
+        state().toggleSelectionBlock("a1");
+        state().toggleSelectionBlock("a2");
+        expect(state().selection).toEqual({ start: docs.start, end: todo.end, blockIds: ["a1", "a2"] });
+      });
+
+      it("shrinks the selection to the remaining blocks when one is toggled off", () => {
+        state().toggleSelectionBlock("a1");
+        state().toggleSelectionBlock("a2");
+        state().toggleSelectionBlock("a1");
+        expect(state().selection).toEqual({ start: todo.start, end: todo.end, blockIds: ["a2"] });
+      });
+
+      it("clears the selection and its snap when the last block is toggled off", () => {
+        state().toggleSelectionBlock("a1");
+        state().setSelectionSnap({ start: docs.start, end: docs.end });
+        state().toggleSelectionBlock("a1");
+        expect(state().selection).toBeNull();
+        expect(state().selectionSnap).toBeNull();
+      });
+
+      it("ignores a block that is not in the view", () => {
+        state().toggleSelectionBlock("missing");
+        expect(state().selection).toBeNull();
+      });
+    });
+
     it("forgets the snapped span when the selection is cleared", () => {
       state().setSelection({ start: 1, end: 2, blockIds: [] });
       state().setSelectionSnap({ start: 1, end: 2 });
@@ -141,6 +174,49 @@ describe("recordings slice", () => {
     });
   });
 
+  describe("an overlap while the editor is open", () => {
+    beforeEach(() => state().openEditor({ mode: "create", start: input.spans[0].start, end: input.spans[0].end }));
+
+    it("is asked inside the editor, not in a dialog", async () => {
+      mocked.recordingCreate.mockRejectedValueOnce(overlapError);
+      const saving = state().createRecording(input);
+      await vi.waitFor(() => expect(state().editorOverlap?.recordings).toEqual([inTheWay]));
+      expect(state().dialog).toBeNull();
+      state().answerOverlap(false);
+      await saving;
+    });
+
+    it("retries with replace on answerOverlap(true) and clears the question", async () => {
+      mocked.recordingCreate.mockRejectedValueOnce(overlapError);
+      const saving = state().createRecording(input);
+      await vi.waitFor(() => expect(state().editorOverlap).not.toBeNull());
+      state().answerOverlap(true);
+      await expect(saving).resolves.toMatchObject({ id: "recording-new" });
+      expect(mocked.recordingCreate).toHaveBeenLastCalledWith(input, "replace");
+      expect(state().editorOverlap).toBeNull();
+    });
+
+    it("saves nothing on answerOverlap(false) and keeps the editor open", async () => {
+      mocked.recordingCreate.mockRejectedValueOnce(overlapError);
+      const saving = state().createRecording(input);
+      await vi.waitFor(() => expect(state().editorOverlap).not.toBeNull());
+      state().answerOverlap(false);
+      await expect(saving).resolves.toBeNull();
+      expect(mocked.recordingCreate).not.toHaveBeenCalledWith(input, "replace");
+      expect(state().editor).not.toBeNull();
+      expect(state().editorOverlap).toBeNull();
+    });
+
+    it("is declined when the editor closes meanwhile", async () => {
+      mocked.recordingUpdate.mockRejectedValueOnce(overlapError);
+      const saving = state().updateRecording("r1", { note: "x" });
+      await vi.waitFor(() => expect(state().editorOverlap).not.toBeNull());
+      state().closeEditor();
+      await expect(saving).resolves.toBeNull();
+      expect(mocked.recordingUpdate).not.toHaveBeenCalledWith("r1", { note: "x" }, "replace");
+    });
+  });
+
   describe("updateRecording and deleteRecording", () => {
     it("sends the patch with overlap cancel and toasts", async () => {
       const patch = { spans: [{ start: at("09:00"), end: at("10:00") }] };
@@ -171,9 +247,22 @@ describe("recordings slice", () => {
 
     it("sends the span with overlap cancel and toasts with Undo", async () => {
       await state().updateSpan("r1", "r1-s2", span);
-      expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s2", span, "cancel");
+      expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s2", span, null, "cancel");
       expect(toastMessages()).toEqual(["Recording changed"]);
       expect(state().toasts[0].action?.label).toBe("Undo");
+    });
+
+    it.each(["start", "end"] as const)("forwards the dragged edge %s for Rust to snap", async (moving) => {
+      await state().updateSpan("r1", "r1-s2", span, moving);
+      expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s2", span, moving, "cancel");
+    });
+
+    it("keeps the moving edge when it retries with replace", async () => {
+      mocked.recordingUpdateSpan.mockRejectedValueOnce(overlapError);
+      const writing = state().updateSpan("r1", "r1-s2", span, "end");
+      (await overlapDialog()).onReplace();
+      await writing;
+      expect(mocked.recordingUpdateSpan).toHaveBeenLastCalledWith("r1", "r1-s2", span, "end", "replace");
     });
 
     it("asks before replacing on an overlap and retries with replace on Replace", async () => {
@@ -181,7 +270,7 @@ describe("recordings slice", () => {
       const writing = state().updateSpan("r1", "r1-s2", span);
       (await overlapDialog()).onReplace();
       await writing;
-      expect(mocked.recordingUpdateSpan).toHaveBeenLastCalledWith("r1", "r1-s2", span, "replace");
+      expect(mocked.recordingUpdateSpan).toHaveBeenLastCalledWith("r1", "r1-s2", span, null, "replace");
       expect(toastMessages()).toEqual(["Recording changed"]);
     });
 

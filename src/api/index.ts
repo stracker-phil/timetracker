@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, Billable, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleInput, RulePreview, SuggestionAccepted, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, Billable, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleInput, RulePreview, SuggestionAccepted, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, DraftSpans, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -63,8 +63,8 @@ export const api = {
   recordingDelete: (id: string) => invoke<void>("recording_delete", { id }),
   /** Adds a span to a recording; Rust snaps it. Rejects with `overlap` as `recordingCreate` does. */
   recordingAddSpan: (id: string, span: Span, overlap: Overlap) => invoke<Recording>("recording_add_span", { id, span, overlap }),
-  /** New times for one span of a recording; Rust snaps them. */
-  recordingUpdateSpan: (id: string, spanId: string, span: Span, overlap: Overlap) => invoke<Recording>("recording_update_span", { id, spanId, span, overlap }),
+  /** New times for one span of a recording, as a drag left them; Rust snaps them with `moving` as the dragged end (`null`: moved whole). */
+  recordingUpdateSpan: (id: string, spanId: string, span: Span, moving: SnapEdge | null, overlap: Overlap) => invoke<Recording>("recording_update_span", { id, spanId, span, moving, overlap }),
   /** `null` when it was the recording's last span and the recording went with it. */
   recordingRemoveSpan: (id: string, spanId: string) => invoke<Recording | null>("recording_remove_span", { id, spanId }),
   /** Cuts a span in two at `at` (snapped); both halves stay in the recording. */
@@ -76,8 +76,16 @@ export const api = {
     invoke<Recording>("recording_nudge", { id, spanId, startSteps, endSteps, overlap }),
   /** Recordings sharing time with `[from, to)`. */
   recordingsList: (from: number, to: number) => invoke<Recording[]>("recordings_list", { from, to }),
-  /** The span as a write would store it, for a drag ghost. */
-  recordingSnap: (start: number, end: number) => invoke<Span>("recording_snap", { start, end }),
+  /** The span on the snap grid: both ends at the nearest mark; `moving` (the dragged end) stays a step from the other. */
+  recordingSnap: (start: number, end: number, moving: SnapEdge | null) => invoke<Span>("recording_snap", { start, end, moving }),
+  /** The editor's spans with ends at or before their start rolled to the next day, and their sum. */
+  recordingDraftSpans: (spans: Span[]) => invoke<DraftSpans>("recording_draft_spans", { spans }),
+  /** The editor's spans with the last one's end moved so they add up to `totalMs`. */
+  recordingDraftTotal: (spans: Span[], totalMs: number) => invoke<DraftSpans>("recording_draft_total", { spans, totalMs }),
+  /** The editor's spans and one more after the last. */
+  recordingDraftAdd: (spans: Span[]) => invoke<DraftSpans>("recording_draft_add", { spans }),
+  /** The activity `spans` cover and the project to propose for them. */
+  recordingProposal: (spans: Span[]) => invoke<RecordingProposal>("recording_proposal", { spans }),
   /** The span New Recording opens on without a selection: the half hour up to now, snapped. */
   recordingDefaultSpan: () => invoke<Span>("recording_default_span"),
   /** Undoes the last recording change; its label, or null when there was none. */

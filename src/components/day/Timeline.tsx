@@ -12,7 +12,7 @@ import { LaneHeader } from "./LaneHeader";
 import { Spans } from "./Spans";
 import { RecordingsColumn } from "./RecordingsColumn";
 import { HALF_HOURS_FROM_PX, TimeAxis } from "./TimeAxis";
-import { selectionPress } from "./selectionPress";
+import { useSelectionPress } from "./useSelectionPress";
 import { useSnappedSpan } from "./useSnappedSpan";
 import { useRuleDrag } from "./useRuleDrag";
 import { useTimelineScroll } from "./useTimelineScroll";
@@ -81,11 +81,13 @@ export function Timeline({ view }: { view: DayView }) {
 
   useTimelineScroll(scrollRef, view, focusedBlock, y, live ? now : null);
   const columnRef = useRef<HTMLDivElement>(null);
-  const press = selectionPress({ origin, pxPerMinute, scrollRef, columnRef });
+  const press = useSelectionPress({ origin, pxPerMinute, scrollRef });
   const ruleDrag = useRuleDrag(columnRef, scrollRef);
+  // ⌥ on a block drags it onto a project for a rule; while the editor is open it adds a span instead.
   const pressLanes = (e: PointerEvent<HTMLDivElement>) => {
     if (gearAt(e.target) !== null) return;
-    const found = e.altKey && e.button === 0 ? findBlock(view, blockIdAt(e.target)) : null;
+    const ruling = e.altKey && e.button === 0 && useStore.getState().editor === null;
+    const found = ruling ? findBlock(view, blockIdAt(e.target)) : null;
     if (found) ruleDrag.start(e, found.block);
     else press(e);
   };
@@ -120,7 +122,7 @@ export function Timeline({ view }: { view: DayView }) {
         <div className="timeline-body" style={{ height: y(end) }}>
           <Spans away={view.away} gaps={view.gaps} y={y} />
           <TimeAxis bounds={view.bounds} pxPerMinute={pxPerMinute} onPointerDown={press} />
-          <RecordingsColumn ref={columnRef} recordings={view.recordings} suggestions={view.suggestions} y={y} pxPerMinute={pxPerMinute} selection={selection} />
+          <RecordingsColumn ref={columnRef} recordings={view.recordings} suggestions={view.suggestions} y={y} bounds={view.bounds} pxPerMinute={pxPerMinute} selection={selection} onPress={press} />
           <div
             className={pxPerMinute >= HALF_HOURS_FROM_PX ? "lanes half-hours" : "lanes"}
             style={{ "--hour-px": `${60 * pxPerMinute}px` } as CSSProperties}

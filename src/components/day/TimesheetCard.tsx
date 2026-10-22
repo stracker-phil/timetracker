@@ -16,14 +16,18 @@ interface Props {
 
 /**
  * A recording in the timesheet: the note as title (the project without one), project and client with the
- * project's dot, the tag and the day's total. Click focuses it, double-click or ↵ edits it; hovering lights up
- * its spans in the time column.
+ * project's dot, the tag and the day's total. A click or ↵ focuses and edits it; hovering lights up its spans
+ * in the time column.
  */
 export const TimesheetCard = memo(function TimesheetCard({ card, focused, hovered }: Props) {
   const project = card.clientName ? `${card.projectName} | ${card.clientName}` : card.projectName;
   const title = card.note || card.projectName;
   const subtitle = card.note ? project : card.clientName;
-  const edit = () => useStore.getState().openEditor({ mode: "edit", id: card.id, spanId: card.spanIds[0] });
+  const edit = () => {
+    const s = useStore.getState();
+    s.focusRecording(card.id);
+    s.openEditor({ mode: "edit", id: card.id, spanId: card.spanIds[0] });
+  };
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
@@ -62,8 +66,7 @@ export const TimesheetCard = memo(function TimesheetCard({ card, focused, hovere
         </>
       }
       trailing={formatShortDuration(card.durationMs)}
-      onClick={() => useStore.getState().focusRecording(card.id)}
-      onDoubleClick={edit}
+      onClick={edit}
       onKeyDown={onKeyDown}
       onPointerEnter={() => useStore.getState().hoverRecording(card.id)}
       onPointerLeave={() => useStore.getState().hoverRecording(null)}

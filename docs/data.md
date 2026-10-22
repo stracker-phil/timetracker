@@ -287,11 +287,11 @@ two years (522 workdays, 261 000 activity spans, 3 132 recordings) seed in about
 
 | Path | Limit | Measured (debug / release) |
 |---|---|---|
-| `day::commands::load` (Day view with suggestions) | 50 ms | 14 / 12 ms |
+| `day::load` (Day view with suggestions) | 50 ms | 14 / 12 ms |
 | `reports::run` for that month | 200 ms | 3 / 2 ms |
 | `calendar::commands::load_week` | 100 ms | 25 / 17 ms |
 | `calendar::commands::load_month` | 150 ms | 2 / 2 ms |
-| `day::list::list` of `day::commands::view_of` (List mode) | 50 ms | 13 / 10 ms |
+| `day::list::list` of `day::view_of` (List mode) | 50 ms | 13 / 10 ms |
 
 The schema's indexes suffice. The debug profile compiles `libsqlite3-sys` with `opt-level = 3`
 (`Cargo.toml`): unoptimized SQLite made the week view take 120 ms in debug builds.

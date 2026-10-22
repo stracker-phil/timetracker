@@ -2,7 +2,10 @@
 
 use super::checks::{closed_span, invalid, require_finished, snapped_span};
 use super::ops::Op;
-use super::{Change, MINUTE_MS, Overlap, Recordings, Span, snap, update_label};
+use super::{
+    Change, Overlap, Recordings, SnapEdge, Span, grid_step, snap, snap_moving, snap_span,
+    update_label,
+};
 use crate::db::recordings::{self, Recording, RecordingSpan};
 use crate::db::time::{Ms, now_ms};
 use crate::error::AppResult;
@@ -76,7 +79,22 @@ impl Recordings<'_> {
             .await
     }
 
-    /// Moves the start and the end of the span `span_id` by whole snap steps each.
+    /// Gives the span `span_id` the times a drag left it at, snapped with `moving` as the dragged end (none
+    /// when the whole span moved).
+    pub async fn drag_span(
+        &self,
+        id: &str,
+        span_id: &str,
+        span: Span,
+        moving: Option<SnapEdge>,
+        overlap: Overlap,
+    ) -> AppResult<Change<Recording>> {
+        let span = snap_moving(span.start, span.end, self.snap_minutes, moving);
+        self.update_span(id, span_id, span, overlap).await
+    }
+
+    /// Moves the start and the end of the span `span_id` by whole snap steps each, from their marks on the
+    /// grid; an end moved alone stays at least one step from the other.
     pub async fn nudge_span(
         &self,
         id: &str,
@@ -87,11 +105,19 @@ impl Recordings<'_> {
     ) -> AppResult<Change<Recording>> {
         let current = recordings::get(self.db, id).await?;
         let span = closed_span(current.span(span_id)?)?;
-        let step = i64::from(self.snap_minutes.max(1)) * MINUTE_MS;
-        let nudged = Span {
-            start: span.start + i64::from(start_steps) * step,
-            end: span.end + i64::from(end_steps) * step,
+        let span = snap_span(span.start, span.end, self.snap_minutes);
+        let step = grid_step(self.snap_minutes);
+        let moving = match (start_steps, end_steps) {
+            (0, _) => Some(SnapEdge::End),
+            (_, 0) => Some(SnapEdge::Start),
+            _ => None,
         };
+        let nudged = snap_moving(
+            span.start + i64::from(start_steps) * step,
+            span.end + i64::from(end_steps) * step,
+            self.snap_minutes,
+            moving,
+        );
         self.update_span(id, span_id, nudged, overlap).await
     }
 
@@ -450,18 +476,192 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn nudge_span_refuses_a_span_that_would_end_before_it_starts() {
+    async fn drag_span_snaps_with_the_dragged_end_and_keeps_one_step() {
+        let cases = [
+            (
+                "end dragged on",
+                span(at(13, 0), at(14, 13)),
+                Some(SnapEdge::End),
+                (at(13, 0), at(14, 15)),
+                "Resize recording",
+            ),
+            (
+                "end dragged before the start",
+                span(at(13, 0), at(12, 0)),
+                Some(SnapEdge::End),
+                (at(13, 0), at(13, 5)),
+                "Resize recording",
+            ),
+            (
+                "start dragged past the end",
+                span(at(14, 20), at(14, 0)),
+                Some(SnapEdge::Start),
+                (at(13, 55), at(14, 0)),
+                "Resize recording",
+            ),
+            (
+                "start dragged earlier",
+                span(at(12, 32), at(14, 0)),
+                Some(SnapEdge::Start),
+                (at(12, 30), at(14, 0)),
+                "Resize recording",
+            ),
+            (
+                "whole span moved",
+                span(at(15, 3), at(16, 3)),
+                None,
+                (at(15, 5), at(16, 5)),
+                "Move recording",
+            ),
+        ];
+        for (name, dragged, moving, expected, label) in cases {
+            let w = World::new().await;
+            let saved = w.create(at(13, 0), at(14, 0)).await;
+            let before = w.rows().await;
+
+            let after = w
+                .service()
+                .drag_span(
+                    &saved.id,
+                    &saved.spans[0].id,
+                    dragged,
+                    moving,
+                    Overlap::Cancel,
+                )
+                .await
+                .unwrap()
+                .value;
+
+            assert_eq!(times(&after), [expected], "{name}");
+            assert_eq!(span_ids(&after), span_ids(&saved), "{name}");
+            assert_round_trip(&w, label, &before).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn drag_span_follows_the_overlap_mode() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+        let neighbour = w.create(at(11, 0), at(12, 0)).await;
+
+        let err = w
+            .service()
+            .drag_span(
+                &saved.id,
+                &saved.spans[0].id,
+                span(at(10, 0), at(11, 30)),
+                Some(SnapEdge::End),
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::Overlap);
+        assert_eq!(overlap_ids(&err), [neighbour.id.clone()]);
+        assert_eq!(w.rows().await, [saved, neighbour]);
+    }
+
+    #[tokio::test]
+    async fn nudge_span_refuses_a_span_longer_than_a_day() {
         let w = World::new().await;
         let saved = w.create(at(10, 0), at(11, 0)).await;
 
         let err = w
             .service()
-            .nudge_span(&saved.id, &saved.spans[0].id, 12, 0, Overlap::Cancel)
+            .nudge_span(&saved.id, &saved.spans[0].id, 0, 300, Overlap::Cancel)
             .await
             .unwrap_err();
 
         assert_eq!(field_of(&err).as_deref(), Some("end"));
         assert_eq!(w.rows().await, [saved]);
+    }
+
+    #[tokio::test]
+    async fn nudge_span_starts_from_the_grid_marks_of_an_off_grid_span() {
+        let cases = [
+            ("end +1", 0, 1, (at(13, 0), at(13, 45))),
+            ("end -1", 0, -1, (at(13, 0), at(13, 35))),
+            ("start +1", 1, 0, (at(13, 5), at(13, 40))),
+            ("start -1", -1, 0, (at(12, 55), at(13, 40))),
+            ("both +1", 1, 1, (at(13, 5), at(13, 45))),
+        ];
+        for (name, start_steps, end_steps, expected) in cases {
+            let w = World::new().await;
+            let saved =
+                test_support::recording(&w.db, &w.project.id, at(13, 2), Some(at(13, 38))).await;
+
+            let nudged = w
+                .service()
+                .nudge_span(
+                    &saved.id,
+                    &saved.spans[0].id,
+                    start_steps,
+                    end_steps,
+                    Overlap::Cancel,
+                )
+                .await
+                .unwrap()
+                .value;
+
+            assert_eq!(times(&nudged), [expected], "{name}");
+        }
+    }
+
+    #[tokio::test]
+    async fn nudge_span_keeps_one_step_when_an_end_is_moved_onto_or_past_the_other() {
+        let cases = [
+            ("end onto the start", 0, -6, (at(13, 0), at(13, 5))),
+            ("end past the start", 0, -10, (at(13, 0), at(13, 5))),
+            ("start onto the end", 6, 0, (at(13, 25), at(13, 30))),
+            ("start past the end", 10, 0, (at(13, 25), at(13, 30))),
+        ];
+        for (name, start_steps, end_steps, expected) in cases {
+            let w = World::new().await;
+            let saved = w.create(at(13, 0), at(13, 30)).await;
+
+            let nudged = w
+                .service()
+                .nudge_span(
+                    &saved.id,
+                    &saved.spans[0].id,
+                    start_steps,
+                    end_steps,
+                    Overlap::Cancel,
+                )
+                .await
+                .unwrap()
+                .value;
+
+            assert_eq!(times(&nudged), [expected], "{name}");
+        }
+    }
+
+    #[tokio::test]
+    async fn nudge_span_moving_both_ends_keeps_the_length() {
+        for (start_steps, end_steps) in [(3, 3), (-4, -4), (12, 12)] {
+            let w = World::new().await;
+            let saved = w.create(at(13, 0), at(13, 30)).await;
+
+            let nudged = w
+                .service()
+                .nudge_span(
+                    &saved.id,
+                    &saved.spans[0].id,
+                    start_steps,
+                    end_steps,
+                    Overlap::Cancel,
+                )
+                .await
+                .unwrap()
+                .value;
+
+            let shift = i64::from(start_steps) * 5 * MIN;
+            assert_eq!(
+                times(&nudged),
+                [(at(13, 0) + shift, at(13, 30) + shift)],
+                "({start_steps}, {end_steps})"
+            );
+        }
     }
 
     #[tokio::test]

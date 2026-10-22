@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 
 use chrono::{Datelike, Days};
 use timetracker_lib::calendar::commands::{load_month, load_week};
-use timetracker_lib::day::commands::{load, view_of};
 use timetracker_lib::day::list::list;
+use timetracker_lib::day::{load, view_of};
 use timetracker_lib::db::time::{Day, now_ms};
 use timetracker_lib::reports::{self, Range, ReportFilter};
 use timetracker_lib::store::settings::Settings;

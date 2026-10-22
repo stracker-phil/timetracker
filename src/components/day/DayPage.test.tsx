@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -56,6 +56,13 @@ function renderDay(view: DayView, patch: Parameters<typeof resetStore>[0] = {}) 
 }
 
 const blockEl = (name: string) => screen.findByLabelText(name);
+const editorForm = (name: "New recording" | "Edit recording") => screen.findByRole("form", { name });
+const sheetOf = () => screen.getByRole("complementary", { name: "Timesheet" });
+/** The From and To of the editor's `row`th span row (1-based). */
+function expectSpan(form: HTMLElement, from: string, to: string, row = 1) {
+  expect(within(form).getByLabelText(`Span ${row} from`)).toHaveValue(from);
+  expect(within(form).getByLabelText(`Span ${row} to`)).toHaveValue(to);
+}
 const scrollBox = () => screen.getByRole("row").parentElement as HTMLElement;
 /** The element that takes the press of a selection drag: the parent of the lanes. */
 const lanesEl = () => screen.getByLabelText("Safari: Docs").closest("[data-lane-id]")?.parentElement as HTMLElement;
@@ -682,7 +689,7 @@ describe("DayPage", () => {
   });
 
   describe("selection", () => {
-    const editorDialog = () => screen.findByRole("dialog", { name: "New recording" });
+    const editorDialog = () => editorForm("New recording");
 
     it("selects the span of a clicked block and shows it", async () => {
       renderDay(busyDay());
@@ -690,40 +697,80 @@ describe("DayPage", () => {
       expect(await screen.findByLabelText("Selection")).toHaveTextContent("09:00–09:30");
     });
 
-    it("opens the editor with the span of the clicked block on Enter", async () => {
+    it("opens the editor in the timesheet with the span of the clicked block", async () => {
       renderDay(busyDay());
       await userEvent.click(await blockEl("Safari: Docs"));
-      await userEvent.keyboard("{Enter}");
-      const dialog = within(await editorDialog());
-      expect(dialog.getByLabelText("From")).toHaveValue("09:00");
-      expect(dialog.getByLabelText("To")).toHaveValue("09:30");
+      const form = await editorDialog();
+      expect(sheetOf()).toContainElement(form);
+      expectSpan(form, "09:00", "09:30");
+      expect(within(form).getByLabelText("Note")).toHaveFocus();
     });
 
-    it("extends the selection from the earliest start to the latest end with a shift-click", async () => {
+    it("opens the editor on the span Rust snapped the block's span to", async () => {
+      mocked.recordingSnap.mockResolvedValue({ start: at("08:55"), end: at("09:35") });
+      renderDay(busyDay());
+      await userEvent.click(await blockEl("Safari: Docs"));
+      expectSpan(await editorDialog(), "08:55", "09:35");
+      expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:00"), at("09:30"), null);
+    });
+
+    it("extends the selection from the earliest start to the latest end with a shift-click and moves the editor to it", async () => {
       renderDay(busyDay());
       await userEvent.click(await blockEl("Notes: Todo"));
+      const form = await editorDialog();
       const first = screen.getByLabelText("Safari: Docs");
       fireEvent.pointerDown(first, { button: 0, shiftKey: true });
       fireEvent.pointerUp(first, { shiftKey: true });
       await screen.findByText("09:00–10:30");
-      await userEvent.keyboard("{Enter}");
-      const dialog = within(await editorDialog());
-      expect(dialog.getByLabelText("From")).toHaveValue("09:00");
-      expect(dialog.getByLabelText("To")).toHaveValue("10:30");
+      await waitFor(() => expectSpan(form, "09:00", "10:30"));
+      expect(screen.getAllByRole("form")).toHaveLength(1);
     });
 
-    it("opens the editor with the extended span even before Rust answered the snap", async () => {
+    it("gathers blocks with ⌘-clicks and opens the editor only once ⌘ is released", async () => {
       renderDay(busyDay());
-      await userEvent.click(await blockEl("Notes: Todo"));
+      for (const label of ["Safari: Docs", "Notes: Todo"]) {
+        const el = await blockEl(label);
+        fireEvent.pointerDown(el, { button: 0, metaKey: true });
+        fireEvent.pointerUp(el, { metaKey: true });
+      }
+      await screen.findByText("09:00–10:30");
+      expect(screen.queryByRole("form")).not.toBeInTheDocument();
+      fireEvent.keyUp(window, { key: "Meta" });
+      expectSpan(await editorDialog(), "09:00", "10:30");
+    });
+
+    it("takes a block out of the selection with a second ⌘-click", async () => {
+      renderDay(busyDay());
+      for (const label of ["Safari: Docs", "Notes: Todo", "Safari: Docs"]) {
+        const el = await blockEl(label);
+        fireEvent.pointerDown(el, { button: 0, metaKey: true });
+        fireEvent.pointerUp(el, { metaKey: true });
+      }
       await screen.findByText("10:00–10:30");
-      mocked.recordingSnap.mockReturnValue(new Promise(() => {}));
-      const first = screen.getByLabelText("Safari: Docs");
-      fireEvent.pointerDown(first, { button: 0, shiftKey: true });
-      fireEvent.pointerUp(first, { shiftKey: true });
-      await userEvent.keyboard("{Enter}");
-      const dialog = within(await editorDialog());
-      expect(dialog.getByLabelText("From")).toHaveValue("09:00");
-      expect(dialog.getByLabelText("To")).toHaveValue("10:30");
+      fireEvent.keyUp(window, { key: "Meta" });
+      expectSpan(await editorDialog(), "10:00", "10:30");
+    });
+
+    it("moves a create editor to the span of another clicked block and keeps its note", async () => {
+      renderDay(busyDay());
+      await userEvent.click(await blockEl("Safari: Docs"));
+      const form = await editorDialog();
+      await userEvent.type(within(form).getByLabelText("Note"), "keep me");
+      await userEvent.click(screen.getByLabelText("Notes: Todo"));
+      await waitFor(() => expectSpan(form, "10:00", "10:30"));
+      expect(within(form).getByLabelText("Note")).toHaveValue("keep me");
+      expect(screen.getAllByRole("form")).toHaveLength(1);
+    });
+
+    it("adds the span of an ⌥-clicked block as another row of the open editor", async () => {
+      renderDay(busyDay());
+      await userEvent.click(await blockEl("Safari: Docs"));
+      const form = await editorDialog();
+      const todoEl = screen.getByLabelText("Notes: Todo");
+      fireEvent.pointerDown(todoEl, { button: 0, altKey: true });
+      fireEvent.pointerUp(todoEl, { altKey: true });
+      await waitFor(() => expectSpan(form, "10:00", "10:30", 2));
+      expectSpan(form, "09:00", "09:30");
     });
 
     it("replaces the selection when another block is clicked without shift", async () => {
@@ -733,12 +780,40 @@ describe("DayPage", () => {
       expect(await screen.findByText("10:00–10:30")).toBeInTheDocument();
     });
 
-    it("clears the selection with Escape", async () => {
+    it("closes the editor and clears the selection with Escape", async () => {
       renderDay(busyDay());
       await userEvent.click(await blockEl("Safari: Docs"));
+      await editorDialog();
       await screen.findByLabelText("Selection");
       await userEvent.keyboard("{Escape}");
       expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
+      expect(screen.queryByRole("form")).not.toBeInTheDocument();
+      expect(useStore.getState().draft).toBeNull();
+    });
+
+    it("saves the recording of a clicked block with the project, note, tag and span", async () => {
+      renderDay(busyDay(), withProject);
+      await userEvent.click(await blockEl("Safari: Docs"));
+      const form = within(await editorDialog());
+      await userEvent.type(form.getByRole("combobox", { name: "Project" }), "Web{Enter}");
+      await userEvent.type(form.getByLabelText("Note"), "read the docs");
+      await userEvent.type(form.getByRole("combobox", { name: "Tag" }), "res{Enter}");
+      await userEvent.click(form.getByRole("button", { name: "Save" }));
+      await waitFor(() =>
+        expect(mocked.recordingCreate).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: at("09:00"), end: at("09:30") }], note: "read the docs", tagId: "tag-research" }, "cancel"),
+      );
+      await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
+      expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
+    });
+
+    it("opens a fresh editor on the next click after Cancel", async () => {
+      renderDay(busyDay());
+      await userEvent.click(await blockEl("Safari: Docs"));
+      await editorDialog();
+      await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("form")).not.toBeInTheDocument();
+      await userEvent.click(screen.getByLabelText("Notes: Todo"));
+      expectSpan(await editorDialog(), "10:00", "10:30");
     });
 
     it("clears the selection when empty space is clicked", async () => {
@@ -749,36 +824,63 @@ describe("DayPage", () => {
       expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
     });
 
-    describe("dragging on the lanes", () => {
-      async function dragTo(clientX: number) {
+    describe("dragging", () => {
+      /** Presses `target` at 09:02, drags to 10:28 (Rust snaps it to 09:00–10:30) and releases. */
+      async function dragOver(target: () => HTMLElement) {
         mocked.recordingSnap.mockResolvedValue({ start: at("09:00"), end: at("10:30") });
         renderDay(busyDay());
         await blockEl("Safari: Docs");
-        vi.spyOn(screen.getByLabelText("Recordings"), "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 3600));
-        fireEvent.pointerDown(lanesEl(), { button: 0, clientX: 300, clientY: px("09:02") });
-        fireEvent.pointerMove(lanesEl(), { clientX: 300, clientY: px("10:28") });
+        fireEvent.pointerDown(target(), { button: 0, clientX: 300, clientY: px("09:02") });
+        fireEvent.pointerMove(target(), { clientX: 300, clientY: px("10:28") });
         await screen.findByText("09:00–10:30");
-        await vi.waitFor(() => expect(useStore.getState().selectionSnap).toEqual({ start: at("09:00"), end: at("10:30") }));
-        fireEvent.pointerUp(lanesEl(), { clientX, clientY: px("10:28") });
+        fireEvent.pointerUp(target(), { clientX: 300, clientY: px("10:28") });
       }
 
       it("shows the dragged span with the times Rust snaps it to", async () => {
-        await dragTo(300);
+        await dragOver(lanesEl);
         expect(screen.getByLabelText("Selection")).toHaveTextContent("09:00–10:30");
-        expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("10:28"));
+        expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("10:28"), "end");
       });
 
-      it("opens the editor with the snapped span when released over the recordings column", async () => {
-        await dragTo(50);
-        const dialog = within(await editorDialog());
-        expect(dialog.getByLabelText("From")).toHaveValue("09:00");
-        expect(dialog.getByLabelText("To")).toHaveValue("10:30");
+      it("opens the editor with the snapped span when released over the lanes", async () => {
+        await dragOver(lanesEl);
+        expectSpan(await editorDialog(), "09:00", "10:30");
       });
 
-      it("keeps the selection and opens no editor when released elsewhere", async () => {
-        await dragTo(300);
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-        expect(screen.getByLabelText("Selection")).toBeInTheDocument();
+      it("opens the editor with the snapped span after a drag in the time column", async () => {
+        await dragOver(() => screen.getByLabelText("Recordings"));
+        expectSpan(await editorDialog(), "09:00", "10:30");
+      });
+
+      it("opens no editor for a press in the time column that was not moved", async () => {
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        const column = screen.getByLabelText("Recordings");
+        fireEvent.pointerDown(column, { button: 0, clientY: px("09:02") });
+        fireEvent.pointerUp(column, { clientY: px("09:02") });
+        expect(screen.queryByRole("form")).not.toBeInTheDocument();
+      });
+
+      it("adds a row to the open editor with an ⌥-drag", async () => {
+        renderDay(busyDay());
+        await userEvent.click(await blockEl("Safari: Docs"));
+        const form = await editorDialog();
+        fireEvent.pointerDown(lanesEl(), { button: 0, altKey: true, clientX: 300, clientY: px("13:00") });
+        fireEvent.pointerMove(lanesEl(), { clientX: 300, clientY: px("13:30") });
+        fireEvent.pointerUp(lanesEl(), { altKey: true, clientX: 300, clientY: px("13:30") });
+        await waitFor(() => expectSpan(form, "13:00", "13:30", 2));
+        expectSpan(form, "09:00", "09:30");
+      });
+
+      it("moves a create editor to the dragged span without ⌥", async () => {
+        renderDay(busyDay());
+        await userEvent.click(await blockEl("Safari: Docs"));
+        const form = await editorDialog();
+        fireEvent.pointerDown(lanesEl(), { button: 0, clientX: 300, clientY: px("13:00") });
+        fireEvent.pointerMove(lanesEl(), { clientX: 300, clientY: px("13:30") });
+        fireEvent.pointerUp(lanesEl(), { clientX: 300, clientY: px("13:30") });
+        await waitFor(() => expectSpan(form, "13:00", "13:30"));
+        expect(screen.queryByLabelText("Span 2 from")).not.toBeInTheDocument();
       });
     });
   });
@@ -842,30 +944,27 @@ describe("DayPage", () => {
       expect(await recordingEl()).not.toHaveClass("running");
     });
 
-    it("opens the editor on the recording with a double-click", async () => {
+    it("opens the editor on the recording with a single click and draws its draft instead of the block", async () => {
       mocked.recordingsList.mockResolvedValue([meetingRow]);
       renderDay(recordedDay(), withProject);
-      await userEvent.dblClick(await recordingEl());
-      expect(await screen.findByRole("dialog", { name: "Edit recording" })).toBeInTheDocument();
+      await userEvent.click(await recordingEl());
+      const form = await editorForm("Edit recording");
+      expectSpan(form, "11:00", "11:45");
+      expect(screen.getByLabelText("Draft 11:00–11:45")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Website: standup")).not.toBeInTheDocument();
     });
 
-    it("opens the editor on the span of the double-clicked block", async () => {
+    it("opens the editor with every span of a recording that has several as a row", async () => {
       const morning = { id: "r1-s1", start: at("09:00"), end: at("09:30") };
       const noon = { id: "r1-s2", start: at("11:00"), end: at("11:45") };
       mocked.recordingsList.mockResolvedValue([recording({ ...meetingRow, spans: [morning, noon] })]);
       renderDay(dayView({ recordings: [{ ...meeting, spanId: noon.id, spanCount: 2 }] }), withProject);
-      await userEvent.dblClick(await recordingEl());
-      const dialog = within(await screen.findByRole("dialog", { name: "Edit recording" }));
-      expect(await dialog.findByLabelText("From")).toHaveValue("11:00");
-      expect(dialog.getByText("Also 09:00–09:30")).toBeInTheDocument();
-    });
-
-    it("opens the editor on the focused recording with Enter", async () => {
-      mocked.recordingsList.mockResolvedValue([meetingRow]);
-      renderDay(recordedDay(), withProject);
       await userEvent.click(await recordingEl());
-      await userEvent.keyboard("{Enter}");
-      expect(await screen.findByRole("dialog", { name: "Edit recording" })).toBeInTheDocument();
+      const form = await editorForm("Edit recording");
+      expectSpan(form, "09:00", "09:30");
+      expectSpan(form, "11:00", "11:45", 2);
+      expect(screen.getByLabelText("Draft 09:00–09:30")).toBeInTheDocument();
+      expect(screen.getByLabelText("Draft 11:00–11:45")).toBeInTheDocument();
     });
 
     describe("dragging", () => {
@@ -873,14 +972,14 @@ describe("DayPage", () => {
         ["its body moves it", null, 25, "11:10", "11:55"],
         ["its top edge changes the start", "start", -25, "10:50", "11:45"],
         ["its bottom edge changes the end", "end", 25, "11:00", "11:55"],
-      ] as const)("%s", async (_name, edge, dy, start, end) => {
+      ] as const)("%s, sending the raw span and the dragged edge for Rust to snap", async (_name, edge, dy, start, end) => {
         renderDay(recordedDay(), withProject);
         const el = await recordingEl();
         const handle = edge ? grip(el, edge) : el;
         fireEvent.pointerDown(handle, { button: 0, clientY: 1000 });
         fireEvent.pointerMove(handle, { clientY: 1000 + dy });
         fireEvent.pointerUp(handle, { clientY: 1000 + dy });
-        await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at(start), end: at(end) }, "cancel"));
+        await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at(start), end: at(end) }, edge, "cancel"));
         expect(await screen.findByText("Recording changed")).toBeInTheDocument();
       });
 
@@ -891,7 +990,7 @@ describe("DayPage", () => {
         fireEvent.pointerDown(el, { button: 0, clientY: 1000 });
         fireEvent.pointerMove(el, { clientY: 1025 });
         fireEvent.pointerUp(el, { clientY: 1025 });
-        await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s2", { start: at("11:10"), end: at("11:55") }, "cancel"));
+        await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s2", { start: at("11:10"), end: at("11:55") }, null, "cancel"));
       });
 
       it("changes nothing when the pointer is released where it was pressed", async () => {
@@ -931,21 +1030,24 @@ describe("DayPage", () => {
         ["Alt+Shift+↑ shortens its end by one step", "{Alt>}{Shift>}{ArrowUp}{/Shift}{/Alt}", 0, -1],
       ])("%s", async (_name, keys, startSteps, endSteps) => {
         renderDay(recordedDay(), withProject);
-        await userEvent.click(await recordingEl());
+        await recordingEl();
+        await userEvent.keyboard("]");
         await userEvent.keyboard(keys);
         await vi.waitFor(() => expect(mocked.recordingNudge).toHaveBeenCalledWith("r1", "r1-s1", startSteps, endSteps, "cancel"));
       });
 
       it("does not nudge a recording that continues on another day", async () => {
         renderDay(dayView({ recordings: [{ ...meeting, clippedStart: true }] }), withProject);
-        await userEvent.click(await recordingEl());
+        await recordingEl();
+        await userEvent.keyboard("]");
         await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
         expect(mocked.recordingNudge).not.toHaveBeenCalled();
       });
 
       it("deletes the focused recording with Backspace and offers Undo", async () => {
         renderDay(recordedDay(), withProject);
-        await userEvent.click(await recordingEl());
+        await recordingEl();
+        await userEvent.keyboard("]");
         await userEvent.keyboard("{Backspace}");
         await vi.waitFor(() => expect(mocked.recordingDelete).toHaveBeenCalledWith("r1"));
         expect(await screen.findByText("Recording deleted")).toBeInTheDocument();
@@ -975,7 +1077,8 @@ describe("DayPage", () => {
 
       it("clears the focused recording with Escape", async () => {
         renderDay(recordedDay(), withProject);
-        await userEvent.click(await recordingEl());
+        await recordingEl();
+        await userEvent.keyboard("]");
         await userEvent.keyboard("{Escape}{Backspace}");
         expect(mocked.recordingDelete).not.toHaveBeenCalled();
       });
@@ -1034,7 +1137,7 @@ describe("DayPage", () => {
     it("says nothing is recorded yet when the day has no recordings", async () => {
       renderDay(busyDay());
       await blockEl("Safari: Docs");
-      expect(sheet().getByText("Nothing recorded yet. Drag over the timeline, or press +.")).toBeInTheDocument();
+      expect(sheet().getByText("Nothing recorded yet. Drag over the timeline or click an activity.")).toBeInTheDocument();
       expect(sheet().getByLabelText("Recorded")).toHaveTextContent("0m");
     });
 
@@ -1062,23 +1165,52 @@ describe("DayPage", () => {
         expect(cardOf("planning, Website, 30m")).toHaveAttribute("aria-pressed", "false");
       });
 
-      it("opens the editor of its recording with a double-click", async () => {
+      it("gives way to the editor of its recording when clicked", async () => {
         mocked.recordingsList.mockResolvedValue([meetingRow]);
         renderDay(sheetDay(), withProject);
-        await userEvent.dblClick(await screen.findByRole("button", { name: "standup, Website | Acme, 45m" }));
-        expect(await screen.findByRole("dialog", { name: "Edit recording" })).toBeInTheDocument();
+        await userEvent.click(await screen.findByRole("button", { name: "standup, Website | Acme, 45m" }));
+        const form = await editorForm("Edit recording");
+        expectSpan(form, "11:00", "11:45");
+        expect(sheet().queryByRole("button", { name: "standup, Website | Acme, 45m" })).not.toBeInTheDocument();
+        expect(cardOf("planning, Website, 30m")).toBeInTheDocument();
       });
 
-      it("opens the editor on the first span of a recording with several", async () => {
+      it("opens the editor with every span of a recording with several as a row", async () => {
         const morning = { id: "r1-s1", start: at("09:00"), end: at("09:30") };
         const noon = { id: "r1-s2", start: at("11:00"), end: at("11:45") };
         mocked.recordingsList.mockResolvedValue([recording({ ...meetingRow, spans: [morning, noon] })]);
         const split = timesheetCard({ id: "r1", projectId: "p-site", note: "standup", start: at("09:00"), end: at("11:45"), durationMs: 75 * MINUTE_MS, spanIds: [morning.id, noon.id] });
         renderDay(sheetDay([split]), withProject);
-        await userEvent.dblClick(await screen.findByRole("button", { name: "standup, Website, 1h 15m" }));
-        const dialog = within(await screen.findByRole("dialog", { name: "Edit recording" }));
-        expect(await dialog.findByLabelText("From")).toHaveValue("09:00");
-        expect(dialog.getByText("Also 11:00–11:45")).toBeInTheDocument();
+        await userEvent.click(await screen.findByRole("button", { name: "standup, Website, 1h 15m" }));
+        const form = await editorForm("Edit recording");
+        expectSpan(form, "09:00", "09:30");
+        expectSpan(form, "11:00", "11:45", 2);
+      });
+
+      it("opens the editor with Enter on the focused card", async () => {
+        mocked.recordingsList.mockResolvedValue([meetingRow]);
+        renderDay(sheetDay(), withProject);
+        (await screen.findByRole("button", { name: "standup, Website | Acme, 45m" })).focus();
+        await userEvent.keyboard("{Enter}");
+        expectSpan(await editorForm("Edit recording"), "11:00", "11:45");
+      });
+    });
+
+    describe("the open editor", () => {
+      it("sits between the cards by the start of a new recording", async () => {
+        renderDay(sheetDay(), withProject);
+        await userEvent.click(await blockEl("Safari: Docs"));
+        const form = await editorForm("New recording");
+        const after = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+        expect(after(cardOf("planning, Website, 30m"), form)).toBe(true);
+        expect(after(form, cardOf("standup, Website | Acme, 45m"))).toBe(true);
+      });
+
+      it("replaces the empty message of a day without recordings", async () => {
+        renderDay(busyDay(), withProject);
+        await userEvent.click(await blockEl("Safari: Docs"));
+        await editorForm("New recording");
+        expect(sheet().queryByText(/Nothing recorded yet/)).not.toBeInTheDocument();
       });
     });
 
@@ -1107,19 +1239,17 @@ describe("DayPage", () => {
       it("opens the editor for a new recording on the default span", async () => {
         mocked.recordingDefaultSpan.mockResolvedValue({ start: at("14:00"), end: at("14:30") });
         renderDay(busyDay(), withProject);
+        mocked.dayView.mockImplementation(async (day) => ({ ...busyDay(), day }));
         await userEvent.click(await screen.findByRole("button", { name: "New recording" }));
-        const dialog = within(await screen.findByRole("dialog", { name: "New recording" }));
-        expect(dialog.getByLabelText("From")).toHaveValue("14:00");
-        expect(dialog.getByLabelText("To")).toHaveValue("14:30");
+        expectSpan(await editorForm("New recording"), "14:00", "14:30");
       });
 
       it("opens the editor on the selection when there is one", async () => {
         renderDay(busyDay(), withProject);
-        await userEvent.click(await blockEl("Safari: Docs"));
+        await blockEl("Safari: Docs");
+        await userEvent.keyboard("jv");
         await userEvent.click(screen.getByRole("button", { name: "New recording" }));
-        const dialog = within(await screen.findByRole("dialog", { name: "New recording" }));
-        expect(dialog.getByLabelText("From")).toHaveValue("09:00");
-        expect(dialog.getByLabelText("To")).toHaveValue("09:30");
+        expectSpan(await editorForm("New recording"), "09:00", "09:30");
       });
     });
   });
@@ -1237,13 +1367,14 @@ describe("DayPage", () => {
     it("records the focused suggestion with ↵ even while a selection exists, without opening the editor", async () => {
       mocked.suggestionAccept.mockResolvedValue({ recording: recording({ start: at("09:00"), end: at("09:45") }), durationMs: 45 * MINUTE_MS });
       renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
-      await userEvent.click(await blockEl("Safari: Docs"));
+      await blockEl("Safari: Docs");
+      await userEvent.keyboard("jv");
       await screen.findByLabelText("Selection");
       (await suggestionEl()).focus();
       await userEvent.keyboard("{Enter}");
       await vi.waitFor(() => expect(mocked.suggestionAccept).toHaveBeenCalledWith(DAY, proposed.id));
       expect(mocked.suggestionsAcceptRule).not.toHaveBeenCalled();
-      expect(screen.queryByRole("dialog", { name: "New recording" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("form")).not.toBeInTheDocument();
     });
   });
 
@@ -1253,7 +1384,6 @@ describe("DayPage", () => {
     const focusedIn = (labels: string[]) => labels.filter((label) => screen.queryByLabelText(label)?.classList.contains("focused"));
     const focusedBlocks = () => focusedIn(["Safari: Docs", "Notes: Todo", "Planner: Standup"]);
     const focusedRecordings = () => focusedIn(["Website: standup", "Website: review"]);
-    const editorFields = async (name: string) => within(await screen.findByRole("dialog", { name }));
 
     describe("V selects the focused block", () => {
       it("shows the block's span as the selection and opens the editor with it on ↵", async () => {
@@ -1261,10 +1391,9 @@ describe("DayPage", () => {
         await blockEl("Safari: Docs");
         await userEvent.keyboard("jv");
         expect(await screen.findByLabelText("Selection")).toHaveTextContent("09:00–09:30");
+        expect(screen.queryByRole("form")).not.toBeInTheDocument();
         await userEvent.keyboard("{Enter}");
-        const dialog = await editorFields("New recording");
-        expect(dialog.getByLabelText("From")).toHaveValue("09:00");
-        expect(dialog.getByLabelText("To")).toHaveValue("09:30");
+        expectSpan(await editorForm("New recording"), "09:00", "09:30");
       });
 
       it("does nothing without a focused block", async () => {
@@ -1272,7 +1401,7 @@ describe("DayPage", () => {
         await blockEl("Safari: Docs");
         await userEvent.keyboard("v{Enter}");
         expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(screen.queryByRole("form")).not.toBeInTheDocument();
       });
     });
 
@@ -1284,9 +1413,7 @@ describe("DayPage", () => {
         expect(await screen.findByLabelText("Selection")).toHaveTextContent("09:00–10:30");
         expect(focusedBlocks()).toEqual(["Notes: Todo"]);
         await userEvent.keyboard("{Enter}");
-        const dialog = await editorFields("New recording");
-        expect(dialog.getByLabelText("From")).toHaveValue("09:00");
-        expect(dialog.getByLabelText("To")).toHaveValue("10:30");
+        expectSpan(await editorForm("New recording"), "09:00", "10:30");
       });
 
       it("grows the selection over the previous block and moves the focus to it", async () => {
@@ -1307,7 +1434,8 @@ describe("DayPage", () => {
 
       it("clears the focused recording", async () => {
         renderDay(recordedDay(), withProject);
-        await userEvent.click(await blockEl("Website: standup"));
+        await blockEl("Website: standup");
+        await userEvent.keyboard("]");
         await userEvent.keyboard("{Shift>}j{/Shift}{Backspace}");
         expect(await screen.findByLabelText("Selection")).toBeInTheDocument();
         expect(mocked.recordingDelete).not.toHaveBeenCalled();
@@ -1347,27 +1475,28 @@ describe("DayPage", () => {
         renderDay(twoRecordings(), withProject);
         await blockEl("Website: standup");
         await userEvent.keyboard("]{Enter}");
-        expect(await screen.findByRole("dialog", { name: "Edit recording" })).toBeInTheDocument();
+        expectSpan(await editorForm("Edit recording"), "11:00", "11:45");
       });
 
       it("clears the selection and the block focus, so ↵ edits the recording instead of creating one", async () => {
         mocked.recordingsList.mockResolvedValue([meetingRow]);
         renderDay(twoRecordings(), withProject);
-        await userEvent.click(await blockEl("Safari: Docs"));
+        await blockEl("Safari: Docs");
+        await userEvent.keyboard("jv");
         await screen.findByLabelText("Selection");
         await userEvent.keyboard("]");
         expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
         expect(focusedBlocks()).toEqual([]);
         await userEvent.keyboard("{Enter}");
-        expect(await screen.findByRole("dialog", { name: "Edit recording" })).toBeInTheDocument();
-        expect(screen.queryByRole("dialog", { name: "New recording" })).not.toBeInTheDocument();
+        expect(await editorForm("Edit recording")).toBeInTheDocument();
+        expect(screen.queryByRole("form", { name: "New recording" })).not.toBeInTheDocument();
       });
 
       it("does nothing on a day without recordings", async () => {
         renderDay(busyDay());
         await blockEl("Safari: Docs");
         await userEvent.keyboard("]{Enter}");
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(screen.queryByRole("form")).not.toBeInTheDocument();
       });
     });
 
@@ -1379,7 +1508,8 @@ describe("DayPage", () => {
         ["⌥⇧→ copies it to the next day", "{Alt>}{Shift>}{ArrowRight}{/Shift}{/Alt}", "recordingCopy", "recordingMove", "2026-03-11"],
       ] as const)("%s", async (_name, keys, call, other, day) => {
         renderDay(recordedDay(), withProject);
-        await userEvent.click(await blockEl("Website: standup"));
+        await blockEl("Website: standup");
+        await userEvent.keyboard("]");
         await userEvent.keyboard(keys);
         await vi.waitFor(() => expect(mocked[call]).toHaveBeenCalledWith("r1", null, day, "cancel"));
         expect(mocked[other]).not.toHaveBeenCalled();
@@ -1426,12 +1556,14 @@ describe("DayPage", () => {
         ["Space", " "],
       ])("%s activates the button instead of opening the editor or the details", async (_name, keys) => {
         renderDay(busyDay());
-        await userEvent.click(await blockEl("Safari: Docs"));
+        await blockEl("Safari: Docs");
+        await userEvent.keyboard("jv");
         await screen.findByLabelText("Selection");
         screen.getByRole("button", { name: "More day actions" }).focus();
         await userEvent.keyboard(keys);
         expect(await screen.findByRole("menu")).toBeInTheDocument();
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(screen.queryByRole("form")).not.toBeInTheDocument();
       });
     });
 

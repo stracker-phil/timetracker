@@ -24,7 +24,7 @@ use types::{PreviewHit, RuleInput, RulePreview, Suggestion};
 pub const PREVIEW_HITS: usize = 200;
 
 /// The blocks rules look at: every lane but the summary.
-fn candidates(view: &DayView) -> Vec<&ActivityBlock> {
+pub(crate) fn candidates(view: &DayView) -> Vec<&ActivityBlock> {
     let mut blocks: Vec<&ActivityBlock> = view
         .lanes
         .iter()
@@ -62,7 +62,7 @@ pub fn day_suggestions(
 }
 
 pub async fn suggestions_of(db: &Db, day: Day, settings: &Settings) -> AppResult<Vec<Suggestion>> {
-    Ok(crate::day::commands::load(db, day, settings, now_ms())
+    Ok(crate::day::load(db, day, settings, now_ms())
         .await?
         .suggestions)
 }
@@ -82,7 +82,7 @@ pub async fn preview(
     let (mut total_ms, mut hit_days) = (0, 0);
     let mut day = today;
     for _ in 0..days {
-        let view = crate::day::commands::view_of(db, day, settings, now).await?;
+        let view = crate::day::view_of(db, day, settings, now).await?;
         let mut found: Vec<&ActivityBlock> = candidates(&view)
             .into_iter()
             .filter(|b| matches(&rule, b))

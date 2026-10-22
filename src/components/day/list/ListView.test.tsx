@@ -66,7 +66,7 @@ const rowEls = () => within(screen.getByRole("list", { name: "Activity" })).getA
 const rowOf = (title: string) => rowEls().find((r) => within(r).queryByRole("button", { name: title })) as HTMLElement;
 const search = () => screen.getByRole("searchbox", { name: "Search activity" });
 const chip = (name: string) => within(screen.getByRole("group", { name: "Projects" })).getByRole("button", { name });
-const editorDialog = () => screen.findByRole("dialog", { name: "New recording" });
+const editorDialog = () => screen.findByRole("form", { name: "New recording" });
 
 async function renderedRows(rows: ListRow[], patch: Parameters<typeof resetStore>[0] = {}) {
   renderList(rows, patch);
@@ -193,8 +193,8 @@ describe("ListView", () => {
       await renderedRows([docs, todo]);
       dragRow(rowOf("Docs"), chip("Website"));
       const dialog = within(await editorDialog());
-      expect(dialog.getByLabelText("From")).toHaveValue("09:00");
-      expect(dialog.getByLabelText("To")).toHaveValue("10:00");
+      expect(dialog.getByLabelText("Span 1 from")).toHaveValue("09:00");
+      expect(dialog.getByLabelText("Span 1 to")).toHaveValue("10:00");
       expect(dialog.getByRole("combobox", { name: "Project" })).toHaveValue("Website");
       expect(dialog.queryByRole("note")).not.toBeInTheDocument();
     });
@@ -204,8 +204,8 @@ describe("ListView", () => {
       dragRow(rowOf("Inbox"), chip("Website"));
       const dialog = within(await editorDialog());
       expect(dialog.getByRole("note")).toHaveTextContent("This activity has gaps (3 spans, 0:30 in between). Adjust the times if needed.");
-      expect(dialog.getByLabelText("From")).toHaveValue("13:00");
-      expect(dialog.getByLabelText("To")).toHaveValue("14:20");
+      expect(dialog.getByLabelText("Span 1 from")).toHaveValue("13:00");
+      expect(dialog.getByLabelText("Span 1 to")).toHaveValue("14:20");
     });
 
     it("creates the recording with overlap cancel on Save", async () => {
@@ -242,7 +242,7 @@ describe("ListView", () => {
         await userEvent.click(await screen.findByRole("menuitem", { name: "Project 9" }));
         const dialog = within(await editorDialog());
         expect(dialog.getByRole("combobox", { name: "Project" })).toHaveValue("Project 9");
-        expect(dialog.getByLabelText("From")).toHaveValue("09:00");
+        expect(dialog.getByLabelText("Span 1 from")).toHaveValue("09:00");
       });
     });
   });
@@ -253,8 +253,8 @@ describe("ListView", () => {
       await userEvent.click(rowOf("Todo"));
       await userEvent.click(chip("Website"));
       const dialog = within(await editorDialog());
-      expect(dialog.getByLabelText("From")).toHaveValue("10:00");
-      expect(dialog.getByLabelText("To")).toHaveValue("10:30");
+      expect(dialog.getByLabelText("Span 1 from")).toHaveValue("10:00");
+      expect(dialog.getByLabelText("Span 1 to")).toHaveValue("10:30");
       expect(dialog.getByRole("combobox", { name: "Project" })).toHaveValue("Website");
     });
 
@@ -271,16 +271,15 @@ describe("ListView", () => {
   });
 
   describe("keyboard", () => {
-    it("opens the editor for the row on Enter, with the project picker focused and no project", async () => {
+    it("opens the editor for the row on Enter, with the note focused and no project", async () => {
       await renderedRows([docs, todo]);
       rowOf("Todo").focus();
       await userEvent.keyboard("{Enter}");
       const dialog = within(await editorDialog());
-      expect(dialog.getByLabelText("From")).toHaveValue("10:00");
-      expect(dialog.getByLabelText("To")).toHaveValue("10:30");
-      const picker = dialog.getByRole("combobox", { name: "Project" });
-      expect(picker).toHaveValue("");
-      expect(picker).toHaveFocus();
+      expect(dialog.getByLabelText("Span 1 from")).toHaveValue("10:00");
+      expect(dialog.getByLabelText("Span 1 to")).toHaveValue("10:30");
+      expect(dialog.getByRole("combobox", { name: "Project" })).toHaveValue("");
+      expect(dialog.getByLabelText("Note")).toHaveFocus();
     });
 
     it("moves between the rows with ↓ and ↑ and stops at the last", async () => {

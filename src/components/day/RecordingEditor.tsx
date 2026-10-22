@@ -1,141 +1,116 @@
-import { useId, useState, type KeyboardEvent } from "react";
-import { NoteInput } from "../NoteInput";
-import { toAppError, type RecordingSpan, type Span } from "../../api";
-import { formatDuration } from "../../lib/format";
-import { spansText } from "../../lib/recordings";
+import { useEffect, useRef, type KeyboardEvent } from "react";
+import { Trash2 } from "lucide-react";
 import { useStore } from "../../state/store";
-import type { Editor } from "../../state/slices/recordings";
+import { NoteInput } from "../NoteInput";
 import { FormField } from "../Field";
-import { Modal } from "../Modal";
 import { ProjectPicker } from "../pickers/ProjectPicker";
 import { TagPicker } from "../pickers/TagPicker";
-import { TimeField } from "./TimeField";
-import { useRecordingDraft } from "./useRecordingDraft";
+import { CoveredActivity, DurationField, OverlapNotice } from "./EditorParts";
+import { EditorSpans } from "./EditorSpans";
+import { useEditorSave } from "./useEditorSave";
+import { useProposal } from "./useProposal";
 
 const MINUTE_MS = 60_000;
-const DAY_MS = 24 * 60 * MINUTE_MS;
 
-/** Without line breaks: a note is one line (ADR 0018); pasted ones turn into spaces. */
-
-/** Every span of a recording, the one `spanId` with the `edited` times; null for a running recording,
- *  whose open span has no end to send (Rust refuses to edit it too). */
-function withSpanEdited(spans: RecordingSpan[], spanId: string | null, edited: Span): Span[] | null {
-  const closed: Span[] = [];
-  for (const s of spans) {
-    if (s.end === null) return null;
-    closed.push(s.id === spanId ? edited : { start: s.start, end: s.end });
-  }
-  return closed;
-}
-
-/** Create a recording for a span, or edit one: project, times, note and tag. Rust snaps the times on save. */
-export function RecordingEditor({ editor }: { editor: Editor }) {
+/**
+ * The recording editor, inline in the timesheet (a sheet in the Week view, labelled by `id`): note, project, tag,
+ * duration, the activity it covers and its spans; Save (↵ or ⌘↵), Cancel (Escape), Delete (⌘⌫). Rust snaps the
+ * times on save.
+ */
+export function RecordingEditor({ id }: { id?: string }) {
+  const editor = useStore((s) => s.editor);
+  const draft = useStore((s) => s.draft);
+  const editing = useStore((s) => s.editing);
+  const overlap = useStore((s) => s.editorOverlap);
   const step = useStore((s) => s.settings?.timeline.snapMinutes ?? 5) * MINUTE_MS;
-  const { closeEditor, createRecording, updateRecording, deleteRecording } = useStore.getState();
-  const { existing, spanId, otherSpans, draft, patch } = useRecordingDraft(editor);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const ids = { start: useId(), end: useId(), note: useId() };
+  const { closeEditor, patchDraft, setDraftTotal } = useStore.getState();
+  const { errors, save, remove } = useEditorSave();
+  const ref = useRef<HTMLFormElement>(null);
+  const proposal = useProposal(draft?.spans ?? null);
+  const prefill = editor?.mode === "create" && !editor.projectId;
+  const projectId = draft?.projectId ?? null;
+  const proposed = proposal?.projectId ?? null;
 
-  if (!draft) return null;
-  const projectGiven = editor.mode === "create" && !!editor.projectId;
-  // An end at or before the start is on the next day.
-  const end = draft.end > draft.start ? draft.end : draft.end + DAY_MS;
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [editor]);
 
-  async function save() {
-    if (!draft?.projectId) {
-      setErrors({ projectId: "Pick a project" });
-      return;
-    }
-    setErrors({});
-    const edited = { start: draft.start, end };
-    const spans = existing ? withSpanEdited(existing.spans, spanId, edited) : [edited];
-    if (!spans) {
-      setErrors({ end: "Stop the timer first" });
-      return;
-    }
-    const fields = { projectId: draft.projectId, spans, note: draft.note, tagId: draft.tagId };
-    try {
-      const saved = existing ? await updateRecording(existing.id, fields) : await createRecording(fields);
-      if (saved) closeEditor();
-    } catch (e) {
-      const field = toAppError(e).field;
-      if (field) setErrors({ [field.path]: field.message });
-    }
-  }
+  // A new recording takes the proposed project until one is picked.
+  useEffect(() => {
+    if (prefill && projectId === null && proposed) useStore.getState().patchDraft({ projectId: proposed });
+  }, [prefill, projectId, proposed]);
 
-  const remove = () => {
-    if (!existing) return;
-    closeEditor();
-    void deleteRecording(existing.id);
-  };
+  // Escape cancels wherever the focus is; an open list or dialog takes it first.
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) useStore.getState().closeEditor();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  if (!editor || !draft) return null;
+  const open = editing?.spans.find((s) => s.end === null) ?? null;
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (!e.metaKey) return;
     if (e.key === "Enter") {
       e.preventDefault();
       void save();
-    } else if (e.key === "Backspace" && existing) {
+    } else if (e.key === "Backspace" && editing) {
       e.preventDefault();
       remove();
     }
   };
 
   return (
-    <Modal onClose={closeEditor} labelledBy="recording-editor-title" className="recording-editor">
-      <form
-        className="form-contents"
-        onKeyDown={onKeyDown}
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <h2 id="recording-editor-title">{existing ? "Edit recording" : "New recording"}</h2>
-        {editor.mode === "create" && editor.warning && (
-          <p className="editor-warning" role="note">
-            {editor.warning}
-          </p>
+    <form
+      ref={ref}
+      id={id}
+      className="recording-editor"
+      aria-label={editing ? "Edit recording" : "New recording"}
+      onKeyDown={onKeyDown}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
+      }}
+    >
+      {editor.mode === "create" && editor.warning && (
+        <p className="editor-warning" role="note">
+          {editor.warning}
+        </p>
+      )}
+      <div className="editor-note">
+        <NoteInput aria-label="Note" placeholder="What did you work on?" autoFocus maxLength={500} value={draft.note} onChange={(note) => patchDraft({ note })} />
+        {errors.note && (
+          <span className="form-field-error" role="alert">
+            {errors.note}
+          </span>
         )}
-        <FormField label="Project" error={errors.projectId}>
-          <ProjectPicker value={draft.projectId} autoFocus={!existing && !projectGiven} onChange={(projectId) => patch({ projectId })} />
-        </FormField>
-        <div className="recording-times">
-          <FormField label="From" htmlFor={ids.start}>
-            <TimeField id={ids.start} value={draft.start} step={step} onChange={(start) => patch({ start })} />
-          </FormField>
-          <FormField label="To" htmlFor={ids.end} error={errors.end}>
-            <TimeField id={ids.end} value={draft.end} step={step} onChange={(value) => patch({ end: value })} />
-          </FormField>
-          <span className="recording-length mono o2">{formatDuration(end - draft.start)}</span>
-        </div>
-        {otherSpans.length > 0 && <p className="recording-other-spans">Also {spansText(otherSpans)}</p>}
-        <FormField label="Note" htmlFor={ids.note} error={errors.note}>
-          <NoteInput
-            id={ids.note}
-            // Editing, or a given project, starts at the note; the open project list would hide the project.
-            autoFocus={!!existing || projectGiven}
-            maxLength={500}
-            value={draft.note}
-            onChange={(note) => patch({ note })}
-          />
-        </FormField>
-        <FormField label="Tag" error={errors.tagId}>
-          <TagPicker value={draft.tagId} onChange={(tagId) => patch({ tagId })} />
-        </FormField>
-        <div className="actions">
-          {existing && (
-            <button type="button" className="btn actions-start" title="Delete (⌘⌫)" onClick={remove}>
-              Delete
-            </button>
-          )}
-          <button type="button" className="btn" onClick={closeEditor}>
-            Cancel
+      </div>
+      <FormField label="Project" error={errors.projectId}>
+        <ProjectPicker value={draft.projectId} onChange={(picked) => patchDraft({ projectId: picked })} />
+      </FormField>
+      <FormField label="Tag" error={errors.tagId}>
+        <TagPicker value={draft.tagId} onChange={(tagId) => patchDraft({ tagId })} />
+      </FormField>
+      <DurationField total={draft.totalMs} readOnly={open !== null || draft.spans.length === 0} onChange={setDraftTotal} />
+      <CoveredActivity activity={proposal?.activity ?? []} />
+      <EditorSpans spans={draft.spans} step={step} runningSince={open?.start ?? null} error={errors.end ?? errors.start ?? errors.spans} />
+      {overlap && <OverlapNotice overlap={overlap} />}
+      <div className="editor-actions">
+        <button type="submit" className="btn btn-primary" title="Save (↵)">
+          Save
+        </button>
+        <button type="button" className="btn btn-quiet" title="Cancel (Escape)" onClick={closeEditor}>
+          Cancel
+        </button>
+        {editing && (
+          <button type="button" className="btn btn-quiet editor-delete" aria-label="Delete" title="Delete (⌘⌫)" onClick={remove}>
+            <Trash2 size="1rem" aria-hidden="true" />
           </button>
-          <button type="submit" className="btn btn-primary" title="Save (⌘↵)">
-            Save
-          </button>
-        </div>
-      </form>
-    </Modal>
+        )}
+      </div>
+    </form>
   );
 }

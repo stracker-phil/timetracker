@@ -1,7 +1,12 @@
+use chrono::Local;
 use tauri::{AppHandle, Manager, State};
 
+use super::draft::{self, DraftSpans};
+use super::proposal::{self, RecordingProposal};
 use super::undo::UndoStatus;
-use super::{Change, Overlap, RecordingInput, Recordings, Span, default_span, snap_span};
+use super::{
+    Change, Overlap, RecordingInput, Recordings, SnapEdge, Span, default_span, snap_moving,
+};
 use crate::db::recordings::{self, Recording, RecordingPatch};
 use crate::db::time::{Day, Ms, now_ms};
 use crate::error::AppResult;
@@ -87,16 +92,18 @@ pub async fn recording_add_span(
     changing(&app, async |s| s.add_span(&id, span, overlap).await).await
 }
 
+/// New times for the span, snapped with `moving` as the end a drag holds (`null` when it moved whole).
 #[tauri::command]
 pub async fn recording_update_span(
     app: AppHandle,
     id: String,
     span_id: String,
     span: Span,
+    moving: Option<SnapEdge>,
     overlap: Overlap,
 ) -> AppResult<Recording> {
     changing(&app, async |s| {
-        s.update_span(&id, &span_id, span, overlap).await
+        s.drag_span(&id, &span_id, span, moving, overlap).await
     })
     .await
 }
@@ -175,10 +182,42 @@ pub async fn recordings_list(
     recordings::list_for_range(&state.data.db()?, from, to).await
 }
 
-/// The span as a write would store it, for the page's drag ghost.
+/// The span on the snap grid, for a selection or a drag: `moving` is the end the pointer drags.
 #[tauri::command]
-pub fn recording_snap(state: State<'_, AppState>, start: Ms, end: Ms) -> Span {
-    snap_span(start, end, snap_minutes(&state))
+pub fn recording_snap(
+    state: State<'_, AppState>,
+    start: Ms,
+    end: Ms,
+    moving: Option<SnapEdge>,
+) -> Span {
+    snap_moving(start, end, snap_minutes(&state), moving)
+}
+
+/// The editor's spans with ends at or before their start rolled to the next day, and their sum.
+#[tauri::command]
+pub fn recording_draft_spans(spans: Vec<Span>) -> DraftSpans {
+    draft::draft(&spans, &Local)
+}
+
+/// The editor's spans with the last one's end moved so they add up to `totalMs`.
+#[tauri::command]
+pub fn recording_draft_total(spans: Vec<Span>, total_ms: i64) -> DraftSpans {
+    draft::with_total(&spans, total_ms, &Local)
+}
+
+/// The editor's spans and one more after the last (Add span).
+#[tauri::command]
+pub fn recording_draft_add(state: State<'_, AppState>, spans: Vec<Span>) -> DraftSpans {
+    draft::with_added(&spans, now_ms(), snap_minutes(&state), &Local)
+}
+
+/// What the editor shows for `spans`: the activity they cover and the project to propose.
+#[tauri::command]
+pub async fn recording_proposal(
+    state: State<'_, AppState>,
+    spans: Vec<Span>,
+) -> AppResult<RecordingProposal> {
+    proposal::propose(&state.data.db()?, &spans, &state.settings.get(), now_ms()).await
 }
 
 /// The span File → New Recording opens the editor on when nothing is selected.

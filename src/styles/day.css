@@ -94,10 +94,44 @@
 
 .lanes-popover { width: min(22rem, 92vw); max-height: 70vh; overflow: auto; }
 
-.recording-editor { width: min(32rem, 92vw); }
+/* ---------- recording editor: a card in the timesheet (a sheet in the Week view) ---------- */
+.recording-editor {
+  flex: none; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3);
+  background: var(--pop); border-radius: var(--radius-card); box-shadow: 0 0 0 2px var(--accent), var(--shadow-small); scroll-margin: var(--space-4);
+}
+.recording-editor-sheet { width: min(26rem, 92vw); padding: 0; }
+.recording-editor-sheet .recording-editor { box-shadow: none; }
 .editor-warning { margin: 0; padding: 0.462rem var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); line-height: 1.4; }
-.recording-times { display: flex; align-items: flex-end; gap: 0.769rem; }
-.time-input { width: 5.5rem; }
-.recording-length { padding-bottom: 0.462rem; }
-.recording-other-spans { margin: 0; color: var(--o2); }
+.editor-note { display: flex; flex-direction: column; gap: 2px; }
+.editor-note .input { font-size: 1.077rem; font-weight: 600; border-color: transparent; background: transparent; padding-left: 0; }
+.editor-note .input:focus { border-color: var(--field-line); background: var(--bg); padding-left: var(--space-2); }
+.editor-duration { display: flex; align-items: baseline; gap: var(--space-1); font-size: 1.385rem; font-weight: 600; color: var(--text-strong); }
+.duration-input { width: 2.4em; padding: 0 2px; font: inherit; color: inherit; text-align: right; font-variant-numeric: tabular-nums; background: transparent; border: none; border-bottom: 1px solid var(--field-line); }
+.duration-input:focus { outline: none; border-bottom-color: var(--accent); }
+.duration-unit { font-size: var(--fs-meta); color: var(--o2); font-weight: 500; }
+.editor-activity-head { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-1) 0; background: none; border: none; color: var(--text); font: inherit; font-weight: 500; cursor: pointer; }
+.editor-activity-head:disabled { cursor: default; color: var(--o2); }
+.editor-activity-count { margin-left: auto; color: var(--o2); font-variant-numeric: tabular-nums; }
+.editor-activity-list { margin: 0; padding: 0 0 0 var(--space-4); list-style: none; display: flex; flex-direction: column; gap: 2px; max-height: 12rem; overflow: auto; font-size: var(--fs-meta); }
+.editor-activity-list li { display: flex; justify-content: space-between; gap: var(--space-2); }
+.editor-activity-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor-spans { display: flex; flex-direction: column; gap: var(--space-1); }
+.editor-span { display: flex; align-items: center; gap: var(--space-2); }
+.editor-span-label { font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--o2); }
+.editor-span-time { font-variant-numeric: tabular-nums; }
+.editor-span-remove { margin-left: auto; padding: var(--space-1); }
+.editor-span-add { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--space-1); }
+.time-input { width: 4.5rem; font-variant-numeric: tabular-nums; }
+.editor-overlap { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); }
+.editor-overlap-title { margin: 0; font-weight: 600; }
+.editor-actions { display: flex; align-items: center; gap: var(--space-2); }
+.editor-delete { margin-left: auto; }
+
+/* The open editor's spans in the time column. */
+.recording-draft {
+  position: absolute; left: 4px; right: 4px; z-index: 2; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;
+  padding: 3px var(--space-1) 2px; border-radius: var(--radius-card); background: var(--sel); border: 1px solid var(--accent); pointer-events: none;
+}
+.recording-draft-time { font-size: var(--fs-caption); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--accent-text); }
+.recording-draft-time:last-child { align-self: flex-end; }
 .overlap-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-1); }

@@ -5,7 +5,6 @@ import { selectDayVersion, useStore } from "../../state/store";
 import { Splitter, usePaneSize } from "../Splitter";
 import { DayHeader } from "./DayHeader";
 import { ListView } from "./list/ListView";
-import { RecordingEditor } from "./RecordingEditor";
 import { Timeline } from "./Timeline";
 import { Timesheet } from "./Timesheet";
 import { useLiveReload } from "./useLiveReload";
@@ -45,7 +44,6 @@ export function DayPage() {
   const live = useLiveReload(isToday(day));
   const view = useStore((s) => (s.dayView?.day === day ? s.dayView : null));
   const error = useStore((s) => s.dayError);
-  const editor = useStore((s) => s.editor);
   const mode = useStore((s) => s.uiState.dayMode);
   const pane = usePaneSize("timesheet", Math.round(window.innerWidth * TIMESHEET.share), TIMESHEET.min, TIMESHEET.max);
 
@@ -66,7 +64,6 @@ export function DayPage() {
           <div className="day-main">{isEmpty(view) ? <EmptyDay day={day} /> : mode === "list" ? <ListView day={day} reload={live} /> : <Timeline view={view} />}</div>
         </div>
       )}
-      {editor && <RecordingEditor key={editor.mode === "edit" ? editor.id : `${editor.start}`} editor={editor} />}
     </section>
   );
 }

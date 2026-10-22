@@ -1,24 +1,17 @@
-import { api, toAppError, type Overlap, type Recording, type RecordingInput, type RecordingPatch, type Span, type UndoStatus } from "../../api";
+import { api, toAppError, type Overlap, type Recording, type RecordingInput, type RecordingPatch, type SnapEdge, type Span, type UndoStatus } from "../../api";
 import { formatDuration } from "../../lib/format";
 import { recordedMs } from "../../lib/recordings";
 import { fail } from "../requests";
 import type { Slice, Store } from "../store";
 
-/** A span picked on the timeline, unsnapped (Rust snaps on save), with the activity blocks it came from. */
+/** A span picked on the timeline, unsnapped (Rust snaps it), with the activity blocks it came from. */
 export interface Selection {
   start: number;
   end: number;
   blockIds: string[];
+  /** The end a drag moves, which snaps in whole steps away from the other. */
+  moving?: SnapEdge;
 }
-
-/**
- * `projectId`: preselected for a new recording; `warning`: shown above the fields.
- * `at`: a span of the recording, to find it by; the shown day's block when absent.
- * `spanId`: the span whose times the editor shows; the first one when absent.
- */
-export type Editor =
-  | { mode: "create"; start: number; end: number; projectId?: string; warning?: string }
-  | { mode: "edit"; id: string; at?: { start: number; end: number }; spanId?: string };
 
 export interface RecordingsSlice {
   selection: Selection | null;
@@ -28,22 +21,21 @@ export interface RecordingsSlice {
   setSelection: (selection: Selection | null) => void;
   /** Grows the selection to also cover `blockId`'s span. */
   extendSelection: (blockId: string) => void;
+  /** Adds `blockId` to the selected blocks, or takes it out; the selection covers the rest. */
+  toggleSelectionBlock: (blockId: string) => void;
   /** The recording keys act on. */
   focusedRecording: string | null;
   focusRecording: (id: string | null) => void;
   /** The recording under the pointer, in the timesheet or the time column: all its spans and its card light up. */
   hoveredRecording: string | null;
   hoverRecording: (id: string | null) => void;
-  editor: Editor | null;
-  openEditor: (editor: Editor) => void;
-  closeEditor: () => void;
   undoStatus: UndoStatus;
   loadUndoStatus: () => Promise<void>;
   /** Saves; an overlap asks first whether to replace. Rejects with the error when a form field shows it. */
   createRecording: (input: RecordingInput) => Promise<Recording | null>;
   updateRecording: (id: string, patch: RecordingPatch) => Promise<Recording | null>;
-  /** New times for one span of the recording. */
-  updateSpan: (id: string, spanId: string, span: Span) => Promise<Recording | null>;
+  /** New times for one span of the recording as a drag left them; Rust snaps them with `moving` as the dragged end. */
+  updateSpan: (id: string, spanId: string, span: Span, moving?: SnapEdge | null) => Promise<Recording | null>;
   /** Moves the span's start and end by whole snap steps each. */
   nudgeSpan: (id: string, spanId: string, startSteps: number, endSteps: number) => Promise<Recording | null>;
   deleteRecording: (id: string) => Promise<void>;
@@ -103,8 +95,10 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
       }
     }
 
+    /** Asked inside the editor while it is open, else in a dialog. */
     function confirmReplace(recordings: Recording[]): Promise<boolean> {
       return new Promise((resolve) => {
+        if (get().editor) return set({ editorOverlap: { recordings, resolve } });
         get().openDialog({ type: "overlap", recordings, onReplace: () => resolve(true), onCancel: () => resolve(false) });
       });
     }
@@ -116,7 +110,6 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
       selectionSnap: null,
       focusedRecording: null,
       hoveredRecording: null,
-      editor: null,
       undoStatus: NOTHING_TO_UNDO,
 
       setSelection(selection) {
@@ -140,20 +133,22 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
         });
       },
 
+      toggleSelectionBlock(blockId) {
+        const ids = get().selection?.blockIds ?? [];
+        const kept = ids.includes(blockId) ? ids.filter((id) => id !== blockId) : [...ids, blockId];
+        const spans = kept.flatMap((id) => blockSpan(get(), id) ?? []);
+        if (spans.length === 0) return set({ selection: null, selectionSnap: null });
+        const start = Math.min(...spans.map((s) => s.start));
+        const end = Math.max(...spans.map((s) => s.end));
+        set({ selection: { start, end, blockIds: kept } });
+      },
+
       focusRecording(id) {
         set({ focusedRecording: id });
       },
 
       hoverRecording(id) {
         if (get().hoveredRecording !== id) set({ hoveredRecording: id });
-      },
-
-      openEditor(editor) {
-        set({ editor });
-      },
-
-      closeEditor() {
-        set({ editor: null });
       },
 
       async loadUndoStatus() {
@@ -180,8 +175,8 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
         return saved;
       },
 
-      async updateSpan(id, spanId, span) {
-        const saved = await writing("Could not change the recording", (overlap) => api.recordingUpdateSpan(id, spanId, span, overlap));
+      async updateSpan(id, spanId, span, moving = null) {
+        const saved = await writing("Could not change the recording", (overlap) => api.recordingUpdateSpan(id, spanId, span, moving, overlap));
         if (saved) undoToast("Recording changed");
         return saved;
       },

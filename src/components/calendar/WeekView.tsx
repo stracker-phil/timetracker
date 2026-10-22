@@ -1,10 +1,11 @@
-import type { CSSProperties, MouseEvent } from "react";
+import { useId, type CSSProperties, type MouseEvent } from "react";
 import { api, type DayColumn as Column, type RecordingBlock as Block } from "../../api";
 import { formatHm } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
 import { RecordingBlock } from "../day/RecordingBlock";
 import { RecordingEditor } from "../day/RecordingEditor";
+import { Modal } from "../Modal";
 import { TimeAxis } from "../day/TimeAxis";
 import { CalendarHeader } from "./CalendarHeader";
 
@@ -56,6 +57,7 @@ export function WeekView() {
   const pxPerMinute = useStore((s) => s.uiState.timelineZoom);
   const focused = useStore((s) => s.focusedRecording);
   const editor = useStore((s) => s.editor);
+  const editorId = useId();
   const { data: week, error } = useApiResult(`week:${day}#${changes}`, () => api.weekView(day), { keepData: true });
   const goToDay = useStore.getState().goToDay;
   const bounds = week?.days[0]?.bounds;
@@ -90,7 +92,11 @@ export function WeekView() {
           </div>
         </div>
       )}
-      {editor && <RecordingEditor key={editor.mode === "edit" ? editor.id : `${editor.start}`} editor={editor} />}
+      {editor && (
+        <Modal onClose={() => useStore.getState().closeEditor()} labelledBy={editorId} className="recording-editor-sheet">
+          <RecordingEditor key={editor.mode === "edit" ? editor.id : "new"} id={editorId} />
+        </Modal>
+      )}
     </section>
   );
 }

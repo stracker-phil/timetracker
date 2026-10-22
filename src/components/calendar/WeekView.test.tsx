@@ -203,7 +203,7 @@ describe("WeekView", () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
       drag(recordingEl(), column("Tue 10"), { dx: 0, dy: 25 });
-      await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at("09:10"), end: at("09:55") }, "cancel"));
+      await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at("09:10"), end: at("09:55") }, null, "cancel"));
       expect(mocked.recordingMove).not.toHaveBeenCalled();
       expect(mocked.recordingCopy).not.toHaveBeenCalled();
     });
@@ -212,7 +212,7 @@ describe("WeekView", () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
       drag(recordingEl(), null, { dx: 0, dy: 25 });
-      await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at("09:10"), end: at("09:55") }, "cancel"));
+      await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at("09:10"), end: at("09:55") }, null, "cancel"));
       expect(mocked.recordingMove).not.toHaveBeenCalled();
     });
 
@@ -231,8 +231,48 @@ describe("WeekView", () => {
       await screen.findAllByRole("columnheader");
       fireEvent.doubleClick(column("Wed 11"), { clientY: (9 * 60 + 7) * PX_PER_MINUTE });
       const dialog = within(await screen.findByRole("dialog", { name: "New recording" }));
-      expect(dialog.getByLabelText("From")).toHaveValue("09:05");
-      expect(dialog.getByLabelText("To")).toHaveValue("10:05");
+      expect(dialog.getByLabelText("Span 1 from")).toHaveValue("09:05");
+      expect(dialog.getByLabelText("Span 1 to")).toHaveValue("10:05");
+    });
+
+    it("shows the editor in a sheet, not in a timesheet", async () => {
+      renderWeek();
+      await screen.findAllByRole("columnheader");
+      fireEvent.doubleClick(column("Wed 11"), { clientY: 9 * 60 * PX_PER_MINUTE });
+      const dialog = await screen.findByRole("dialog", { name: "New recording" });
+      expect(within(dialog).getByRole("form", { name: "New recording" })).toBeInTheDocument();
+      expect(screen.queryByRole("complementary", { name: "Timesheet" })).not.toBeInTheDocument();
+    });
+
+    it("closes the sheet with Escape without saving", async () => {
+      renderWeek();
+      await screen.findAllByRole("columnheader");
+      fireEvent.doubleClick(column("Wed 11"), { clientY: 9 * 60 * PX_PER_MINUTE });
+      await screen.findByRole("dialog", { name: "New recording" });
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(mocked.recordingCreate).not.toHaveBeenCalled();
+    });
+
+    it("saves the recording of the sheet with the project and the span", async () => {
+      renderWeek();
+      await screen.findAllByRole("columnheader");
+      fireEvent.doubleClick(column("Wed 11"), { clientY: 9 * 60 * PX_PER_MINUTE });
+      const dialog = within(await screen.findByRole("dialog", { name: "New recording" }));
+      await userEvent.type(dialog.getByRole("combobox", { name: "Project" }), "Web{Enter}");
+      await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+      await vi.waitFor(() =>
+        expect(mocked.recordingCreate).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: at("09:00", NEXT_DAY), end: at("10:00", NEXT_DAY) }], note: "", tagId: null }, "cancel"),
+      );
+      await vi.waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    });
+
+    it("only focuses a recording on a single click", async () => {
+      renderWeek(recordedWeek());
+      await screen.findAllByRole("columnheader");
+      await userEvent.click(recordingEl());
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(useStore.getState().focusedRecording).toBe("r1");
     });
 
     it("opens the recording that is double-clicked, found by its span", async () => {
@@ -241,7 +281,7 @@ describe("WeekView", () => {
       await screen.findAllByRole("columnheader");
       await userEvent.dblClick(recordingEl());
       const dialog = within(await screen.findByRole("dialog", { name: "Edit recording" }));
-      expect(await dialog.findByLabelText("From")).toHaveValue("09:00");
+      expect(await dialog.findByLabelText("Span 1 from")).toHaveValue("09:00");
       expect(mocked.recordingsList).toHaveBeenCalledWith(at("09:00"), at("09:45"));
       expect(screen.queryByRole("dialog", { name: "New recording" })).not.toBeInTheDocument();
     });

@@ -223,11 +223,20 @@ describe("recording commands", () => {
       expect(runCommand("recording.delete")).toBe(false);
     });
 
-    it("opens the editor for the snapped selection", () => {
+    it("opens the editor for the selection as Rust snaps it, asking api.recordingSnap", async () => {
+      mocked.recordingSnap.mockResolvedValueOnce({ start: at("09:00"), end: at("10:30") });
       state().setSelection({ start: at("09:02"), end: at("10:28"), blockIds: [] });
-      state().setSelectionSnap({ start: at("09:00"), end: at("10:30") });
       expect(runCommand("recording.open")).toBe(true);
-      expect(state().editor).toEqual({ mode: "create", start: at("09:00"), end: at("10:30") });
+      await vi.waitFor(() => expect(state().editor).toEqual({ mode: "create", start: at("09:00"), end: at("10:30") }));
+      expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("10:28"), null);
+      await vi.waitFor(() => expect(state().draft?.spans).toEqual([{ start: at("09:00"), end: at("10:30") }]));
+    });
+
+    it("passes the end a drag moves to Rust's snap", async () => {
+      state().setSelection({ start: at("09:02"), end: at("10:28"), blockIds: [], moving: "start" });
+      runCommand("recording.open");
+      await vi.waitFor(() => expect(state().editor).not.toBeNull());
+      expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("10:28"), "start");
     });
 
     it("edits the focused recording rather than the selection", () => {
@@ -235,13 +244,30 @@ describe("recording commands", () => {
       state().focusRecording("r1");
       runCommand("recording.open");
       expect(state().editor).toEqual({ mode: "edit", id: "r1" });
+      expect(mocked.recordingSnap).not.toHaveBeenCalled();
     });
 
-    it("creates from the selection even while a recording is focused", () => {
+    it("creates from the selection even while a recording is focused", async () => {
       state().setSelection({ start: at("09:00"), end: at("10:00"), blockIds: [] });
       state().focusRecording("r1");
       runCommand("recording.create");
-      expect(state().editor).toMatchObject({ mode: "create" });
+      await vi.waitFor(() => expect(state().editor).toMatchObject({ mode: "create" }));
+    });
+
+    it("opens no editor and toasts when Rust cannot snap the selection", async () => {
+      mocked.recordingSnap.mockRejectedValueOnce({ kind: "io", message: "no snap", code: null });
+      state().setSelection({ start: at("09:00"), end: at("10:00"), blockIds: [] });
+      runCommand("recording.open");
+      await vi.waitFor(() => expect(state().toasts.map((t) => t.message)).toEqual(["Could not open the editor: no snap"]));
+      expect(state().editor).toBeNull();
+    });
+  });
+
+  describe("recording.edit", () => {
+    it("opens the editor on the focused recording", () => {
+      state().focusRecording("r1");
+      expect(runCommand("recording.edit")).toBe(true);
+      expect(state().editor).toEqual({ mode: "edit", id: "r1" });
     });
   });
 

@@ -175,11 +175,11 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `recording_update` | `id, patch: RecordingPatch, overlap` | `Recording` | the same |
 | `recording_delete` | `id` | – | `not_found`, `db` |
 | `recording_add_span` | `id, span: Span, overlap` | `Recording` with the span added (snapped) | the same, `invalid_input` for the running timer |
-| `recording_update_span` | `id, spanId, span: Span, overlap` | `Recording` with the span's new times | the same; `not_found` for an unknown span |
+| `recording_update_span` | `id, spanId, span: Span, moving: SnapEdge \| null, overlap` | `Recording` with the span's new times as a drag left them, snapped by `Recordings::drag_span` (`snap_moving` with `moving` as the dragged end; `null` when the span moved whole) | the same; `not_found` for an unknown span |
 | `recording_remove_span` | `id, spanId` | `Recording`, or `null` when it was the last span and the recording was deleted | `invalid_input` (the running timer), `not_found`, `db` |
 | `recording_split_span` | `id, spanId, at: Ms` | `Recording` whose span is cut in two at the snapped `at`; both halves stay in it | `invalid_input` (`field`: `at` not inside the span; the running timer), `not_found`, `db` |
 | `recording_merge` | `into, from` | `Recording` `into` with the spans of `from` (which keeps its project, note and tag); `from` is deleted | `invalid_input` (`field`: `from` the same recording; a running one), `not_found`, `db` |
-| `recording_nudge` | `id, spanId, startSteps: i32, endSteps: i32, overlap` | `Recording` whose span's start and end moved by that many snap steps (`timeline.snapMinutes`; ⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓), through `update_span` | as `recording_update_span` |
+| `recording_nudge` | `id, spanId, startSteps: i32, endSteps: i32, overlap` | `Recording` whose span's start and end moved by that many snap steps (`timeline.snapMinutes`; ⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓) from their nearest grid marks; an end moved alone stays a step from the other (`snap_moving`), through `update_span` | as `recording_update_span` |
 | `recording_move` / `recording_copy` | `id, spanId: string \| null, day: Day, overlap` | `Recording`: moved, or a new copy, to `day` at the same local time (`same_time_on`, DST-safe) with the same lengths (undoable). With `spanId` only that span (the copy is a new recording of it); without, every span, shifted by the days between the first span's day and `day` | `invalid_input` (the running timer), `overlap`, `not_found`, `db` |
 | `week_view` (`calendar/commands.rs`) | `day: Day` | `WeekView { weekStart, label, days: DayColumn[], totalMs, trackedMs }`; `DayColumn { day, bounds, label, isToday, recordings, totalMs, trackedMs }` | `invalid_input`, `db` |
 | `month_view` | `day: Day` | `MonthView { monthStart, label, weeks: MonthDay[][], totalMs }` (whole weeks Monday to Sunday; `totalMs` counts the month's own days); `MonthDay { day, inMonth, isToday, recordedMs, projects }` (the top three by time, with color and shade) | `invalid_input`, `db` |
@@ -187,7 +187,11 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `calendar_picker` | `month: Day` (any day of it), `selected: [Day, Day] \| null` | `PickerMonth { monthStart, weeks: PickerDay[][] }` (whole weeks Monday to Sunday); `PickerDay { day, outside, isToday, selected }` (`calendar::period::picker_month`); the date picker | `invalid_input` |
 | `calendar_jumps` | `text: string` | `DateJump[] { name: string \| null, unit: PeriodUnit, from: Day, to: Day }` (`calendar::jump::jumps`): a typed date (`2026-10-12`, `12.10.`, `12.10.2026`, `oct 12`, `12 october 2026`; without a year the latest on or before today) as one day without a name, else the date words starting with `text` or one of whose words does (Today, Yesterday, This week, Last week, This month, Last month, a weekday: the latest on or before today, a month name: the latest on or before this month); `""` gives Today, Yesterday, This week, This month; the palette | – |
 | `recordings_list` | `from: Ms, to: Ms` | `Recording[]` with a span sharing time with the range, each with all its spans | `db` |
-| `recording_snap` | `start: Ms, end: Ms` | `Span` as a write would snap it (the drag ghost) | – |
+| `recording_snap` | `start: Ms, end: Ms, moving: SnapEdge \| null` (`start`, `end`) | `Span` on the grid (`snap_moving`): both ends at the nearest mark; the `moving` end (the one a drag holds) stays at least one step from the other, which keeps its mark; without one, as a write snaps (`snap_span`). The selection, the drag ghost, and what a drag saves | – |
+| `recording_draft_spans` (`recordings/draft.rs`) | `spans: Span[]` | `DraftSpans { spans, totalMs }`: each end moved to the first instant with its clock time after its start (an end at or before the start is on the next day, DST-safe through `same_time_on_in`), in the order given, and their sum; the editor's From / To | – |
+| `recording_draft_total` | `spans: Span[], totalMs` | `DraftSpans` with the last span's end moved so they add up to `totalMs`; unchanged when that would end it at or before its start or a day or more after it; the editor's duration | – |
+| `recording_draft_add` | `spans: Span[]` | `DraftSpans` with a 30-minute span after the last (without spans, from the start of `default_span`); Add span | – |
+| `recording_proposal` | `spans: Span[]` | `RecordingProposal { projectId, activity: CoveredActivity[] }` (`recordings/proposal.rs`): the blocks of every lane but the summary on the spans' days that share time with them (`id`, `label`, `app`, `bundleId`, `start`, `end`, `insideMs`, `private`), and the project of the latest recording in the 14 days before the first span that covered the spans' main app (most time inside, private left out), else of the rule matching the most time inside; archived projects are never proposed. The editor's activity list and prefill | `db` |
 | `recording_default_span` | – | `Span`: the half hour up to now (`NEW_RECORDING_MINUTES`), snapped (`recordings::default_span`); File → New Recording… without a selection | – |
 | `undo` / `redo` | – | the label undone or redone, `null` when there was none | `overlap`, `db` |
 | `undo_status` | – | `UndoStatus { undoLabel, redoLabel }` | – |
@@ -263,7 +267,7 @@ by the commands and the CLI. Activity is never edited (ADR 0005), so deletion wo
 ## Day view
 
 `day/mod.rs`: `view(&DayInput, &ViewSettings) -> DayView` is a pure function ([ADR
-0012](adr/0012-timeline-layout-in-rust.md)); `day::commands::load` reads the rows (`list_for_range`, spans
+0012](adr/0012-timeline-layout-in-rust.md)); `day::load` reads the rows (`list_for_range`, spans
 from the day before included) and calls it. `ViewSettings` is a copy of `Settings.timeline` and
 `Settings.apps`. The module is split by concern: `types.rs` (everything `DayView` sends), `totals.rs`
 (`totals`, `tracked_ms`, gaps, span unions), `recordings.rs` (`recording_blocks`, `timesheet`), `summary.rs`
@@ -311,14 +315,17 @@ blocks).
 [ADR 0020](adr/0020-recordings-have-spans.md)). A recording holds one or more spans; project, note and tag
 belong to the recording. `Recordings { db, undo, snap_minutes }` (`mod.rs`) is the service; each write takes
 the `AppState.undo` lock for its whole run, so writes never interleave. `create`, `update`, `delete`,
-`add_span`, `update_span`, `nudge_span`, `remove_span`, `split_span`, `merge`, `move_to_day` and `copy_to_day` validate, snap,
+`add_span`, `update_span`, `drag_span`, `nudge_span`, `remove_span`, `split_span`, `merge`, `move_to_day` and `copy_to_day` validate, snap,
 clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `commands.rs` then emits
 `data_changed { kind: recordings, day }` for every day a span of the op touched, before and after
 (`Change.days`).
 
-- **Snapping** (`snap.rs`: `snap`, `snap_span`): to the nearest multiple of `timeline.snapMinutes` counted from local
-  midnight, read at call time; an end that snaps onto or before the start lands one step after it. `update`
-  snaps only when the patch has `spans`, so editing a note keeps the times.
+- **Snapping** (`snap.rs`: `snap`, `snap_span`, `snap_moving`, `grid_step`): to the nearest multiple of
+  `timeline.snapMinutes` counted from local midnight, read at call time; an end that snaps onto or before the
+  start lands one step after it. `snap_moving` is the rule for a drag: both ends go to the nearest mark and the
+  moving end (`SnapEdge::Start | End`) keeps at least one step from the other, so a selection over activity
+  from 13:12 to 13:38 is 13:10–13:40 and dragging an edge moves it in whole steps. `update` snaps only when the
+  patch has `spans`, so editing a note keeps the times.
 - **Validation** (`checks.rs`, `InvalidField`): at least one span (`spans`), each `end` after its `start` and at most 24 h
   later, none overlapping another of the recording (`spans`, checked by `db::recordings::check_spans` for both layers; touching is fine); `note` one line, at most 500
   characters, trimmed; `projectId` not archived (unless the recording already belongs to it); `tagId` (one
@@ -346,7 +353,7 @@ clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `co
   the redo list. `undo` applies the inverse, `redo` the op again; one that would now overlap is refused and
   the stack stays as it was.
 
-The Day view gets the day's recordings too (`day::commands::load` reads them with the projects, clients and
+The Day view gets the day's recordings too (`day::load` reads them with the projects, clients and
 tags): `DayView.recordings` (`RecordingBlock`, one per span on the day: the recording's `id`, `spanId`,
 `spanCount`, the clipped span, project, client, color and shade, note, `tag` name, `running`,
 `clippedStart`/`clippedEnd`), `ActivityBlock.covered` when at least half of a block lies inside recordings,
@@ -418,7 +425,7 @@ key and label (the timeline's grouping, titles, hidden apps and noise already ap
 the app a whole app is one row). A row has the merged spans of its blocks (touching ones joined), their total, the time between them (`gapMs`),
 the part inside recordings (`coveredMs`), the first start and last end, and the longest block's app, title,
 URL and path. Rows sort by total, longest first, then by first start. `list_view` builds the view without
-suggestions (`day::commands::view_of`).
+suggestions (`day::view_of`).
 
 ## Away prompt
 
@@ -458,7 +465,7 @@ fill `DayView.suggestions`, and accepting one is an ordinary undoable create.
   dropped. Ids are `<rule id>:<start>:<end>`, so a suggestion keeps its id across reloads; `accept` and
   `accept_rule` (`rules/mod.rs`) rebuild the day's suggestions and find it again. A tag deleted since the
   rule was saved is left out.
-- `preview` builds the views of the last days (`day::commands::view_of`, without suggestions) and lists the
+- `preview` builds the views of the last days (`day::view_of`, without suggestions) and lists the
   blocks the input's conditions match on their own, most recent first (`PREVIEW_HITS`, 200), with the time
   of every hit and the number of days with one.
 - Every rule write emits `data_changed { kind: rules, day: null }`, so open views rebuild their
@@ -662,7 +669,7 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
 | `recordings` | `from`, `to` (days, inclusive), `project`, `tag`, `limit` (default 500, at most 5000) | `[{ id, day, start_iso, end_iso, spans: [{ start_iso, end_iso }], duration_min, project, client?, note, tag }]` (`tag`: the name or `null`; `spans` the day's parts, `duration_min` their sum) by start, one row per recording and day, archived projects included |
 | `projects` | – | `[{ id, name, color, client?, billable, archived }]` |
 | `tags` | – | `[{ id, name }]` |
-| `day_summary` | `day` | `{ day, recorded_min, tracked_min, away_min, by_project, by_tag }`; totals from `day::commands::view_of`, the groups `[{ name, minutes, notes }]` from `reports::run` for that day |
+| `day_summary` | `day` | `{ day, recorded_min, tracked_min, away_min, by_project, by_tag }`; totals from `day::view_of`, the groups `[{ name, minutes, notes }]` from `reports::run` for that day |
 | `activity` | `day` | `{ activity: [{ start_iso, end_iso, app, title, url?, path?, source }], away: [{ start_iso, end_iso, reason }] }`; private rows keep only the app. Refused (`Activity is not exposed to MCP. Enable it in Settings → Data.`) unless `settings.mcp.exposeActivity` |
 | `status` | – | `IpcMessage::Status` to the app: `{ version, tracker: { state, text, current: { app, title?, url?, since_iso } }, timer: { project, note, start_iso, elapsed_min }, window_visible }`; the current title and URL only when activity is exposed |
 | `open_day` | `day` | `IpcMessage::Show { day, focus: true }` to the app |

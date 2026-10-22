@@ -259,9 +259,9 @@ The Day view reads like Timely's: a slim header, the timesheet on the left, then
   selection, else now; `recording.new`). Below, one `Card` per recording in the order of its first span on
   the day, filled in the project's shade: the note as title (the project without one), the project's dot and
   `Project | Client`, the tag (and `2 spans` when it has several on the day), the day's total at the bottom
-  right (`1h 20m`). Longer recordings get taller cards (from about one line up to 300 minutes). A click
-  focuses the recording, a double-click or ↵ edits it; hovering a card lights up its spans in the time
-  column, and hovering a span lights up its card.
+  right (`1h 20m`). Longer recordings get taller cards (from about one line up to 300 minutes). A click or
+  ↵ opens the editor in its place; hovering a card lights up its spans in the time column, and hovering a span
+  lights up its card. The open editor takes its place among the cards (see [Recordings](#recordings)).
 - **Timeline columns,** left to right: the hour axis (`--timeline-axis-w`, hour labels in `--fs-caption`
   `--o2`, tabular figures; hour hairlines in `--line`, half hours from 3 px per minute), the time column
   (`--recordings-col-w`, about 90 px: recordings and suggestions, where a drag selects time), the summary
@@ -315,24 +315,45 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 
 ## Recordings
 
-- **Selection.** Drag on the lanes or the axis, click a block (⇧-click adds blocks), or V on the focused
-  block (⇧J and ⇧K add the next or previous one): `--sel` fill with
-  accent hairlines and the snapped `09:00–10:30` in mono accent text; the status bar repeats it with the
-  duration. A dashed accent outline in the recordings column shows where the recording goes.
+- **Recording by selection** (as in Timely; no key needed). Drag over empty time in the time column, the
+  axis or the lanes, or click an activity block: the editor opens on release. ⇧-click grows the selection over
+  another block first. ⌘-click adds or removes blocks without opening the editor; it opens when ⌘ is
+  released, so several scattered blocks can be gathered. While the editor is open, a new drag or click moves a
+  new recording to the new span (note, project and tag stay), and ⌥-drag or ⌥-click adds the span to the
+  open recording instead (without an open editor, ⌥ on a block still drags it onto a project for a rule).
+- **Snapping** (the Time snapping setting, 5 min by default) applies to every selection, drag and resize,
+  on both ends, and Rust computes it: a selection over activity snaps each end to the nearest mark (blocks
+  from 13:12 to 13:38 give 13:10–13:40); dragging an edge of a selection or a recording, or dragging in the
+  time column, moves that edge in whole steps (13:40, 13:45, …); an end that would reach the other keeps one
+  step. ⌥⇧↑ ⌥⇧↓ on a recording move its end the same way.
+- **Selection** (the keyboard's way: V on the focused block, ⇧J and ⇧K add the next or previous one; ↵ opens
+  the editor): `--sel` fill with accent hairlines and the snapped `09:00–10:30` in accent text; the status
+  bar repeats it with the duration. A dashed accent outline in the time column shows where the recording goes.
 - **Recording blocks** sit in the time column, one per span: a recording can hold several separate
   spans (14:25–15:00 and 16:05–20:15), each its own block, all lit up together with the recording's single
   timesheet card when one is hovered or focused; project, note and tag belong to the recording and show on
   the card. In the Day view a span shows only its start (top left) and end (bottom right); the Week view
-  shows the full card. Each is a `Card` filled in the project's shade (`--block-fill`, light in light palettes, a muted dark tint
+  shows the full card. In the Day view a click on a span opens the editor; in the Week view a click focuses
+  and a double-click edits. Each is a `Card` filled in the project's shade (`--block-fill`, light in light palettes, a muted dark tint
   in dark ones) with `--block-text`, at least 4.5:1 for every accent and shade: the project name (600), the
   note (500), then the tag with a tag icon and the duration in mono at the bottom right. A dashed top or
   bottom edge means the span continues on another day. The top and bottom 6px resize the span; the body
   moves it. Activity under recordings (half or more) takes `--activity-fill-dim` (summary) or a regular-weight
   `--o2` label (memories); hover lifts it.
-- **Editor**: a sheet with project, From/To of the span it was opened on, duration, the other spans
-  read-only ("Also 14:25–15:00"), note, tag; Save, Cancel, Delete. Field errors show under their field.
-- **Overlap**: a confirm sheet listing the recordings in the way, each with its spans; "Replace overlapped
-  part" trims or cuts their spans, and deletes a recording left without any.
+- **Editor**, inline in the timesheet (Timely's): a card with a 2px accent ring at the new recording's place
+  among the cards (in place of the card it edits), pushing the cards below down and scrolled into view; it is
+  never a sheet over the timeline (the Week view, without a timesheet, shows it as a sheet). Top to bottom: the
+  note as the title field (focused, "What did you work on?"), project (recent first, type to search, "New
+  project…"), tag, the duration large as `0 h 20 m` (both numbers editable; a change moves the last span's
+  end), "Activity n" (the activity blocks inside the spans; a click lists them), the spans as `FROM 10:00 TO
+  10:20` rows (✕ removes one while there are several; "Add span" adds one after the last), then Save, Cancel
+  and a trash icon for Delete. The draft's spans show in the time column as accent-filled blocks with their
+  times. A new recording's project is proposed: the project of the latest recording (two weeks back) that
+  covered the same main app, else the rule matching most of the activity. Field errors show under their
+  field. A running recording's spans are shown, not edited.
+- **Overlap**: asked inside the editor (outside it, a confirm sheet) listing the recordings in the way, each
+  with its spans; "Replace overlapped part" trims or cuts their spans, and deletes a recording left without
+  any; Back returns to the fields.
 - Every change ends in a toast with Undo.
 
 ## Welcome
@@ -371,7 +392,7 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   `--block-meta` on a half-strength `--block-fill` (full once hovered), a "+" top right, the project (500)
   and the rule's name, the duration bottom right. The cursor is `copy`. A click records it; ⌥-click records every suggestion of that rule on the
   day. Each is a button, so Tab reaches it, ↵ accepts it and ⌥↵ every suggestion of its rule. The tooltip names the rule, project, span and note.
-- **Drop strip**: ⌥-dragging an activity block shows the recent projects on `--pop` over the top of the
+- **Drop strip**: ⌥-dragging an activity block (while no recording editor is open) shows the recent projects on `--pop` over the top of the
   recordings column; the one under the pointer gets a dashed accent outline. Dropping opens the rule sheet,
   filled in; nothing is saved before Save. From the keyboard, the block menu's Make a rule… (⌃↵) opens the
   sheet with the block's conditions and no project.
@@ -393,9 +414,9 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 ## Week and Month
 
 - **Week**: the time axis and seven day columns (`--lane-min-w` like lanes); each head shows `Mon 20` and the
-  day's recorded hours, today's in accent text; today's column has a faint tint. Recordings look and drag
-  as in the Day view; a span dropped on another column moves there, with ⌥ it is copied as a new recording. A double-click on
-  an empty spot records an hour there. The header totals read `recorded 32:10 · tracked 41:05`.
+  day's recorded hours, today's in accent text; today's column has a faint tint. Recordings drag as in the
+  Day view; a span dropped on another column moves there, with ⌥ it is copied as a new recording. A double-click on
+  an empty spot records an hour there, in the editor as a sheet. The header totals read `recorded 32:10 · tracked 41:05`.
 - **Month**: a calendar of whole weeks; each day a cell with its number (`--o3` outside the month, accent
   on today), the recorded hours in mono, and a 3 px strip along the bottom of the three projects with the
   most time, as wide as their shares. A click opens the day.
@@ -465,7 +486,8 @@ Rules of the keys (`handleKeydown`):
 
 - Bare keys never fire in text fields; there only ⌘ and ⌃ combinations and Escape do.
 - While a dialog, the palette, the recording editor or a context menu is open, only Settings, `?`, the
-  palette, zoom, Close window and Quit run; every other key belongs to the overlay.
+  palette, zoom, Close window and Quit run; every other key belongs to the overlay. Escape closes the
+  recording editor wherever the focus is.
 - ↵ and Space on a focused button or link activate it. J, K, H, L, V, ⇧J, ⇧K, ] and [ give the keys back to
   the timeline: they take the focus off a Tabbed-to button.
 - A command has one binding. P, N and O replaced ⌘←, ⌘→ and T for the dates; ] and [ replaced N and ⇧N for
@@ -516,7 +538,7 @@ under `global`), active while that view shows.
 | `day.settings` | Timeline settings | menu | day |
 | `day.clearFocus` | Clear selection (and the block and recording focus) | Escape | day |
 | `recording.next` / `recording.prev` | Next / Previous recording | ] / [ | day |
-| `recording.open` | Record selection or edit recording | ↵ | day |
+| `recording.open` | Record selection or edit recording (opens the editor) | ↵ | day |
 | `recording.create` | Record selection | menu (shows ↵) | day |
 | `recording.edit` | Edit recording | menu | day |
 | `recording.delete` | Delete recording (Undo in the toast) | ⌫ | day |
@@ -541,6 +563,7 @@ Keys of controls, not commands (they act on the focused control and are not rebi
 | List mode | `/` search, ↑↓ rows, ↵ record the row (pick the project), Space show it on the timeline; Tab to a project chip and ↵ records the focused row |
 | Suggestion (Tab reaches it) | ↵ records it, ⌥↵ records every suggestion of its rule on the day |
 | Recording editor, away prompt, timer picker | project picker: type, ↑↓, ↵ picks (the last option creates a project); From and To: type `HH:MM` or ↑↓ by one snap step; ↵ saves, records or starts; in the editor also ⌘↵, and ⌘⌫ deletes; Escape cancels or skips |
+| Timeline, pointer | drag or click opens the editor; ⇧-click extends, ⌘-click gathers blocks (the editor opens when ⌘ is released), ⌥-drag or ⌥-click adds a span to the open editor's recording |
 | Context menu (⌃↵ on a block) | ↑↓ items, ↵ runs, Escape closes |
 | Pickers in the Reports filter | type, ↑↓, ↵ adds, ⌫ on an empty field removes the last |
 | Week and Month | Tab to a day head (Week) or a day cell (Month), ↵ opens that day |
@@ -548,7 +571,7 @@ Keys of controls, not commands (they act on the focused control and are not rebi
 | Settings → Shortcuts | a key field records the next key; Escape stops, ⌫ unbinds |
 
 Left to the pointer, each with a keyboard way to the same result: dragging a selection (V, ⇧J, ⇧K, or the
-List mode), dragging or resizing a recording (⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓), dragging a recording to another day in the
+List mode), ⌥-adding a span to the open recording ("Add span" and its From / To fields), dragging or resizing a recording (⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓), dragging a recording to another day in the
 Week view (⌥← ⌥→, ⌥⇧ to copy, in the Day view), double-clicking the Week view (select in the Day view and ↵),
 ⌥-dragging a block onto a project (⌃↵ → Make a rule…), the rules' grip (⌥↑ ⌥↓), the hover card (Space), the
 saved reports' right-click menu (`reports.rename`, `reports.delete`), and the Projects screen's right-click
@@ -563,11 +586,12 @@ From any view, with the documented default keys only:
 2. J focuses the first block of the day (K, H and L move on); Space shows its details.
 3. V selects the focused block's span; ⇧J (or ⇧K) grows the selection over the next (or previous) block, as
    far as the work went. The status bar shows the span and its length; Escape clears it.
-4. ↵ opens the editor for the selection, with the project field focused: type part of the name, ↑↓, ↵ picks
-   it (or the last option, `New project "x"…`, opens the project sheet).
-5. Tab to From and To: type `09:15` or press ↑↓ to move by one snap step; Tab to the note and the tag.
-6. ⌘↵ saves (↵ in a time or the note field does too). If it overlaps a recording, ↵ in the dialog replaces
-   the overlapped part and Escape goes back.
+4. ↵ opens the editor in the timesheet for the selection, with the note focused: type it, then Tab to the
+   project (often proposed already): type part of the name, ↑↓, ↵ picks it (or the last option,
+   `New project "x"…`, opens the project sheet). Tab on to the tag and the duration.
+5. Tab to the span's From and To: type `09:15` or press ↑↓ to move by one snap step; "Add span" adds another.
+6. ↵ in a field or ⌘↵ saves. If it overlaps a recording, the editor lists them: ↵ on "Replace overlapped
+   part" replaces it, Back returns to the fields; Escape cancels the editor.
 7. The new recording has the focus: ⌥↑ ⌥↓ move it, ⌥⇧↓ ⌥⇧↑ change its end, ↵ edits it again, ⌫ deletes it,
    ⌘Z undoes the last change. ] and [ step through the day's recordings.
 8. Back to step 2 for the next stretch (J moves on from the last focused block). Rule suggestions are

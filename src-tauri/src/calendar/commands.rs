@@ -3,7 +3,7 @@ use tauri::State;
 use super::jump::{DateJump, jumps};
 use super::period::{Period, PeriodUnit, PickerMonth, period, picker_month};
 use super::{CalendarInput, MonthView, WeekView, month, month_days, week, week_days};
-use crate::day::commands::names;
+use crate::day::names;
 use crate::db::time::{Day, now_ms};
 use crate::db::{Db, activities, recordings};
 use crate::error::AppResult;

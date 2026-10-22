@@ -6,7 +6,7 @@ import { fail, useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
 import { Card } from "../Card";
 import { pointerDrag } from "./pointerDrag";
-import { useSnappedSpan } from "./useSnappedSpan";
+import { useSnappedSpan, type DraggedSpan } from "./useSnappedSpan";
 
 type Grip = "move" | "start" | "end";
 
@@ -15,12 +15,12 @@ const MINUTE_MS = 60_000;
 const TIMES_MIN_PX = 16;
 const BOTH_TIMES_PX = 34;
 
-/** The span after dragging `grip` by `dy` px, start first. */
-function spanAfterDrag(block: Block, grip: Grip, dy: number, pxPerMinute: number): { start: number; end: number } {
+/** Where the pointer has dragged `grip` to after `dy` px, unsnapped: Rust snaps it, keeping a dragged end a step from the other. */
+function spanAfterDrag(block: Block, grip: Grip, dy: number, pxPerMinute: number): DraggedSpan {
   const shift = (dy / pxPerMinute) * MINUTE_MS;
   const start = grip === "end" ? block.start : block.start + shift;
   const end = grip === "start" ? block.end : block.end + shift;
-  return { start: Math.min(start, end), end: Math.max(start, end) };
+  return grip === "move" ? { start, end } : { start, end, moving: grip };
 }
 
 interface Props {
@@ -32,16 +32,18 @@ interface Props {
   hovered?: boolean;
   /** `card`: project, note, tag and duration (the Week view); `times`: only its start and end (the Day view's time column). */
   look?: "card" | "times";
+  /** A click opens the editor (the Day view); otherwise a click focuses and a double-click edits. */
+  editOnClick?: boolean;
   /** A moved block released here; returns whether it took the drop (e.g. onto another day). */
   onDrop?: (block: Block, e: PointerEvent) => boolean;
 }
 
 /**
- * One span of a recording, filled in its project's color: click focuses, double-click edits; drag the body to move
- * it, an edge to resize it.
+ * One span of a recording, filled in its project's color: a click focuses it and, with `editOnClick`, edits it (else
+ * a double-click does); drag the body to move it, an edge to resize it, both on the snap grid.
  */
-export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinute, focused, hovered = false, look = "card", onDrop }: Props) {
-  const [drag, setDrag] = useState<{ start: number; end: number } | null>(null);
+export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinute, focused, hovered = false, look = "card", editOnClick = false, onDrop }: Props) {
+  const [drag, setDrag] = useState<DraggedSpan | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView?.({ block: "nearest" });
@@ -53,20 +55,34 @@ export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinu
   // A clipped edge belongs to another day: it does not move here.
   const movable = !block.running && !block.clippedStart && !block.clippedEnd;
 
+  const edit = () => useStore.getState().openEditor({ mode: "edit", id: block.id, at: { start: block.start, end: block.end }, spanId: block.spanId });
+
+  /** Rust snaps and saves the dragged span; other failures were toasted by the store. */
+  async function save(dragged: DraggedSpan) {
+    try {
+      await useStore.getState().updateSpan(block.id, block.spanId, { start: dragged.start, end: dragged.end }, dragged.moving ?? null);
+    } catch (err) {
+      // A field error (a span over 24 h) has no form here.
+      fail(err, "Could not change the recording");
+    }
+  }
+
   const press = (grip: Grip) => (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    const { focusRecording, updateSpan } = useStore.getState();
-    focusRecording(block.id);
-    if (!movable) return;
+    useStore.getState().focusRecording(block.id);
+    const clicked = () => editOnClick && edit();
+    if (!movable) {
+      clicked();
+      return;
+    }
     pointerDrag(e, {
       move: (dy) => setDrag(spanAfterDrag(block, grip, dy, pxPerMinute)),
       end: (dy, dragged, ev) => {
         setDrag(null);
-        if (!dragged) return;
+        if (!dragged) return clicked();
         if (grip === "move" && onDrop?.(block, ev)) return;
-        // Other failures were toasted by the store; a field error (a span over 24 h) has no form here.
-        void updateSpan(block.id, block.spanId, spanAfterDrag(block, grip, dy, pxPerMinute)).catch((err: unknown) => fail(err, "Could not change the recording"));
+        void save(spanAfterDrag(block, grip, dy, pxPerMinute));
       },
     });
   };
@@ -99,7 +115,7 @@ export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinu
       onPointerDown={press("move")}
       onPointerEnter={() => useStore.getState().hoverRecording(block.id)}
       onPointerLeave={() => useStore.getState().hoverRecording(null)}
-      onDoubleClick={() => useStore.getState().openEditor({ mode: "edit", id: block.id, at: { start: block.start, end: block.end }, spanId: block.spanId })}
+      onDoubleClick={editOnClick ? undefined : edit}
     >
       {movable && <span className="grip start" aria-label="Drag to change the start" onPointerDown={press("start")} />}
       {movable && <span className="grip end" aria-label="Drag to change the end" onPointerDown={press("end")} />}

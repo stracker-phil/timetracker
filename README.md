@@ -44,8 +44,8 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 
 - Time runs top to bottom: the recordings column on the left, activity lanes on the right (one for the
   tracker, one per external source), away time shaded.
-- Select activity (drag, click a block, ⇧-click to extend; or J/K and V) and drop it on the recordings column:
-  the editor asks for a project, a one-line note and a tag.
+- Drag over time or click activity (⇧-click to extend, ⌘-click to gather; or J/K, V and ↵): the editor opens
+  in the timesheet, snapped to the grid, for a one-line note, a project (often proposed), a tag and the spans.
 - Recordings never overlap. Drag to move or resize, ⌘Z undoes; rules (⌥-drag a block onto a project) suggest
   recordings you accept with a click.
 - The sidebar shows the day (or week, month, report period) with ‹ › and Today; P, N and O do the same, and a

@@ -118,8 +118,7 @@ function toggleList() {
 /** Opens the editor on the Day view's selection, else on Rust's default span (the half hour up to now) on today's Day or Week view. */
 async function newRecording() {
   const s = useStore.getState();
-  const span = s.view === "day" && hasSelection() ? (s.selectionSnap ?? s.selection) : null;
-  if (span) return s.openEditor({ mode: "create", start: span.start, end: span.end });
+  if (s.view === "day" && hasSelection()) return s.recordSelection();
   if (s.view !== "week") s.setView("day");
   s.goToday();
   try {
@@ -149,8 +148,7 @@ function acceptFocusedSuggestion(allOfRule: boolean) {
 function openRecording() {
   const s = useStore.getState();
   if (s.focusedRecording) return s.openEditor({ mode: "edit", id: s.focusedRecording });
-  const span = s.selectionSnap ?? s.selection;
-  if (span) s.openEditor({ mode: "create", start: span.start, end: span.end });
+  void s.recordSelection();
 }
 
 function clearDayFocus() {

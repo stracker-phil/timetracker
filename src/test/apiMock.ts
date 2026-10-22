@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ClientInput, type DateJump, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingInput, type RecordingPatch, type RecordingSpan, type ReportFilter, type RuleInput, type Settings, type Span, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ClientInput, type DateJump, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingInput, type RecordingPatch, type RecordingSpan, type ReportFilter, type RuleInput, type Settings, type SnapEdge, type Span, type UiState } from "../api/types";
 import { mondayOf, monthView, weekView } from "./calendarFixtures";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
@@ -15,6 +15,9 @@ import { settings } from "./settings";
 const noUnlisten = () => Promise.resolve(() => {});
 
 /** Spans as Rust returns them: with ids. */
+/** The editor's spans as Rust answers: as given, with their sum. */
+const draftSpans = (spans: Span[]) => ({ spans, totalMs: spans.reduce((sum, s) => sum + s.end - s.start, 0) });
+
 const withIds = (recordingId: string, spans: Span[], from = 1): RecordingSpan[] => spans.map((s, i) => ({ id: `${recordingId}-s${from + i}`, ...s }));
 
 /** An `api` where every call resolves to a valid default; override per test with mockResolvedValue. */
@@ -66,7 +69,7 @@ export function createApiMock(): typeof realApi {
       return recording({ ...rest, id, ...(spans ? { spans: withIds(id, spans) } : {}) });
     }),
     recordingAddSpan: vi.fn(async (id: string, span: Span) => recording({ id, spans: [...recording({ id }).spans, ...withIds(id, [span], 2)] })),
-    recordingUpdateSpan: vi.fn(async (id: string, spanId: string, span: Span) => recording({ id, spans: [{ id: spanId, ...span }] })),
+    recordingUpdateSpan: vi.fn(async (id: string, spanId: string, span: Span, _moving: SnapEdge | null) => recording({ id, spans: [{ id: spanId, ...span }] })),
     recordingRemoveSpan: vi.fn().mockResolvedValue(null),
     recordingSplitSpan: vi.fn(async (id: string) => recording({ id })),
     recordingMerge: vi.fn(async (into: string) => recording({ id: into })),
@@ -74,6 +77,16 @@ export function createApiMock(): typeof realApi {
     recordingDelete: vi.fn().mockResolvedValue(undefined),
     recordingsList: vi.fn().mockResolvedValue([]),
     recordingSnap: vi.fn(async (start: number, end: number) => ({ start, end })),
+    recordingDraftSpans: vi.fn(async (spans: Span[]) => draftSpans(spans)),
+    recordingDraftTotal: vi.fn(async (spans: Span[], totalMs: number) => {
+      const last = spans[spans.length - 1];
+      return draftSpans(last ? [...spans.slice(0, -1), { ...last, end: last.end + totalMs - draftSpans(spans).totalMs }] : spans);
+    }),
+    recordingDraftAdd: vi.fn(async (spans: Span[]) => {
+      const start = spans.length ? spans[spans.length - 1].end : 0;
+      return draftSpans([...spans, { start, end: start + 30 * 60_000 }]);
+    }),
+    recordingProposal: vi.fn(async () => ({ projectId: null, activity: [] })),
     recordingDefaultSpan: vi.fn().mockResolvedValue({ start: 0, end: 1_800_000 }),
     undo: vi.fn().mockResolvedValue(null),
     redo: vi.fn().mockResolvedValue(null),

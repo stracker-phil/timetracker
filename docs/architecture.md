@@ -71,11 +71,13 @@ The Day view showing a day, the main path through every layer:
 
 Recording an hour of activity:
 
-1. The user drags over the lanes (`selectionPress`); the ghost shows the span Rust will store
-   (`api.recordingSnap`, at most once per frame). Releasing it over the recordings column opens
-   `RecordingEditor`.
+1. The user drags over the lanes or the time column (`useSelectionPress`); the outline shows the span Rust snaps
+   (`api.recordingSnap`, at most once per frame). On release the `editor` slice asks Rust for the snapped span
+   once more and opens `RecordingEditor` inline in the timesheet; `recording_proposal` fills in the activity
+   the span covers and a project.
 2. Save calls the `recordings` slice's `createRecording`, which invokes `recording_create` with `overlap:
-   cancel`. An `overlap` error opens `OverlapDialog`; Replace sends the same input with `replace`.
+   cancel`. An `overlap` error asks inside the editor (`OverlapNotice`); Replace sends the same input with
+   `replace`.
 3. `recordings::Recordings::create` validates and snaps, builds an `Op` (a `Batch` when it replaces) and
    applies it in one transaction that also proves no recordings overlap, then pushes it on the undo stack.
 4. `data_changed { kind: recordings, day }` goes out for every day the op touched; the Day view reloads them,
@@ -94,7 +96,7 @@ Recording an hour of activity:
 
 ## A suggestion, end to end
 
-1. `day::commands::load` builds the day's view, then `rules::day_suggestions` runs the active rules over its
+1. `day::load` builds the day's view, then `rules::day_suggestions` runs the active rules over its
    blocks: first matching rule per block, runs across short gaps, recorded time cut away.
 2. The Day view draws each `Suggestion` dashed in the recordings column. A click sends `suggestion_accept`
    with its id; Rust rebuilds the suggestions, finds the id and creates the recording through the recordings

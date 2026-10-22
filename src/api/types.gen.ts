@@ -171,6 +171,16 @@ export type Continuity = "off" | "short" | "regular" | "extended";
  */
 export type CopiedNotes = { text: string, count: number, };
 
+export type CoveredActivity = { 
+/**
+ * The block's id on the Day view.
+ */
+id: string, label: string, app: string, bundleId: string | null, start: number, end: number, 
+/**
+ * The part of it inside the spans.
+ */
+insideMs: number, private: boolean, };
+
 export type DataChanged = { kind: DataKind, 
 /**
  * `None` when every day may have changed.
@@ -261,7 +271,7 @@ hiddenApps: Array<HiddenApp>,
  */
 apps: Array<DayApp>, 
 /**
- * What the rules suggest recording, by start; filled by `commands::load`.
+ * What the rules suggest recording, by start; filled by `load`.
  */
 suggestions: Array<Suggestion>, };
 
@@ -273,6 +283,12 @@ export type DeleteResult = { activities: number, away: number,
  * When the undo window of the delete closes.
  */
 undoUntil: number, };
+
+export type DraftSpans = { 
+/**
+ * In the order given, each ending after its start.
+ */
+spans: Array<Span>, totalMs: number, };
 
 export type ErrorKind = "db" | "io" | "invalid_input" | "not_found" | "overlap" | "permission_required" | "tracker_paused" | "session_not_found" | "cancelled";
 
@@ -524,6 +540,17 @@ spans: Array<Span>, note: string, tagId: string | null, };
  */
 export type RecordingPatch = { projectId?: string, spans?: Array<Span>, note?: string, tagId?: string | null, };
 
+export type RecordingProposal = { 
+/**
+ * The project of the last recording that covered the same app, else of the rule that matches most of
+ * the activity; `None` without either.
+ */
+projectId: string | null, 
+/**
+ * The activity blocks sharing time with the spans, by start.
+ */
+activity: Array<CoveredActivity>, };
+
 /**
  * One stretch of a recording's time.
  */
@@ -700,6 +727,11 @@ fontMono: string | null, logLevel: LogLevel, launchAtLogin: boolean,
  * The data folder when moved away from the config dir.
  */
 dataDir: string | null, tracker: TrackerSettings, capture: CaptureSettings, timeline: TimelineSettings, apps: { [key in string]: AppOverride }, reports: ReportSettings, timerShortcut: string, mcp: McpSettings, };
+
+/**
+ * The end of a span a drag moves; the other end keeps its place.
+ */
+export type SnapEdge = "start" | "end";
 
 /**
  * A closed stretch of time, `[start, end)`.

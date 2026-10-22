@@ -1,9 +1,20 @@
 //! Snapping times to the `timeline.snapMinutes` grid.
 
 use chrono::{Duration, Local, LocalResult, NaiveTime, TimeZone, Timelike};
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use super::{MINUTE_MS, Span};
 use crate::db::time::Ms;
+
+/// The end of a span a drag moves; the other end keeps its place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub enum SnapEdge {
+    Start,
+    End,
+}
 
 /// `ms` moved to the nearest multiple of `minutes` counted from its local midnight, so DST days still land
 /// on round wall-clock minutes. A tie rounds up.
@@ -12,7 +23,7 @@ pub fn snap(ms: Ms, minutes: u32) -> Ms {
 }
 
 pub fn snap_in<Tz: TimeZone>(ms: Ms, minutes: u32, tz: &Tz) -> Ms {
-    let step = i64::from(minutes.max(1)) * MINUTE_MS;
+    let step = grid_step(minutes);
     let Some(utc) = chrono::DateTime::from_timestamp_millis(ms) else {
         return ms;
     };
@@ -49,6 +60,28 @@ pub fn snap_span(start: Ms, end: Ms, minutes: u32) -> Span {
     }
 }
 
+/// Both ends at the nearest mark; the `moving` end stays a step from the other (else `snap_span`).
+pub fn snap_moving(start: Ms, end: Ms, minutes: u32, moving: Option<SnapEdge>) -> Span {
+    let step = grid_step(minutes);
+    match moving {
+        None => snap_span(start, end, minutes),
+        Some(SnapEdge::Start) => {
+            let end = snap(end, minutes);
+            Span {
+                start: snap(start, minutes).min(end - step),
+                end,
+            }
+        }
+        Some(SnapEdge::End) => {
+            let start = snap(start, minutes);
+            Span {
+                start,
+                end: snap(end, minutes).max(start + step),
+            }
+        }
+    }
+}
+
 /// How long a recording made with New Recording lasts by default.
 pub const NEW_RECORDING_MINUTES: i64 = 30;
 
@@ -59,8 +92,16 @@ pub fn default_span(now: Ms, minutes: u32) -> Span {
 
 /// An end that snapped onto or before the start lands one step after it.
 fn past_start(start: Ms, end: Ms, minutes: u32) -> Ms {
-    let step = i64::from(minutes.max(1)) * MINUTE_MS;
-    if end <= start { start + step } else { end }
+    if end <= start {
+        start + grid_step(minutes)
+    } else {
+        end
+    }
+}
+
+/// One step of the grid in milliseconds.
+pub fn grid_step(minutes: u32) -> Ms {
+    i64::from(minutes.max(1)) * MINUTE_MS
 }
 
 #[cfg(test)]
@@ -208,6 +249,65 @@ mod tests {
                 },
                 "{name}"
             );
+        }
+    }
+
+    #[test]
+    fn snap_moving_snaps_both_ends_and_keeps_the_dragged_end_a_step_from_the_other() {
+        use SnapEdge::{End, Start};
+        let t = |minute| at(13, minute);
+        let cases = [
+            ("no end moving", 1, (12, 38), None, (12, 38)),
+            ("no end moving", 10, (12, 38), None, (10, 40)),
+            ("no end moving", 15, (12, 38), None, (15, 45)),
+            ("start inside", 1, (27, 50), Some(Start), (27, 50)),
+            ("start inside", 10, (27, 50), Some(Start), (30, 50)),
+            ("start inside", 15, (27, 50), Some(Start), (30, 45)),
+            ("start past the end", 1, (43, 38), Some(Start), (37, 38)),
+            ("start past the end", 10, (43, 38), Some(Start), (30, 40)),
+            ("start past the end", 15, (43, 38), Some(Start), (30, 45)),
+            ("start onto the end", 1, (38, 38), Some(Start), (37, 38)),
+            ("start onto the end", 10, (38, 38), Some(Start), (30, 40)),
+            ("start onto the end", 15, (38, 38), Some(Start), (30, 45)),
+            ("end inside", 1, (12, 38), Some(End), (12, 38)),
+            ("end inside", 10, (12, 38), Some(End), (10, 40)),
+            ("end inside", 15, (12, 38), Some(End), (15, 45)),
+            ("end before the start", 1, (20, 10), Some(End), (20, 21)),
+            ("end before the start", 10, (20, 10), Some(End), (20, 30)),
+            ("end before the start", 15, (20, 10), Some(End), (15, 30)),
+            ("end onto the start", 1, (20, 20), Some(End), (20, 21)),
+            ("end onto the start", 10, (20, 20), Some(End), (20, 30)),
+            ("end onto the start", 15, (20, 20), Some(End), (15, 30)),
+        ];
+        for (name, minutes, (start, end), moving, (expected_start, expected_end)) in cases {
+            assert_eq!(
+                snap_moving(t(start), t(end), minutes, moving),
+                Span {
+                    start: t(expected_start),
+                    end: t(expected_end)
+                },
+                "{name} at {minutes} min"
+            );
+        }
+    }
+
+    #[test]
+    fn snap_moving_without_a_moving_end_is_snap_span_of_the_raw_ends() {
+        let cases = [
+            (at(10, 3), at(10, 58)),
+            (at(10, 0), at(10, 1)),
+            (at(10, 0), at(10, 0)),
+            (at(10, 0), at(9, 0)),
+            (at(13, 12), at(13, 38)),
+        ];
+        for minutes in [1, 5, 10, 15] {
+            for (start, end) in cases {
+                assert_eq!(
+                    snap_moving(start, end, minutes, None),
+                    snap_span(start, end, minutes),
+                    "{minutes} min: {start}..{end}"
+                );
+            }
         }
     }
 

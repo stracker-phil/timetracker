@@ -29,7 +29,7 @@ impl Core {
     pub async fn day_summary(&self, day: &str) -> AppResult<DaySummary> {
         let day = day_of(day)?;
         let settings = self.settings();
-        let totals = day::commands::view_of(self.db().await?, day, &settings, now_ms())
+        let totals = day::view_of(self.db().await?, day, &settings, now_ms())
             .await?
             .totals;
         let grouped = |group_by| ReportFilter {

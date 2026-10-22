@@ -31,7 +31,7 @@ pub struct DayView {
     pub hidden_apps: Vec<HiddenApp>,
     /// The day's tracked apps that are not hidden, most time first: what can get a lane of its own.
     pub apps: Vec<DayApp>,
-    /// What the rules suggest recording, by start; filled by `commands::load`.
+    /// What the rules suggest recording, by start; filled by `load`.
     pub suggestions: Vec<Suggestion>,
 }
 

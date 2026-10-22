@@ -5,8 +5,10 @@
 mod checks;
 pub mod cli;
 pub mod commands;
+mod draft;
 pub mod ops;
 mod overlaps;
+mod proposal;
 mod snap;
 mod spans;
 #[cfg(test)]
@@ -28,7 +30,9 @@ use crate::error::AppResult;
 use checks::{check_tag, checked_note, require_finished, snapped_spans, usable_project};
 use ops::Op;
 use overlaps::{claimed, clearing, in_the_way};
-pub use snap::{NEW_RECORDING_MINUTES, default_span, snap, snap_span};
+pub use snap::{
+    NEW_RECORDING_MINUTES, SnapEdge, default_span, grid_step, snap, snap_moving, snap_span,
+};
 use undo::{Entry, UndoStack};
 
 const MINUTE_MS: Ms = 60_000;
