@@ -51,7 +51,7 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
   on top. Beside it the timeline runs top to bottom: the hour axis, the time column with the recordings'
   spans, a summary lane (the main app of every 5 minutes) and the activity lanes (one for the tracker, one per app
   given its own lane, one per external source); the lanes show only activity, away time adds to the
-  day's totals. ⌘⇧L shows the day as a list instead.
+  day's totals.
 - Drag over time or click activity (or J/K, V and ↵): the editor opens in the timesheet, snapped to the grid,
   for a one-line note, a project (often proposed), a tag and the spans. Each further click on a block adds its
   span or takes it out again, so scattered blocks make one recording with the time between them left out.

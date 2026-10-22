@@ -7,8 +7,7 @@ use chrono::{Datelike, Days};
 use timetracker_lib::calendar::commands::{load_month, load_week};
 use timetracker_lib::calendar::mini_month::{Shown, load_mini_month};
 use timetracker_lib::calendar::period::PeriodUnit;
-use timetracker_lib::day::list::list;
-use timetracker_lib::day::{load, view_of};
+use timetracker_lib::day::load;
 use timetracker_lib::db::time::{Day, now_ms};
 use timetracker_lib::reports::{self, Range, ReportFilter};
 use timetracker_lib::store::settings::{CalendarTitle, Settings};
@@ -85,11 +84,6 @@ async fn views_stay_fast_on_two_years_of_data() {
             })
             .await,
             20,
-        ),
-        (
-            "list view",
-            median(|| async { list(&view_of(&db, day, &settings, now).await.unwrap()) }).await,
-            50,
         ),
     ];
 

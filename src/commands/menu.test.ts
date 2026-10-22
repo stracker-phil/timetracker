@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api, EMPTY_UI_STATE } from "../api";
+import { api } from "../api";
 import { VIEWS } from "../components/views";
 import { resetStore, useStore, type View } from "../state/store";
 import { at, DAY, dayView } from "../test/dayFixtures";
@@ -77,11 +77,6 @@ describe("menuState", () => {
       expect(enabled()).not.toContain("recording.create");
     });
 
-    it("enables neither Edit Recording nor the block steps in the List mode", () => {
-      resetStore({ view: "day", focusedRecording: "r1", uiState: { ...EMPTY_UI_STATE, dayMode: "list" } });
-      expect(enabled()).not.toContain("recording.edit");
-      expect(enabled()).not.toContain("day.nextBlock");
-    });
   });
 
   describe("timer.stop", () => {
@@ -100,12 +95,6 @@ describe("menuState", () => {
     it.each(VIEWS.map((v) => v.id))("checks only view.%s while that view shows, never view.hours", (view) => {
       resetStore({ view });
       expect(checked().filter((id) => id.startsWith("view."))).toEqual([`view.${view}`]);
-    });
-
-    it("checks day.toggleList in the List mode only", () => {
-      expect(checked()).not.toContain("day.toggleList");
-      resetStore({ view: "day", uiState: { ...EMPTY_UI_STATE, dayMode: "list" } });
-      expect(checked()).toContain("day.toggleList");
     });
 
     it.each([

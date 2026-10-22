@@ -95,11 +95,8 @@
 .suggestion-project { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .suggestion-rule { font-size: var(--data-font-size); color: var(--block-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
-/* The List view's project chips: drop targets filled like a recording. */
+/* A project as a chip filled like a recording (a rule's project). */
 .project-chip {
   display: inline-flex; align-items: center; max-width: 12rem; padding: 2px var(--space-2); border-radius: var(--radius-sm);
   border: 1px dashed transparent; background: var(--block-fill, var(--activity-fill)); color: var(--block-text, var(--text)); font-weight: 500;
 }
-.project-chip:hover { border-color: var(--block-meta, var(--line)); }
-.project-chip.more { background: var(--activity-fill); color: var(--o2); }
-.project-chip.over { border-color: var(--accent); }

@@ -56,10 +56,63 @@ describe("TagPicker", () => {
     expect(field()).toHaveAttribute("placeholder", "No tag");
   });
 
+  describe("opening", () => {
+    it("opens nothing on focus", async () => {
+      renderPicker();
+      await userEvent.tab();
+      expect(field()).toHaveFocus();
+      expect(field()).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+
+    it("only focuses on the first click and opens the list on the second", async () => {
+      renderPicker();
+      await userEvent.click(field());
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      await userEvent.click(field());
+      expect(screen.getByRole("listbox", { name: "Tags" })).toBeInTheDocument();
+    });
+
+    it("toggles the list with the chevron", async () => {
+      renderPicker();
+      await userEvent.click(screen.getByRole("button", { name: "Show tags" }));
+      expect(screen.getByRole("listbox", { name: "Tags" })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Show tags" }));
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+
+    it.each(["{ArrowDown}", "{ArrowUp}", " "])("opens on %j with the current tag highlighted and checked", async (key) => {
+      renderPicker("tag-research");
+      await userEvent.click(field());
+      await userEvent.keyboard(key);
+      const current = screen.getByRole("option", { name: "research" });
+      expect(current).toHaveAttribute("aria-selected", "true");
+      expect(current).toHaveAttribute("aria-checked", "true");
+    });
+
+    it("counts No tag as current when there is no tag", async () => {
+      renderPicker();
+      await userEvent.click(field());
+      await userEvent.keyboard("{ArrowDown}");
+      const none = screen.getByRole("option", { name: "No tag" });
+      expect(none).toHaveAttribute("aria-selected", "true");
+      expect(none).toHaveAttribute("aria-checked", "true");
+    });
+
+    it("opens filtered by the typed character with the first match highlighted", async () => {
+      renderPicker();
+      await userEvent.click(field());
+      await userEvent.keyboard("s");
+      expect(field()).toHaveValue("s");
+      expect(screen.getAllByRole("option")[0]).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
   describe("the list", () => {
     it("starts with No tag, followed by every tag", async () => {
       renderPicker("tag-admin");
       await userEvent.click(field());
+      await userEvent.keyboard("{ArrowDown}");
       expect(optionTexts()).toEqual(["No tag", "admin", "research", "development", "maintenance", "internal meeting", "external meeting", "support"]);
     });
 
@@ -69,11 +122,12 @@ describe("TagPicker", () => {
       expect(optionTexts()).toEqual(["internal meeting", "external meeting", 'New tag "meeting"']);
     });
 
-    it("closes with Escape", async () => {
-      renderPicker();
+    it("closes with Escape and keeps the value", async () => {
+      renderPicker("tag-admin");
       await userEvent.click(field());
-      await userEvent.keyboard("{Escape}");
+      await userEvent.keyboard("{ArrowDown}{Escape}");
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      expect(field()).toHaveValue("admin");
     });
   });
 
@@ -87,13 +141,14 @@ describe("TagPicker", () => {
 
     it("picks the tag moved to with the arrow keys", async () => {
       const { onChange } = renderPicker();
-      await userEvent.type(field(), "{ArrowDown}{Enter}");
+      await userEvent.type(field(), "{ArrowDown}{ArrowDown}{Enter}");
       expect(onChange).toHaveBeenCalledWith("tag-admin");
     });
 
     it("picks a clicked tag", async () => {
       const { onChange } = renderPicker();
       await userEvent.click(field());
+      await userEvent.keyboard("{ArrowDown}");
       await userEvent.click(screen.getByRole("option", { name: "support" }));
       expect(onChange).toHaveBeenCalledWith("tag-support");
     });
@@ -108,6 +163,7 @@ describe("TagPicker", () => {
     it("removes the tag when No tag is picked", async () => {
       const { onChange } = renderPicker("tag-admin");
       await userEvent.click(field());
+      await userEvent.keyboard("{ArrowDown}");
       await userEvent.click(screen.getByRole("option", { name: "No tag" }));
       expect(onChange).toHaveBeenCalledWith(null);
       expect(field()).toHaveValue("");
@@ -144,10 +200,18 @@ describe("TagPicker", () => {
   });
 
   describe("Backspace", () => {
-    it("clears the tag when the query is empty", async () => {
+    it("clears the tag while the list is closed", async () => {
       const { onChange } = renderPicker("tag-admin");
       await userEvent.click(field());
       await userEvent.keyboard("{Backspace}");
+      expect(onChange).toHaveBeenCalledWith(null);
+      expect(field()).toHaveValue("");
+    });
+
+    it("clears the tag while the list is open with an empty query", async () => {
+      const { onChange } = renderPicker("tag-admin");
+      await userEvent.click(field());
+      await userEvent.keyboard("{ArrowDown}{Backspace}");
       expect(onChange).toHaveBeenCalledWith(null);
       expect(field()).toHaveValue("");
     });

@@ -1,12 +1,12 @@
-import { Plus, Search } from "lucide-react";
-import { useRef, useState } from "react";
+import { Plus } from "lucide-react";
+import { useState } from "react";
 import type { Client, Project, ProjectListItem } from "../../api";
 import { groupProjects, projectLabel, searchProjects } from "../../state/slices/projects";
 import { useStore } from "../../state/store";
 import { AccentDot } from "../Accent";
-import { InsetField } from "../Field";
 import { ProjectSheet } from "../projects/ProjectSheet";
-import { listKeyDown, optionsOf, PickerList, usePickerIndex, type PickerRow } from "./PickerList";
+import { PickerField } from "./PickerField";
+import type { PickerRow } from "./PickerList";
 
 const RECENT_SHOWN = 5;
 
@@ -62,59 +62,33 @@ interface Props {
   autoFocus?: boolean;
 }
 
-/** Search and pick an active project, or create one; ↑ ↓ move, Enter picks, Esc closes the list. */
+/** Pick an active project, or create one (see `PickerField` for the keys). */
 export function ProjectPicker({ value, onChange, autoFocus }: Props) {
   const projects = useStore((s) => s.projects);
   const clients = useStore((s) => s.clients);
   const recent = useStore((s) => s.recent);
   const chosen = projects.find((p) => p.project.id === value);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const [creating, setCreating] = useState<string | null>(null);
-  const fieldRef = useRef<HTMLDivElement>(null);
-  const rows = rowsFor(query, projects, recent, clients);
-  const options = optionsOf(rows);
-  const [current, setIndex] = usePickerIndex(options.length);
 
-  const close = () => {
-    setOpen(false);
-    setQuery("");
-    setIndex(0);
-  };
-  const pick = (choice: Choice) => {
+  const pick = (choice: Choice, query: string) => {
     if (choice.kind === "new") setCreating(query.trim());
     else onChange(choice.id);
-    close();
   };
 
   return (
-    <div className="picker" ref={fieldRef}>
-      <InsetField icon={chosen && !open ? <AccentDot accent={chosen.project.color} shade={chosen.project.shade} /> : <Search size="1.077rem" />}>
-        <input
-          aria-label="Project"
-          role="combobox"
-          aria-expanded={open}
-          autoFocus={autoFocus}
-          placeholder="Project"
-          value={open ? query : chosen ? projectLabel(chosen) : ""}
-          onFocus={() => setOpen(true)}
-          onBlur={close}
-          onChange={(e) => {
-            setOpen(true);
-            setQuery(e.target.value);
-            setIndex(0);
-          }}
-          onKeyDown={(e) => {
-            if (listKeyDown(e, { current, count: options.length, open, setIndex, setOpen: (o) => (o ? setOpen(true) : close()) })) return;
-            if (e.key === "Enter" && open) {
-              e.preventDefault();
-              pick(options[current]);
-            }
-          }}
-        />
-      </InsetField>
-      {open && <PickerList anchor={fieldRef} label="Projects" rows={rows} active={current} onHover={setIndex} onPick={pick} />}
+    <>
+      <PickerField
+        label="Project"
+        listLabel="Projects"
+        icon={chosen ? <AccentDot accent={chosen.project.color} shade={chosen.project.shade} /> : <span className="accent-dot accent-dot--none" />}
+        text={chosen ? projectLabel(chosen) : null}
+        placeholder="No project"
+        rowsFor={(query) => rowsFor(query, projects, recent, clients)}
+        isCurrent={(choice) => choice.kind === "project" && choice.id === value}
+        onPick={pick}
+        autoFocus={autoFocus}
+      />
       {creating !== null && <ProjectSheet initialName={creating} onClose={() => setCreating(null)} onSaved={(project) => onChange(project.id)} />}
-    </div>
+    </>
   );
 }

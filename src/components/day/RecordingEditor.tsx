@@ -2,10 +2,9 @@ import { useEffect, useRef, type KeyboardEvent } from "react";
 import { Sparkles, Trash2 } from "lucide-react";
 import { useStore } from "../../state/store";
 import { NoteInput } from "../NoteInput";
-import { FormField } from "../Field";
 import { ProjectPicker } from "../pickers/ProjectPicker";
 import { TagPicker } from "../pickers/TagPicker";
-import { CoveredActivity, DurationField, OverlapNotice } from "./EditorParts";
+import { DurationField, EditorRow, OverlapNotice } from "./EditorParts";
 import { EditorSpans } from "./EditorSpans";
 import { useEditorSave } from "./useEditorSave";
 import { useProposal } from "./useProposal";
@@ -14,7 +13,7 @@ const MINUTE_MS = 60_000;
 
 /**
  * The recording editor, inline in the timesheet (a sheet in the Week view, labelled by `id`): note, project, tag,
- * duration, the activity it covers and its spans; Save (↵ or ⌘↵), Cancel (Escape), Delete (⌘⌫). Rust snaps the
+ * duration and spans; Save (↵ or ⌘↵), Cancel (Escape), Delete (⌘⌫). Rust snaps the
  * times on save. Opened on a suggestion, it is prefilled with it and Save (Approve) approves it as edited.
  */
 export function RecordingEditor({ id }: { id?: string }) {
@@ -26,10 +25,9 @@ export function RecordingEditor({ id }: { id?: string }) {
   const { closeEditor, patchDraft, setDraftTotal } = useStore.getState();
   const { errors, save, remove } = useEditorSave();
   const ref = useRef<HTMLFormElement>(null);
-  const proposal = useProposal(draft?.spans ?? null);
+  const proposed = useProposal(draft?.spans ?? null);
   const prefill = editor?.mode === "create" && !editor.projectId;
   const projectId = draft?.projectId ?? null;
-  const proposed = proposal?.projectId ?? null;
 
   useEffect(() => {
     ref.current?.scrollIntoView?.({ block: "nearest" });
@@ -76,11 +74,6 @@ export function RecordingEditor({ id }: { id?: string }) {
         void save();
       }}
     >
-      {editor.mode === "create" && editor.warning && (
-        <p className="editor-warning" role="note">
-          {editor.warning}
-        </p>
-      )}
       {suggestion && (
         <p className="editor-suggested" role="note">
           <Sparkles size="0.923rem" aria-hidden="true" />
@@ -95,14 +88,15 @@ export function RecordingEditor({ id }: { id?: string }) {
           </span>
         )}
       </div>
-      <FormField label="Project" error={errors.projectId}>
+      <EditorRow label="Project" error={errors.projectId}>
         <ProjectPicker value={draft.projectId} onChange={(picked) => patchDraft({ projectId: picked })} />
-      </FormField>
-      <FormField label="Tag" error={errors.tagId}>
+      </EditorRow>
+      <EditorRow label="Tag" error={errors.tagId}>
         <TagPicker value={draft.tagId} onChange={(tagId) => patchDraft({ tagId })} />
-      </FormField>
-      <DurationField total={draft.totalMs} readOnly={open !== null || draft.spans.length === 0} onChange={setDraftTotal} />
-      <CoveredActivity activity={proposal?.activity ?? []} />
+      </EditorRow>
+      <EditorRow label="Duration">
+        <DurationField total={draft.totalMs} readOnly={open !== null || draft.spans.length === 0} onChange={setDraftTotal} />
+      </EditorRow>
       <EditorSpans spans={draft.spans} step={step} runningSince={open?.start ?? null} error={errors.end ?? errors.start ?? errors.spans} />
       {overlap && <OverlapNotice overlap={overlap} />}
       <div className="editor-actions">

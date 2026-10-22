@@ -10,13 +10,12 @@ export interface EditedSuggestion {
 }
 
 /**
- * `projectId`, `note`, `tagId`: prefilled for a new recording; `warning`: shown above the fields; `suggestion`: the
- * suggestion its Save approves.
+ * `projectId`, `note`, `tagId`: prefilled for a new recording; `suggestion`: the suggestion its Save approves.
  * `at`: a span of the recording, to find it by; the shown day's block when absent.
  * `spanId`: the span the editor scrolls to; the first one when absent.
  */
 export type Editor =
-  | { mode: "create"; start: number; end: number; projectId?: string; note?: string; tagId?: string | null; warning?: string; suggestion?: EditedSuggestion }
+  | { mode: "create"; start: number; end: number; projectId?: string; note?: string; tagId?: string | null; suggestion?: EditedSuggestion }
   | { mode: "edit"; id: string; at?: { start: number; end: number }; spanId?: string };
 
 export interface Draft {

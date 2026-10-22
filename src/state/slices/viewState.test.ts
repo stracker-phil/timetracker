@@ -19,26 +19,6 @@ describe("view state slice", () => {
     vi.useRealTimers();
   });
 
-  describe("setDayMode", () => {
-    it("shows the timeline until the list is chosen", () => {
-      expect(useStore.getState().uiState.dayMode).toBe("timeline");
-    });
-
-    it("stores the mode and writes it after the debounce", () => {
-      useStore.getState().setDayMode("list");
-      expect(useStore.getState().uiState.dayMode).toBe("list");
-      expect(mocked.setUiState).not.toHaveBeenCalled();
-      vi.advanceTimersByTime(500);
-      expect(mocked.setUiState).toHaveBeenCalledWith(expect.objectContaining({ dayMode: "list" }));
-    });
-
-    it("writes nothing when the mode is already shown", () => {
-      useStore.getState().setDayMode("timeline");
-      vi.advanceTimersByTime(500);
-      expect(mocked.setUiState).not.toHaveBeenCalled();
-    });
-  });
-
   describe("setTimelineZoom", () => {
     it("stores the zoom and writes it after the debounce", () => {
       useStore.getState().setTimelineZoom(4);

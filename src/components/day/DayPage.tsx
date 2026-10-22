@@ -4,7 +4,6 @@ import { isToday } from "../../lib/day";
 import { selectDayVersion, useStore } from "../../state/store";
 import { Splitter, usePaneSize } from "../Splitter";
 import { DayHeader } from "./DayHeader";
-import { ListView } from "./list/ListView";
 import { Timeline } from "./Timeline";
 import { Timesheet } from "./Timesheet";
 import { useLiveReload } from "./useLiveReload";
@@ -35,8 +34,8 @@ function EmptyDay({ day }: { day: string }) {
 }
 
 /**
- * The Day view: the timesheet on the left (resizable), then the shown day's timeline or list; it reloads when the
- * day's data changes, and keeps following today.
+ * The Day view: the timesheet on the left (resizable), then the shown day's timeline; it reloads when the day's
+ * data changes, and keeps following today.
  */
 export function DayPage() {
   const day = useStore((s) => s.day);
@@ -46,7 +45,6 @@ export function DayPage() {
   const error = useStore((s) => s.dayError);
   // The last loaded title stays while the next day loads, so the toolbar never blanks.
   const label = useStore((s) => s.dayView?.label);
-  const mode = useStore((s) => s.uiState.dayMode);
   const pane = usePaneSize("timesheet", Math.round(window.innerWidth * TIMESHEET.share), TIMESHEET.min, TIMESHEET.max);
 
   useEffect(() => {
@@ -63,7 +61,7 @@ export function DayPage() {
             <Timesheet view={view} />
           </div>
           <Splitter axis="x" paneAfter={false} label="Resize the timesheet" {...pane} />
-          <div className="day-main">{isEmpty(view) ? <EmptyDay day={day} /> : mode === "list" ? <ListView day={day} reload={live} /> : <Timeline view={view} />}</div>
+          <div className="day-main">{isEmpty(view) ? <EmptyDay day={day} /> : <Timeline view={view} />}</div>
         </div>
       )}
     </section>

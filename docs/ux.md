@@ -275,9 +275,14 @@ Context menus use the UI font, 22px items with a 5px radius; the hovered or focu
 `--on-accent` text, disabled items `--o3`, separators an inset 1px `--line`. The native WebKit context menu is
 suppressed outside text fields (`lib/nativeMenu.ts`).
 
-Pickers (project, tag) are a field with a list below it on `--pop`, using the palette's row anatomy and
-small `--o3` section labels; the last option creates what was typed (`New project "x"…`). The tag picker
-picks one tag; its first option is "No tag".
+Pickers (project, tag) are a combobox: a text field's frame (`--field`, hairline, the accent focus ring) with
+the value's icon (the project's color dot, a hollow dot without one; the tag icon), the value, and a chevron
+at the trailing end. Empty, the field shows "No project" or "No tag" in `--o3`. Tab or a first click only
+focuses it, so a filled form can be tabbed through; typing, ↓ ↑, Space, a second click or the chevron open the
+list below it on `--pop`, using the palette's row anatomy and small `--o3` section labels. The open list
+starts on the current value, scrolled into view and marked with a check; while nothing is typed the field
+shows the value as its placeholder. The last option creates what was typed (`New project "x"…`, `New tag
+"x"`). The tag picker picks one tag; its first option is "No tag".
 
 ## Palette
 
@@ -305,7 +310,7 @@ text; a row's date or detail follows its title in `--o2`.
 The Day view reads like Timely's: the toolbar, the timesheet on the left, then the timeline.
 
 - **Toolbar:** the date, the day's totals (`recorded 1:00 · tracked 6:12 · away 1:05`) only for a day other
-  than today (the status bar has today's), the Timeline/List switch, Lanes (timeline only), the timeline
+  than today (the status bar has today's), Lanes, the timeline
   settings gear and the ⋯ menu, all borderless toolbar buttons.
 - **Timesheet** (left, about a quarter of the width, resizable with the splitter; kept as the `timesheet`
   pane size): "Timesheet", the day's recorded total large (`6h 05m`) and a + button (a new recording for the
@@ -404,10 +409,13 @@ timeline), Hidden (gone from every lane; the Lanes popover lists hidden apps wit
   among the cards (in place of the card it edits), pushing the cards below down and scrolled into view; it is
   never a sheet over the timeline (the Week and Month views, without a timesheet, show it as a sheet). Top to bottom: the
   note as the title field (focused, "What did you work on?"), project (recent first, type to search, "New
-  project…"), tag, the duration large as `0 h 20 m` (both numbers editable; a change moves the last span's
-  end), "Activity n" (the activity blocks inside the spans; a click lists them), the spans as `FROM 10:00 TO
-  10:20` rows (✕ removes one while there are several; "Add span" adds one after the last), then Save, Cancel
-  and a trash icon for Delete. The draft's spans show in the time column as accent-filled blocks with their
+  project…"), tag, the duration as `[0] h [20] m` (both numbers editable; a change moves the last span's
+  end), the spans as `From [10:00] to [10:20]` rows (✕ removes one while there are several; "Add span" adds one
+  after the last), then a trash icon for Delete at the leading end and Cancel and Save right-aligned. The note
+  is always one input styled as a 15px semibold title, its text flush with the labels; focus only adds the
+  field's surface, frame and ring, so nothing moves. The other rows put the label right-aligned in a leading
+  column, on the line of its control; every field (pickers, duration, times) is 22px high, rows 8px apart.
+  The editor shows no activity: activity is only a signal for recording, never linked to a recording. The draft's spans show in the time column as accent-filled blocks with their
   times. A new recording's project is proposed: the project of the latest recording (two weeks back) that
   covered the same main app, else the rule matching most of the activity. Field errors show under their
   field. A running recording's spans are shown, not edited.
@@ -435,19 +443,6 @@ timeline), Hidden (gone from every lane; the Lanes popover lists hidden apps wit
   red tint above the buttons.
 - A recording in the way reads `A recording already covers 12:10–12:30 (Project)` above the buttons; the
   form stays, so the times can change. The sheet stays open when another app takes focus.
-
-## List view
-
-- ⌘⇧L or Day mode → List shows the day as rows grouped like the timeline, longest first: the app's icon and
-  name in `--o2`, the label (500), the URL or path (mono, `--o3`), the duration right (tabular) with a thin
-  covered bar (the accent over `--fill-strong`) and `· 3 spans` when the activity came in parts. Rows are
-  separated by hairlines, without a hover fill; the focused row is `--sel`. The search is an inset field with its `/` key cap. The timesheet with its cards stays on the left, as in the
-  timeline.
-- A strip of project chips (recent first, More… for the rest), each filled like a recording card, sits above
-  the rows. Drag a row onto a chip
-  to record it: the editor opens with the row's first start to last end and, for several spans, the warning
-  `This activity has gaps (3 spans, 0:40 in between). Adjust the times if needed.`
-- Keyboard: `/` search, ↑↓ rows, ↵ record (pick the project), Space show on the timeline.
 
 ## Rules and suggestions
 
@@ -669,7 +664,6 @@ recording commands'.
 | `day.blockMenu` | Block actions… (app settings, copy, Make a rule…) | ⌃↵ | day |
 | `day.selectBlock` | Select block (the focused one's span) | V | day |
 | `day.extendNext` / `day.extendPrev` | Extend selection to the next / previous block | ⇧J / ⇧K | day |
-| `day.toggleList` | Toggle timeline and list | ⌘⇧L | day |
 | `activity.deleteDay` | Delete activity for this day… | menu | day |
 | `activity.deleteRange` | Delete activity in a range… | menu | day |
 | `day.settings` | Timeline settings | menu | day |
@@ -700,9 +694,8 @@ Keys of controls, not commands (they act on the focused control and are not rebi
 
 | Where | Keys |
 |---|---|
-| List mode | `/` search, ↑↓ rows, ↵ record the row (pick the project), Space show it on the timeline; Tab to a project chip and ↵ records the focused row |
 | Ghost card (Tab reaches it) | focuses the suggestion: ↵ approve, E edit, ⌫ dismiss (the `suggestion` scope); ✓ and ✕ inside it |
-| Recording editor, away prompt, timer picker | project picker: type, ↑↓, ↵ picks (the last option creates a project); From and To: type `HH:MM` or ↑↓ by one snap step; ↵ saves, records or starts; in the editor also ⌘↵, and ⌘⌫ deletes; Escape cancels or skips |
+| Recording editor, away prompt, timer picker, rule sheet | project and tag pickers: Tab or a click only focuses; type (filters), ↓↑ or Space opens the list on the current value, ↓↑ move, ↵ picks (the last option creates), Escape closes the list and keeps the value; with the list closed ↵ and Escape belong to the form; ⌫ removes the tag; From and To: type `HH:MM` or ↑↓ by one snap step; ↵ saves, records or starts; in the editor also ⌘↵, and ⌘⌫ deletes; Escape cancels or skips |
 | Timeline, pointer | drag or click opens the editor; with the editor open, a click on a block adds its span or takes it out again, and a drag adds a span |
 | Context menu (⌃↵ on a block) | ↑↓ items, ↵ runs, Escape closes |
 | Pickers in the Reports filter | type, ↑↓, ↵ adds, ⌫ on an empty field removes the last |
@@ -710,8 +703,7 @@ Keys of controls, not commands (they act on the focused control and are not rebi
 | Date picker (Go to Date…, under the calendar's title) | ←→ by a day, ↑↓ by a week, PageUp / PageDown by a month, ↵ shows the day, Escape closes |
 | Settings → Shortcuts | a key field records the next key; Escape stops, ⌫ unbinds |
 
-Left to the pointer, each with a keyboard way to the same result: dragging a selection (V, ⇧J, ⇧K, or the
-List mode), clicking or dragging a span into the open editor ("Add span" and its From / To fields), dragging or resizing a recording (⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓), dragging a card to another day in the
+Left to the pointer, each with a keyboard way to the same result: dragging a selection (V, ⇧J, ⇧K), clicking or dragging a span into the open editor ("Add span" and its From / To fields), dragging or resizing a recording (⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓), dragging a card to another day in the
 Week view (⌥← ⌥→, ⌥⇧ to copy, in the Day view),
 ⌥-dragging a block onto a project (⌃↵ → Make a rule…), the rules' grip (⌥↑ ⌥↓), the hover card (Space), the
 saved reports' right-click menu (`reports.rename`, `reports.delete`), and the Projects screen's right-click
@@ -766,7 +758,7 @@ from every text field. The page's key handler runs them, with the rules above.
 | TimeTracker | About; Settings… (`settings.toggle`; ⌘,); Launch at Login (`app.launchAtLogin`, a check item); Show Welcome Again (`welcome.show`); Services; Hide, Hide Others, Show All; Quit TimeTracker (`app.quit`; ⌘Q) |
 | File | New Recording… (`recording.new`); Start Timer… (`timer.start`; ⌘T), Stop Timer (`timer.stop`; ⌘⇧.); New Project… (`projects.new`; ⌘N), New Client… (`clients.new`), New Tag… (`tags.new`; ⌘N), New Rule… (`rules.new`; ⌘N); Export Backup… (`data.exportBackup`); Close Window (`window.hide`; ⌘W) |
 | Edit | Undo (`edit.undo`; ⌘Z), Redo (`edit.redo`; ⌘⇧Z); Cut, Copy, Paste, Select All (native); Delete Recording (`recording.delete`; ⌫); Copy Report as Text (`reports.copyText`; ⌘⇧C), Copy Report Notes (`reports.copyNotes`; ⌥⌘C) |
-| View | Hours (`view.hours`); Day, Week, Month, Reports, Projects, Tags, Rules (`view.day` … `view.rules`; ⌘1 … ⌘7, the active view checked); Show as List (`day.toggleList`; ⌘⇧L, checked in List mode); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); Timeline Settings… (`day.settings`); Enter Full Screen (native) |
+| View | Hours (`view.hours`); Day, Week, Month, Reports, Projects, Tags, Rules (`view.day` … `view.rules`; ⌘1 … ⌘7, the active view checked); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); Timeline Settings… (`day.settings`); Enter Full Screen (native) |
 | Go | Previous (`nav.prev`; P), Next (`nav.next`; N), Today (`nav.today`; O), Go to Date… (`nav.goToDate`); Next Block (`day.nextBlock`; J), Previous Block (`day.prevBlock`; K); Next Recording (`recording.next`; ], recordings and suggestions), Previous Recording (`recording.prev`; [) |
 | Day | Record Selection (`recording.create`; ↵, the key of `recording.open`), Edit Recording… (`recording.edit`); Move Recording to Previous / Next Day (⌥← / ⌥→), Copy Recording to Previous / Next Day (⌥⇧← / ⌥⇧→); Approve Suggestion (↵), Edit Suggestion… (E), Dismiss Suggestion (⌫), Approve All Suggestions of Rule, Approve All Suggestions, Dismiss All Suggestions (`suggestion.*`); Delete Activity for This Day…, Delete Activity in a Range… (`activity.*`) |
 | Window | Minimize, Zoom, Bring All to Front (native) |
@@ -790,7 +782,7 @@ Commands left out of the menu, with keys and the palette only:
 
 ## Scheme audit
 
-The three schemes in both modes are checked on Day, List, Week, Month, Reports, Projects, Tags, Rules and Settings
+The three schemes in both modes are checked on Day, Week, Month, Reports, Projects, Tags, Rules and Settings
 (`docs/screens/<scheme>-<mode>-<view>.png`, captured by `scripts/dev/screenshot-looks.sh <dir> [view]`, which
 sets the current macOS mode's scheme to each of the three through `scripts/dev/js.sh` and restores the
 settings; the app follows macOS, so switch the system appearance and run it again for the other mode). Only
@@ -810,5 +802,4 @@ Targets, computed by `src/styles/contrast.ts` (WCAG contrast; OKLCH as the CSS c
   at least 3:1 on it.
 
 Measured: light content block text 8.5:1 at worst (foot 4.6), dark content 8.3 (foot 5.4); `--o3` 3.2 (light)
-and 4.6 (dark); the weakest on-accent pair 4.65 (gold, light). The List view's covered bar fills with the
-accent.
+and 4.6 (dark); the weakest on-accent pair 4.65 (gold, light).

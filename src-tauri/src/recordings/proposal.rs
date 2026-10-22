@@ -1,5 +1,4 @@
-//! What the editor shows for the spans of a new or changed recording: the activity they cover and the
-//! project to propose for it.
+//! The project the editor proposes for the spans of a new recording, from the activity they cover.
 
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -26,24 +25,6 @@ pub struct RecordingProposal {
     /// The project of the last recording that covered the same app, else of the rule that matches most of
     /// the activity; `None` without either.
     pub project_id: Option<String>,
-    /// The activity blocks sharing time with the spans, by start.
-    pub activity: Vec<CoveredActivity>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct CoveredActivity {
-    /// The block's id on the Day view.
-    pub id: String,
-    pub label: String,
-    pub app: String,
-    pub bundle_id: Option<String>,
-    pub start: Ms,
-    pub end: Ms,
-    /// The part of it inside the spans.
-    pub inside_ms: i64,
-    pub private: bool,
 }
 
 /// The time `[start, end)` shares with `spans`.
@@ -65,35 +46,14 @@ fn most_time<K: Ord + Hash>(timed: impl IntoIterator<Item = (K, i64)>) -> Option
         .map(|(key, _)| key)
 }
 
-/// The blocks of `blocks` inside `spans`, by start.
-pub fn covered(blocks: &[&ActivityBlock], spans: &[Span]) -> Vec<CoveredActivity> {
-    let mut found: Vec<CoveredActivity> = blocks
-        .iter()
-        .filter_map(|b| {
-            let inside_ms = inside(b.start, b.end, spans);
-            (inside_ms > 0).then(|| CoveredActivity {
-                id: b.id.clone(),
-                label: b.label.clone(),
-                app: b.app.clone(),
-                bundle_id: b.bundle_id.clone(),
-                start: b.start,
-                end: b.end,
-                inside_ms,
-                private: b.private,
-            })
-        })
-        .collect();
-    found.sort_by_key(|a| (a.start, a.end));
-    found
-}
-
 /// The app with the most time inside the spans; private blocks do not count.
-pub fn main_app(activity: &[CoveredActivity]) -> Option<String> {
+pub fn main_app(blocks: &[&ActivityBlock], spans: &[Span]) -> Option<String> {
     most_time(
-        activity
+        blocks
             .iter()
-            .filter(|a| !a.private)
-            .map(|a| (a.app.as_str(), a.inside_ms)),
+            .filter(|b| !b.private)
+            .map(|b| (b.app.as_str(), inside(b.start, b.end, spans)))
+            .filter(|&(_, ms)| ms > 0),
     )
     .map(str::to_string)
 }
@@ -147,17 +107,13 @@ pub async fn propose(
         spans.iter().map(|s| s.start).min(),
         spans.iter().map(|s| s.end).max(),
     ) else {
-        return Ok(RecordingProposal {
-            project_id: None,
-            activity: Vec::new(),
-        });
+        return Ok(RecordingProposal { project_id: None });
     };
     let mut views = Vec::new();
     for day in Day::range(&Day::of(first), &Day::of(last - 1)) {
         views.push(crate::day::view_of(db, day, settings, now).await?);
     }
     let blocks: Vec<&ActivityBlock> = views.iter().flat_map(crate::rules::candidates).collect();
-    let activity = covered(&blocks, spans);
     let open: Vec<String> = projects::list(db, false)
         .await?
         .into_iter()
@@ -166,24 +122,21 @@ pub async fn propose(
     let usable = |id: Option<String>| id.filter(|id| open.contains(id));
 
     let mut project_id = None;
-    if let Some(app) = main_app(&activity) {
+    if let Some(app) = main_app(&blocks, spans) {
         project_id = usable(earlier_project(db, &app, first).await?);
     }
     if project_id.is_none() {
         let rules = compile(&crate::rules::store::active(db).await?);
         project_id = usable(rule_project(&blocks, spans, &rules));
     }
-    Ok(RecordingProposal {
-        project_id,
-        activity,
-    })
+    Ok(RecordingProposal { project_id })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::recordings::RecordingSpan;
-    use crate::recordings::testing::{HOUR, MIN, World, at, row, span};
+    use crate::recordings::testing::{MIN, World, at, row, span};
     use crate::rules::testing::{block, plain_settings, private, save_rule};
     use crate::rules::types::{RuleField, RuleOp};
     use crate::store::settings::Continuity;
@@ -193,111 +146,62 @@ mod tests {
         span(start * MIN, end * MIN)
     }
 
-    fn covered_block(id: &str, app: &str, start: i64, end: i64, inside: i64) -> CoveredActivity {
-        CoveredActivity {
-            id: id.into(),
-            label: app.into(),
-            app: app.into(),
-            bundle_id: None,
-            start: start * MIN,
-            end: end * MIN,
-            inside_ms: inside * MIN,
-            private: false,
-        }
-    }
-
-    fn used(app: &str, inside: i64) -> CoveredActivity {
-        covered_block("x", app, 0, inside, inside)
-    }
-
     #[test]
-    fn covered_keeps_only_blocks_sharing_time_with_the_spans_and_sorts_them_by_start() {
-        let late = block(40, 50, "Mail", "");
-        let far = block(100, 110, "Slack", "");
-        let early = block(0, 10, "Slack", "");
-        let touching = block(45, 60, "Slack", "");
+    fn main_app_is_the_app_with_the_most_time_inside_the_spans() {
+        let slack_a = block(0, 20, "Slack", "");
+        let mail = block(20, 70, "Mail", "");
+        let slack_b = block(70, 120, "Slack", "");
 
-        let found = covered(&[&late, &far, &early, &touching], &[minutes(5, 45)]);
-
-        assert_eq!(
-            found,
-            [
-                covered_block("a0", "Slack", 0, 10, 5),
-                covered_block("a40", "Mail", 40, 50, 5),
-            ]
-        );
-    }
-
-    #[test]
-    fn covered_adds_up_the_time_a_block_shares_with_every_span() {
-        let long = block(0, 60, "Slack", "");
-
-        let found = covered(
-            &[&long],
-            &[minutes(10, 20), minutes(30, 35), minutes(70, 80)],
+        let found = main_app(
+            &[&slack_a, &mail, &slack_b],
+            &[minutes(10, 30), minutes(80, 110)],
         );
 
-        assert_eq!(found, [covered_block("a0", "Slack", 0, 60, 15)]);
+        assert_eq!(found.as_deref(), Some("Slack"));
     }
 
     #[test]
-    fn covered_of_no_spans_is_empty() {
-        let any = block(0, 10, "Slack", "");
+    fn main_app_counts_only_the_time_inside_the_spans() {
+        let long = block(0, 100, "Mail", "");
+        let short = block(40, 60, "Slack", "");
+        let found = main_app(&[&long, &short], &[minutes(0, 10), minutes(40, 60)]);
 
-        assert_eq!(covered(&[&any], &[]), Vec::<CoveredActivity>::new());
-    }
-
-    #[test]
-    fn covered_keeps_the_private_flag() {
-        let hidden = private(block(0, 10, "Slack", ""));
-
-        let found = covered(&[&hidden], &[minutes(0, 10)]);
-
-        assert_eq!(
-            found,
-            [CoveredActivity {
-                private: true,
-                ..covered_block("a0", "Slack", 0, 10, 10)
-            }]
-        );
-    }
-
-    #[test]
-    fn main_app_is_the_app_with_the_most_time_summed_over_its_blocks() {
-        let activity = [used("Slack", 20), used("Mail", 30), used("Slack", 20)];
-
-        assert_eq!(main_app(&activity).as_deref(), Some("Slack"));
+        assert_eq!(found.as_deref(), Some("Mail"));
     }
 
     #[test]
     fn main_app_ignores_private_blocks() {
-        let activity = [
-            CoveredActivity {
-                private: true,
-                ..used("Slack", 50)
-            },
-            used("Mail", 10),
-        ];
+        let hidden = private(block(0, 50, "Slack", ""));
+        let shown = block(0, 10, "Mail", "");
 
-        assert_eq!(main_app(&activity).as_deref(), Some("Mail"));
+        let found = main_app(&[&hidden, &shown], &[minutes(0, 50)]);
+
+        assert_eq!(found.as_deref(), Some("Mail"));
+        assert_eq!(main_app(&[&hidden], &[minutes(0, 50)]), None);
     }
 
     #[test]
-    fn main_app_is_none_without_activity_or_with_only_private_activity() {
-        let hidden = CoveredActivity {
-            private: true,
-            ..used("Slack", 50)
-        };
+    fn main_app_skips_blocks_without_time_inside_the_spans() {
+        let outside = block(100, 200, "Slack", "");
+        let touching = block(50, 60, "Figma", "");
+        let inside = block(0, 50, "Mail", "");
 
-        assert_eq!(main_app(&[]), None);
-        assert_eq!(main_app(&[hidden]), None);
+        let found = main_app(&[&outside, &touching, &inside], &[minutes(0, 50)]);
+
+        assert_eq!(found.as_deref(), Some("Mail"));
+        assert_eq!(main_app(&[&outside, &touching], &[minutes(0, 50)]), None);
+        assert_eq!(main_app(&[&inside], &[]), None);
     }
 
     #[test]
-    fn main_app_of_equal_times_is_the_first_by_name() {
-        let activity = [used("Mail", 10), used("Slack", 10), used("Figma", 10)];
+    fn main_app_of_equal_times_is_the_smallest_name() {
+        let mail = block(0, 10, "Mail", "");
+        let slack = block(10, 20, "Slack", "");
+        let figma = block(20, 30, "Figma", "");
 
-        assert_eq!(main_app(&activity).as_deref(), Some("Figma"));
+        let found = main_app(&[&mail, &slack, &figma], &[minutes(0, 30)]);
+
+        assert_eq!(found.as_deref(), Some("Figma"));
     }
 
     fn recorded_for(project: &str, start: i64, end: i64) -> Recording {
@@ -376,14 +280,6 @@ mod tests {
         activity(&w.db, at(10, 0), Some(at(11, 0)), "Slack", "").await;
     }
 
-    fn apps(proposal: &RecordingProposal) -> Vec<(&str, i64)> {
-        proposal
-            .activity
-            .iter()
-            .map(|a| (a.app.as_str(), a.inside_ms))
-            .collect()
-    }
-
     #[tokio::test]
     async fn propose_gives_the_project_of_an_earlier_recording_over_the_same_app() {
         let w = World::new().await;
@@ -400,7 +296,6 @@ mod tests {
         let proposal = propose_for(&w, at(10, 0), at(11, 0)).await;
 
         assert_eq!(proposal.project_id.as_deref(), Some(w.project.id.as_str()));
-        assert_eq!(apps(&proposal), [("Slack", HOUR)]);
     }
 
     #[tokio::test]
@@ -421,14 +316,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn propose_gives_no_project_without_a_recording_or_rule_but_still_lists_the_activity() {
+    async fn propose_gives_no_project_without_a_recording_or_rule() {
         let w = World::new().await;
         slack_before_and_during(&w).await;
 
         let proposal = propose_for(&w, at(10, 0), at(11, 0)).await;
 
         assert_eq!(proposal.project_id, None);
-        assert_eq!(apps(&proposal), [("Slack", HOUR)]);
     }
 
     #[tokio::test]
@@ -485,12 +379,6 @@ mod tests {
 
         let proposal = propose(&w.db, &[], &settings(), at(20, 0)).await.unwrap();
 
-        assert_eq!(
-            proposal,
-            RecordingProposal {
-                project_id: None,
-                activity: Vec::new()
-            }
-        );
+        assert_eq!(proposal, RecordingProposal { project_id: None });
     }
 }

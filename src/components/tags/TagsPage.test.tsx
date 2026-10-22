@@ -13,7 +13,8 @@ import { TagsPage } from "./TagsPage";
 
 const mocked = vi.mocked(api, true);
 
-function renderTags(tags = [tag({ name: "admin" }), tag({ name: "research", recordings: 3 }), tag({ name: "support", recordings: 1 })]) {  resetStore(projectsStore({ tags }));
+function renderTags(tags = [tag({ name: "admin" }), tag({ name: "research", recordings: 3 }), tag({ name: "support", recordings: 1 })]) {
+  resetStore(projectsStore({ tags }));
   render(
     <>
       <TagsPage />
@@ -86,7 +87,7 @@ describe("TagsPage", () => {
     const analysis = tag({ id: "tag-research", name: "analysis", recordings: 3 });
     const rowAt = (i: number) => screen.getAllByRole("listitem")[i];
     const researchRow = () => rowAt(1);
-    const field = () => screen.getByRole("textbox", { name: "Tag name" }) as HTMLInputElement;
+    const field = () => screen.getByRole<HTMLInputElement>("textbox", { name: "Tag name" });
     const noField = () => screen.queryByRole("textbox", { name: "Tag name" });
     const reloadsRenamed = () => mocked.tagsList.mockResolvedValueOnce([admin, analysis, support]);
     const startRename = () => userEvent.click(screen.getByRole("button", { name: "Rename tag research" }));
@@ -157,11 +158,10 @@ describe("TagsPage", () => {
         let release!: () => void;
         const gate = new Promise<void>((resolve) => (release = resolve));
         let saved = false;
-        mocked.tagsSave.mockImplementation(async (id, name) => {
-          if (saved && id === "tag-research") throw { kind: "io", message: "Saved twice", code: null };
+        mocked.tagsSave.mockImplementation((id, name) => {
+          if (saved && id === "tag-research") return Promise.reject(Object.assign(new Error("Saved twice"), { kind: "io", code: null }));
           saved = true;
-          await gate;
-          return { id: id ?? "", name, createdAt: 0 };
+          return gate.then(() => ({ id: id ?? "", name, createdAt: 0 }));
         });
         reloadsRenamed();
         renderTags();

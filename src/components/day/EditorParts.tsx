@@ -1,7 +1,4 @@
-import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import type { CoveredActivity as Activity } from "../../api";
-import { formatClock, formatShortDuration } from "../../lib/format";
+import type { ReactNode } from "react";
 import { spansText } from "../../lib/recordings";
 import type { EditorOverlap } from "../../state/slices/editor";
 import { useStore } from "../../state/store";
@@ -17,37 +14,27 @@ export function DurationField({ total, readOnly, onChange }: { total: number; re
   };
   return (
     <div className="editor-duration" role="group" aria-label="Duration">
-      <input className="duration-input" inputMode="numeric" aria-label="Hours" value={hours} readOnly={readOnly} onChange={(e) => set(Number(e.target.value), rest)} />
+      <input className="input duration-input" inputMode="numeric" aria-label="Hours" value={hours} readOnly={readOnly} onChange={(e) => set(Number(e.target.value), rest)} />
       <span className="duration-unit">h</span>
-      <input className="duration-input" inputMode="numeric" aria-label="Minutes" value={rest} readOnly={readOnly} onChange={(e) => set(hours, Number(e.target.value))} />
+      <input className="input duration-input" inputMode="numeric" aria-label="Minutes" value={rest} readOnly={readOnly} onChange={(e) => set(hours, Number(e.target.value))} />
       <span className="duration-unit">m</span>
     </div>
   );
 }
 
-/** The activity the spans cover: a count that opens the list. */
-export function CoveredActivity({ activity }: { activity: Activity[] }) {
-  const [open, setOpen] = useState(false);
-  const Chevron = open ? ChevronDown : ChevronRight;
+/** One row of the editor: the label in the leading column, the control and its error in the other. */
+export function EditorRow({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
-    <div className="editor-activity">
-      <button type="button" className="editor-activity-head" aria-expanded={open} disabled={activity.length === 0} onClick={() => setOpen(!open)}>
-        <Chevron size="0.923rem" aria-hidden="true" />
-        <span>Activity</span>
-        <span className="editor-activity-count">{activity.length}</span>
-      </button>
-      {open && (
-        <ul className="editor-activity-list">
-          {activity.map((a) => (
-            <li key={a.id}>
-              <span className="editor-activity-label">{a.private ? "Private" : a.label}</span>
-              <span className="o3">
-                {formatClock(a.start)} · {formatShortDuration(a.insideMs)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="editor-row">
+      <span className="editor-label">{label}</span>
+      <div className="editor-control">
+        {children}
+        {error && (
+          <span className="form-field-error" role="alert">
+            {error}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

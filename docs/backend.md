@@ -156,7 +156,6 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `saved_report_delete` | `id` | – | `not_found` |
 | `day_view` (`day/commands.rs`) | `day: String` | `DayView` (see [Day view](#day-view)) with the saved rules' `suggestions` and `label`, the toolbar title in the `dayTitle` format; logs the time it took at debug level | `invalid_input`, `db` |
 | `day_totals` (`day/commands.rs`) | `day: Day` | `DayTotals { recordedMs, trackedMs, awayMs }` (`day::totals`, without building the view; the status bar's today) | `invalid_input`, `db` |
-| `list_view` (`day/commands.rs`) | `day: String` | `ListView { day, rows: ListRow[], totalMs }` (see [List view](#list-view)) | `invalid_input`, `db` |
 | `away_prompt_current` (`away_prompt/commands.rs`) | – | `AwayPrompt \| null` | – |
 | `away_prompt_answer` | `input: RecordingInput` | `Recording`, created with `overlap: cancel` (undoable); closes the window | `not_found` (no prompt), `invalid_input` (`field`: `start` when a span lies outside the last 7 days, or the recording's own fields), `overlap` (the prompt stays open) |
 | `away_prompt_skip` | – | – (clears the prompt, closes the window; nothing is recorded) | – |
@@ -200,7 +199,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `recording_draft_add` | `spans: Span[]` | `DraftSpans` with a 30-minute span after the last (without spans, from the start of `default_span`); Add span | – |
 | `recording_draft_include` | `spans: Span[], span` | `DraftSpans` by start with `span` (a snapped selection) in them, merged with the spans it touches or overlaps; a drag or ↵ while the editor is open | – |
 | `recording_draft_toggle` | `spans: Span[], block: Span, others: Span[]` | `DraftToggle { spans, totalMs, included }`: `block` snapped with `snap_span`; when one span covers it, its time leaves them (a span sticking out on both sides becomes two) except where it overlaps `others` (the other clicked blocks, snapped), else it joins them, merged with what it touches; by start; a click on a block in the Day view | – |
-| `recording_proposal` | `spans: Span[]` | `RecordingProposal { projectId, activity: CoveredActivity[] }` (`recordings/proposal.rs`): the blocks of every lane but the summary on the spans' days that share time with them (`id`, `label`, `app`, `bundleId`, `start`, `end`, `insideMs`, `private`), and the project of the latest recording in the 14 days before the first span that covered the spans' main app (most time inside, private left out), else of the rule matching the most time inside; archived projects are never proposed. The editor's activity list and prefill | `db` |
+| `recording_proposal` | `spans: Span[]` | `RecordingProposal { projectId }` (`recordings/proposal.rs`): the project of the latest recording in the 14 days before the first span that covered the spans' main app (`main_app`: the app with the most time inside the spans among the blocks of every lane but the summary on the spans' days, private left out), else of the rule matching the most time inside; archived projects are never proposed. The editor's project prefill | `db` |
 | `recording_default_span` | `day: Day \| null` | `Span`: the half hour up to now (`NEW_RECORDING_MINUTES`), snapped (`recordings::default_span`); on another `day` the same clock times there (`recordings::default_span_on`). File → New Recording… without a selection, and the Week's and Month's + for a day | – |
 | `undo` / `redo` | – | the label undone or redone, `null` when there was none | `overlap`, `db` |
 | `undo_status` | – | `UndoStatus { undoLabel, redoLabel }` | – |
@@ -448,15 +447,6 @@ back from This week is Last week), anything else `Custom`.
   opens as the default). Presets stay relative, so a saved "this month" follows the calendar.
 - `reports/testing.rs` (tests only): the shared report fixtures (clients, projects, tags, recordings from
   local times).
-
-## List view
-
-`day/list.rs`: `list(&DayView) -> ListView` groups the blocks of every lane but the summary by source, app
-key and label (the timeline's grouping, titles, hidden apps and noise already applied, so with titles set to
-the app a whole app is one row). A row has the merged spans of its blocks (touching ones joined), their total, the time between them (`gapMs`),
-the part inside recordings (`coveredMs`), the first start and last end, and the longest block's app, title,
-URL and path. Rows sort by total, longest first, then by first start. `list_view` builds the view without
-suggestions (`day::view_of`).
 
 ## Away prompt
 
@@ -797,7 +787,7 @@ save leaves memory unchanged. `JsonStore::open_with` normalizes the loaded value
 |---|---|
 | `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets an unknown accent (neither `system` (`SYSTEM_ACCENT`) nor one of `ACCENTS`: `is_app_accent`) to `system` (an unknown `lightScheme` or `darkScheme` falls back to `default` or `dark` through `lenient`) and moves a 0021 file's `scheme` into `lightScheme`; turns blank `fontUi`, `fontMono` and `dataDir` into `null` (an unknown `calendarTitle` (`CalendarTitle`: short, the default, or full) or `dayTitle` (`DayTitle`: long, the default, or short) falls back through `lenient`); a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline`, `apps`, `dayTitle` or `calendarTitle` emits `data_changed { kind: settings, day: null }`, so every open day and the sidebar calendar reload. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed. A trailing `++` is the `+` key |
-| `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay` (`get_ui_state` leaves it out when it is more than 30 days before today, `UiState::restorable`), `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id), `dayMode`, `onboardingDone` (default `false`: the welcome sheet shows) |
+| `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay` (`get_ui_state` leaves it out when it is more than 30 days before today, `UiState::restorable`), `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id), `onboardingDone` (default `false`: the welcome sheet shows); unknown keys, such as the dropped `dayMode`, are ignored |
 | `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere (written only by `data_move`) |
 | `timetracker.sock`, `timetracker.lock` | single instance |
 
@@ -869,7 +859,7 @@ Bring All to Front) and Help. [ux.md](ux.md#menu-bar) lists every item.
 - **Enabled and checked.** The page reports `MenuState { enabled, checked }` (ids) through `menu_sync`
   whenever it changes; `menu/sync.rs` keeps it in the managed `MenuSync` and applies it to every listed item
   (`item_state`): items missing from `enabled` are greyed out, check items show `checked` (the active view,
-  Show as List, Launch at Login). Before the first report every item is enabled; `app.quit` always is.
+  Launch at Login). Before the first report every item is enabled; `app.quit` always is.
   `rebuild` builds with the last report.
 - **Clicks.** `menu::forward`: `app.quit` exits right there, so quitting works even when the page is broken;
   every other listed id is emitted as `command` (`is_menu_command` filters out the native items). A click on

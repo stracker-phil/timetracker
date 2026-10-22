@@ -1,4 +1,4 @@
-import { EMPTY_UI_STATE, api, type DayMode, type UiState } from "../../api";
+import { EMPTY_UI_STATE, api, type UiState } from "../../api";
 import { fail } from "../requests";
 import type { Slice } from "../store";
 
@@ -14,8 +14,6 @@ export interface ViewStateSlice {
   setTimelineZoom: (pxPerMinute: number) => void;
   /** The next zoom step in (`by` 1) or out (-1). */
   stepTimelineZoom: (by: 1 | -1) => void;
-  /** The Day view shows the timeline or the list of activity. */
-  setDayMode: (dayMode: DayMode) => void;
   /** The welcome sheet's Done. */
   finishOnboarding: () => Promise<void>;
   /** Shows the welcome sheet again ("Show welcome again" in Settings → General). */
@@ -66,10 +64,6 @@ export const viewStateSlice: Slice<ViewStateSlice> = {
         const current = get().uiState.timelineZoom;
         const next = by === 1 ? TIMELINE_STEPS.find((z) => z > current) : [...TIMELINE_STEPS].reverse().find((z) => z < current);
         get().setTimelineZoom(next ?? current);
-      },
-
-      setDayMode(dayMode) {
-        if (get().uiState.dayMode !== dayMode) patchUiState(() => ({ dayMode }));
       },
 
       async finishOnboarding() {

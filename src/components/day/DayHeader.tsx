@@ -5,18 +5,13 @@ import { isToday } from "../../lib/day";
 import { formatHm } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { useContextMenu } from "../ContextMenu";
-import { SegmentedControl } from "../SegmentedControl";
 import { Toolbar } from "../Toolbar";
-
-const DAY_MODES = ["timeline", "list"] as const;
 
 const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` : label);
 
 /** `label` is the day's title from Rust, in the format of the day title setting. */
 export function DayHeader({ day, label = "", totals }: { day: string; label?: string; totals: DayTotals | null }) {
   const settingsKeys = useBindingLabel("day.settings");
-  const mode = useStore((s) => s.uiState.dayMode);
-  const setDayMode = useStore((s) => s.setDayMode);
   const menu = useContextMenu();
   const openMenu = (button: HTMLElement) => {
     const { left, bottom } = button.getBoundingClientRect();
@@ -37,13 +32,10 @@ export function DayHeader({ day, label = "", totals }: { day: string; label?: st
         )
       }
     >
-      <SegmentedControl label="Day mode" options={DAY_MODES} value={mode} onChange={setDayMode} />
-      {mode === "timeline" && (
-        <button type="button" className="btn btn-quiet" data-lanes-button aria-haspopup="dialog" onClick={() => useStore.getState().openDialog({ type: "lanes" })}>
-          <Columns3 size="1.154rem" aria-hidden="true" />
-          Lanes
-        </button>
-      )}
+      <button type="button" className="btn btn-quiet" data-lanes-button aria-haspopup="dialog" onClick={() => useStore.getState().openDialog({ type: "lanes" })}>
+        <Columns3 size="1.154rem" aria-hidden="true" />
+        Lanes
+      </button>
       <button
         type="button"
         className="icon-btn"

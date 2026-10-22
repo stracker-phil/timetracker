@@ -1,7 +1,23 @@
 /* ---------- pickers ---------- */
-.picker { position: relative; }
-.picker .inset-field input { min-width: 0; }
+/* A combobox (`PickerField`): a text field's frame and ring around the value's icon, the value and a chevron. */
+.picker { position: relative; min-width: 0; }
+.picker-field {
+  display: flex; align-items: center; gap: var(--space-2); height: var(--control-h); padding-left: var(--space-2);
+  border-radius: var(--radius-sm); background: var(--field); box-shadow: inset 0 0 0 1px var(--field-line); cursor: text;
+}
+.picker-field:focus-within { box-shadow: inset 0 0 0 1px var(--field-line), var(--focus-ring); }
+.picker-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 1rem; color: var(--o2); }
+.picker-field input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; outline: none; color: var(--text); text-overflow: ellipsis; }
+.picker-field input::placeholder { color: var(--o3); }
+.picker-chevron {
+  display: inline-grid; place-items: center; flex: none; width: var(--control-h); height: 100%; padding: 0;
+  border: none; background: none; color: var(--o3); cursor: default;
+}
+.picker-chevron:hover { color: var(--text); }
+.accent-dot--none { box-sizing: border-box; border: 1px solid var(--o3); }
 .picker-list { position: fixed; z-index: 60; max-height: 18rem; background: var(--pop); border-radius: var(--radius); box-shadow: var(--shadow); }
+.picker-check { flex: none; color: var(--accent-text); }
+.picker-list li.active .picker-check { color: inherit; }
 
 /* ---------- date picker ---------- */
 .dialog.date-picker { padding: var(--space-2); }

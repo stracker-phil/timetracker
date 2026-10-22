@@ -203,16 +203,6 @@ export type Continuity = "off" | "short" | "regular" | "extended";
  */
 export type CopiedNotes = { text: string, count: number, };
 
-export type CoveredActivity = { 
-/**
- * The block's id on the Day view.
- */
-id: string, label: string, app: string, bundleId: string | null, start: number, end: number, 
-/**
- * The part of it inside the spans.
- */
-insideMs: number, private: boolean, };
-
 export type DataChanged = { kind: DataKind, 
 /**
  * `None` when every day may have changed.
@@ -256,11 +246,6 @@ export type DayColumn = { day: Day, weekday: string, dayOfMonth: number, isToday
  * The day's recordings, by start.
  */
 entries: Array<CalendarEntry>, totalMs: number, trackedMs: number, };
-
-/**
- * How the Day view shows the day.
- */
-export type DayMode = "timeline" | "list";
 
 /**
  * The Day view's title format.
@@ -381,34 +366,6 @@ export type LaneKind = "summary" | "activity" | "app" | "source";
  * or a deep link.
  */
 export type LaunchEvent = { "type": "error", message: string, } | { "type": "notice", message: string, } | { "type": "activate" } | { "type": "showDay", day: Day, };
-
-export type ListRow = { key: string, app: string, bundleId: string | null, 
-/**
- * What the timeline shows for these blocks: the document name or the app, by the title setting.
- */
-label: string, 
-/**
- * The longest block's window title.
- */
-title: string, url: string | null, path: string | null, source: string, private: boolean, totalMs: number, 
-/**
- * The part of `total_ms` inside recordings.
- */
-coveredMs: number, firstStart: number, lastEnd: number, 
-/**
- * The blocks' spans, touching ones merged, by start.
- */
-spans: Array<[number, number]>, 
-/**
- * The time between the spans: what a recording from `first_start` to `last_end` adds.
- */
-gapMs: number, blockIds: Array<string>, };
-
-export type ListView = { day: Day, 
-/**
- * By total time, longest first; then by first start.
- */
-rows: Array<ListRow>, totalMs: number, };
 
 export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
 
@@ -617,11 +574,7 @@ export type RecordingProposal = {
  * The project of the last recording that covered the same app, else of the rule that matches most of
  * the activity; `None` without either.
  */
-projectId: string | null, 
-/**
- * The activity blocks sharing time with the spans, by start.
- */
-activity: Array<CoveredActivity>, };
+projectId: string | null, };
 
 /**
  * One stretch of a recording's time.
@@ -949,7 +902,7 @@ timelineZoom: number,
 /**
  * Splitter positions by pane id, in px.
  */
-paneSizes: { [key in string]: number }, dayMode: DayMode, 
+paneSizes: { [key in string]: number }, 
 /**
  * The welcome sheet was finished; it shows while this is false.
  */

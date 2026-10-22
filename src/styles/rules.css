@@ -26,7 +26,6 @@
 /* The project as a dot in its shade and its name, not a chip. */
 .rule-chip { flex: none; gap: var(--space-1); padding: 0; border: none; background: none; color: var(--o2); font-size: var(--fs-meta); font-weight: 400; }
 .rule-chip::before { content: ""; width: 0.538rem; height: 0.538rem; border-radius: 50%; background: var(--rec, var(--o3)); }
-.rule-chip:hover { border-color: transparent; }
 .rule-summary { min-width: 0; font-size: var(--fs-meta); color: var(--o2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Rule sheet: the form, and the activity it matches beside it. */

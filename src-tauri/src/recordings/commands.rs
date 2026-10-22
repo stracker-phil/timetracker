@@ -223,7 +223,7 @@ pub fn recording_draft_add(state: State<'_, AppState>, spans: Vec<Span>) -> Draf
     draft::with_added(&spans, now_ms(), snap_minutes(&state), &Local)
 }
 
-/// What the editor shows for `spans`: the activity they cover and the project to propose.
+/// The project the editor proposes for `spans`.
 #[tauri::command]
 pub async fn recording_proposal(
     state: State<'_, AppState>,

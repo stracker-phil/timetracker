@@ -39,6 +39,9 @@ let w = min(free.width - 16, 1600), h = min(free.height - 16, 1200)
 print("\(Int(free.minX + 8)),\(Int(free.minY + 8)),\(Int(w)),\(Int(h))")
 SWIFT
 )
+# One instance runs at a time (shared data and socket), so an installed app stops too; say so.
+pgrep -f "target/release/bundle/macos/TimeTracker.app" >/dev/null \
+  && echo "Stopped the installed app; reopen it with: open ~/Applications/TimeTracker.app"
 pkill -x timetracker 2>/dev/null || true
 sleep 0.5
 LOG="${TMPDIR:-/tmp}/timetracker-dev.log"

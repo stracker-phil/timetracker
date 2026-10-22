@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api, type AwayPrompt as Prompt } from "../../api";
-import { resetStore } from "../../state/store";
+import { resetStore, useStore } from "../../state/store";
 import { at } from "../../test/dayFixtures";
-import { awayPrompt } from "../../test/listFixtures";
+import { awayPrompt } from "../../test/awayFixtures";
 import { projectItem } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
 import { AwayPrompt } from "./AwayPrompt";
@@ -23,7 +23,8 @@ const recordButton = () => screen.getByRole("button", { name: "Record" });
 async function renderPrompt() {
   resetStore();
   render(<AwayPrompt />);
-  await screen.findAllByRole("option", { name: "Website" });
+  await screen.findByRole("combobox", { name: "Project" });
+  await vi.waitFor(() => expect(useStore.getState().projects.length).toBeGreaterThan(0));
 }
 
 /** Delivers an `away_prompt_changed` event to the window. */
@@ -185,9 +186,23 @@ describe("AwayPrompt", () => {
       const docs = projectItem({ project: { id: "p-docs", name: "Docs" } });
       mocked.projectsList.mockResolvedValue([website, docs]);
       await renderPrompt();
+      await userEvent.keyboard("{ArrowDown}");
       await userEvent.click(screen.getAllByRole("option", { name: "Docs" })[0]);
       await userEvent.click(recordButton());
       await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p-docs" })));
+    });
+
+    it("shows the last used project in the focused project field without opening its list", async () => {
+      await renderPrompt();
+      expect(screen.getByRole("combobox", { name: "Project" })).toHaveFocus();
+      expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("Website");
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+
+    it("records with Enter from the project field while its list is closed", async () => {
+      await renderPrompt();
+      await userEvent.keyboard("{Enter}");
+      await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p-site" })));
     });
   });
 

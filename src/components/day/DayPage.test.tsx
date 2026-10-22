@@ -4,13 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, EMPTY_UI_STATE, type DayView } from "../../api";
+import { api, type DayView } from "../../api";
 import { handleKeydown, installCommands, runCommand } from "../../commands";
 import { today } from "../../lib/day";
 import { resetStore, useStore } from "../../state/store";
 import { trackerStatus } from "../../test/data";
 import { appLane, at, block, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane, timesheetCard, withTimesheet } from "../../test/dayFixtures";
-import { listRow, listView } from "../../test/listFixtures";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
 import { suggestion } from "../../test/ruleFixtures";
@@ -1178,13 +1177,6 @@ describe("DayPage", () => {
       renderDay(dayView());
       expect(await screen.findByText("Nothing tracked on this day")).toBeInTheDocument();
       expect(sheet().getByText(/Nothing recorded yet/)).toBeInTheDocument();
-    });
-
-    it("stays next to the list", async () => {
-      mocked.listView.mockResolvedValue(listView({ rows: [listRow()] }));
-      renderDay(sheetDay(), { uiState: { ...EMPTY_UI_STATE, dayMode: "list" } });
-      expect(await screen.findByRole("list", { name: "Activity" })).toBeInTheDocument();
-      expect(cardOf("standup, Website | Acme, 45m")).toBeInTheDocument();
     });
 
     describe("a card", () => {

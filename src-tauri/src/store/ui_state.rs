@@ -1,5 +1,6 @@
-//! Window layout that survives a restart (`ui_state.json`): sidebar, pane sizes, the last viewed day
-//! the timeline zoom, the Day view's mode and whether the welcome sheet was finished.
+//! Window layout that survives a restart (`ui_state.json`): sidebar, pane sizes, the last viewed day,
+//! the timeline zoom and whether the welcome sheet was finished. Unknown keys, such as the dropped
+//! `dayMode`, are ignored.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -27,19 +28,8 @@ pub struct UiState {
     pub timeline_zoom: f32,
     /// Splitter positions by pane id, in px.
     pub pane_sizes: HashMap<String, f32>,
-    pub day_mode: DayMode,
     /// The welcome sheet was finished; it shows while this is false.
     pub onboarding_done: bool,
-}
-
-/// How the Day view shows the day.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "camelCase")]
-pub enum DayMode {
-    #[default]
-    Timeline,
-    List,
 }
 
 impl Default for UiState {
@@ -50,7 +40,6 @@ impl Default for UiState {
             last_day: None,
             timeline_zoom: 2.5,
             pane_sizes: HashMap::new(),
-            day_mode: DayMode::Timeline,
             onboarding_done: false,
         }
     }
@@ -119,34 +108,8 @@ mod tests {
                 last_day: None,
                 timeline_zoom: 2.5,
                 pane_sizes: HashMap::new(),
-                day_mode: DayMode::Timeline,
                 onboarding_done: false,
             }
-        );
-    }
-
-    #[test]
-    fn a_file_without_day_mode_opens_the_timeline() {
-        let dir = temp_config_dir();
-        std::fs::write(dir.path().join("ui_state.json"), r#"{"sidebarWidth": 320}"#).unwrap();
-        assert_eq!(
-            UiStateStore::open(dir.path()).get().day_mode,
-            DayMode::Timeline
-        );
-    }
-
-    #[test]
-    fn day_mode_serializes_as_a_camel_case_tag() {
-        let ui = UiState {
-            day_mode: DayMode::List,
-            ..UiState::default()
-        };
-        assert_eq!(serde_json::to_value(&ui).unwrap()["dayMode"], "list");
-        assert_eq!(
-            serde_json::from_str::<UiState>(r#"{"dayMode": "list"}"#)
-                .unwrap()
-                .day_mode,
-            DayMode::List
         );
     }
 
@@ -159,7 +122,6 @@ mod tests {
             last_day: Some("2026-10-21".into()),
             timeline_zoom: 1.5,
             pane_sizes: HashMap::from([("timeline".to_string(), 320.0)]),
-            day_mode: DayMode::List,
             onboarding_done: true,
         };
         let saved = UiStateStore::open(dir.path())
@@ -197,7 +159,6 @@ mod tests {
                 "lastDay": "2026-10-21",
                 "timelineZoom": 2.5,
                 "paneSizes": {},
-                "dayMode": "timeline",
                 "onboardingDone": false
             })
         );
@@ -268,7 +229,6 @@ mod tests {
         let ui = UiState {
             sidebar_width: 260,
             last_day: Some("2026-10-21".into()),
-            day_mode: DayMode::List,
             ..UiState::default()
         };
         store.set(ui.clone()).await.unwrap();
@@ -290,6 +250,35 @@ mod tests {
         store.finish_onboarding().await.unwrap();
         store.finish_onboarding().await.unwrap();
         assert!(UiStateStore::open(dir.path()).get().onboarding_done);
+    }
+
+    #[test]
+    fn a_file_with_the_dropped_day_mode_key_loads_without_quarantining_the_file() {
+        let dir = temp_config_dir();
+        let raw = r#"{"sidebarWidth": 320, "lastDay": "2026-10-21", "dayMode": "list", "onboardingDone": true}"#;
+        std::fs::write(dir.path().join("ui_state.json"), raw).unwrap();
+
+        let loaded = UiStateStore::open(dir.path()).get();
+
+        assert_eq!(
+            loaded,
+            UiState {
+                sidebar_width: 320,
+                last_day: Some("2026-10-21".into()),
+                onboarding_done: true,
+                ..UiState::default()
+            }
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("ui_state.json")).unwrap(),
+            raw
+        );
+        let mut names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["ui_state.json".to_string()]);
     }
 
     #[test]

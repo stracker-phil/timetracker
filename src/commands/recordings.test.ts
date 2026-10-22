@@ -79,13 +79,7 @@ describe("recording commands", () => {
       expect(runCommand(id)).toBe(false);
     });
 
-    it.each(["day.selectBlock", "day.extendNext", "day.extendPrev", "recording.next", "recording.prev"])("%s is unavailable in the List mode", (id) => {
-      state().focusBlock("a1");
-      state().setDayMode("list");
-      expect(runCommand(id)).toBe(false);
-    });
-
-    it.each(["day.extendNext", "day.extendPrev", "recording.next", "recording.prev"])("%s is available on the timeline without a focus", (id) => {
+    it.each(["day.extendNext", "day.extendPrev", "recording.next", "recording.prev"])("%s is available on the Day view without a focus", (id) => {
       expect(runCommand(id)).toBe(true);
     });
   });

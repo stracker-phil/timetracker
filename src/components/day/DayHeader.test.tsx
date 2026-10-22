@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, EMPTY_UI_STATE } from "../../api";
+import { api } from "../../api";
 import { installCommands } from "../../commands";
 import { formatDayLabel, today } from "../../lib/day";
 import { resetStore } from "../../state/store";
@@ -71,15 +71,10 @@ describe("DayHeader", () => {
       expect(await screen.findByRole("dialog", { name: "Lanes" })).toBeInTheDocument();
     });
 
-    it("has no Lanes button in the list", () => {
-      renderHeader({ dayView: dayView(), day: DAY, uiState: { ...EMPTY_UI_STATE, dayMode: "list" } });
-      expect(screen.queryByRole("button", { name: "Lanes" })).not.toBeInTheDocument();
-    });
-
-    it("brings the Lanes button back with the timeline", async () => {
-      renderHeader({ dayView: dayView(), day: DAY, uiState: { ...EMPTY_UI_STATE, dayMode: "list" } });
-      await userEvent.click(screen.getByRole("button", { name: "Timeline" }));
+    it("shows the Lanes button without a Timeline/List switch", () => {
+      renderHeader();
       expect(screen.getByRole("button", { name: "Lanes" })).toBeInTheDocument();
+      for (const name of ["Timeline", "List"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     });
   });
 

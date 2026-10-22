@@ -53,7 +53,7 @@ describe("RecordingEditor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocked.recordingsList.mockResolvedValue([]);
-    mocked.recordingProposal.mockResolvedValue({ projectId: null, activity: [] });
+    mocked.recordingProposal.mockResolvedValue({ projectId: null });
   });
 
   describe("creating", () => {
@@ -66,16 +66,17 @@ describe("RecordingEditor", () => {
       expect(field("Minutes")).toHaveValue("30");
     });
 
+    it("labels the span row From and to", async () => {
+      renderCreate();
+      const form = within(await editorForm("New recording"));
+      expect(form.getByText("From")).toBeInTheDocument();
+      expect(form.getByText("to")).toBeInTheDocument();
+    });
+
     it("focuses the note", async () => {
       renderCreate();
       await editorForm("New recording");
       expect(field("Note")).toHaveFocus();
-    });
-
-    it("shows the warning of the opener above the fields", async () => {
-      renderEditor({ mode: "create", start: START, end: END, warning: "This activity has gaps." });
-      await editorForm("New recording");
-      expect(screen.getByRole("note")).toHaveTextContent("This activity has gaps.");
     });
 
     it("saves the project, spans, note and tag with overlap cancel, then closes and offers Undo", async () => {
@@ -180,59 +181,63 @@ describe("RecordingEditor", () => {
     });
 
     it("prefills the project of a new recording from the proposal", async () => {
-      mocked.recordingProposal.mockResolvedValue({ projectId: "p-site", activity: [] });
+      mocked.recordingProposal.mockResolvedValue({ projectId: "p-site" });
       renderCreate();
       await editorForm("New recording");
       await waitFor(() => expect(projectField()).toHaveValue("Acme / Website"));
     });
 
     it("leaves a project the opener chose alone", async () => {
-      mocked.recordingProposal.mockResolvedValue({ projectId: "p-site", activity: [] });
+      mocked.recordingProposal.mockResolvedValue({ projectId: "p-site" });
       renderEditor({ mode: "create", start: START, end: END, projectId: "p-intra" });
       await editorForm("New recording");
       await waitFor(() => expect(mocked.recordingProposal).toHaveBeenCalled());
       expect(projectField()).toHaveValue("Intranet");
     });
 
-    it("shows the count of the covered activity and lists it when opened", async () => {
-      mocked.recordingProposal.mockResolvedValue({
-        projectId: null,
-        activity: [
-          { id: "a1", label: "Docs", app: "Safari", bundleId: null, start: at("09:10"), end: at("09:40"), insideMs: 30 * MINUTE_MS, private: false },
-          { id: "a2", label: "Secret", app: "Safari", bundleId: null, start: at("10:00"), end: at("10:20"), insideMs: 20 * MINUTE_MS, private: true },
-        ],
-      });
+    it("asks again for the new spans when a time changes", async () => {
       renderCreate();
       await editorForm("New recording");
-      const head = await screen.findByRole("button", { name: /^Activity/ });
-      await waitFor(() => expect(head).toBeEnabled());
-      expect(within(head).getByText("2")).toBeInTheDocument();
-      await userEvent.click(head);
-      expect(screen.getByText("Docs")).toBeInTheDocument();
-      expect(screen.getByText("09:10 · 30m")).toBeInTheDocument();
-      expect(screen.getByText("Private")).toBeInTheDocument();
-      expect(screen.queryByText("Secret")).not.toBeInTheDocument();
-    });
-
-    it("asks again for the new spans when a time changes, and shows the activity they cover", async () => {
-      const docs = { id: "a1", label: "Docs", app: "Safari", bundleId: null, start: at("10:40"), end: at("11:10"), insideMs: 30 * MINUTE_MS, private: false };
-      mocked.recordingProposal.mockImplementation(async (spans) => ({ projectId: null, activity: spans[0].end > END ? [docs] : [] }));
-      renderCreate();
-      await editorForm("New recording");
-      const head = button(/^Activity/);
       await waitFor(() => expect(mocked.recordingProposal).toHaveBeenCalledWith([{ start: START, end: END }]));
-      expect(head).toBeDisabled();
       await userEvent.clear(field("Span 1 to"));
       await userEvent.type(field("Span 1 to"), "11:15");
       await waitFor(() => expect(mocked.recordingProposal).toHaveBeenLastCalledWith([{ start: START, end: at("11:15") }]));
-      await waitFor(() => expect(head).toBeEnabled());
-      expect(within(head).getByText("1")).toBeInTheDocument();
     });
 
-    it("disables the activity list while nothing is covered", async () => {
+    it("has no Activity button", async () => {
       renderCreate();
       await editorForm("New recording");
-      expect(button(/^Activity/)).toBeDisabled();
+      await waitFor(() => expect(mocked.recordingProposal).toHaveBeenCalled());
+      expect(screen.queryByRole("button", { name: /^Activity/ })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("pickers", () => {
+    it("keeps the editor open when Escape closes an open picker list", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      await userEvent.click(projectField());
+      await userEvent.keyboard("{ArrowDown}");
+      expect(screen.getByRole("listbox", { name: "Projects" })).toBeInTheDocument();
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      expect(screen.getByRole("form", { name: "New recording" })).toBeInTheDocument();
+    });
+
+    it("saves with Enter in a picker whose list is closed", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      await chooseWebsite();
+      await userEvent.keyboard("{Enter}");
+      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p-site" }), "cancel"));
+    });
+
+    it("closes the editor with Escape in a picker whose list is closed", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      await userEvent.click(tagField());
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("form")).not.toBeInTheDocument();
     });
   });
 
@@ -524,7 +529,7 @@ describe("RecordingEditor", () => {
     });
 
     it("does not prefill a project from the proposal", async () => {
-      mocked.recordingProposal.mockResolvedValue({ projectId: "p-intra", activity: [] });
+      mocked.recordingProposal.mockResolvedValue({ projectId: "p-intra" });
       renderEditor({ mode: "edit", id: "r1" });
       await editorForm("Edit recording");
       await waitFor(() => expect(mocked.recordingProposal).toHaveBeenCalled());
@@ -544,6 +549,7 @@ describe("RecordingEditor", () => {
       renderEditor({ mode: "edit", id: "r1" });
       await editorForm("Edit recording");
       await userEvent.click(tagField());
+      await userEvent.keyboard("{ArrowDown}");
       await userEvent.click(screen.getByRole("option", { name: "No tag" }));
       await userEvent.click(button("Save"));
       await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", expect.objectContaining({ tagId: null }), "cancel"));
@@ -675,6 +681,8 @@ describe("RecordingEditor", () => {
         expect(screen.getByText("09:00")).toBeInTheDocument();
         expect(screen.getByText("11:00")).toBeInTheDocument();
         expect(screen.getByText("running")).toBeInTheDocument();
+        expect(screen.getAllByText("From")).toHaveLength(2);
+        expect(screen.getByText("to")).toBeInTheDocument();
         expect(screen.queryByRole("button", { name: "Add span" })).not.toBeInTheDocument();
         expect(field("Hours")).toHaveAttribute("readonly");
       });

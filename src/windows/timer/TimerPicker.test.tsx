@@ -24,8 +24,12 @@ function renderPicker() {
 const startButton = () => screen.getByRole("button", { name: "Start" });
 const noteField = () => screen.getByRole("textbox", { name: "Note" });
 
+/** The project field has the focus; typing opens the filtered list and ↵ picks the first match. */
 async function chooseProject() {
-  await userEvent.click(await screen.findByRole("option", { name: "Website" }));
+  const field = await screen.findByRole("combobox", { name: "Project" });
+  await vi.waitFor(() => expect(useStore.getState().projects.length).toBeGreaterThan(0));
+  expect(field).toHaveFocus();
+  await userEvent.keyboard("Web{Enter}");
 }
 
 describe("TimerPicker", () => {
@@ -49,6 +53,7 @@ describe("TimerPicker", () => {
       await chooseProject();
       await userEvent.type(noteField(), "  standup ");
       await userEvent.click(screen.getByRole("combobox", { name: "Tag" }));
+      await userEvent.keyboard("{ArrowDown}");
       await userEvent.click(screen.getByRole("option", { name: "support" }));
       await userEvent.click(startButton());
       expect(mocked.timerStart).toHaveBeenCalledWith("p-site", "standup", "tag-support");
@@ -78,6 +83,13 @@ describe("TimerPicker", () => {
       await userEvent.click(startButton());
       await vi.waitFor(() => expect(useStore.getState().toasts.map((t) => t.message)).toEqual(["A recording already covers now"]));
       expect(mocked.timerPickerClose).not.toHaveBeenCalled();
+    });
+
+    it("starts with Enter in the project field while its list is closed", async () => {
+      renderPicker();
+      await chooseProject();
+      await userEvent.keyboard("{Enter}");
+      expect(mocked.timerStart).toHaveBeenCalledWith("p-site", "", null);
     });
 
     it("closes without starting on Cancel", async () => {

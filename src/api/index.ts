@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, Billable, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, MiniMonth, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, Billable, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, MiniMonth, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -178,7 +178,6 @@ export const api = {
   awayPromptAnswer: (input: RecordingInput) => invoke<Recording>("away_prompt_answer", { input }),
   awayPromptSkip: () => invoke<void>("away_prompt_skip"),
   /** The day's activity grouped as the timeline labels it, longest first. */
-  listView: (day: string) => invoke<ListView>("list_view", { day }),
 
   /** In position order: the first matching rule wins. */
   rulesList: () => invoke<Rule[]>("rules_list"),

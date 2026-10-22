@@ -1,13 +1,11 @@
 import { Plus, Tag as TagIcon } from "lucide-react";
-import { useRef, useState } from "react";
 import type { TagListItem } from "../../api";
 import { fuzzyFilter } from "../../lib/fuzzy";
 import { useStore } from "../../state/store";
-import { InsetField } from "../Field";
-import { listKeyDown, optionsOf, PickerList, usePickerIndex, type PickerRow } from "./PickerList";
+import { PickerField } from "./PickerField";
+import type { PickerRow } from "./PickerList";
 
 type Choice = { kind: "none" } | { kind: "tag"; id: string } | { kind: "new"; name: string };
-/** The "No tag" row shows only while the query is empty. */
 /** "No tag" and every tag while the query is empty; else the matches, and "New tag" for a new name. */
 function rowsFor(query: string, tags: TagListItem[]): PickerRow<Choice>[] {
   const name = query.trim();
@@ -43,24 +41,12 @@ interface Props {
   onChange: (tagId: string | null) => void;
 }
 
-/** One tag or none: typing filters, Enter picks or creates, ⌫ on an empty query removes the tag. */
+/** One tag or none: picks or creates a tag; ⌫ removes it (see `PickerField` for the keys). */
 export function TagPicker({ value, onChange }: Props) {
   const tags = useStore((s) => s.tags);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const fieldRef = useRef<HTMLDivElement>(null);
-  const rows = rowsFor(query, tags);
-  const options = optionsOf(rows);
-  const [current, setIndex] = usePickerIndex(options.length);
   const chosen = value === null ? null : (tags.find((t) => t.id === value)?.name ?? value);
 
-  const close = () => {
-    setOpen(false);
-    setQuery("");
-    setIndex(0);
-  };
   const pick = (choice: Choice) => {
-    close();
     if (choice.kind === "none") return onChange(null);
     if (choice.kind === "tag") return onChange(choice.id);
     void useStore
@@ -70,34 +56,16 @@ export function TagPicker({ value, onChange }: Props) {
   };
 
   return (
-    <div className="picker" ref={fieldRef}>
-      <InsetField icon={<TagIcon size="1.077rem" />}>
-        <input
-          aria-label="Tag"
-          role="combobox"
-          aria-expanded={open}
-          placeholder={open && chosen !== null ? chosen : "No tag"}
-          value={open ? query : (chosen ?? "")}
-          onFocus={() => setOpen(true)}
-          onBlur={close}
-          onChange={(e) => {
-            setOpen(true);
-            setQuery(e.target.value);
-            setIndex(0);
-          }}
-          onKeyDown={(e) => {
-            if (listKeyDown(e, { current, count: options.length, open, setIndex, setOpen: (o) => (o ? setOpen(true) : close()) })) return;
-            if (e.key === "Enter" && open && options.length > 0) {
-              e.preventDefault();
-              pick(options[current]);
-            } else if (e.key === "Backspace" && query === "" && value !== null) {
-              e.preventDefault();
-              onChange(null);
-            }
-          }}
-        />
-      </InsetField>
-      {open && options.length > 0 && <PickerList anchor={fieldRef} label="Tags" rows={rows} active={current} onHover={setIndex} onPick={pick} />}
-    </div>
+    <PickerField
+      label="Tag"
+      listLabel="Tags"
+      icon={<TagIcon size="1rem" />}
+      text={chosen}
+      placeholder="No tag"
+      rowsFor={(query) => rowsFor(query, tags)}
+      isCurrent={(choice) => (choice.kind === "none" ? value === null : choice.kind === "tag" && choice.id === value)}
+      onPick={pick}
+      onClear={() => onChange(null)}
+    />
   );
 }

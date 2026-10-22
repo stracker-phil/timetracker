@@ -17,6 +17,5 @@ import "./day.css";
 import "./blocks.css";
 import "./reports.css";
 import "./calendar.css";
-import "./list.css";
 import "./rules.css";
 import "./windows.css";

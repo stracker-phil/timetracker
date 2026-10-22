@@ -108,35 +108,40 @@
 
 /* ---------- recording editor: a card in the timesheet (a sheet in the Week view) ---------- */
 .recording-editor {
-  flex: none; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3);
+  --editor-label-w: 4.923rem;
+  flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4);
   background: var(--pop); border-radius: var(--radius); box-shadow: 0 0 0 2px var(--accent), var(--shadow-small); scroll-margin: var(--space-4);
 }
 .recording-editor-sheet { width: min(26rem, 92vw); padding: 0; }
 .recording-editor-sheet .recording-editor { box-shadow: none; }
 .editor-suggested { display: flex; align-items: center; gap: var(--space-1); margin: 0; color: var(--o2); font-size: var(--fs-meta); }
-.editor-warning { margin: 0; padding: var(--space-2) var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); line-height: 1.35; }
-.editor-note { display: flex; flex-direction: column; gap: 2px; }
-.editor-note .input { font-size: var(--fs-title); font-weight: 600; background: transparent; box-shadow: none; padding-left: 0; }
-.editor-note .input:focus { background: var(--field); box-shadow: inset 0 0 0 1px var(--field-line), var(--focus-ring); padding-left: var(--space-2); }
-.editor-duration { display: flex; align-items: baseline; gap: var(--space-1); font-size: var(--fs-display); font-weight: 700; color: var(--text-strong); }
-.duration-input { width: 2.4em; padding: 0 4px; font: inherit; color: inherit; text-align: right; background: var(--fill); border: none; border-radius: var(--radius-sm); }
-.duration-input:focus { outline: none; background: var(--field); box-shadow: inset 0 0 0 1px var(--field-line), var(--focus-ring); }
-.duration-unit { font-size: var(--fs-meta); color: var(--o2); font-weight: 400; }
-.editor-activity-head { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-1) 0; background: none; border: none; color: var(--text); font: inherit; font-weight: 500; cursor: pointer; }
-.editor-activity-head:disabled { cursor: default; color: var(--o2); }
-.editor-activity-count { margin-left: auto; color: var(--o2); }
-.editor-activity-list { margin: 0; padding: 0 0 0 var(--space-4); list-style: none; display: flex; flex-direction: column; gap: 2px; max-height: 12rem; overflow: auto; font-size: var(--fs-meta); }
-.editor-activity-list li { display: flex; justify-content: space-between; gap: var(--space-2); }
-.editor-activity-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.editor-spans { display: flex; flex-direction: column; gap: var(--space-1); }
-.editor-span { display: flex; align-items: center; gap: var(--space-2); }
-.editor-span-label { font-size: var(--fs-meta); color: var(--o2); }
-.editor-span-remove { margin-left: auto; padding: var(--space-1); }
-.editor-span-add { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--space-1); }
-.time-input { width: 4.5rem; }
+/* The note: one box for showing and editing, its text flush with the labels; focus only adds the field's
+   surface, frame and ring, so nothing moves. */
+.editor-note { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-1); }
+.editor-note .input {
+  width: calc(100% + 2 * var(--space-2)); height: 1.846rem; margin: 0 calc(-1 * var(--space-2)); padding: 0 var(--space-2);
+  font-size: var(--fs-title); font-weight: 600; color: var(--text-strong); background: transparent; box-shadow: none;
+}
+.editor-note .input:focus { background: var(--field); box-shadow: inset 0 0 0 1px var(--field-line), var(--focus-ring); }
+/* A form row: the label right-aligned in the leading column, centered on the control's first line. */
+.editor-row { display: grid; grid-template-columns: var(--editor-label-w) minmax(0, 1fr); column-gap: var(--space-2); align-items: start; }
+.editor-label { line-height: var(--control-h); text-align: right; color: var(--o2); white-space: nowrap; }
+.editor-control { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.editor-duration { display: flex; align-items: center; gap: var(--space-1); }
+.duration-input { width: 3.077rem; text-align: right; }
+.duration-input[readonly] { background: transparent; box-shadow: none; }
+.duration-unit, .editor-span-to { color: var(--o2); }
+.duration-unit + .duration-input { margin-left: var(--space-1); }
+.editor-spans { display: flex; flex-direction: column; gap: var(--space-2); }
+.editor-span { display: flex; align-items: center; gap: var(--space-2); height: var(--control-h); }
+.editor-span-time { padding: 0 var(--space-2); }
+.editor-span-remove { margin-left: auto; }
+.editor-span-add { align-self: flex-start; padding: 0 var(--space-2); }
+.time-input { width: 4.308rem; }
 .editor-overlap { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); }
 .editor-overlap-title { margin: 0; font-weight: 600; }
-.editor-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.editor-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+.editor-actions .btn:not(.editor-delete) { min-width: 5.385rem; }
 .editor-delete { margin-right: auto; }
 
 /* The open editor's spans in the time column. */

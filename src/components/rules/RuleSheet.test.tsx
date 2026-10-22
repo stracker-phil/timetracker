@@ -60,6 +60,7 @@ describe("RuleSheet", () => {
       expect(screen.getByRole("heading", { name: "New rule" })).toBeInTheDocument();
       await userEvent.type(screen.getByLabelText("Name"), "Chat");
       await userEvent.click(screen.getByRole("combobox", { name: "Project" }));
+      await userEvent.keyboard("{ArrowDown}");
       await userEvent.click(await screen.findByRole("option", { name: "Website" }));
       await userEvent.type(screen.getByLabelText("Condition 1 value"), "Slack");
       await save();
@@ -70,6 +71,7 @@ describe("RuleSheet", () => {
     it("saves the picked tag", async () => {
       renderSheet({ draft });
       await userEvent.click(screen.getByRole("combobox", { name: "Tag" }));
+      await userEvent.keyboard("{ArrowDown}");
       await userEvent.click(screen.getByRole("option", { name: "support" }));
       await save();
       expect(mocked.ruleSave).toHaveBeenCalledWith(null, expect.objectContaining({ tagId: "tag-support" }));

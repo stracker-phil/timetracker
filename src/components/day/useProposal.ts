@@ -1,19 +1,19 @@
 import { useEffect, useState } from "react";
-import { api, type RecordingProposal, type Span } from "../../api";
+import { api, type Span } from "../../api";
 
 /** Spans settle this long (ms) before Rust is asked again, so typing a time or dragging asks once. */
 const SETTLE_MS = 150;
 
-/** Rust's proposal for the draft's spans: the activity they cover and a project. */
-export function useProposal(spans: Span[] | null): RecordingProposal | null {
-  const [proposal, setProposal] = useState<RecordingProposal | null>(null);
+/** The project Rust proposes for the draft's spans, if any. */
+export function useProposal(spans: Span[] | null): string | null {
+  const [projectId, setProjectId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!spans) return;
     let alive = true;
     const timer = setTimeout(() => {
       api.recordingProposal(spans).then(
-        (found) => alive && setProposal(found),
+        (found) => alive && setProjectId(found.projectId),
         () => {},
       );
     }, SETTLE_MS);
@@ -23,5 +23,5 @@ export function useProposal(spans: Span[] | null): RecordingProposal | null {
     };
   }, [spans]);
 
-  return proposal;
+  return projectId;
 }

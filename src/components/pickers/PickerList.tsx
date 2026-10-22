@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { Check } from "lucide-react";
 
 export type PickerRow<T> = { kind: "section"; label: string } | { kind: "option"; key: string; value: T; content: ReactNode };
 
@@ -9,12 +10,14 @@ interface Props<T> {
   rows: PickerRow<T>[];
   /** Index into the options only (sections are skipped). */
   active: number;
+  /** Marks the picker's value with a check. */
+  isCurrent?: (value: T) => boolean;
   onHover: (index: number) => void;
   onPick: (value: T) => void;
 }
 
 /** The options of a picker, below its field in a portal, so a sheet's overflow never clips them. */
-export function PickerList<T>({ anchor, label, rows, active, onHover, onPick }: Props<T>) {
+export function PickerList<T>({ anchor, label, rows, active, isCurrent, onHover, onPick }: Props<T>) {
   const [box, setBox] = useState<{ left: number; top: number; width: number } | null>(null);
   const activeRef = useRef<HTMLLIElement>(null);
 
@@ -46,17 +49,20 @@ export function PickerList<T>({ anchor, label, rows, active, onHover, onPick }: 
           );
         }
         const index = ++option;
+        const current = isCurrent?.(row.value) ?? false;
         return (
           <li
             key={row.key}
             ref={index === active ? activeRef : undefined}
             role="option"
             aria-selected={index === active}
+            aria-checked={isCurrent ? current : undefined}
             className={index === active ? "active" : ""}
             onMouseEnter={() => onHover(index)}
             onClick={() => onPick(row.value)}
           >
             {row.content}
+            {current && <Check className="picker-check" size="0.923rem" aria-hidden="true" />}
           </li>
         );
       })}

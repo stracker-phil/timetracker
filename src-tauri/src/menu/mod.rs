@@ -141,7 +141,6 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
                 "view.tags",
                 "view.rules",
             ],
-            &["day.toggleList"],
             &["sidebar.toggle"],
             &["zoom.in", "zoom.out", "zoom.reset"],
             &["day.settings"],

@@ -37,13 +37,11 @@ function saveTextSizes(sizes: (current: Settings) => Pick<Settings, "uiFontSize"
 const zoomText = (step: number) => saveTextSizes((c) => ({ uiFontSize: c.uiFontSize + step, dataFontSize: c.dataFontSize + step }));
 const resetText = () => saveTextSizes(() => ({ uiFontSize: TEXT_SIZES.ui.default, dataFontSize: TEXT_SIZES.data.default }));
 
-// The List mode handles its own keys; these act on what only the timeline shows.
-const timelineShown = () => useStore.getState().uiState.dayMode === "timeline";
-const onTimeline = () => useStore.getState().view === "day" && timelineShown();
+const onDayView = () => useStore.getState().view === "day";
 // The Day view zooms its timeline; every other view zooms the text.
-const zoomIn = () => (onTimeline() ? useStore.getState().stepTimelineZoom(1) : zoomText(1));
-const zoomOut = () => (onTimeline() ? useStore.getState().stepTimelineZoom(-1) : zoomText(-1));
-const resetZoom = () => (onTimeline() ? useStore.getState().setTimelineZoom(TIMELINE_ZOOM.default) : resetText());
+const zoomIn = () => (onDayView() ? useStore.getState().stepTimelineZoom(1) : zoomText(1));
+const zoomOut = () => (onDayView() ? useStore.getState().stepTimelineZoom(-1) : zoomText(-1));
+const resetZoom = () => (onDayView() ? useStore.getState().setTimelineZoom(TIMELINE_ZOOM.default) : resetText());
 
 const timerRuns = () => !!useStore.getState().timer?.running;
 
@@ -111,15 +109,10 @@ function stepEntry(by: 1 | -1) {
   else s.focusSuggestion(next.id);
 }
 
-const hasFocusedBlock = () => timelineShown() && useStore.getState().focusedBlock !== null;
-const hasSelection = () => timelineShown() && useStore.getState().selection !== null;
-const hasFocusedRecording = () => timelineShown() && useStore.getState().focusedRecording !== null;
+const hasFocusedBlock = () => useStore.getState().focusedBlock !== null;
+const hasSelection = () => useStore.getState().selection !== null;
+const hasFocusedRecording = () => useStore.getState().focusedRecording !== null;
 const hasFocusedSuggestion = () => useStore.getState().focusedSuggestion !== null;
-
-function toggleList() {
-  const s = useStore.getState();
-  s.setDayMode(s.uiState.dayMode === "list" ? "timeline" : "list");
-}
 
 /** Opens the editor on the Day view's selection, else on Rust's default span (the half hour up to now) on today's Day, Week or Month view. */
 function newRecording() {
@@ -246,22 +239,21 @@ const APP_COMMANDS: Command[] = [
   { id: "nav.next", title: "Next day, week, month or period", scope: "dated", defaultBinding: "N", menu: true, run: () => useStore.getState().step(1) },
   { id: "nav.today", title: "Go to today", scope: "dated", defaultBinding: "O", menu: true, run: () => useStore.getState().goToday() },
   { id: "nav.goToDate", title: "Go to date…", scope: "dated", menu: true, run: () => useStore.getState().openDialog({ type: "datePicker" }) },
-  { id: "day.nextBlock", title: "Next block", scope: "day", defaultBinding: "J", menu: true, when: timelineShown, run: () => moveFocus(stepBlock, 1) },
-  { id: "day.prevBlock", title: "Previous block", scope: "day", defaultBinding: "K", menu: true, when: timelineShown, run: () => moveFocus(stepBlock, -1) },
-  { id: "day.prevLane", title: "Block in the lane to the left", scope: "day", defaultBinding: "H", when: timelineShown, run: () => moveFocus(stepLane, -1) },
-  { id: "day.nextLane", title: "Block in the lane to the right", scope: "day", defaultBinding: "L", when: timelineShown, run: () => moveFocus(stepLane, 1) },
+  { id: "day.nextBlock", title: "Next block", scope: "day", defaultBinding: "J", menu: true, run: () => moveFocus(stepBlock, 1) },
+  { id: "day.prevBlock", title: "Previous block", scope: "day", defaultBinding: "K", menu: true, run: () => moveFocus(stepBlock, -1) },
+  { id: "day.prevLane", title: "Block in the lane to the left", scope: "day", defaultBinding: "H", run: () => moveFocus(stepLane, -1) },
+  { id: "day.nextLane", title: "Block in the lane to the right", scope: "day", defaultBinding: "L", run: () => moveFocus(stepLane, 1) },
   { id: "day.details", title: "Block details", scope: "day", defaultBinding: "Space", when: hasFocusedBlock, run: () => useStore.getState().toggleDetails() },
   { id: "day.blockMenu", title: "Block actions…", scope: "day", defaultBinding: "Ctrl+Enter", when: hasFocusedBlock, run: () => useStore.getState().requestBlockMenu() },
   { id: "day.selectBlock", title: "Select block", scope: "day", defaultBinding: "V", when: hasFocusedBlock, run: selectFocusedBlock },
-  { id: "day.extendNext", title: "Extend selection to the next block", scope: "day", defaultBinding: "Shift+J", when: timelineShown, run: () => extendToBlock(1) },
-  { id: "day.extendPrev", title: "Extend selection to the previous block", scope: "day", defaultBinding: "Shift+K", when: timelineShown, run: () => extendToBlock(-1) },
-  { id: "day.toggleList", title: "Toggle timeline and list", scope: "day", defaultBinding: "Mod+Shift+L", menu: true, checked: () => !timelineShown(), run: toggleList },
+  { id: "day.extendNext", title: "Extend selection to the next block", scope: "day", defaultBinding: "Shift+J", run: () => extendToBlock(1) },
+  { id: "day.extendPrev", title: "Extend selection to the previous block", scope: "day", defaultBinding: "Shift+K", run: () => extendToBlock(-1) },
   { id: "day.settings", title: "Timeline settings", scope: "day", menu: true, run: () => useStore.getState().openDialog({ type: "timelineSettings" }) },
   { id: "activity.deleteDay", title: "Delete activity for this day…", scope: "day", menu: true, when: () => !!shownDayView(), run: () => openDeleteActivity(false) },
   { id: "activity.deleteRange", title: "Delete activity in a range…", scope: "day", menu: true, when: () => !!shownDayView(), run: () => openDeleteActivity(true) },
   { id: "day.clearFocus", title: "Clear selection", scope: "day", defaultBinding: "Escape", when: () => hasFocusedBlock() || hasSelection() || hasFocusedRecording() || hasFocusedSuggestion(), run: clearDayFocus },
-  { id: "recording.next", title: "Next recording or suggestion", scope: "day", defaultBinding: "]", menu: true, when: timelineShown, run: () => stepEntry(1) },
-  { id: "recording.prev", title: "Previous recording or suggestion", scope: "day", defaultBinding: "[", menu: true, when: timelineShown, run: () => stepEntry(-1) },
+  { id: "recording.next", title: "Next recording or suggestion", scope: "day", defaultBinding: "]", menu: true, run: () => stepEntry(1) },
+  { id: "recording.prev", title: "Previous recording or suggestion", scope: "day", defaultBinding: "[", menu: true, run: () => stepEntry(-1) },
   { id: "recording.open", title: "Record selection or edit recording", scope: "day", defaultBinding: "Enter", when: () => hasSelection() || hasFocusedRecording(), run: openRecording },
   { id: "recording.new", title: "New recording…", scope: "global", menu: true, run: newRecording },
   { id: "recording.create", title: "Record selection", scope: "day", menu: true, when: hasSelection, run: () => (useStore.getState().focusRecording(null), openRecording()) },

@@ -57,7 +57,7 @@ error's message, returning the `AppError`.
 | `projects` | `projects` (`ProjectListItem[]`, archived included), `clients`, `tags` (`TagListItem[]`), `recent`, `projectsLoaded`; `loadProjects` (boot, and every `data_changed` of `projects` or `tags`); `saveProject(id, input)`, `archiveProject`, `saveClient`, `archiveClient`, `saveTag`, `deleteTag` reload after the write, settle once the lists have reloaded, and reject on failure (toasted, unless the error has a `field` for the form). Helpers: `groupProjects(projects, clients, archived)`, `projectLabel` |
 | `tracker` | `tracker` (`TrackerStatus`, or `null` while the tracker is off), `setTracker`, `loadTracker`, `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then reloads the status), `permissionDialogHidden` |
 | `recordings` | `selection` (`{ start, end, blockIds, moving? }`, unsnapped; `moving` is the end a drag moves), `selectionSnap` (as Rust snaps it), `setSelection`, `extendSelection(blockId)` (⇧J, ⇧K), `focusedRecording`/`focusRecording`, `hoveredRecording`/`hoverRecording` (the recording under the pointer in the timesheet or the time column), `undoStatus`/`loadUndoStatus`, `createRecording(input, suggestionId?)` (with a suggestion: `api.suggestionApproveEdited`), `updateRecording(id, patch)`, `updateSpan(id, spanId, span)`, `nudgeSpan(id, spanId, startSteps, endSteps)` (Rust applies the snap step), `deleteRecording(id)`, `moveRecording(id, day, spanId)`/`copyRecording(id, day, spanId)` (one span, else with `null` the whole recording), `undo`, `redo`. A write runs with `overlap: cancel`; on `overlap` it asks (inside the editor while one is open, else the overlap dialog) and runs again with `replace`. One write at a time; each ends with a toast offering Undo. A field error rejects for the editor, others are toasted |
-| `editor` | `editor` (`create { start, end, projectId?, note?, tagId?, warning?, suggestion? }` or `edit { id, at?, spanId? }`), `draft` (`{ projectId, spans, totalMs, note, tagId }`; null until Rust has answered for its spans and an edited recording has loaded through `recordingsList`), `editing` (that recording), `editorOverlap` (the recordings a save would overlap, with `resolve`), `draftBlockIds` (the blocks clicked into the draft, marked selected on the timeline), `openEditor`, `closeEditor` (also clears the selection), `patchDraft` (project, note, tag), `setDraftSpan(i, span)` and `removeDraftSpan(i)` (shown at once, then as `recordingDraftSpans` rolls them), `addDraftSpan` (`recordingDraftAdd`), `setDraftTotal(ms)` (`recordingDraftTotal`); only the latest ask's answer is kept. `recordSelection()` (snaps the selection through `api.recordingSnap`, then opens a new editor on it, or adds it to the open editor's spans through `recordingDraftInclude`, which merges what touches), `toggleBlock(blockId)` (a click on a block: without an editor it opens one on the block's span; with one, `recordingDraftToggle` adds the block's span or takes it out, and taking out the last span closes the editor; not while the running timer's recording is edited), `answerOverlap(replace)` |
+| `editor` | `editor` (`create { start, end, projectId?, note?, tagId?, suggestion? }` or `edit { id, at?, spanId? }`), `draft` (`{ projectId, spans, totalMs, note, tagId }`; null until Rust has answered for its spans and an edited recording has loaded through `recordingsList`), `editing` (that recording), `editorOverlap` (the recordings a save would overlap, with `resolve`), `draftBlockIds` (the blocks clicked into the draft, marked selected on the timeline), `openEditor`, `closeEditor` (also clears the selection), `patchDraft` (project, note, tag), `setDraftSpan(i, span)` and `removeDraftSpan(i)` (shown at once, then as `recordingDraftSpans` rolls them), `addDraftSpan` (`recordingDraftAdd`), `setDraftTotal(ms)` (`recordingDraftTotal`); only the latest ask's answer is kept. `recordSelection()` (snaps the selection through `api.recordingSnap`, then opens a new editor on it, or adds it to the open editor's spans through `recordingDraftInclude`, which merges what touches), `toggleBlock(blockId)` (a click on a block: without an editor it opens one on the block's span; with one, `recordingDraftToggle` adds the block's span or takes it out, and taking out the last span closes the editor; not while the running timer's recording is edited), `answerOverlap(replace)` |
 | `appIcons` | `appIcons` (a PNG data URL per bundle id, `null` once known to have none), `requestAppIcon(bundleId)`: asks Rust once per id for the app's run; the asks of one task go out as one `api.appIcons` call, and a failure leaves the initials |
 | `viewState` | `uiState` (`UiState` from Rust), `setPaneSize`, `toggleSidebar`, `rememberDay`, `setTimelineZoom` (px per minute, `TIMELINE_ZOOM` 1–8, default 2.5), `finishOnboarding`, `showWelcome`; a debounced writer saves it, `flushUiState` writes at once |
 
@@ -173,7 +173,7 @@ the date picker, the timeline settings, Lanes).
 
 `AppIcon` (`app`, `bundleId`, `size` 16 or 20): the installed app's icon from the `appIcons` slice, rounded,
 or the app's initial while there is none (no bundle id, an external source, an app not installed). 16 px in
-timeline blocks and app lane heads, 20 px in the hover card, List view rows, rule conditions and Settings →
+timeline blocks and app lane heads, 20 px in the hover card, rule conditions and Settings →
 Timeline → Apps.
 
 Design components ([ux.md](ux.md#components)):
@@ -245,8 +245,8 @@ Tracker components:
 
 | File | Renders |
 |---|---|
-| `DayPage` | `DayHeader`, then the `Timesheet` pane (width from `usePaneSize("timesheet")`, about a quarter of the window by default, 220–560 px, a `Splitter` beside it) and `Timeline` or `ListView`; the empty state ("Nothing tracked on this day" with the tracker's status text on today, or "Tracking needs permission" with Allow…) takes the timeline's place. Loads on a new day, on `selectDayVersion(day)`, and while today on `useLiveReload` (every 30 s, and on tracker statuses at most every 10 s, since the tracker sends no `data_changed`; paused while `document.visibilityState` is hidden, which WKWebView sets when the window hides, with one reload when it shows again) |
-| `DayHeader` | a slim bar: the date (`label`, `DayView.label` from Rust in the `dayTitle` format; the last loaded one stays while the next day loads), totals `recorded 0:00 · tracked 6:12 · away 1:05` (`formatHm`) only for a day other than today (the status bar has today's), the Day mode switch, Lanes (timeline mode; dialog `lanes`, anchored under `[data-lanes-button]`), the gear that opens `TimelineSettingsPopover` (command `day.settings`, no default key), and the ⋯ menu: Delete activity for this day…, Delete activity in a range… |
+| `DayPage` | `DayHeader`, then the `Timesheet` pane (width from `usePaneSize("timesheet")`, about a quarter of the window by default, 220–560 px, a `Splitter` beside it) and `Timeline`; the empty state ("Nothing tracked on this day" with the tracker's status text on today, or "Tracking needs permission" with Allow…) takes the timeline's place. Loads on a new day, on `selectDayVersion(day)`, and while today on `useLiveReload` (every 30 s, and on tracker statuses at most every 10 s, since the tracker sends no `data_changed`; paused while `document.visibilityState` is hidden, which WKWebView sets when the window hides, with one reload when it shows again) |
+| `DayHeader` | a slim bar: the date (`label`, `DayView.label` from Rust in the `dayTitle` format; the last loaded one stays while the next day loads), totals `recorded 0:00 · tracked 6:12 · away 1:05` (`formatHm`) only for a day other than today (the status bar has today's), Lanes (dialog `lanes`, anchored under `[data-lanes-button]`), the gear that opens `TimelineSettingsPopover` (command `day.settings`, no default key), and the ⋯ menu: Delete activity for this day…, Delete activity in a range… |
 | `DeleteActivityDialog` | dialog `deleteActivity`, a `Modal` sheet: the day (its `dayView.bounds`) or two `datetime-local` fields prefilled with them, the sentence "Deletes 412 activity spans and 3 away spans. Spans that cross the range are deleted entirely. Recordings are not affected." (counts from `api.activityCount`), errors inline, and Delete (`api.activityDelete`). Then a toast `Deleted activity for Tue, Oct 21` whose Undo (`api.activityDeleteUndo`) lasts until `undoUntil`; the Day view reloads from `data_changed` |
 | `Timesheet` | the left pane: "Timesheet", the day's `totals.recordedMs` (`formatShortDuration`, `6h 05m`), + (`runCommand("recording.new")`), then a `TimesheetCard` per `view.timesheet` entry in Rust's order, or an empty line. The open `RecordingEditor` sits in place of the card it edits, or for a new recording before the first card that starts after its first span (`editorSlot`), in the same keyed list as the cards so it moves without mounting again |
 | `Timesheet` (suggestions) | `sheetEntries(view)` (`lib/sheet.ts`) puts each suggestion before its `nextCard`; the editor replaces the card or suggestion it edits; over the cards `ReviewLine`: "n suggestions · Approve all · Dismiss all" |
@@ -264,10 +264,10 @@ Tracker components:
 | `SuggestionCard` | a suggestion in the timesheet: a ghost `Card` (role group, Tab stop; focusing it `focusSuggestion`), note or project as title, project and client, "Suggested by <rule>" and the tag, the duration; ✓ `approveSuggestion`, ✕ `dismissSuggestions([id])`, a click `editSuggestion` |
 | `useRuleDrag` | ⌥-pressing an activity block (in `Timeline`, while no editor is open) shows the recent projects over the top of the recordings column; releasing over one opens the `rule` dialog with `draftFromBlock`: `<app> → <project>`, `app is <app>` and `domain is <host>` for a URL block, else `title contains <title>` |
 | `RecordingBlock` | one span of a recording in the Day view's time column (`spanId`; a recording with several spans has several blocks, all focused and hovered together): a `Card` in the project's shade with only its start and end. Dashed top or bottom edge when clipped to the day. A click focuses the recording and opens the editor. Hovering sets `hoverRecording`; dragging the body moves the span and an edge resizes it (`pointerDrag`, pointer capture), with the ghost from `useSnappedSpan` (the dragged edge as `moving`); release sends the unsnapped span and `moving` to `updateSpan`, and Rust snaps it |
-| `RecordingEditor` | the editor as a form card in the timesheet (in the Week and Month views inside `EditorSheet`), on the `editor` slice's `draft`: an optional warning (the List view's gaps), the note as the title field (autofocus; one line, pasted line breaks become spaces), project (`ProjectPicker`), tag (`TagPicker`), the duration (`DurationField`, `0 h 20 m` from `draft.totalMs`; a change goes to `setDraftTotal`), the covered activity (`CoveredActivity`), the spans (`EditorSpans`) and the buttons Delete (⌘⌫) at the leading end, then Cancel (Escape, wherever the focus is) and Save (↵ or ⌘↵), the default button, last; Save and Delete come from `useEditorSave` (every span as Rust rolled it; a running recording keeps its spans and sends only the fields; field errors under their field). Opened on a suggestion it shows "Suggested by <rule>. Approve records it.", the submit reads Approve and saves through `createRecording(input, suggestionId)`. Its form is named "New recording", "Edit suggestion" or "Edit recording" (`id` lets `EditorSheet` point at it). A new recording takes the project of `useProposal` while it has none. Scrolls into view when it opens |
+| `RecordingEditor` | the editor as a form card in the timesheet (in the Week and Month views inside `EditorSheet`), on the `editor` slice's `draft`: the note as the title field (autofocus; one line, pasted line breaks become spaces), then `EditorRow`s (label column, control, error): project (`ProjectPicker`), tag (`TagPicker`), the duration (`DurationField`, `0 h 20 m` from `draft.totalMs`; a change goes to `setDraftTotal`), the spans (`EditorSpans`, one `From [start] to [end]` row each) and the buttons Delete (⌘⌫) at the leading end, then Cancel (Escape, wherever the focus is) and Save (↵ or ⌘↵), the default button, last; Save and Delete come from `useEditorSave` (every span as Rust rolled it; a running recording keeps its spans and sends only the fields; field errors under their field). Opened on a suggestion it shows "Suggested by <rule>. Approve records it.", the submit reads Approve and saves through `createRecording(input, suggestionId)`. Its form is named "New recording", "Edit suggestion" or "Edit recording" (`id` lets `EditorSheet` point at it). A new recording takes the project of `useProposal` while it has none. Scrolls into view when it opens |
 | `EditorSpans` | the draft's spans as From / To rows (`TimeField`: `HH:MM`, ↑↓ by the snap step), each with ✕ while there are several, and "Add span" (`addDraftSpan`: Rust places it after the last); a running recording's spans are shown, not edited |
-| `EditorParts` | `DurationField`, `CoveredActivity` ("Activity n", opening the list of blocks with their start and time inside) and `OverlapNotice` (the recordings in the way, "Replace overlapped part" or Back, inside the editor) |
-| `useProposal` | `api.recordingProposal` for the draft's spans once they settle (150 ms) |
+| `EditorParts` | `DurationField`, `EditorRow` (a label right-aligned in the leading column, the control and its error) and `OverlapNotice` (the recordings in the way, "Replace overlapped part" or Back, inside the editor) |
+| `useProposal` | the project of `api.recordingProposal` for the draft's spans once they settle (150 ms) |
 | `useEditorSave` | the editor's `save`, `remove` and field `errors` |
 | `TimeField` | `HH:MM` typed, read by Rust on the value's day (`calendarParseTime`; each valid time counts once it answers) or ↑↓ by the snap step; the editor's save and the away prompt's Record first await `typedTimesSettled` (every pending read and the `onChange` work it started, such as `setDraftSpan`), so ↵ right after typing saves the typed time; the typed text shows while it belongs to the value, else the value |
 | `OverlapDialog` | the recordings in the way, "Replace overlapped part" or Cancel, for writes made while no editor is open |
@@ -289,25 +289,6 @@ Secondary windows are pages of their own in `src/windows/<name>/` (`index.html`,
 `build.rollupOptions.input` entry in `vite.config.ts`; they import `src/styles/index.ts` and use the same
 store and `api`. `windows/timer/TimerPicker.tsx` reloads settings, projects, the timer and the recent timers
 whenever the window gains focus (it is hidden, not closed, between uses), and reports its errors to the log.
-
-### List view
-
-`components/day/list/`, shown by `DayPage` when `uiState.dayMode` is `list` (the "Day mode" segmented
-buttons in `DayHeader`, or ⌘⇧L `day.toggleList`; `viewState.setDayMode` persists it), beside the same
-`Timesheet` pane as the timeline.
-
-- `ListView` loads `api.listView(day)` through `useApiResult`, keyed on `selectDayVersion(day)` and the live
-  tick, and keeps Rust's order. The search field filters the loaded rows by app, label, title, URL and path
-  (`/` focuses it, Escape clears it). ↑↓ move between rows; ↵ opens the recording editor for the row's span
-  without a project; Space selects the row's span and blocks and switches to the timeline.
-- `ListRow`: `AppIcon` and app, label, URL or path, the duration, `· n spans`, and a bar for the covered share. Clicking
-  the title shows its details (title, URL, path, spans).
-- `ProjectStrip`: active projects, recent first, 8 chips and the rest under More…. Dragging a row onto a chip
-  (`pointerDrag`, `elementFromPoint` on `[data-project-id]`) or clicking a chip with a row focused opens the
-  editor with that project; a row with several spans adds the gaps warning (`Editor.create { projectId?,
-  warning? }`).
-- Timeline-only commands (block focus, selection, recording keys) are off in List mode, so the rows keep
-  their keys; zoom zooms the text.
 
 ### Away window
 
@@ -407,14 +388,18 @@ beside it; the row takes the focus back after ↵ or Escape.
 
 ### Pickers
 
-`components/pickers/`, pure UI over the `projects` slice (they only call the api to create). Both open their
-list (`PickerList`, a portal below the field, so a sheet's overflow never clips it) on focus; ↑ ↓ move,
-Enter picks, Esc closes the list without closing the sheet around it; the list closes on blur.
+`components/pickers/`, pure UI over the `projects` slice (they only call the api to create). Both are a
+`PickerField` (`PickerField.tsx`): a combobox that shows the value (or a muted placeholder) and only takes the
+focus on Tab or a first click. Typing (as the query), ↓ ↑, Space, a click on the focused field or the chevron
+("Show projects", "Show tags") open the list (`PickerList`, a portal below the field, so a sheet's overflow
+never clips it) on the current value, which carries a check (`aria-checked`); ↑ ↓ move, Enter picks, Esc
+closes the list without closing the sheet around it and keeps the value; the list closes on blur. With the
+list closed, Enter and Esc go to the form (save, cancel).
 
 | Picker | Props | Behavior |
 |---|---|---|
-| `ProjectPicker` | `value: string \| null`, `onChange(projectId)`, `autoFocus?` | shows the chosen project as color dot + `Client / Name`; empty query: "Recent" (up to 5) then all active projects by client; typed: fuzzy matches, best first; the last option is always `New project "<query>"…`, which opens `ProjectSheet` prefilled and picks the saved project. Archived projects never show |
-| `TagPicker` | `value: string \| null`, `onChange(tagId \| null)` | one tag or none ([ADR 0019](adr/0019-one-tag-per-recording.md)): the chosen tag in the field, "No tag" as placeholder; the open list starts with "No tag", then every tag; typing filters; Enter picks the highlighted one or creates `New tag "<query>"` (`saveTag`) and picks it; ⌫ on an empty query removes the tag. The editor, `RuleSheet`, the timer picker and the away window use it |
+| `ProjectPicker` | `value: string \| null`, `onChange(projectId)`, `autoFocus?` | shows the chosen project as color dot + `Client / Name`, else "No project" with a hollow dot; empty query: "Recent" (up to 5) then all active projects by client; typed: fuzzy matches, best first; the last option is always `New project "<query>"…`, which opens `ProjectSheet` prefilled and picks the saved project. Archived projects never show |
+| `TagPicker` | `value: string \| null`, `onChange(tagId \| null)` | one tag or none ([ADR 0019](adr/0019-one-tag-per-recording.md)): the chosen tag in the field, "No tag" as placeholder; the open list starts with "No tag", then every tag; typing filters; Enter picks the highlighted one or creates `New tag "<query>"` (`saveTag`) and picks it; ⌫ with the list closed or on an empty query removes the tag. The editor, `RuleSheet`, the timer picker and the away window use it |
 
 ### Settings pages
 
@@ -445,7 +430,7 @@ toolbar, splitter, status bar), `sidebar.css`, `overlays.css` (dialogs, menus, t
 card, shortcut overview), `forms.css`, `pickers.css` (pickers, date picker, app picker), `settings.css`,
 `projects.css`, `day.css` (timeline, axis, lanes, selection, editor), `blocks.css` (everything
 filled: activity blocks, cards, recordings, suggestions, project chips), `reports.css`, `calendar.css`
-(Week, Month), `list.css`, `rules.css` and `windows.css` (timer picker, away prompt). The import order is the
+(Week, Month), `rules.css` and `windows.css` (timer picker, away prompt). The import order is the
 cascade. Icons come from `lucide-react`. Token names and roles are in [ux.md](ux.md#appearance-and-tokens).
 
 - **Appearance.** `applyAppearance` picks `lightScheme` or `darkScheme` by `prefers-color-scheme` with

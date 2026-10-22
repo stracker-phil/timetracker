@@ -102,7 +102,6 @@ pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         away_prompt::commands::away_prompt_current,
         away_prompt::commands::away_prompt_answer,
         away_prompt::commands::away_prompt_skip,
-        day::commands::list_view,
         rules::commands::rules_list,
         rules::commands::rule_save,
         rules::commands::rule_delete,

@@ -4,7 +4,6 @@
 pub mod apps;
 pub mod commands;
 mod lanes;
-pub mod list;
 mod load;
 mod recordings;
 mod summary;

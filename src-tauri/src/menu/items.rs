@@ -65,7 +65,6 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     check("view.projects", "Projects", "Mod+5"),
     check("view.tags", "Tags", "Mod+6"),
     check("view.rules", "Rules", "Mod+7"),
-    check("day.toggleList", "Show as List", "Mod+Shift+L"),
     item("sidebar.toggle", "Toggle Sidebar", "Mod+Ctrl+S"),
     item("zoom.in", "Zoom In", "Mod+="),
     item("zoom.out", "Zoom Out", "Mod+-"),
@@ -189,7 +188,6 @@ mod tests {
         "view.projects",
         "view.tags",
         "view.rules",
-        "day.toggleList",
         "sidebar.toggle",
         "zoom.in",
         "zoom.out",
@@ -425,7 +423,6 @@ mod tests {
             "view.projects",
             "view.tags",
             "view.rules",
-            "day.toggleList",
             "app.launchAtLogin",
         ];
         expected.sort_unstable();

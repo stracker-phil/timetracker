@@ -5,7 +5,6 @@ import { EMPTY_UI_STATE, type ClientInput, type DateJump, type Keybindings, type
 import { mondayOf, monthView, weekView } from "./calendarFixtures";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
-import { listView } from "./listFixtures";
 import { client, DEFAULT_TAGS, project } from "./projectFixtures";
 import { recording } from "./recordingFixtures";
 import { reportResult, savedReport } from "./reportFixtures";
@@ -114,7 +113,7 @@ export function createApiMock(): typeof realApi {
       const next = present ? spans.filter((s) => s.start !== block.start || s.end !== block.end) : sorted([...spans, block]);
       return { ...draftSpans(next), included: !present };
     }),
-    recordingProposal: vi.fn(async () => ({ projectId: null, activity: [] })),
+    recordingProposal: vi.fn(async () => ({ projectId: null })),
     recordingDefaultSpan: vi.fn().mockResolvedValue({ start: 0, end: 1_800_000 }),
     undo: vi.fn().mockResolvedValue(null),
     redo: vi.fn().mockResolvedValue(null),
@@ -157,7 +156,6 @@ export function createApiMock(): typeof realApi {
     awayPromptCurrent: vi.fn().mockResolvedValue(null),
     awayPromptAnswer: vi.fn(async (input: RecordingInput) => recording({ ...input, id: "recording-away", spans: withIds("recording-away", input.spans) })),
     awayPromptSkip: vi.fn().mockResolvedValue(undefined),
-    listView: vi.fn(async (day: string) => listView({ day })),
     rulesList: vi.fn().mockResolvedValue([]),
     ruleSave: vi.fn(async (id: string | null, input: RuleInput) => rule({ ...input, id: id ?? "rule-new", conditions: input.conditions.map((c, i) => ({ ...c, id: `c${i}` })) })),
     ruleDelete: vi.fn().mockResolvedValue(undefined),

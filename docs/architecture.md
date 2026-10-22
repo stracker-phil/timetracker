@@ -73,8 +73,8 @@ Recording an hour of activity:
 
 1. The user drags over the lanes or the time column (`useSelectionPress`); the outline shows the span Rust snaps
    (`api.recordingSnap`, at most once per frame). On release the `editor` slice asks Rust for the snapped span
-   once more and opens `RecordingEditor` inline in the timesheet; `recording_proposal` fills in the activity
-   the span covers and a project.
+   once more and opens `RecordingEditor` inline in the timesheet; `recording_proposal` proposes a project from
+   the activity the span covers.
 2. Save calls the `recordings` slice's `createRecording`, which invokes `recording_create` with `overlap:
    cancel`. An `overlap` error asks inside the editor (`OverlapNotice`); Replace sends the same input with
    `replace`.

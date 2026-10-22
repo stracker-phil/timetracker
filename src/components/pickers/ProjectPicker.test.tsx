@@ -26,7 +26,10 @@ function renderPicker(store: Parameters<typeof projectsStore>[0] = {}, value: st
 }
 
 const field = () => screen.getByRole("combobox", { name: "Project" });
-const open = () => userEvent.click(field());
+const open = async () => {
+  await userEvent.click(field());
+  await userEvent.keyboard("{ArrowDown}");
+};
 const options = () => within(screen.getByRole("listbox", { name: "Projects" })).getAllByRole("option");
 const optionTexts = () => options().map((o) => o.textContent);
 
@@ -34,9 +37,8 @@ describe("ProjectPicker", () => {
   beforeEach(() => vi.clearAllMocks());
 
   describe("list", () => {
-    it("opens on focus with Recent first, then the projects by client", async () => {
+    it("lists Recent first, then the projects by client", async () => {
       renderPicker();
-      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
       await open();
       expect(optionTexts()).toEqual(["Solo", "WebsiteAcme", "NewsletterAcme", "WebsiteAcme", "Solo", "New project…"]);
       expect(screen.getByText("Recent")).toBeInTheDocument();
@@ -58,6 +60,58 @@ describe("ProjectPicker", () => {
     it("shows the chosen project as Client / Name", () => {
       renderPicker({}, "p-site");
       expect(field()).toHaveValue("Acme / Website");
+    });
+
+    it("shows an empty value with the No project placeholder when nothing is chosen", () => {
+      renderPicker();
+      expect(field()).toHaveValue("");
+      expect(field()).toHaveAttribute("placeholder", "No project");
+    });
+  });
+
+  describe("opening", () => {
+    it("opens nothing on focus", async () => {
+      renderPicker();
+      await userEvent.tab();
+      expect(field()).toHaveFocus();
+      expect(field()).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+
+    it("only focuses on the first click and opens the list on the second", async () => {
+      renderPicker();
+      await userEvent.click(field());
+      expect(field()).toHaveFocus();
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      await userEvent.click(field());
+      expect(field()).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("listbox", { name: "Projects" })).toBeInTheDocument();
+    });
+
+    it("toggles the list with the chevron", async () => {
+      renderPicker();
+      await userEvent.click(screen.getByRole("button", { name: "Show projects" }));
+      expect(screen.getByRole("listbox", { name: "Projects" })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Show projects" }));
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+
+    it.each(["{ArrowDown}", "{ArrowUp}", " "])("opens on %j with the current project highlighted and checked", async (key) => {
+      renderPicker({}, "p-news");
+      await userEvent.click(field());
+      await userEvent.keyboard(key);
+      const current = screen.getByRole("option", { name: /^Newsletter/ });
+      expect(current).toHaveAttribute("aria-selected", "true");
+      expect(current).toHaveAttribute("aria-checked", "true");
+    });
+
+    it("opens filtered by the typed character with the first match highlighted", async () => {
+      renderPicker();
+      await userEvent.click(field());
+      await userEvent.keyboard("n");
+      expect(field()).toHaveValue("n");
+      expect(options()[0]).toHaveTextContent("Newsletter");
+      expect(options()[0]).toHaveAttribute("aria-selected", "true");
     });
   });
 
@@ -123,6 +177,35 @@ describe("ProjectPicker", () => {
       await userEvent.keyboard("{Escape}");
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
       expect(outer).not.toHaveBeenCalledWith(expect.objectContaining({ key: "Escape" }));
+    });
+
+    it("keeps the value when Escape closes the list", async () => {
+      renderPicker({}, "p-site");
+      await open();
+      await userEvent.keyboard("{Escape}");
+      expect(field()).toHaveValue("Acme / Website");
+    });
+
+    it("does nothing on Backspace while the list is closed", async () => {
+      const { onChange } = renderPicker({}, "p-site");
+      await userEvent.click(field());
+      await userEvent.keyboard("{Backspace}");
+      expect(onChange).not.toHaveBeenCalled();
+      expect(field()).toHaveValue("Acme / Website");
+    });
+
+    it("lets Enter reach the surrounding form while the list is closed", async () => {
+      const onSubmit = vi.fn((e: { preventDefault: () => void }) => e.preventDefault());
+      resetStore(projectsStore({ projects: [site] }));
+      render(
+        <form onSubmit={onSubmit}>
+          <ProjectPicker value={null} onChange={vi.fn()} />
+          <button type="submit">Go</button>
+        </form>,
+      );
+      await userEvent.click(field());
+      await userEvent.keyboard("{Enter}");
+      expect(onSubmit).toHaveBeenCalled();
     });
 
     it("picks a clicked option", async () => {
