@@ -18,7 +18,7 @@ function rowsFor(query: string, tags: TagListItem[]): PickerRow<Choice>[] {
       kind: "option",
       key: t.id,
       value: { kind: "tag", id: t.id },
-      content: <span className="mono grow-text">{t.name}</span>,
+      content: <span className="grow-text">{t.name}</span>,
     })),
   );
   const exists = tags.some((t) => t.name.toLowerCase() === name.toLowerCase());
@@ -76,7 +76,6 @@ export function TagPicker({ value, onChange }: Props) {
           aria-label="Tag"
           role="combobox"
           aria-expanded={open}
-          className={chosen !== null && !open ? "mono" : undefined}
           placeholder={open && chosen !== null ? chosen : "No tag"}
           value={open ? query : (chosen ?? "")}
           onFocus={() => setOpen(true)}

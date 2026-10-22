@@ -1,0 +1,25 @@
+/* ---------- week and month ---------- */
+.week-head, .week-body { display: grid; grid-template-columns: var(--timeline-axis-w) repeat(7, minmax(7rem, 1fr)); min-width: min-content; }
+.week-head { position: sticky; top: 0; z-index: 3; background: var(--bg); border-bottom: 1px solid var(--line); }
+.week-day-head { display: flex; justify-content: space-between; gap: 0.462rem; padding: var(--pad) var(--space-2); border: none; border-left: 1px solid var(--line); background: none; color: var(--o2); font-size: var(--fs-meta); text-align: left; }
+.week-day-head:hover { background: var(--row-hover); color: var(--text); }
+.week-day-head.today { color: var(--accent-text); font-weight: 600; }
+.week-body {
+  position: relative;
+  background-image: repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px var(--hour-px));
+}
+.week-column { position: relative; border-left: 1px solid var(--line); }
+.week-column--today { background: color-mix(in oklab, var(--text) 3%, transparent); }
+
+.month-grid { flex: 1; overflow: auto; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: auto; grid-auto-rows: minmax(5.538rem, 1fr); gap: 1px; padding: 0 var(--space-4) var(--space-4); }
+.month-weekday { align-self: end; padding: var(--pad) 0.462rem; font-size: var(--fs-meta); }
+.month-day {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: 0.462rem;
+  border: 1px solid var(--line); border-radius: 5px; background: none; color: var(--text); text-align: left; overflow: hidden;
+}
+.month-day:hover { background: var(--row-hover); }
+.month-day--outside { color: var(--o3); }
+.month-day--today .month-day-number { color: var(--accent-text); font-weight: 600; }
+.month-day--today { border-color: var(--accent); }
+.month-day-hours { font-size: var(--data-font-size); color: var(--o2); }
+.month-strip { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; display: flex; }

@@ -316,6 +316,11 @@ exposeActivity: boolean, };
  */
 export type MenuState = { enabled: Array<string>, checked: Array<string>, };
 
+/**
+ * Light or dark; `System` follows macOS.
+ */
+export type Mode = "system" | "light" | "dark";
+
 export type MonthDay = { day: Day, inMonth: boolean, isToday: boolean, recordedMs: number, 
 /**
  * The projects with the most time that day, most first.
@@ -568,11 +573,18 @@ export type RunningTimer = { recording: Recording, projectName: string, color: s
 
 export type SavedReport = { id: string, name: string, filter: ReportFilter, position: number, };
 
+/**
+ * The light-mode look: `Default` has a dark sidebar beside light content, `Light` is all light, `Dark`
+ * is all dark. In dark mode the window is dark whatever the scheme.
+ */
+export type Scheme = "default" | "light" | "dark";
+
 export type Settings = { 
 /**
- * Which of the two schemes applies: light, dark, or the OS appearance.
+ * Settings saved before the mode and scheme split (`theme`, `lightScheme`, `darkScheme`) load with the
+ * defaults; those keys are dropped on the next save.
  */
-theme: Theme, lightScheme: string, darkScheme: string, accent: string, 
+mode: Mode, scheme: Scheme, accent: string, 
 /**
  * Chrome: sidebar, labels, buttons (also scales rem).
  */
@@ -632,8 +644,6 @@ export type TagListItem = { recordings: number, id: string,
  * Unique, ignoring case.
  */
 name: string, createdAt: number, };
-
-export type Theme = "system" | "light" | "dark";
 
 export type TimelineSettings = { summaryLane: boolean, 
 /**

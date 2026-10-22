@@ -1,309 +1,29 @@
-use std::collections::HashMap;
-use std::path::Path;
+mod serde_helpers;
+mod store;
+mod types;
 
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::json_store::JsonStore;
 use super::keybindings::is_global;
 use crate::capture::url::domain;
 use crate::error::{AppError, AppResult};
-
-/// Falls back to the default for a value the field doesn't know (a typo, a retired variant),
-/// so one bad field doesn't quarantine the whole file and lose every other setting.
-fn lenient<'de, D, T>(deserializer: D) -> Result<T, D::Error>
-where
-    D: Deserializer<'de>,
-    T: DeserializeOwned + Default,
-{
-    let raw = serde_json::Value::deserialize(deserializer)?;
-    Ok(serde_json::from_value(raw.clone()).unwrap_or_else(|_| {
-        log::warn!("Ignoring unknown setting value {raw}; using the default");
-        T::default()
-    }))
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "lowercase")]
-pub enum Theme {
-    #[default]
-    System,
-    Light,
-    Dark,
-}
-
-#[derive(
-    Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, clap::ValueEnum, TS,
-)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "lowercase")]
-pub enum LogLevel {
-    Error,
-    Warn,
-    #[default]
-    Info,
-    Debug,
-    Trace,
-}
-
-impl From<LogLevel> for log::LevelFilter {
-    fn from(level: LogLevel) -> Self {
-        match level {
-            LogLevel::Error => log::LevelFilter::Error,
-            LogLevel::Warn => log::LevelFilter::Warn,
-            LogLevel::Info => log::LevelFilter::Info,
-            LogLevel::Debug => log::LevelFilter::Debug,
-            LogLevel::Trace => log::LevelFilter::Trace,
-        }
-    }
-}
-
-/// Accent hues; every color scheme defines each one. Projects take their color from this list.
-pub const ACCENTS: &[&str] = &[
-    "orange", "gold", "red", "magenta", "purple", "indigo", "blue", "teal", "graphite",
-];
-
-pub fn is_accent(name: &str) -> bool {
-    ACCENTS.contains(&name)
-}
-
-/// Built-in color schemes (`src/styles/schemes/<id>.css`).
-pub const SCHEMES: &[&str] = &[
-    "ayu-mirage",
-    "monokai",
-    "nord",
-    "solarized-dark",
-    "ayu-light",
-    "catppuccin-latte",
-    "github-light",
-    "solarized-light",
-];
-
-/// Lengths of the summary lane's buckets, in minutes.
-pub const SUMMARY_MINUTES: &[u16] = &[5, 10, 15, 20, 30, 45, 60];
-/// Grid that dragged recordings snap to, in minutes.
-pub const SNAP_MINUTES: &[u8] = &[1, 5, 10, 15];
-
-/// How long a gap may be before two activity blocks of the same kind stop merging.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "lowercase")]
-pub enum Continuity {
-    Off,
-    #[default]
-    Short,
-    Regular,
-    Extended,
-}
-
-/// How short a block may be before the timeline hides it as noise.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "lowercase")]
-pub enum Noise {
-    Off,
-    #[default]
-    Low,
-    Medium,
-    High,
-}
-
-/// What an activity block is labeled with.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "lowercase")]
-pub enum Titles {
-    #[default]
-    Document,
-    App,
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "camelCase")]
-pub enum Rounding {
-    #[default]
-    None,
-    Nearest5,
-    Nearest6,
-    Nearest10,
-    Nearest15,
-    Nearest30,
-    Up5,
-    Up6,
-    Up10,
-    Up15,
-    Up30,
-}
-
-#[derive(
-    Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, clap::ValueEnum, TS,
-)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "lowercase")]
-pub enum Group {
-    #[default]
-    Project,
-    Tag,
-    Day,
-    Week,
-    Month,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(default, rename_all = "camelCase")]
-pub struct TrackerSettings {
-    /// Minutes without input before the tracker counts the time as away.
-    pub idle_minutes: u16,
-    pub away_prompt_enabled: bool,
-    /// Away spans at least this long trigger the away prompt.
-    pub away_prompt_minutes: u16,
-    pub poll_seconds: u8,
-}
-
-impl Default for TrackerSettings {
-    fn default() -> Self {
-        Self {
-            idle_minutes: 5,
-            away_prompt_enabled: true,
-            away_prompt_minutes: 10,
-            poll_seconds: 2,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(default, rename_all = "camelCase")]
-pub struct CaptureSettings {
-    /// Bundle ids the tracker never records.
-    pub excluded_apps: Vec<String>,
-    pub excluded_domains: Vec<String>,
-    pub capture_urls: bool,
-    pub capture_documents: bool,
-}
-
-impl Default for CaptureSettings {
-    fn default() -> Self {
-        Self {
-            excluded_apps: Vec::new(),
-            excluded_domains: Vec::new(),
-            capture_urls: true,
-            capture_documents: true,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(default, rename_all = "camelCase")]
-pub struct TimelineSettings {
-    pub summary_lane: bool,
-    /// One of `SUMMARY_MINUTES`.
-    pub summary_minutes: u16,
-    pub show_all_activity: bool,
-    pub compact: bool,
-    pub group_by_app: bool,
-    #[serde(deserialize_with = "lenient")]
-    pub continuity: Continuity,
-    #[serde(deserialize_with = "lenient")]
-    pub noise: Noise,
-    #[serde(deserialize_with = "lenient")]
-    pub titles: Titles,
-    /// One of `SNAP_MINUTES`.
-    pub snap_minutes: u8,
-    pub zoom: f32,
-}
-
-impl Default for TimelineSettings {
-    fn default() -> Self {
-        Self {
-            summary_lane: true,
-            summary_minutes: 15,
-            show_all_activity: true,
-            compact: false,
-            group_by_app: true,
-            continuity: Continuity::Short,
-            noise: Noise::Low,
-            titles: Titles::Document,
-            snap_minutes: 5,
-            zoom: 1.0,
-        }
-    }
-}
-
-/// Per-app overrides of the timeline settings, keyed by bundle id (the app's name without one).
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(default, rename_all = "camelCase")]
-pub struct AppOverride {
-    pub group_by_app: Option<bool>,
-    #[serde(deserialize_with = "lenient")]
-    pub titles: Option<Titles>,
-    pub hidden: bool,
-    pub own_lane: bool,
-}
-
-/// The fields of one app's `AppOverride` to change; absent ones stay, `null` returns an override to the
-/// timeline's own setting.
-#[derive(Deserialize, Clone, Debug, Default, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "camelCase")]
-pub struct AppSettingPatch {
-    #[serde(default, deserialize_with = "present")]
-    #[ts(optional)]
-    pub group_by_app: Option<Option<bool>>,
-    #[serde(default, deserialize_with = "present")]
-    #[ts(optional)]
-    pub titles: Option<Option<Titles>>,
-    #[ts(optional)]
-    pub own_lane: Option<bool>,
-    #[ts(optional)]
-    pub hidden: Option<bool>,
-}
-
-/// Tells a field sent as `null` (`Some(None)`) from an absent one (`None`).
-fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    T::deserialize(deserializer).map(Some)
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(default, rename_all = "camelCase")]
-pub struct ReportSettings {
-    #[serde(deserialize_with = "lenient")]
-    pub rounding: Rounding,
-    #[serde(deserialize_with = "lenient")]
-    pub default_group: Group,
-}
-
-/// What `timetracker mcp` may read besides recordings, projects, tags and reports.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(default, rename_all = "camelCase")]
-pub struct McpSettings {
-    /// Window titles, URLs and documents of the captured activity.
-    pub expose_activity: bool,
-}
+use serde_helpers::lenient;
+pub use store::SettingsStore;
+pub use types::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
-    /// Which of the two schemes applies: light, dark, or the OS appearance.
+    /// Settings saved before the mode and scheme split (`theme`, `lightScheme`, `darkScheme`) load with the
+    /// defaults; those keys are dropped on the next save.
     #[serde(deserialize_with = "lenient")]
-    pub theme: Theme,
+    pub mode: Mode,
     #[serde(deserialize_with = "lenient")]
-    pub light_scheme: String,
-    #[serde(deserialize_with = "lenient")]
-    pub dark_scheme: String,
+    pub scheme: Scheme,
     pub accent: String,
     /// Chrome: sidebar, labels, buttons (also scales rem).
     pub ui_font_size: u8,
@@ -339,9 +59,8 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            theme: Theme::System,
-            light_scheme: "ayu-light".into(),
-            dark_scheme: "ayu-mirage".into(),
+            mode: Mode::System,
+            scheme: Scheme::Default,
             accent: "orange".into(),
             ui_font_size: 13,
             data_font_size: 12,
@@ -367,12 +86,6 @@ impl Settings {
         let d = Settings::default();
         if !is_accent(&self.accent) {
             self.accent = d.accent;
-        }
-        if !SCHEMES.contains(&self.light_scheme.as_str()) {
-            self.light_scheme = d.light_scheme;
-        }
-        if !SCHEMES.contains(&self.dark_scheme.as_str()) {
-            self.dark_scheme = d.dark_scheme;
         }
         self.font_ui = non_blank(self.font_ui);
         self.font_mono = non_blank(self.font_mono);
@@ -432,16 +145,6 @@ impl Settings {
         }
         Ok(self)
     }
-
-    /// Reads the settings without the store's quarantine, so a short-lived second process
-    /// never moves the running app's file aside.
-    pub fn peek(dir: &Path) -> Settings {
-        std::fs::read_to_string(dir.join(FILE_NAME))
-            .ok()
-            .and_then(|raw| serde_json::from_str::<Settings>(&raw).ok())
-            .unwrap_or_default()
-            .sanitized()
-    }
 }
 
 /// Trimmed, lower case, without blanks and repeats; `shape` may rewrite or drop an entry.
@@ -482,96 +185,31 @@ fn nearest<T: Copy + Into<i64>>(allowed: &[T], value: T) -> T {
         .expect("allowed values are not empty")
 }
 
-const FILE_NAME: &str = "settings.json";
-
-pub struct SettingsStore {
-    store: JsonStore<Settings>,
-}
-
-impl SettingsStore {
-    pub fn open(dir: &Path) -> Self {
-        Self {
-            store: JsonStore::open_with(dir.join(FILE_NAME), Settings::sanitized),
-        }
-    }
-
-    pub fn get(&self) -> Settings {
-        self.store.read(Settings::clone)
-    }
-
-    /// Returns `(previous, saved)`, both read under the same lock.
-    pub async fn update(&self, settings: Settings) -> AppResult<(Settings, Settings)> {
-        self.store
-            .update_async(move |current| {
-                let previous = std::mem::replace(current, settings.sanitized());
-                (previous, current.clone())
-            })
-            .await
-    }
-
-    /// Only the data folder move changes `dataDir`. Returns `(previous, saved)`.
-    pub async fn set_data_dir(&self, dir: Option<String>) -> AppResult<(Settings, Settings)> {
-        self.store
-            .update_async(move |current| {
-                let next = Settings {
-                    data_dir: dir,
-                    ..current.clone()
-                }
-                .sanitized();
-                let previous = std::mem::replace(current, next);
-                (previous, current.clone())
-            })
-            .await
-    }
-
-    /// `Settings::with_app` on the current settings under the store's lock, so concurrent app
-    /// changes never undo each other. Returns `(previous, saved)`.
-    pub async fn update_app(
-        &self,
-        key: String,
-        patch: AppSettingPatch,
-    ) -> AppResult<(Settings, Settings)> {
-        self.store
-            .update_async(move |current| {
-                let next = current.clone().with_app(&key, &patch)?.sanitized();
-                let previous = std::mem::replace(current, next);
-                Ok((previous, current.clone()))
-            })
-            .await?
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::temp_config_dir;
     use serde_json::json;
 
-    fn settings(edit: impl FnOnce(&mut Settings)) -> Settings {
+    pub(super) fn settings(edit: impl FnOnce(&mut Settings)) -> Settings {
         let mut settings = Settings::default();
         edit(&mut settings);
         settings
     }
 
-    fn write_settings(dir: &Path, raw: &str) {
-        std::fs::write(dir.join(FILE_NAME), raw).unwrap();
-    }
-
-    fn dir_entries(dir: &Path) -> Vec<String> {
-        let mut names: Vec<String> = std::fs::read_dir(dir)
-            .unwrap()
-            .map(|e| e.unwrap().file_name().into_string().unwrap())
-            .collect();
-        names.sort();
-        names
-    }
-
-    fn patch(own_lane: Option<bool>, hidden: Option<bool>) -> AppSettingPatch {
+    pub(super) fn patch(own_lane: Option<bool>, hidden: Option<bool>) -> AppSettingPatch {
         AppSettingPatch {
             own_lane,
             hidden,
             ..Default::default()
         }
+    }
+
+    fn quoted_strings(text: &str) -> Vec<String> {
+        text.split('"')
+            .skip(1)
+            .step_by(2)
+            .map(String::from)
+            .collect()
     }
 
     #[test]
@@ -963,24 +601,17 @@ mod tests {
     }
 
     #[test]
-    fn unknown_accent_and_schemes_reset_to_the_defaults() {
-        let sanitized = settings(|s| {
-            s.accent = "chartreuse".into();
-            s.light_scheme = "nope".into();
-            s.dark_scheme = String::new();
-        })
-        .sanitized();
+    fn an_unknown_accent_resets_to_the_default() {
+        let sanitized = settings(|s| s.accent = "chartreuse".into()).sanitized();
         assert_eq!(sanitized.accent, "orange");
-        assert_eq!(sanitized.light_scheme, "ayu-light");
-        assert_eq!(sanitized.dark_scheme, "ayu-mirage");
     }
 
     #[test]
-    fn known_accent_and_schemes_are_kept() {
+    fn known_accent_and_appearance_are_kept() {
         let kept = settings(|s| {
             s.accent = "teal".into();
-            s.light_scheme = "github-light".into();
-            s.dark_scheme = "nord".into();
+            s.mode = Mode::Dark;
+            s.scheme = Scheme::Light;
         });
         assert_eq!(kept.clone().sanitized(), kept);
     }
@@ -1026,121 +657,24 @@ mod tests {
     }
 
     #[test]
-    fn unknown_enum_values_fall_back_to_defaults_without_quarantining_the_file() {
-        let dir = temp_config_dir();
-        let raw = r#"{
-            "theme": "neon",
-            "logLevel": "verbose",
-            "uiFontSize": 16,
-            "timeline": {"continuity": "forever", "noise": "loud", "titles": "all", "zoom": 2.0, "compact": true},
-            "reports": {"rounding": "nearest7", "defaultGroup": "year"},
-            "apps": {"com.example.app": {"titles": "nope", "hidden": true}}
-        }"#;
-        write_settings(dir.path(), raw);
+    fn mode_and_scheme_round_trip_as_lowercase_camel_case_json() {
+        for (mode, scheme, mode_json, scheme_json) in [
+            (Mode::System, Scheme::Default, "system", "default"),
+            (Mode::Light, Scheme::Light, "light", "light"),
+            (Mode::Dark, Scheme::Dark, "dark", "dark"),
+        ] {
+            let original = settings(|s| {
+                s.mode = mode;
+                s.scheme = scheme;
+            });
 
-        let loaded = SettingsStore::open(dir.path()).get();
+            let value = serde_json::to_value(&original).unwrap();
 
-        assert_eq!(
-            loaded,
-            settings(|s| {
-                s.ui_font_size = 16;
-                s.timeline.zoom = 2.0;
-                s.timeline.compact = true;
-                s.apps.insert(
-                    "com.example.app".into(),
-                    AppOverride {
-                        hidden: true,
-                        ..AppOverride::default()
-                    },
-                );
-            })
-        );
-        assert_eq!(
-            std::fs::read_to_string(dir.path().join(FILE_NAME)).unwrap(),
-            raw
-        );
-        assert_eq!(dir_entries(dir.path()), vec![FILE_NAME.to_string()]);
-    }
-
-    #[test]
-    fn wrongly_typed_nested_objects_fall_back_to_their_default_while_siblings_survive() {
-        let dir = temp_config_dir();
-        write_settings(
-            dir.path(),
-            r#"{"tracker": 5, "capture": "x", "reports": [], "timeline": {"zoom": 2.0}, "uiFontSize": 18}"#,
-        );
-
-        let loaded = SettingsStore::open(dir.path()).get();
-
-        assert_eq!(
-            loaded,
-            settings(|s| {
-                s.ui_font_size = 18;
-                s.timeline.zoom = 2.0;
-            })
-        );
-        assert_eq!(dir_entries(dir.path()), vec![FILE_NAME.to_string()]);
-    }
-
-    #[test]
-    fn partial_file_fills_missing_fields_with_defaults() {
-        let dir = temp_config_dir();
-        write_settings(
-            dir.path(),
-            r#"{"accent": "teal", "tracker": {"idleMinutes": 9}}"#,
-        );
-
-        assert_eq!(
-            SettingsStore::open(dir.path()).get(),
-            settings(|s| {
-                s.accent = "teal".into();
-                s.tracker.idle_minutes = 9;
-            })
-        );
-    }
-
-    #[test]
-    fn values_in_a_file_are_sanitized_on_open() {
-        let dir = temp_config_dir();
-        write_settings(dir.path(), r#"{"uiFontSize": 99, "accent": "nope"}"#);
-
-        let loaded = SettingsStore::open(dir.path()).get();
-
-        assert_eq!(loaded.ui_font_size, 24);
-        assert_eq!(loaded.accent, "orange");
-    }
-
-    #[test]
-    fn peek_on_a_corrupt_file_returns_defaults_and_leaves_the_file_alone() {
-        let dir = temp_config_dir();
-        write_settings(dir.path(), "{ not json");
-
-        assert_eq!(Settings::peek(dir.path()), Settings::default());
-        assert_eq!(
-            std::fs::read_to_string(dir.path().join(FILE_NAME)).unwrap(),
-            "{ not json"
-        );
-        assert_eq!(dir_entries(dir.path()), vec![FILE_NAME.to_string()]);
-    }
-
-    #[test]
-    fn peek_without_a_file_returns_defaults() {
-        let dir = temp_config_dir();
-        assert_eq!(Settings::peek(dir.path()), Settings::default());
-    }
-
-    #[test]
-    fn peek_returns_the_stored_settings_sanitized() {
-        let dir = temp_config_dir();
-        write_settings(dir.path(), r#"{"logLevel": "debug", "uiFontSize": 99}"#);
-
-        assert_eq!(
-            Settings::peek(dir.path()),
-            settings(|s| {
-                s.log_level = LogLevel::Debug;
-                s.ui_font_size = 24;
-            })
-        );
+            assert_eq!(value["mode"], json!(mode_json));
+            assert_eq!(value["scheme"], json!(scheme_json));
+            let back: Settings = serde_json::from_value(value).unwrap();
+            assert_eq!(back, original, "{mode_json}/{scheme_json}");
+        }
     }
 
     #[test]
@@ -1150,149 +684,12 @@ mod tests {
     }
 
     #[test]
-    fn mcp_settings_are_read_in_camel_case() {
-        let dir = temp_config_dir();
-        write_settings(dir.path(), r#"{"mcp": {"exposeActivity": true}}"#);
-
-        assert!(Settings::peek(dir.path()).mcp.expose_activity);
-        assert_eq!(
-            serde_json::to_value(Settings::peek(dir.path()).mcp).unwrap(),
-            serde_json::json!({"exposeActivity": true})
-        );
-    }
-
-    #[test]
-    fn a_wrongly_typed_mcp_block_falls_back_to_hidden_activity() {
-        let dir = temp_config_dir();
-        write_settings(dir.path(), r#"{"mcp": {"exposeActivity": "yes"}}"#);
-
-        assert!(!Settings::peek(dir.path()).mcp.expose_activity);
-    }
-
-    #[tokio::test]
-    async fn update_returns_previous_and_sanitized_saved_and_persists_across_reopen() {
-        let dir = temp_config_dir();
-        let store = SettingsStore::open(dir.path());
-
-        let (previous, saved) = store
-            .update(settings(|s| {
-                s.theme = Theme::Dark;
-                s.ui_font_size = 99;
-            }))
-            .await
-            .unwrap();
-
-        assert_eq!(previous, Settings::default());
-        assert_eq!(
-            saved,
-            settings(|s| {
-                s.theme = Theme::Dark;
-                s.ui_font_size = 24;
-            })
-        );
-        assert_eq!(store.get(), saved);
-        assert_eq!(SettingsStore::open(dir.path()).get(), saved);
-    }
-
-    #[tokio::test]
-    async fn second_update_sees_the_first_as_previous() {
-        let dir = temp_config_dir();
-        let store = SettingsStore::open(dir.path());
-        let (_, first) = store
-            .update(settings(|s| s.accent = "blue".into()))
-            .await
-            .unwrap();
-
-        let (previous, _) = store.update(Settings::default()).await.unwrap();
-
-        assert_eq!(previous, first);
-    }
-
-    #[tokio::test]
-    async fn concurrent_app_updates_for_different_apps_both_survive() {
-        let dir = temp_config_dir();
-        let store = SettingsStore::open(dir.path());
-
-        let (hide, own) = tokio::join!(
-            store.update_app("com.apple.Safari".into(), patch(None, Some(true))),
-            store.update_app("com.tinyspeck.slackmacgap".into(), patch(Some(true), None)),
-        );
-        hide.unwrap();
-        own.unwrap();
-
-        let expected = HashMap::from([
-            (
-                "com.apple.Safari".to_string(),
-                AppOverride {
-                    hidden: true,
-                    ..AppOverride::default()
-                },
-            ),
-            (
-                "com.tinyspeck.slackmacgap".to_string(),
-                AppOverride {
-                    own_lane: true,
-                    ..AppOverride::default()
-                },
-            ),
-        ]);
-        assert_eq!(store.get().apps, expected);
-        assert_eq!(SettingsStore::open(dir.path()).get().apps, expected);
-    }
-
-    #[tokio::test]
-    async fn a_blank_key_in_update_app_is_invalid_input_and_changes_nothing() {
-        let dir = temp_config_dir();
-        let store = SettingsStore::open(dir.path());
-        let (_, before) = store
-            .update_app("com.apple.mail".into(), patch(Some(true), None))
-            .await
-            .unwrap();
-
-        let err = store
-            .update_app("  ".into(), patch(None, Some(true)))
-            .await
-            .unwrap_err();
-
-        assert_eq!(err.kind(), crate::error::ErrorKind::InvalidInput);
-        assert_eq!(store.get(), before);
-        assert_eq!(SettingsStore::open(dir.path()).get(), before);
-    }
-
-    #[tokio::test]
-    async fn update_app_returns_the_settings_before_and_after_the_change() {
-        let dir = temp_config_dir();
-        let store = SettingsStore::open(dir.path());
-
-        let (previous, saved) = store
-            .update_app("com.apple.mail".into(), patch(Some(true), None))
-            .await
-            .unwrap();
-
-        assert_eq!(previous, Settings::default());
-        assert_eq!(
-            saved,
-            settings(|s| {
-                s.apps.insert(
-                    "com.apple.mail".into(),
-                    AppOverride {
-                        own_lane: true,
-                        ..AppOverride::default()
-                    },
-                );
-            })
-        );
-        assert_eq!(store.get(), saved);
-    }
-
-    #[test]
     fn default_settings_serialize_with_camel_case_keys() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
             json!({
-                "theme": "system",
-                "lightScheme": "ayu-light",
-                "darkScheme": "ayu-mirage",
+                "mode": "system",
+                "scheme": "default",
                 "accent": "orange",
                 "uiFontSize": 13,
                 "dataFontSize": 12,
@@ -1345,34 +742,14 @@ mod tests {
         );
     }
 
-    fn quoted_strings(text: &str) -> Vec<String> {
-        text.split('"')
-            .skip(1)
-            .step_by(2)
-            .map(String::from)
-            .collect()
-    }
-
     #[test]
-    fn accents_and_schemes_match_the_frontend_lists() {
-        let types_ts = include_str!("../../../src/api/types.ts");
+    fn accents_match_the_frontend_list() {
+        let types_ts = include_str!("../../../../src/api/types.ts");
 
         let accents_line = types_ts
             .lines()
             .find(|line| line.starts_with("export const ACCENTS = ["))
             .expect("src/api/types.ts should declare `export const ACCENTS = [...]` on one line");
         assert_eq!(quoted_strings(accents_line), ACCENTS, "ACCENTS in types.ts");
-
-        let schemes_block = types_ts
-            .split("export const SCHEMES = [")
-            .nth(1)
-            .and_then(|rest| rest.split("] as const").next())
-            .expect("src/api/types.ts should declare `export const SCHEMES = [...] as const`");
-        let scheme_ids: Vec<String> = schemes_block
-            .split("id: \"")
-            .skip(1)
-            .map(|rest| rest.split('"').next().unwrap().to_string())
-            .collect();
-        assert_eq!(scheme_ids, SCHEMES, "SCHEMES ids in types.ts");
     }
 }

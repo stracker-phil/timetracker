@@ -7,7 +7,7 @@ import { ProjectPicker } from "../../components/pickers/ProjectPicker";
 import { TagPicker } from "../../components/pickers/TagPicker";
 import { formatClock, formatDuration, MINUTE_MS } from "../../lib/format";
 import { spansText } from "../../lib/recordings";
-import { applyAppearance } from "../../lib/theme";
+import { applyAppearance, systemIsDark } from "../../lib/theme";
 import { useStore } from "../../state/store";
 
 const DAY_MS = 24 * 60 * MINUTE_MS;
@@ -26,7 +26,7 @@ function usePrompt(): [Prompt | null | undefined, () => void] {
     const loadAppearance = () =>
       void s.loadSettings().then(() => {
         const settings = useStore.getState().settings;
-        if (settings) applyAppearance(settings);
+        if (settings) applyAppearance(settings, systemIsDark());
       });
     const refresh = () => {
       loadAppearance();

@@ -10,7 +10,7 @@ interface Props {
 /** An away span shorter than this (px) has no room for its label. */
 const LABEL_MIN_PX = 16;
 
-/** Away spans (labeled) and gaps (bare), outlined across the whole lanes area behind the blocks. */
+/** Away spans (labeled) and gaps (bare): bands across the whole timeline, behind the blocks. */
 export function Spans({ away, gaps, y }: Props) {
   return (
     <>

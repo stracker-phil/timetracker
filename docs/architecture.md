@@ -42,8 +42,9 @@ These rules hold everywhere in the code. Keep them when you change things.
    The CSP allows IPC only.
 7. **Panics unwind** ([ADR 0014](adr/0014-panic-unwind.md)). A bug fails one command, not the app. Locks
    are taken with the poison-tolerant helpers in `lock.rs`.
-8. **No color literal outside `src/styles/schemes/`** ([ADR 0016](adr/0016-color-schemes.md)). Schemes
-   are complete token sets; a Vitest scan enforces it.
+8. **No color literal outside `src/styles/palettes/`** ([ADR 0016](adr/0016-color-schemes.md),
+   [ADR 0021](adr/0021-appearance-modes-and-schemes.md)). Palettes are complete token sets; a Vitest scan
+   enforces it.
 
 Time is UTC milliseconds (`i64`) in storage and IPC; a day is a local calendar day `YYYY-MM-DD`, resolved
 to bounds in Rust ([ADR 0011](adr/0011-utc-milliseconds-local-days.md)).
@@ -154,7 +155,7 @@ src-tauri/
   src/events.rs              every event name and payload the backend emits
   src/state.rs               AppState
   src/error.rs lock.rs       AppError (+ ErrorKind), poison-tolerant lock helpers
-  src/store/                 JsonFile, JsonStore, settings.rs, keybindings.rs, ui_state.rs
+  src/store/                 JsonFile, JsonStore, settings/, keybindings.rs, ui_state.rs
   src/commands.rs            settings, keybindings, ui state, misc; feature commands sit in their module
   src/tray.rs window.rs deep_link.rs   tray, window helpers, timetracker:// links
   src/menu/                  native menu: items.rs (MENU_ITEMS), mod.rs (build, forward), sync.rs (enabled and checked items)

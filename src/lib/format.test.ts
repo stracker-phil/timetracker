@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { NOW } from "../test/now";
-import { formatBytes, formatClock, formatDay, formatDuration, formatHm, relativeTime } from "./format";
+import { capitalize, formatBytes, formatClock, formatDay, formatDuration, formatHm, relativeTime } from "./format";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
+
+describe("capitalize", () => {
+  it("upper-cases the first letter and keeps the rest", () => {
+    expect(capitalize("system")).toBe("System");
+    expect(capitalize("iCloud")).toBe("ICloud");
+  });
+});
 
 describe("formatHm", () => {
   it.each([

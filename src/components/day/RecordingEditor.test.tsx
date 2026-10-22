@@ -235,7 +235,7 @@ describe("RecordingEditor", () => {
 
     it("lists the recordings in the way", async () => {
       const dialog = await saveIntoOverlap();
-      expect(dialog.getByText(/^09:15–09:45 Website/)).toHaveTextContent("09:15–09:45 Website · fix login");
+      expect(dialog.getByRole("listitem")).toHaveTextContent("09:15–09:45 Website · fix login");
     });
 
     it("lists every span of a recording in the way", async () => {
@@ -252,7 +252,7 @@ describe("RecordingEditor", () => {
       await chooseWebsite();
       await userEvent.click(button("Save"));
       const dialog = within(await screen.findByRole("dialog", { name: "This overlaps a recording" }));
-      expect(dialog.getByText(/^09:15–09:45, 16:05–20:15 Website/)).toHaveTextContent("09:15–09:45, 16:05–20:15 Website · fix login");
+      expect(dialog.getByRole("listitem")).toHaveTextContent("09:15–09:45, 16:05–20:15 Website · fix login");
     });
 
     it("saves again with overlap replace when Replace is chosen, then closes the editor", async () => {

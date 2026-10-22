@@ -4,6 +4,9 @@
 
 Accepted (2026-10-21), implemented. Inherited from DataBee ADR 0024.
 
+Superseded in part by [0021](0021-appearance-modes-and-schemes.md): the eight schemes and the light and dark scheme
+settings.
+
 ## Context
 
 The app runs in light and dark mode and shows project colors on blocks all day. A missing dark value shows

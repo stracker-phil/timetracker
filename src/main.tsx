@@ -3,12 +3,12 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { installNativeMenuGuard } from "./lib/nativeMenu";
-import { applyInitialScheme } from "./lib/theme";
+import { applyInitialLook } from "./lib/theme";
 import { installModules } from "./modules";
 import { useStore } from "./state/store";
 
 installModules();
-applyInitialScheme();
+applyInitialLook();
 installNativeMenuGuard();
 
 // Lets scripts/dev/js.sh drive the debug build; release builds don't hand the whole store to the page.

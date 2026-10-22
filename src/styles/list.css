@@ -1,30 +1,21 @@
 /* The Day view's List mode: a search field and the project strip over the day's activity, longest first. */
 .list-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .list-view.dragging, .list-view.dragging * { cursor: grabbing; }
-.list-tools { flex: none; display: flex; flex-direction: column; gap: 0.615rem; padding: 0.615rem 1.231rem; border-bottom: 1px solid var(--line); }
+.list-tools { flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--line); }
 .list-search { max-width: 28rem; }
 
-/* Projects to drop a row on, each in its shade (`--rec`), like a recording. */
-.list-strip { display: flex; flex-wrap: wrap; gap: 0.308rem; margin: 0; }
-.project-chip {
-  display: inline-flex; align-items: center; max-width: 12rem; padding: 0.154rem 0.615rem; border-radius: 4px;
-  border: 1px dashed transparent; background: color-mix(in oklab, var(--rec, var(--line)) 22%, var(--bg));
-  box-shadow: inset 3px 0 0 var(--rec, var(--line)); color: var(--text);
-}
-.project-chip:hover { background: color-mix(in oklab, var(--rec, var(--line)) 34%, var(--bg)); }
-.project-chip.more { box-shadow: none; color: var(--o2); }
-.project-chip.over { border-color: var(--accent); }
+.list-strip { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; }
 
 .list-rows { flex: 1; overflow: auto; list-style: none; margin: 0; padding: 0; }
-.list-empty { margin: 0; padding: 1.231rem; }
+.list-empty { margin: 0; padding: var(--space-4); }
 
 /* Row anatomy: --pad around a line of at least 20px, like the sidebar (docs/ux.md). */
-.list-row { padding: 0 1.231rem; border-bottom: 1px solid var(--line); outline: none; cursor: grab; touch-action: none; user-select: none; }
+.list-row { padding: 0 var(--space-4); border-bottom: 1px solid var(--line); outline: none; cursor: grab; touch-action: none; user-select: none; }
 .list-row:hover { background: var(--row-hover); }
 .list-row:focus-visible, .list-row:focus { background: var(--sel); }
 .list-row.dragging { opacity: 0.6; }
 .list-row-main {
-  display: grid; grid-template-columns: minmax(5rem, 10rem) minmax(0, 1fr) minmax(0, 0.7fr) auto; align-items: center; gap: 0.923rem;
+  display: grid; grid-template-columns: minmax(5rem, 10rem) minmax(0, 1fr) minmax(0, 0.7fr) auto; align-items: center; gap: var(--space-3);
   min-height: var(--row-h); box-sizing: border-box; padding: var(--pad) 0;
 }
 .list-app { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -38,11 +29,11 @@
 
 /* The recorded share of the row's time. */
 .covered-bar { display: block; width: 3.5rem; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
-.covered-bar > span { display: block; height: 100%; background: var(--sel); }
+.covered-bar > span { display: block; height: 100%; background: var(--accent); }
 
 .list-details {
-  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.154rem 0.923rem; margin: 0; padding: 0 0 0.615rem;
-  font-size: var(--fs-small); user-select: text; cursor: auto;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.154rem var(--space-3); margin: 0; padding: 0 0 var(--space-2);
+  font-size: var(--fs-meta); user-select: text; cursor: auto;
 }
 .list-details dt { color: var(--o3); }
 .list-details dd { margin: 0; font-size: var(--data-font-size); overflow-wrap: anywhere; }

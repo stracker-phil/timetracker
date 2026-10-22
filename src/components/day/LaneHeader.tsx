@@ -8,7 +8,7 @@ export function LaneHeader({ lanes }: { lanes: Lane[] }) {
       <span aria-hidden="true" />
       <div className="lane-heads">
         {lanes.map((lane) => (
-          <span key={lane.id} className={lane.kind === "source" ? "lane-head mono" : "lane-head"} role="columnheader" title={lane.label}>
+          <span key={lane.id} className="lane-head" role="columnheader" title={lane.label}>
             {lane.label}
           </span>
         ))}

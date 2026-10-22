@@ -54,7 +54,7 @@ export function HoverCard({ block, anchor, onPointerEnter, onPointerLeave }: Pro
       onPointerLeave={onPointerLeave}
     >
       <strong>{block.app}</strong>
-      <p className={block.private ? "mono o3" : "mono"}>{block.title}</p>
+      <p className={block.private ? "o3" : undefined}>{block.title}</p>
       {url &&
         (isWebUrl(url) ? (
           <button type="button" className="link-btn mono hover-card-url" onClick={() => void api.openUrl(url).catch((e: unknown) => fail(e, "Could not open the URL"))}>

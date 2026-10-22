@@ -1,0 +1,64 @@
+/* ---------- layout ---------- */
+/* The sidebar runs the full height, under the window buttons; the toolbar, the view and the status bar sit beside
+   it. Hiding the sidebar (sidebar.toggle) drops its column. */
+.app {
+  display: grid; height: 100%;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-rows: var(--toolbar-height) minmax(0, 1fr) 2rem;
+  grid-template-areas: "sidebar toolbar" "sidebar work" "sidebar status";
+}
+.app:has(> .workspace.no-sidebar) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "toolbar" "work" "status"; }
+.app > .toolbar { grid-area: toolbar; min-width: 0; }
+.app > .statusbar { grid-area: status; }
+.workspace { display: contents; }
+.workspace > .sidebar { grid-area: sidebar; }
+.workspace > .main { grid-area: work; }
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); }
+
+.toolbar {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 0 var(--space-3) 0 var(--space-4); background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.app:has(> .workspace.no-sidebar) > .toolbar { padding-left: var(--traffic-lights); }
+.app-title { font-weight: 600; font-size: var(--fs-body); letter-spacing: -0.01em; }
+
+.empty-view { flex: 1; display: grid; place-items: center; color: var(--o3); font-size: var(--fs-title); }
+.empty-view-title { margin: 0; font-size: inherit; font-weight: 500; }
+
+.tracker-status { display: flex; align-items: center; gap: 0.462rem; min-width: 0; }
+.tracker-status .grow-text { flex: 0 1 auto; }
+.tracker-dot { flex: none; width: 0.462rem; height: 0.462rem; border-radius: 50%; background: var(--o3); }
+.tracker-dot.running { background: var(--accent); }
+.tracker-dot.attention { background: var(--style-red); }
+
+/* ---------- splitter: a hairline with a wider invisible grab area ---------- */
+.splitter { position: relative; z-index: 3; background: var(--line); outline: none; }
+.splitter-x { width: 1px; cursor: col-resize; }
+.splitter-y { height: 1px; cursor: row-resize; }
+.splitter::after { content: ""; position: absolute; }
+.splitter-x::after { inset: 0 -3px; }
+.splitter-y::after { inset: -3px 0; }
+.splitter:hover, .splitter:focus-visible, .resizing-x .splitter-x:active, .resizing-y .splitter-y:active { background: var(--accent); }
+.splitter:hover, .splitter:focus-visible { box-shadow: 0 0 0 1px var(--accent); }
+body.resizing-x, body.resizing-x * { cursor: col-resize !important; user-select: none; }
+body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select: none; }
+
+/* ---------- status bar ---------- */
+/* Plain text, no chips (docs/ux.md, Shell). */
+.statusbar {
+  display: flex; align-items: center; gap: 0.769rem; padding: 0 var(--space-3) 0 0.385rem; font-size: var(--fs-meta);
+  color: var(--o3); background: var(--chrome); border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; min-width: 0;
+}
+.statusbar > span { white-space: nowrap; }
+.statusbar .address { color: var(--o2); overflow: hidden; text-overflow: ellipsis; }
+.statusbar .warn { color: var(--style-yellow); }
+.status-icon { width: 1.692rem; height: 1.538rem; }
+.status-text { padding: 0; border: none; background: none; color: inherit; white-space: nowrap; cursor: default; }
+.status-text:hover { color: var(--text); }
+.status-billable { display: inline-flex; align-items: center; gap: 0.462rem; }
+.status-billable-track { width: 3.692rem; height: 0.385rem; border-radius: 0.192rem; overflow: hidden; background: color-mix(in srgb, var(--text) 14%, transparent); }
+.status-billable-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.status-timer { margin-right: var(--space-3); color: var(--accent-text); }
+
+.crash { padding: 3.077rem; display: flex; flex-direction: column; gap: var(--space-3); align-items: flex-start; }
+.crash pre { font-family: var(--font-mono); font-size: var(--data-font-size); color: var(--style-red); white-space: pre-wrap; user-select: text; }

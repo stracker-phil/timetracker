@@ -36,7 +36,7 @@ export function RuleRow({ rule, offset, onGrip }: Props) {
           {project && <AccentDot accent={project.color} shade={project.shade} />}
           {project?.name ?? "Unknown project"}
         </span>
-        <span className="rule-summary mono o2 grow-text">{conditionSummary(rule.conditions)}</span>
+        <span className="rule-summary o2 grow-text">{conditionSummary(rule.conditions)}</span>
       </button>
     </li>
   );

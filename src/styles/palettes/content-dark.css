@@ -1,0 +1,60 @@
+/* Dark content: warm charcoal surfaces. Every content palette defines the same tokens (docs/ux.md); palette
+   files are the only place for color literals. */
+[data-content="dark"] {
+  color-scheme: dark;
+
+  /* surfaces */
+  --chrome: #1a1917;
+  --bg: #1f1e1c;
+  --bg-quiet: #1b1a18;
+  --shade: #000000;
+  --pop: #2c2b28;
+  --field: #171615;
+  --field-line: #403e3a;
+  --text: #ebe8e3;
+  --text-strong: #ffffff;
+  --line: #383632;
+  --band: #262523;
+  --row-hover: #2a2926;
+  --track: #161514;
+  --raised: #3a3834;
+  --shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 10px 32px rgba(0, 0, 0, 0.45);
+  --shadow-small: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  --scrim: rgba(0, 0, 0, 0.5);
+  --knob: #ebe8e3;
+
+  /* text on an accent fill, at least 4.5:1 on every hue */
+  --on-accent: #1a1917;
+
+  /* status colors; red, yellow, blue and purple are accent hues (theme.css) */
+  --style-green: #8fd18a;
+
+  /* timeline: activity surfaces and the away band */
+  --activity-fill: #2d2c29;
+  --activity-fill-hover: #363431;
+  --activity-fill-dim: #252422;
+  --away-band: #171615;
+
+  /* recording blocks: OKLCH lightness and chroma cap of the fill and its text (theme.css derives them) */
+  --block-fill-l: 0.36;
+  --block-fill-spread: 0.08;
+  --block-fill-c: 0.06;
+  --block-text-l: 0.94;
+  --block-text-c: 0.035;
+}
+
+/* The accent hues for this tone, on its content and on a sidebar of the same tone (the Default scheme puts a dark
+   sidebar beside light content). */
+[data-content="dark"], [data-sidebar="dark"] .sidebar {
+  --accent-text-max-l: 1;
+  --a-orange: #f5a25d;
+  --a-gold: #e8c15a;
+  --a-red: #f2857a;
+  --a-magenta: #ee8fc8;
+  --a-purple: #c4a3f5;
+  --a-indigo: #a3acf7;
+  --a-blue: #7cb8f2;
+  --a-teal: #6fd1bb;
+  --a-graphite: #a39f98;
+}

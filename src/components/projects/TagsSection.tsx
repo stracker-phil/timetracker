@@ -36,8 +36,8 @@ export function TagsSection() {
       <ul className="tag-rows">
         {tags.map((tag) => (
           <li key={tag.id} className="row">
-            <span className="mono grow-text">{tag.name}</span>
-            <span className="o2 mono">{plural(tag.recordings, "recording", "recordings")}</span>
+            <span className="grow-text">{tag.name}</span>
+            <span className="o2">{plural(tag.recordings, "recording", "recordings")}</span>
             <button type="button" className="icon-btn" aria-label={`Delete tag ${tag.name}`} title="Delete" onClick={() => remove(tag)}>
               <X size="1.077rem" />
             </button>

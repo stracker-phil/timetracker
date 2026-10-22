@@ -15,5 +15,5 @@ src-tauri/gen/schemas/
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 docs/screens/*
-!docs/screens/ayu-light-day.png
-!docs/screens/ayu-mirage-day.png
+!docs/screens/default-light-day.png
+!docs/screens/default-dark-day.png

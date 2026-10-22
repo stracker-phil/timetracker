@@ -23,8 +23,8 @@ export function OverlapDialog({ recordings, onReplace, onCancel }: Props) {
       <h2 id="overlap-title">{recordings.length === 1 ? "This overlaps a recording" : `This overlaps ${recordings.length} recordings`}</h2>
       <ul className="overlap-list">
         {recordings.map((r) => (
-          <li key={r.id} className="mono">
-            {spansText(r.spans)} {nameOf(r.projectId)}
+          <li key={r.id}>
+            <span className="mono">{spansText(r.spans)}</span> {nameOf(r.projectId)}
             {r.note && <span className="o2"> · {r.note}</span>}
           </li>
         ))}

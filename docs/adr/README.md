@@ -21,8 +21,9 @@ and a dated amendment under Status only corrects facts that changed.
 | [0013](0013-no-network.md) | No network: no network code, CSP allows IPC only | Accepted (2026-10-21), implemented |
 | [0014](0014-panic-unwind.md) | Keep `panic = "unwind"` | Accepted (2026-10-21), implemented, amended |
 | [0015](0015-test-doubles-behind-test-util.md) | Test doubles ship behind a `test-util` feature | Accepted (2026-10-21), implemented, amended |
-| [0016](0016-color-schemes.md) | Color schemes are complete token sets; no color literal outside a scheme | Accepted (2026-10-21), implemented |
+| [0016](0016-color-schemes.md) | Color schemes are complete token sets; no color literal outside a scheme | Accepted (2026-10-21), implemented, superseded in part by 0021 |
 | [0017](0017-cli-asks-the-running-app.md) | The CLI is a second process that asks the running app over the socket | Accepted (2026-10-21), implemented |
 | [0018](0018-one-line-notes-tags-copyable-reports.md) | Notes are one line, tags classify work, reports are built for copying | Accepted (2026-10-21), implemented, amended, superseded in part by 0019 |
 | [0019](0019-one-tag-per-recording.md) | A recording has at most one tag | Accepted (2026-10-21), implemented |
 | [0020](0020-recordings-have-spans.md) | A recording holds one or more spans of time | Accepted (2026-10-22), implemented |
+| [0021](0021-appearance-modes-and-schemes.md) | Appearance is a mode and one of three schemes, built from four palettes | Accepted (2026-10-22), implemented |

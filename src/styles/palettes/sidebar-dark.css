@@ -1,0 +1,11 @@
+/* The dark sidebar, a shade darker than dark content: in the Default scheme beside light content, and in dark
+   mode. Every sidebar palette defines the same tokens (docs/ux.md). */
+[data-sidebar="dark"] {
+  --sidebar-bg: #161514;
+  --sidebar-text: #e9e6e1;
+  --sidebar-strong: #ffffff;
+  --sidebar-muted: #a29d95;
+  --sidebar-hover: #22211f;
+  --sidebar-selected: #2e2c29;
+  --sidebar-line: #2a2826;
+}

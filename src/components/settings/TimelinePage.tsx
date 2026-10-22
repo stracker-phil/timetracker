@@ -3,7 +3,8 @@ import { formatHm } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
 import type { SettingsPageProps } from "../../registry/settingsPages";
 import { useStore } from "../../state/store";
-import { Group, Row, SegmentedButtons } from "./controls";
+import { SegmentedControl } from "../SegmentedControl";
+import { Group, Row } from "./controls";
 import { TimelineControls } from "./TimelineControls";
 
 const GROUPING = ["default", "on", "off"] as const;
@@ -29,14 +30,14 @@ function AppRow({ app, override }: { app: KnownApp; override: AppOverride | unde
     <Row label={app.app} description={<span className="mono">{app.totalMs > 0 ? formatHm(app.totalMs) : app.appKey}</span>} stacked>
       <div className="app-controls">
         <span className="o3">Group by app</span>
-        <SegmentedButtons
+        <SegmentedControl
           label={`Group ${app.app} by app`}
           options={GROUPING}
           value={groupingOf(override)}
           onChange={(v) => set({ groupByApp: v === "default" ? null : v === "on" })}
         />
         <span className="o3">Titles</span>
-        <SegmentedButtons
+        <SegmentedControl
           label={`Titles of ${app.app}`}
           options={TITLES}
           value={override?.titles ?? "default"}

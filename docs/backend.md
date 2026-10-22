@@ -50,7 +50,7 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
 ### Settings side effects
 
 `update_settings` and startup both call `commands::apply_settings(app, previous, saved)`. The decision is the
-pure `settings_effects(previous, saved, log_override) -> SettingsEffects { theme, log_level, launch_at_login }`:
+pure `settings_effects(previous, saved, log_override) -> SettingsEffects { mode, log_level, launch_at_login }`:
 without `previous` everything applies; otherwise only what changed. A CLI `--log-level` wins for the app's
 lifetime, so a settings change never resets it. `launch_at_login` goes to `autostart::apply` (below), which
 changes the LaunchAgent only when its state differs; at startup this reconciles a LaunchAgent that went
@@ -88,8 +88,8 @@ the `sidebar` vibrancy effect. The away prompt (`away_prompt/window.rs`) and the
 | `timetracker --hidden` (launch at login) | first instance: the window is never shown; running instance: nothing |
 | ⌘Q (`app.quit`), tray "Quit TimeTracker", `quit_app` | `app.exit(0)` |
 
-`window.rs` also has `apply_window_theme` (the window's appearance follows the theme setting, so the
-vibrancy matches) and `bring_to_front`, which does nothing with `TIMETRACKER_BACKGROUND=1` in debug builds.
+`window.rs` also has `apply_window_mode` (the window's native appearance follows the `mode` setting, so
+native controls match the content; the page draws every surface opaquely) and `bring_to_front`, which does nothing with `TIMETRACKER_BACKGROUND=1` in debug builds.
 
 ## AppState
 
@@ -689,17 +689,19 @@ save leaves memory unchanged. `JsonStore::open_with` normalizes the loaded value
 
 | File | Contents |
 |---|---|
-| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets unknown accents (`ACCENTS`) and schemes (`SCHEMES`) to `orange`, `ayu-light`, `ayu-mirage`; turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline` or `apps` emits `data_changed { kind: settings, day: null }`, so every open day reloads. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
+| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets an unknown accent (`ACCENTS`) to `orange` (an unknown `mode` or `scheme` falls back to `system` or `default` through `lenient`); turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline` or `apps` emits `data_changed { kind: settings, day: null }`, so every open day reloads. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed. A trailing `++` is the `+` key |
 | `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay`, `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id), `dayMode`, `onboardingDone` (default `false`: the welcome sheet shows) |
 | `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere (written only by `data_move`) |
 | `timetracker.sock`, `timetracker.lock` | single instance |
 
-`src/api/types.ts` mirrors the constants the page needs (`ACCENTS`, `SCHEMES`, `SETTINGS_LIMITS`,
-`TEXT_SIZES`); a Rust test compares `ACCENTS` and `SCHEMES` with it.
+`src/api/types.ts` mirrors the constants the page needs (`ACCENTS`, `SETTINGS_LIMITS`, `TEXT_SIZES`); a Rust
+test compares `ACCENTS` with it. Appearance is `mode` (`Mode`: system, light, dark) and `scheme` (`Scheme`:
+default, light, dark; [ADR 0021](adr/0021-appearance-modes-and-schemes.md)); a part 1 file's `theme`,
+`lightScheme` and `darkScheme` are no longer read, so it loads as System and Default.
 
 **Adding a setting:**
-1. Add the field to `Settings` (or its nested struct) in `store/settings.rs`, with a default.
+1. Add the field to `Settings` (or its nested struct) in `store/settings/` (`mod.rs`; nested structs and enums in `types.rs`), with a default.
 2. Clamp it in `sanitized`; give an enum field `#[serde(deserialize_with = "lenient")]`.
 3. Regenerate `src/api/types.gen.ts` (`bun run types`), mirror a numeric clamp in `SETTINGS_LIMITS`, and
    add the default to `src/test/settings.ts`.

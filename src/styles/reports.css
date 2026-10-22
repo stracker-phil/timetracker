@@ -1,0 +1,23 @@
+/* ---------- reports ---------- */
+.reports-page { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.reports-head { display: flex; align-items: center; gap: 0.462rem; padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--line); }
+.reports-title { margin: 0 auto 0 0; font-size: var(--fs-title); font-weight: 600; }
+.report-filters { display: flex; flex-direction: column; gap: var(--space-2); padding: 0.769rem var(--space-4); border-bottom: 1px solid var(--line); }
+.report-range, .report-options { display: flex; flex-wrap: wrap; align-items: center; gap: 0.462rem var(--space-3); }
+.report-range .input[type="date"] { width: auto; }
+.report-options select.input { width: auto; }
+.report-pickers { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.462rem; }
+.multi-select-chosen { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
+.report-result { flex: 1; overflow: auto; padding: var(--space-3) var(--space-4) var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+.report-group { display: flex; flex-direction: column; gap: var(--space-1); }
+.report-group-head, .report-total { display: flex; align-items: center; gap: var(--space-2); }
+.report-group-head h3 { margin: 0; font-size: var(--fs-body); font-weight: 600; }
+.report-hours { min-width: 5rem; text-align: right; }
+.report-notes { margin: 0; padding-left: 1.385rem; color: var(--o2); }
+.report-notes li { padding: 1px 0; }
+.report-rows-toggle { display: flex; align-items: center; gap: var(--space-1); align-self: flex-start; border: none; background: none; padding: 2px 0; font-size: var(--fs-meta); }
+.report-rows { border-collapse: collapse; font-size: var(--fs-meta); }
+.report-rows th { text-align: left; font-weight: 500; color: var(--o3); padding: 2px var(--space-3) 2px 0; border-bottom: 1px solid var(--line); }
+.report-rows td { padding: 2px var(--space-3) 2px 0; vertical-align: top; }
+.report-total { padding-top: var(--space-2); border-top: 1px solid var(--line); font-weight: 600; }
+.report-billable { display: flex; align-items: center; gap: var(--space-2); color: var(--o2); }

@@ -26,7 +26,7 @@ export function TimelineSettingsPopover() {
   if (!settings) return null;
   const unhide = (appKey: string) => void useStore.getState().setAppSetting(appKey, { hidden: false });
   return (
-    <Modal onClose={close} variant="panel" className="timeline-popover" label="Timeline settings" style={style}>
+    <Modal onClose={close} variant="popover" className="timeline-popover" label="Timeline settings" style={style}>
       <Group>
         <TimelineControls timeline={settings.timeline} />
       </Group>

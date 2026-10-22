@@ -29,7 +29,7 @@ export function RulePreviewPanel({ input }: { input: RuleInput }) {
                   {formatDayLabel(day)} {formatClock(block.start)}
                 </span>
                 <span className="rule-hit-app">{block.app}</span>
-                <span className="mono grow-text">{block.title}</span>
+                <span className="grow-text">{block.title}</span>
               </li>
             ))}
           </ul>

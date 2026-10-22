@@ -4,8 +4,11 @@ import { isRecordingTarget } from "../commands/registry";
 
 interface Props {
   onClose: () => void;
-  /** `sheet`: the padded dialog; `panel`: the overlay surface, laid out by its content; `bare`: neither. */
-  variant?: "sheet" | "panel" | "bare";
+  /**
+   * `sheet`: the padded dialog over a scrim; `panel`: the overlay surface, laid out by its content; `popover`: a
+   * panel placed by `style` under the control that opened it, without a scrim; `bare`: none of these.
+   */
+  variant?: "sheet" | "panel" | "popover" | "bare";
   className?: string;
   labelledBy?: string;
   label?: string;

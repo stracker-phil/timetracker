@@ -1,9 +1,10 @@
 /** The core settings pages. Modules register their own pages from their install function. */
 import { Activity, Copy, Database, Download, EyeOff, FolderInput, FolderOpen, GanttChart, Keyboard, Palette, Power, ScrollText } from "lucide-react";
-import { useId, useState } from "react";
-import { api, BUNDLED_FONTS, LOG_LEVELS, SCHEMES, TEXT_SIZES, toAppError, type DataInfo, type LogLevel, type SchemeId } from "../../api";
+import { useState } from "react";
+import { api, BUNDLED_FONTS, LOG_LEVELS, TEXT_SIZES, toAppError, type DataInfo, type LogLevel, type Scheme } from "../../api";
 import { copyText } from "../../lib/clipboard";
-import { formatBytes, formatCount, formatDay } from "../../lib/format";
+import { capitalize, formatBytes, formatCount, formatDay } from "../../lib/format";
+import { lightModeLook } from "../../lib/theme";
 import { useApiResult } from "../../lib/useApiResult";
 import { registerSettingsPage, type SettingsPageProps } from "../../registry/settingsPages";
 import { fail } from "../../state/requests";
@@ -11,43 +12,35 @@ import { useStore } from "../../state/store";
 import { AccentSwatches } from "../Accent";
 import { Modal } from "../Modal";
 import { exportBackup, revealFolder, showWelcomeAgain } from "./actions";
-import { capitalize, Group, NumberField, Row, Segmented, Switch, TextField } from "./controls";
+import { Group, NumberField, Row, Segmented, Switch, TextField } from "./controls";
 import { CapturePage, TrackerPage } from "./CapturePage";
 import { LaunchAtLoginSwitch } from "./LaunchAtLoginSwitch";
 import { ShortcutsPage } from "./ShortcutsPage";
 import { TimelinePage } from "./TimelinePage";
 
-/** A stored scheme id narrowed to a known one; unknown ids (hand-edited settings) show the first scheme. */
-const toSchemeId = (id: string): SchemeId => SCHEMES.find((scheme) => scheme.id === id)?.id ?? SCHEMES[0].id;
+const SCHEME_LABELS: Record<Scheme, string> = { default: "Default", light: "Light", dark: "Dark" };
 
-/** Two swatches per scheme: its content background and the chosen accent in that scheme. */
-function SchemePreview({ scheme, accent }: { scheme: SchemeId; accent: string }) {
+/** One tile per scheme: a miniature window in the scheme's light-mode look. */
+function SchemePicker({ value, onChange }: { value: Scheme; onChange: (scheme: Scheme) => void }) {
   return (
-    <span className="scheme-preview" data-scheme={scheme} aria-hidden="true">
-      <span style={{ background: "var(--bg)", color: "var(--text)" }}>Aa</span>
-      <span style={{ background: `var(--a-${accent})` }} />
-    </span>
-  );
-}
-
-/** The schemes of the slot's own kind come first. */
-function SchemeSelect({ label, dark, value, accent, onChange }: { label: string; dark: boolean; value: SchemeId; accent: string; onChange: (id: SchemeId) => void }) {
-  const id = useId();
-  return (
-    <Row label={label} htmlFor={id}>
-      <div className="scheme-select">
-        <SchemePreview scheme={value} accent={accent} />
-        <select id={id} className="input" value={value} onChange={(e) => onChange(toSchemeId(e.target.value))}>
-          {[dark, !dark].map((groupDark) => (
-            <optgroup key={String(groupDark)} label={groupDark ? "Dark" : "Light"}>
-              {SCHEMES.filter((scheme) => scheme.dark === groupDark).map((scheme) => (
-                <option key={scheme.id} value={scheme.id}>{scheme.label}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </div>
-    </Row>
+    <div className="scheme-picker" role="group" aria-label="Scheme">
+      {(Object.keys(SCHEME_LABELS) as Scheme[]).map((id) => {
+        const look = lightModeLook(id);
+        return (
+          <button key={id} type="button" className="scheme-option" aria-pressed={value === id} onClick={() => onChange(id)}>
+            <span className="scheme-tile" data-content={look.content} data-sidebar={look.sidebar} aria-hidden="true">
+              <span className="scheme-tile-sidebar">
+                <span className="scheme-tile-entry" />
+              </span>
+              <span className="scheme-tile-content">
+                <span className="scheme-tile-block" />
+              </span>
+            </span>
+            {SCHEME_LABELS[id]}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -55,9 +48,10 @@ function AppearancePage({ s, set }: SettingsPageProps) {
   return (
     <>
       <Group title="Look">
-        <Segmented label="Theme" description="Which scheme applies; System follows macOS." options={["system", "light", "dark"] as const} value={s.theme} onChange={(theme) => set({ theme })} />
-        <SchemeSelect label="Light scheme" dark={false} value={toSchemeId(s.lightScheme)} accent={s.accent} onChange={(lightScheme) => set({ lightScheme })} />
-        <SchemeSelect label="Dark scheme" dark value={toSchemeId(s.darkScheme)} accent={s.accent} onChange={(darkScheme) => set({ darkScheme })} />
+        <Segmented label="Mode" description="System follows macOS." options={["light", "dark", "system"] as const} value={s.mode} onChange={(mode) => set({ mode })} />
+        <Row label="Scheme" description="The light-mode look. In dark mode the whole window is dark." stacked>
+          <SchemePicker value={s.scheme} onChange={(scheme) => set({ scheme })} />
+        </Row>
         <Row label="Accent" description="Buttons, links, selection and focus.">
           <AccentSwatches value={s.accent} onChange={(accent) => set({ accent })} />
         </Row>

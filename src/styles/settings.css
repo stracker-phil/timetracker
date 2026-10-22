@@ -1,0 +1,67 @@
+/* ---------- settings window: sidebar of pages, grouped cards of label/control rows ---------- */
+.dialog.settings-window { display: flex; width: min(54rem, calc(100vw - 2.462rem)); height: min(46rem, calc(100vh - 4.615rem)); }
+.settings-nav {
+  flex: none; width: 13.5rem; padding: var(--space-4) 0.769rem; overflow: auto;
+  background: var(--chrome); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 1.077rem;
+}
+.settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.settings-nav-heading { padding: 0 var(--space-2) var(--space-1); font-size: var(--fs-meta); font-weight: 500; color: var(--o3); }
+.settings-nav button {
+  display: flex; align-items: center; gap: var(--space-2); height: 2rem; padding: 0 var(--space-2);
+  border: none; border-radius: 5px; background: transparent; color: var(--text); text-align: left;
+}
+.settings-nav button svg { color: var(--o2); flex: none; }
+.settings-nav button:hover { background: var(--row-hover); }
+.settings-nav button[aria-current="page"] { background: var(--sel); }
+/* The title bar stays put; only the page below it scrolls. */
+.settings-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+.settings-pane > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 0.769rem; padding: var(--space-4) var(--space-5) 0.769rem; border-bottom: 1px solid var(--line); }
+.settings-body { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: var(--space-3) var(--space-5) var(--space-6); display: flex; flex-direction: column; gap: var(--space-3); }
+.settings-pane h2 { margin: 0; font-size: 1.231rem; }
+.settings-intro { margin: 0 0 0.154rem; color: var(--o2); line-height: 1.45; }
+.settings-group { display: flex; flex-direction: column; gap: 0.462rem; }
+.settings-group h3 { margin: 0 0 0 var(--space-3); font-size: 0.923rem; font-weight: 600; }
+.settings-card { background: var(--pop); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 0 var(--space-4); }
+.settings-row { display: flex; align-items: center; gap: var(--space-4); min-height: 2.923rem; padding: var(--space-2) 0; }
+.settings-row + .settings-row { border-top: 1px solid var(--line); }
+.settings-row.stacked { flex-direction: column; align-items: stretch; gap: 0.462rem; }
+.settings-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.154rem; }
+.settings-row-text label, .settings-row-label { color: var(--text); }
+.settings-row-desc { font-size: var(--fs-meta); color: var(--o2); line-height: 1.4; }
+.settings-alert { margin: 0 0 1rem; color: var(--style-red); line-height: 1.4; }
+.settings-row-control { flex: none; display: flex; align-items: center; gap: 0.462rem; }
+.settings-row-control select.input { width: 9rem; }
+.settings-input { display: flex; align-items: center; gap: 0.462rem; }
+.settings-input .input { width: 12rem; }
+.range-value { min-width: 4rem; text-align: right; }
+.app-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.462rem var(--space-3); font-size: var(--fs-meta); }
+.inline-switch { display: flex; align-items: center; gap: 0.462rem; }
+.settings-input .input.number { width: 6.5rem; text-align: right; }
+.settings-search { flex: none; }
+.shortcut-control { display: flex; align-items: center; gap: var(--space-1); }
+
+/* Settings → Appearance: one miniature window per scheme, in its light-mode look; the chosen one ringed. */
+.scheme-picker { display: flex; gap: var(--space-4); }
+.scheme-option {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: 0; border: none; background: none;
+  color: var(--o2); font-size: var(--fs-meta); font-weight: 500;
+}
+.scheme-option[aria-pressed="true"] { color: var(--text); }
+.scheme-tile {
+  display: flex; width: 6.154rem; height: 4rem; overflow: hidden; border-radius: var(--radius-sm);
+  border: 1px solid var(--field-line); background: var(--bg);
+}
+.scheme-option[aria-pressed="true"] .scheme-tile { box-shadow: 0 0 0 2px var(--pop), 0 0 0 4px var(--accent); }
+.scheme-option:focus-visible { outline: none; }
+.scheme-option:focus-visible .scheme-tile { box-shadow: 0 0 0 2px var(--pop), 0 0 0 4px var(--sel); }
+.scheme-tile-sidebar { width: 34%; padding: var(--space-3) var(--space-1) 0; background: var(--sidebar-bg); }
+.scheme-tile-entry { display: block; height: 0.462rem; border-radius: 2px; background: var(--sidebar-selected); }
+.scheme-tile-content { flex: 1; padding: var(--space-3) var(--space-2) 0; border-top: 0.615rem solid var(--chrome); }
+.scheme-tile-block { display: block; height: 1.231rem; border-radius: 3px; background: var(--activity-fill); }
+
+/* ---------- shortcuts settings ---------- */
+.shortcut-field { display: inline-flex; align-items: center; justify-content: center; width: 7rem; height: 1.692rem; border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field); box-shadow: var(--shadow-inset); font-family: var(--font-ui); }
+.shortcut-field.recording { border-color: var(--accent); box-shadow: 0 0 0 3px var(--sel); color: var(--o3); }
+.shortcut-field.unbound { color: var(--o3); font-style: italic; }
+.shortcut-conflicts { padding: 0.462rem var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); color: var(--style-yellow); font-size: var(--fs-meta); }

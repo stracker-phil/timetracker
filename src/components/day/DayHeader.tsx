@@ -5,7 +5,7 @@ import { formatDayLabel, isToday } from "../../lib/day";
 import { formatHm } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { useContextMenu } from "../ContextMenu";
-import { SegmentedButtons } from "../settings/controls";
+import { SegmentedControl } from "../SegmentedControl";
 
 const DAY_MODES = ["timeline", "list"] as const;
 
@@ -35,7 +35,7 @@ export function DayHeader({ day, totals }: { day: string; totals: DayTotals | nu
           recorded {formatHm(totals.recordedMs)} · tracked {formatHm(totals.trackedMs)} · away {formatHm(totals.awayMs)}
         </span>
       )}
-      <SegmentedButtons label="Day mode" options={DAY_MODES} value={mode} onChange={setDayMode} />
+      <SegmentedControl label="Day mode" options={DAY_MODES} value={mode} onChange={setDayMode} />
       <button
         type="button"
         className="icon-btn"

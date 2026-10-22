@@ -8,7 +8,7 @@ function ListRowDetails({ row }: { row: Row }) {
   return (
     <dl className="list-details">
       <dt>Title</dt>
-      <dd className="mono">{row.title}</dd>
+      <dd>{row.title}</dd>
       {row.url && (
         <>
           <dt>URL</dt>
@@ -54,7 +54,7 @@ export function ListRow({ row, focused, open, dragging, onPointerDown, onKeyDown
         <span className="list-app o2">{row.app}</span>
         <button
           type="button"
-          className="list-title mono"
+          className="list-title"
           tabIndex={-1}
           aria-expanded={open}
           data-list-title

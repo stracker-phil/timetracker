@@ -1,4 +1,5 @@
 import { ACCENTS, SHADES } from "../api";
+import { shadeLightness } from "../lib/accent";
 
 /** One swatch per accent hue; `value` is pressed (`null`: none is). */
 export function AccentSwatches({ value, onChange }: { value: string | null; onChange: (accent: string) => void }) {
@@ -11,13 +12,9 @@ export function AccentSwatches({ value, onChange }: { value: string | null; onCh
   );
 }
 
-/** OKLCH lightness of shade 0 and the step between shades: dark to light, all distinct on either background. */
-const DARKEST = 0.36;
-const STEP = 0.06;
-
 /** The accent's chroma and hue at the lightness of `shade`. */
 export function shadeColor(accent: string, shade: number): string {
-  return `oklch(from var(--a-${accent}) ${(DARKEST + shade * STEP).toFixed(2)} c h)`;
+  return `oklch(from var(--a-${accent}) ${shadeLightness(shade).toFixed(2)} c h)`;
 }
 
 /** One swatch per shade of `accent`; `value` is pressed (`null`: none is, the shade is picked on save). */

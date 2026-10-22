@@ -3,9 +3,8 @@ import type { Settings } from "../api/types";
 /** Equal to Rust's `Settings::default()`. */
 export function settings(patch: Partial<Settings> = {}): Settings {
   return {
-    theme: "system",
-    lightScheme: "ayu-light",
-    darkScheme: "ayu-mirage",
+    mode: "system",
+    scheme: "default",
     accent: "orange",
     uiFontSize: 13,
     dataFontSize: 12,

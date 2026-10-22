@@ -3,7 +3,7 @@ import type { Group, Range, ReportFilter, Rounding } from "../../api";
 import { today } from "../../lib/day";
 import { projectLabel } from "../../state/slices/projects";
 import { useStore } from "../../state/store";
-import { SegmentedButtons } from "../settings/controls";
+import { SegmentedControl } from "../SegmentedControl";
 import { MultiSelect } from "./MultiSelect";
 
 type RangeKind = Range["kind"];
@@ -87,7 +87,7 @@ export function ReportFilters({ filter, shown, onChange }: Props) {
       </div>
       <div className="report-options">
         <span className="o3">Group by</span>
-        <SegmentedButtons label="Group by" options={GROUPS} value={filter.groupBy} onChange={(groupBy) => onChange({ groupBy })} />
+        <SegmentedControl label="Group by" options={GROUPS} value={filter.groupBy} onChange={(groupBy) => onChange({ groupBy })} />
         <select className="input" aria-label="Rounding" value={filter.rounding} onChange={(e) => onChange({ rounding: e.target.value as Rounding })}>
           {ROUNDINGS.map((r) => (
             <option key={r.value} value={r.value}>

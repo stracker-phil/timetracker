@@ -116,6 +116,7 @@ export function Timeline({ view }: { view: DayView }) {
     <div className={view.compact ? "timeline timeline--compact" : "timeline"} ref={scrollRef} onMouseLeave={hover.leave}>
       <LaneHeader lanes={view.lanes} />
       <div className="timeline-body" style={{ height: y(end) }}>
+        <Spans away={view.away} gaps={view.gaps} y={y} />
         <RecordingsColumn ref={columnRef} recordings={view.recordings} suggestions={view.suggestions} y={y} pxPerMinute={pxPerMinute} selection={selection} />
         <TimeAxis bounds={view.bounds} pxPerMinute={pxPerMinute} onPointerDown={press} />
         <div
@@ -135,7 +136,6 @@ export function Timeline({ view }: { view: DayView }) {
             if (id) openMenu(e, id);
           }}
         >
-          <Spans away={view.away} gaps={view.gaps} y={y} />
           {view.lanes.map((lane) => (
             <Lane key={lane.id} lane={lane} origin={origin} pxPerMinute={pxPerMinute} range={range} focusedBlock={focusedBlock} />
           ))}

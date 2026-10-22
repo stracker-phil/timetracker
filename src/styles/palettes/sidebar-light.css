@@ -1,0 +1,11 @@
+/* The light sidebar of the Light scheme, a shade darker than light content. Every sidebar palette defines the
+   same tokens (docs/ux.md). */
+[data-sidebar="light"] {
+  --sidebar-bg: #efece7;
+  --sidebar-text: #2a2825;
+  --sidebar-strong: #12110f;
+  --sidebar-muted: #615c55;
+  --sidebar-hover: #e6e2dc;
+  --sidebar-selected: #e0dbd3;
+  --sidebar-line: #ddd8d1;
+}

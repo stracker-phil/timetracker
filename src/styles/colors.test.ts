@@ -2,18 +2,17 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
-import { SCHEMES } from "../api/types";
 
 // Read from disk: Vitest blanks every CSS module (also `?raw` ones) unless CSS processing is on.
 const srcDir = resolve(process.cwd(), "src");
-const schemesDir = join(srcDir, "styles", "schemes") + sep;
+const palettesDir = join(srcDir, "styles", "palettes") + sep;
 
 const all: [string, string][] = readdirSync(srcDir, { recursive: true, encoding: "utf8" })
   .filter((rel: string) => /\.(css|ts|tsx)$/.test(rel))
   .map((rel: string): [string, string] => [join(srcDir, rel), readFileSync(join(srcDir, rel), "utf8")]);
 
-const schemeFiles = all.filter(([path]) => path.startsWith(schemesDir));
-const scanned = all.filter(([path]) => !path.startsWith(schemesDir) && !/\.test\.tsx?$/.test(path) && !path.endsWith("types.gen.ts"));
+const paletteFiles = all.filter(([path]) => path.startsWith(palettesDir));
+const scanned = all.filter(([path]) => !path.startsWith(palettesDir) && !/\.test\.tsx?$/.test(path) && !path.endsWith("types.gen.ts"));
 
 const stripComments = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "");
 
@@ -32,8 +31,14 @@ function customProperties(source: string): string[] {
   return [...stripComments(source).matchAll(/^\s*(--[\w-]+)\s*:/gm)].map((m) => m[1]).sort();
 }
 
+const palette = (name: string) => {
+  const found = paletteFiles.find(([path]) => path.endsWith(`${sep}${name}.css`));
+  if (!found) throw new Error(`missing palette ${name}`);
+  return found[1];
+};
+
 describe("color literals", () => {
-  it("live only in the scheme files", () => {
+  it("live only in the palette files", () => {
     const offenders = scanned
       .map(([path, source]) => ({ path, found: colorLiterals(path, source) }))
       .filter((o) => o.found.length > 0)
@@ -52,22 +57,27 @@ describe("color literals", () => {
   });
 });
 
-describe("scheme files", () => {
-  it("exist for more than one scheme", () => {
-    expect(schemeFiles.length).toBeGreaterThan(1);
+describe("palette files", () => {
+  it("are exactly the two content and the two sidebar palettes", () => {
+    const files = paletteFiles.map(([path]) => path.slice(palettesDir.length)).sort();
+    expect(files).toEqual(["content-dark.css", "content-light.css", "sidebar-dark.css", "sidebar-light.css"]);
   });
 
-  it("exist for every scheme id", () => {
-    const files = schemeFiles.map(([path]) => path.slice(schemesDir.length)).sort();
-    expect(files).toEqual(SCHEMES.map((s) => `${s.id}.css`).sort());
-  });
-
-  it("define the same set of custom properties", () => {
-    const [[, first], ...rest] = schemeFiles;
-    const expected = customProperties(first);
+  it("give both content palettes the same custom properties", () => {
+    const expected = customProperties(palette("content-light"));
     expect(expected.length).toBeGreaterThan(0);
-    for (const [path, source] of rest) {
-      expect({ path, props: customProperties(source) }).toEqual({ path, props: expected });
-    }
+    expect(customProperties(palette("content-dark"))).toEqual(expected);
+  });
+
+  it("give both sidebar palettes the same custom properties", () => {
+    const expected = customProperties(palette("sidebar-light"));
+    expect(expected.length).toBeGreaterThan(0);
+    expect(customProperties(palette("sidebar-dark"))).toEqual(expected);
+  });
+
+  it.each(["sidebar-light", "sidebar-dark"])("%s defines the sidebar surface and text tokens", (name) => {
+    expect(customProperties(palette(name))).toEqual(
+      expect.arrayContaining(["--sidebar-bg", "--sidebar-text", "--sidebar-muted", "--sidebar-hover", "--sidebar-selected", "--sidebar-line"]),
+    );
   });
 });

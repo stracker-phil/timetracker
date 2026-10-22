@@ -10,11 +10,11 @@ it never captures keystrokes, screenshots, audio, the clipboard or page content.
 It runs on macOS on Apple Silicon. Published as source, as-is: no releases, no binaries, no support. To
 build it or port it, point a coding agent at [AGENTS.md](AGENTS.md).
 
-![The Day view in Ayu Light](docs/screens/ayu-light-day.png)
+![The Day view in light mode](docs/screens/default-light-day.png)
 
-![The Day view in Ayu Mirage](docs/screens/ayu-mirage-day.png)
+![The Day view in dark mode](docs/screens/default-dark-day.png)
 
-The Day view in the default light (Ayu Light) and dark (Ayu Mirage) schemes; more in [docs/screens/](docs/screens/).
+The Day view in the Default scheme, in light and dark mode; `scripts/dev/screenshot-looks.sh` captures every look.
 
 ## Install
 

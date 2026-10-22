@@ -1,0 +1,8 @@
+/* Sheet forms: a label over its control, the field's error below. */
+.form-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.form-field > label, .form-field-label { color: var(--o2); font-size: var(--fs-meta); }
+.form-field-error { color: var(--style-red); font-size: var(--fs-meta); }
+.form-switch { display: flex; align-items: center; gap: var(--space-2); }
+.form-switch > span { display: flex; flex-direction: column; }
+.form-switch-desc { color: var(--o3); font-size: var(--fs-meta); }
+.form-row { display: flex; align-items: center; justify-content: space-between; }

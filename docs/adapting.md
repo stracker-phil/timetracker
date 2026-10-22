@@ -41,8 +41,8 @@ The app's name and ids live in a few places. Change them together.
 | **Config dir** hard-coded to `~/Library/Application Support/<id>` | `lib.rs` `config_dir()`, `scripts/dev/js.sh` | `dirs::config_dir()`; it must resolve before Tauri starts, because the CLI and socket run first | `dirs::config_dir()` (`%APPDATA%\<id>`) |
 | **Unix socket** for the single-instance handoff, CLI and MCP `status`/`open_day` | `ipc.rs`, `mcp/ui.rs` | Works as is; mind the ~108-byte path limit | A named pipe (`tokio::net::windows::named_pipe`) with the same line protocol |
 | **File permissions** (0600 files, 0700 dirs) | `ipc.rs`, `store/json_file.rs`, `store/json_store.rs`, `db/mod.rs`, `db/relocate.rs` | Works | Gate with `#[cfg(unix)]` |
-| **Window chrome**: overlay title bar, `trafficLightPosition`, `transparent`, `windowEffects: ["sidebar"]`, `macOSPrivateApi` | `tauri.conf.json`; Cargo feature `macos-private-api`; `window.rs` `apply_window_theme` | Ignored; give `html`/`.app` an opaque `--chrome` | `windowEffects: ["mica"]`, or an opaque background |
-| **Traffic-light space** and drag regions | `--traffic-lights` in `theme.css`; `data-tauri-drag-region` in `Toolbar.tsx` | Remove the inset | Same |
+| **Window chrome**: overlay title bar, `trafficLightPosition`, `transparent`, `windowEffects: ["sidebar"]`, `macOSPrivateApi` | `tauri.conf.json`; Cargo feature `macos-private-api`; `window.rs` `apply_window_mode` | Ignored; the page is opaque already | `windowEffects: ["mica"]`, or an opaque background |
+| **Traffic-light space** and drag regions | `--traffic-lights` in `theme.css`; `data-tauri-drag-region` in `Toolbar.tsx` and `Sidebar.tsx` (`.sidebar-titlebar`) | Remove the inset and the strip | Same |
 | **Menu**: app menu with Services, Hide, Show All | `menu/mod.rs` | Move Settings and Quit into a File menu | Same |
 | **Fonts**: bundled Geist and JetBrains Mono with `-apple-system` and `Menlo` fallbacks | `fonts.css`, `theme.css` | Works | Works |
 | **Bundle targets**: `app` and `dmg`, signed ad hoc (`bundle.macOS.signingIdentity: "-"`), `icon.icns` | `tauri.conf.json` `bundle`; `package.json` `release`, `build:app`, `app` | `deb`, `appimage` | `nsis`, `msi` (`icon.ico` is already generated) |
@@ -65,7 +65,7 @@ shortcuts with the right modifier; move the data folder.
 | Add a Tauri command | [backend.md: Tauri commands](backend.md#tauri-commands) |
 | Add a CLI subcommand | [backend.md: command tree](backend.md#command-tree) |
 | Emit a new event | [backend.md: events](backend.md#events-to-the-page) |
-| Change colors or schemes | [frontend.md: styling](frontend.md#styling), [ux.md](ux.md#color-schemes-and-tokens) |
+| Change colors or schemes | [frontend.md: styling](frontend.md#styling), [ux.md](ux.md#appearance-and-tokens) |
 | Add a capture source | [Another capture source](#another-capture-source) |
 | Feed activity from another app | [README: Scripting](../README.md#scripting); no code change |
 | Remove the MCP server | [Dropping the MCP server](#dropping-the-mcp-server) |
@@ -85,7 +85,7 @@ by hand. Another *app* (a planner, a meeting tool) is not a source: it writes ex
 
 `git rm -r src-tauri/src/mcp`; delete `pub mod mcp;` and the `CliOutcome::Mcp` arm in `lib.rs`; the `Mcp`
 variant of `Command` and of `CliOutcome` and its test in `cli/mod.rs` (and the `claude mcp add` line in
-`EXAMPLES`); `rmcp` in `Cargo.toml`; `McpSettings` and `Settings.mcp` in `store/settings.rs` (old files keep
+`EXAMPLES`); `rmcp` in `Cargo.toml`; `McpSettings` and `Settings.mcp` in `store/settings/types.rs` (old files keep
 the key harmlessly); `binary_path` in `db/commands.rs` `DataInfo`; on the page, the MCP rows of the Data page
 in `src/components/settings/pages.tsx` (`mcpAddCommand`, "Expose activity to the MCP server") and their tests
 in `DataPage.test.tsx`, plus `mcp`/`binaryPath` in `src/test/settings.ts` and `src/test/data.ts`. Run

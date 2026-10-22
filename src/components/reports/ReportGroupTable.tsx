@@ -48,7 +48,7 @@ export function ReportGroupTable({ group, rounded }: { group: ReportGroup; round
                 <td className="mono">{spansText(row.spans)}</td>
                 <td className="mono">{formatHm(rounded ? row.roundedMs : row.durationMs)}</td>
                 <td>{row.client ? `${row.client} / ${row.project}` : row.project}</td>
-                <td className="mono o2">{row.tag}</td>
+                <td className="o2">{row.tag}</td>
                 <td>{row.note}</td>
               </tr>
             ))}

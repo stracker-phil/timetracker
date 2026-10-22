@@ -1,0 +1,56 @@
+/* ---------- day ---------- */
+.day-page { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.day-head { display: flex; align-items: center; gap: 0.462rem; padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--line); }
+.day-title { margin: 0 auto 0 0; font-size: var(--fs-title); font-weight: 600; }
+.day-totals { font-size: var(--data-font-size); }
+.day-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.462rem; color: var(--text); }
+.day-empty p { margin: 0; }
+
+.timeline { flex: 1; overflow: auto; position: relative; }
+.timeline-head, .timeline-body { display: grid; grid-template-columns: var(--recordings-col-w) var(--timeline-axis-w) minmax(0, 1fr); min-width: min-content; }
+.timeline-head { position: sticky; top: 0; z-index: 3; background: var(--bg); border-bottom: 1px solid var(--line); font-size: var(--fs-meta); }
+.recordings-col-head { padding: var(--pad) var(--space-2); border-right: 1px solid var(--line); }
+.lane-heads { display: flex; }
+.lane-head { flex: 1 1 0; min-width: var(--lane-min-w); padding: var(--pad) var(--space-2); color: var(--o3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.timeline-body { position: relative; }
+.recordings-col { position: relative; border-right: 1px solid var(--line); }
+.time-axis, .lanes { z-index: 1; }
+
+.time-axis { position: relative; }
+.axis-mark { position: absolute; left: 0; right: 0; height: 0; }
+.axis-label { position: absolute; right: var(--space-2); top: -0.6em; font-size: var(--fs-caption); color: var(--o2); }
+
+/* `--hour-px` (set from the zoom) spaces the hour hairlines; `--half-line` draws half hours when zoomed in. */
+.lanes {
+  position: relative; display: flex;
+  background-image:
+    repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px var(--hour-px)),
+    repeating-linear-gradient(to bottom, transparent 0 calc(var(--hour-px) / 2), var(--half-line, transparent) calc(var(--hour-px) / 2) calc(var(--hour-px) / 2 + 1px), transparent calc(var(--hour-px) / 2 + 1px) var(--hour-px));
+}
+.lanes.half-hours { --half-line: color-mix(in oklab, var(--line) 50%, transparent); }
+.lane { position: relative; flex: 1 1 0; min-width: var(--lane-min-w); border-left: 1px solid var(--line); z-index: 1; }
+/* Translucent, so the away bands behind it show through. */
+.lane--summary { background: color-mix(in srgb, var(--band) 50%, transparent); }
+
+/* Away and idle time: darker bands across the whole timeline, behind the columns; gaps a lighter one. */
+.span { position: absolute; left: 0; right: 0; box-sizing: border-box; z-index: 0; pointer-events: none; }
+.span.away { background: var(--away-band); }
+.span.gap { background: color-mix(in srgb, var(--away-band) 45%, transparent); }
+.span-label { position: absolute; top: 3px; right: var(--space-2); font-size: var(--fs-meta); color: var(--o2); }
+.now-line { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--accent); z-index: 2; pointer-events: none; }
+
+.recording-drop { position: absolute; left: 4px; right: 4px; box-sizing: border-box; border: 1px dashed var(--accent); border-radius: var(--radius-card); pointer-events: none; }
+
+.selection {
+  position: absolute; left: 0; right: 0; z-index: 2; pointer-events: none; background: var(--sel);
+  border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent);
+}
+.selection-label { position: absolute; top: 2px; left: 0.462rem; font-size: var(--data-font-size); color: var(--accent-text); }
+
+.recording-editor { width: min(32rem, 92vw); }
+.editor-warning { margin: 0; padding: 0.462rem var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); line-height: 1.4; }
+.recording-times { display: flex; align-items: flex-end; gap: 0.769rem; }
+.time-input { width: 5.5rem; }
+.recording-length { padding-bottom: 0.462rem; }
+.recording-other-spans { margin: 0; color: var(--o2); }
+.overlap-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-1); }

@@ -1,9 +1,9 @@
-/* Scheme-independent design tokens (docs/ux.md). Colors come from the active scheme
-   (`schemes/<id>.css`, chosen by `data-scheme` on <html>); this file only derives from them, so it holds
-   no color literal. lib/theme.ts sets `data-scheme`, `data-accent`, the font sizes and the
-   chosen font families. Sizing: chrome is in rem of `--ui-font-size` (html font-size), so ⌘= and ⌘- scale it;
-   `--data-font-size` drives times, durations and data values; the row anatomy (line,
-   padding, insets) and the window's own chrome (traffic lights) are in px. */
+/* Palette-independent design tokens (docs/ux.md). Colors come from the active palettes (`palettes/*.css`, chosen
+   by `data-content` and `data-sidebar` on <html>); this file only derives from them, so it holds no color
+   literal. lib/theme.ts sets those attributes, `data-accent`, the font sizes and the chosen font families.
+   Sizing: chrome is in rem of `--ui-font-size` (html font-size), so ⌘= and ⌘- scale it; `--data-font-size`
+   drives times, durations and data values; the row anatomy and the window's own chrome (traffic lights) are
+   in px. */
 :root {
   --font-ui-bundled: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono-bundled: "JetBrains Mono", ui-monospace, Menlo, monospace;
@@ -11,16 +11,31 @@
   --font-mono: var(--font-mono-bundled);
   --ui-font-size: 13px;
   --data-font-size: 12px;
-  /* 11.5px, 13px and 17px at the default UI size; rem so ⌘= and ⌘- scale them */
-  --fs-small: 0.885rem;
-  --fs-base: 1rem;
-  --fs-large: 1.308rem;
+
+  /* Type scale: 17, 13, 12 and 11px at the default UI size; rem so ⌘= and ⌘- scale them. */
+  --fs-title: 1.308rem;
+  --fs-body: 1rem;
+  --fs-meta: 0.923rem;
+  --fs-caption: 0.846rem;
+
+  /* Spacing on a 4px grid (in rem of the 13px UI size). */
+  --space-1: 0.308rem;
+  --space-2: 0.615rem;
+  --space-3: 0.923rem;
+  --space-4: 1.231rem;
+  --space-5: 1.538rem;
+  --space-6: 1.846rem;
+  --space-8: 2.462rem;
 
   --accent: var(--a-orange);
-  --o2: color-mix(in srgb, var(--text) 62%, transparent);
-  --o3: color-mix(in srgb, var(--text) 40%, transparent);
+  --style-red: var(--a-red);
+  --style-yellow: var(--a-gold);
+  --style-blue: var(--a-blue);
+  --style-purple: var(--a-purple);
+  --o2: color-mix(in srgb, var(--text) 68%, transparent);
+  --o3: color-mix(in srgb, var(--text) 52%, transparent);
 
-  /* One scrollbar everywhere (app.css, scrollbars): an 8px track, a 6px thumb. */
+  /* One scrollbar everywhere (base.css): an 8px track, a 6px thumb. */
   --scrollbar-size: 8px;
   --scrollbar-thumb: color-mix(in srgb, var(--o3) 55%, transparent);
   --scrollbar-thumb-hover: var(--o3);
@@ -35,10 +50,12 @@
   --radius-sm: 0.462rem;
   --radius: 0.692rem;
   --radius-lg: 0.923rem;
+  --radius-block: 0.462rem;
+  --radius-card: 0.615rem;
   --sidebar-width: 14rem;
   --toolbar-height: 3.385rem;
-  /* The window's buttons (trafficLightPosition in tauri.conf.json) don't scale with the UI size: the toolbar's
-     left inset keeps clear of them. */
+  /* The window's buttons (trafficLightPosition in tauri.conf.json) don't scale with the UI size: a bar under
+     them keeps clear of them. */
   --traffic-lights: 88px;
 
   /* The Day view's columns: time axis, recordings column, a lane's narrowest width. */
@@ -47,20 +64,44 @@
   --lane-min-w: 160px;
 }
 
-/* Derived from the accent wherever it is set: an element with `data-accent` sets its own. */
-:root, [data-accent] {
-  --cell: color-mix(in srgb, var(--accent) 24%, transparent);
-  --sel: color-mix(in srgb, var(--accent) 20%, transparent);
-  /* The accent as text: no lighter than the scheme allows, so it stays readable on light surfaces. */
-  --accent-text: oklch(from var(--accent) min(l, var(--accent-text-max-l)) c h);
+/* Shared controls inside the sidebar (buttons, key caps, rows) take the sidebar tokens; its accent hues come from
+   the content palette of its tone. */
+.sidebar {
+  --text: var(--sidebar-text);
+  --text-strong: var(--sidebar-strong);
+  --o2: var(--sidebar-muted);
+  --o3: var(--sidebar-muted);
+  --line: var(--sidebar-line);
+  --field-line: var(--sidebar-line);
+  --row-hover: var(--sidebar-hover);
+  --pop: var(--sidebar-hover);
 }
 
-[data-accent="orange"] { --accent: var(--a-orange); }
-[data-accent="gold"] { --accent: var(--a-gold); }
-[data-accent="blue"] { --accent: var(--a-blue); }
-[data-accent="purple"] { --accent: var(--a-purple); }
-[data-accent="red"] { --accent: var(--a-red); }
-[data-accent="magenta"] { --accent: var(--a-magenta); }
-[data-accent="indigo"] { --accent: var(--a-indigo); }
-[data-accent="teal"] { --accent: var(--a-teal); }
-[data-accent="graphite"] { --accent: var(--a-graphite); }
+/* Derived from the accent wherever it is set: an element with `data-accent` sets its own, and the sidebar
+   re-derives it from its hues. */
+:root, [data-accent], .sidebar {
+  --cell: color-mix(in srgb, var(--accent) 24%, transparent);
+  --sel: color-mix(in srgb, var(--accent) 20%, transparent);
+  /* The accent as text: no lighter than the palette allows, so it stays readable on light surfaces. */
+  --accent-text: oklch(from var(--accent) min(l, var(--accent-text-max-l)) c h);
+}
+.sidebar { --sel: var(--sidebar-selected); }
+
+[data-accent="orange"], [data-accent="orange"] .sidebar { --accent: var(--a-orange); }
+[data-accent="gold"], [data-accent="gold"] .sidebar { --accent: var(--a-gold); }
+[data-accent="blue"], [data-accent="blue"] .sidebar { --accent: var(--a-blue); }
+[data-accent="purple"], [data-accent="purple"] .sidebar { --accent: var(--a-purple); }
+[data-accent="red"], [data-accent="red"] .sidebar { --accent: var(--a-red); }
+[data-accent="magenta"], [data-accent="magenta"] .sidebar { --accent: var(--a-magenta); }
+[data-accent="indigo"], [data-accent="indigo"] .sidebar { --accent: var(--a-indigo); }
+[data-accent="teal"], [data-accent="teal"] .sidebar { --accent: var(--a-teal); }
+[data-accent="graphite"], [data-accent="graphite"] .sidebar { --accent: var(--a-graphite); }
+
+/* A filled recording (a card, a suggestion, a project chip): `--rec` is the project's shade (`shadeColor`); the
+   fill keeps its hue and, a little, its lightness step; the text is the hue at the palette's text lightness.
+   Both meet 4.5:1 for every shade. */
+.card, .suggestion, .project-chip {
+  --block-fill: oklch(from var(--rec) calc(var(--block-fill-l) + (l - 0.6) * var(--block-fill-spread)) min(c, var(--block-fill-c)) h);
+  --block-text: oklch(from var(--rec) var(--block-text-l) min(c, var(--block-text-c)) h);
+  --block-meta: color-mix(in srgb, var(--block-text) 75%, var(--block-fill));
+}

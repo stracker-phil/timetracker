@@ -54,6 +54,7 @@ function SavedReports() {
 export function Sidebar() {
   return (
     <aside className="sidebar" aria-label="Sidebar">
+      <div className="sidebar-titlebar" data-tauri-drag-region />
       <DateNavigator />
       <div className="sidebar-body">
         <nav className="sidebar-nav" aria-label="Views">

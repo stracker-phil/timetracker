@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { SCHEMES, type SchemeId, type Settings } from "../api";
+import type { Scheme, Settings } from "../api";
 
 // One query for the whole app; matchMedia is missing in some test environments.
 const darkQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -9,33 +9,38 @@ function subscribeToSystemTheme(onChange: () => void) {
   return () => darkQuery?.removeEventListener("change", onChange);
 }
 
-const systemIsDark = () => darkQuery?.matches ?? false;
+export const systemIsDark = () => darkQuery?.matches ?? false;
 
 export function useSystemDark(): boolean {
   return useSyncExternalStore(subscribeToSystemTheme, systemIsDark);
 }
 
-type SchemeSettings = Pick<Settings, "theme" | "lightScheme" | "darkScheme">;
+type AppearanceSettings = Pick<Settings, "mode" | "scheme">;
 
-const DEFAULT_SCHEMES: SchemeSettings = { theme: "system", lightScheme: "ayu-light", darkScheme: "ayu-mirage" };
+const DEFAULT_APPEARANCE: AppearanceSettings = { mode: "system", scheme: "default" };
 
-interface ResolvedScheme {
-  id: SchemeId;
-  dark: boolean;
+export type Tone = "light" | "dark";
+
+/** The palette of each surface: the content and the sidebar. */
+export interface Look {
+  content: Tone;
+  sidebar: Tone;
 }
 
-/** The scheme that applies: the dark one when the theme (or, for `system`, the OS) is dark. */
-function resolveScheme(settings: SchemeSettings, systemDark: boolean): ResolvedScheme {
-  const dark = settings.theme === "system" ? systemDark : settings.theme === "dark";
-  const wanted = dark ? settings.darkScheme : settings.lightScheme;
-  const scheme = SCHEMES.find((s) => s.id === wanted) ?? SCHEMES.find((s) => s.dark === dark) ?? SCHEMES[0];
-  return { id: scheme.id, dark: scheme.dark };
+/** In dark mode the whole window is dark; in light mode the scheme decides (Default: a dark sidebar). */
+export function resolveLook({ mode, scheme }: AppearanceSettings, systemDark: boolean): Look {
+  const dark = mode === "system" ? systemDark : mode === "dark";
+  if (dark || scheme === "dark") return { content: "dark", sidebar: "dark" };
+  return { content: "light", sidebar: scheme === "light" ? "light" : "dark" };
 }
 
-/** The applied scheme, for code that can't read CSS tokens. */
-export function useResolvedScheme(settings: SchemeSettings | null): ResolvedScheme {
-  const systemDark = useSystemDark();
-  return resolveScheme(settings ?? DEFAULT_SCHEMES, systemDark);
+/** The look `scheme` gives in light mode, which is what sets the schemes apart. */
+export const lightModeLook = (scheme: Scheme): Look => resolveLook({ mode: "light", scheme }, false);
+
+function applyLook(look: Look) {
+  const { dataset } = document.documentElement;
+  dataset.content = look.content;
+  dataset.sidebar = look.sidebar;
 }
 
 /** A family name the user typed, quoted for CSS and put in front of the bundled stack. */
@@ -50,9 +55,9 @@ function setOrRemove(style: CSSStyleDeclaration, name: string, value: string | n
 }
 
 /** Applies appearance settings to <html> so CSS tokens pick them up. */
-export function applyAppearance(settings: Settings, systemDark = systemIsDark()) {
+export function applyAppearance(settings: Settings, systemDark: boolean) {
   const root = document.documentElement;
-  root.dataset.scheme = resolveScheme(settings, systemDark).id;
+  applyLook(resolveLook(settings, systemDark));
   root.dataset.accent = settings.accent;
   root.style.setProperty("--ui-font-size", `${settings.uiFontSize}px`);
   root.style.setProperty("--data-font-size", `${settings.dataFontSize}px`);
@@ -60,7 +65,7 @@ export function applyAppearance(settings: Settings, systemDark = systemIsDark())
   setOrRemove(root.style, "--font-mono", fontStack(settings.fontMono, "--font-mono-bundled"));
 }
 
-/** Applies the default scheme for the OS appearance before settings load, so the first paint has colors. */
-export function applyInitialScheme() {
-  document.documentElement.dataset.scheme = resolveScheme(DEFAULT_SCHEMES, systemIsDark()).id;
+/** Applies the default look for the OS appearance before settings load, so the first paint has colors. */
+export function applyInitialLook() {
+  applyLook(resolveLook(DEFAULT_APPEARANCE, systemIsDark()));
 }

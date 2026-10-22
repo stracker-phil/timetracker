@@ -1,0 +1,61 @@
+/* Light content: warm near-white surfaces. Every content palette defines the same tokens (docs/ux.md); palette
+   files are the only place for color literals. The selector is not limited to <html>: Settings previews a look
+   inside its own element. */
+[data-content="light"] {
+  color-scheme: light;
+
+  /* surfaces */
+  --chrome: #f4f2ee;
+  --bg: #fbfaf8;
+  --bg-quiet: #f5f3f0;
+  --shade: #000000;
+  --pop: #ffffff;
+  --field: #ffffff;
+  --field-line: #d6d1ca;
+  --text: #2a2825;
+  --text-strong: #12110f;
+  --line: #dbd6cf;
+  --band: #f1eee9;
+  --row-hover: #efece7;
+  --track: #ebe8e3;
+  --raised: #ffffff;
+  --shadow: 0 0 0 1px rgba(40, 32, 24, 0.05), 0 10px 32px rgba(40, 32, 24, 0.16);
+  --shadow-small: 0 1px 2px rgba(40, 32, 24, 0.2);
+  --shadow-inset: inset 0 1px 2px rgba(40, 32, 24, 0.06);
+  --scrim: rgba(30, 24, 18, 0.22);
+  --knob: #ffffff;
+
+  /* text on an accent fill, at least 4.5:1 on every hue */
+  --on-accent: #ffffff;
+
+  /* status colors; red, yellow, blue and purple are accent hues (theme.css) */
+  --style-green: #2f8a3e;
+
+  /* timeline: activity surfaces and the away band */
+  --activity-fill: #efebe5;
+  --activity-fill-hover: #e7e2db;
+  --activity-fill-dim: #f5f2ee;
+  --away-band: #ebe7e1;
+
+  /* recording blocks: OKLCH lightness and chroma cap of the fill and its text (theme.css derives them) */
+  --block-fill-l: 0.91;
+  --block-fill-spread: 0.1;
+  --block-fill-c: 0.07;
+  --block-text-l: 0.32;
+  --block-text-c: 0.1;
+}
+
+/* The accent hues for this tone, on its content and on a sidebar of the same tone (the Default scheme puts a dark
+   sidebar beside light content). */
+[data-content="light"], [data-sidebar="light"] .sidebar {
+  --accent-text-max-l: 0.56;
+  --a-orange: #b9530f;
+  --a-gold: #9c6b00;
+  --a-red: #c8372d;
+  --a-magenta: #b0357e;
+  --a-purple: #8549c0;
+  --a-indigo: #4d55c8;
+  --a-blue: #1f6fbf;
+  --a-teal: #0f7d6c;
+  --a-graphite: #6b6863;
+}

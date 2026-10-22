@@ -1,0 +1,74 @@
+/* Everything filled on the timeline and in the recordings column. */
+
+/* Activity (`Block`): a soft filled surface, 1px inside its column; the app strong, the title normal, the duration
+   as meta. Covered activity takes a lighter surface instead of fading its text. */
+.block {
+  position: absolute; box-sizing: border-box; overflow: hidden; padding: 3px var(--space-2); display: flex; flex-direction: column; gap: 1px;
+  background: var(--activity-fill); border: 1px solid var(--bg); border-radius: var(--radius-block);
+  cursor: default; line-height: 1.3;
+}
+.block:hover { background: var(--activity-fill-hover); }
+.block.one-line, .timeline--compact .block { flex-direction: row; gap: var(--space-2); align-items: center; padding-top: 0; padding-bottom: 0; }
+.block-title { font-weight: 500; color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; max-width: 100%; }
+.block-subtitle { font-size: var(--data-font-size); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.block-trailing { margin-top: auto; align-self: flex-end; font-size: var(--data-font-size); color: var(--o2); white-space: nowrap; }
+.block.one-line .block-trailing, .timeline--compact .block-trailing { margin: 0 0 0 auto; align-self: center; }
+.block.private .block-subtitle { color: var(--o2); }
+.block-gear { position: absolute; top: 1px; right: 1px; display: none; width: 1.385rem; height: 1.385rem; }
+.block:hover .block-gear { display: grid; }
+.block.dimmed { background: var(--activity-fill-dim); opacity: 1; }
+.block.dimmed .block-title, .block.dimmed .block-subtitle { color: var(--o2); }
+.block.dimmed:hover { background: var(--activity-fill-hover); }
+.block.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
+
+/* A recording (`Card`): filled with `--block-fill`, its text in `--block-text` (theme.css derives both from the
+   project's shade `--rec`). */
+.card {
+  box-sizing: border-box; overflow: hidden; padding: var(--space-1) var(--space-2); display: flex; flex-direction: column; gap: 1px;
+  line-height: 1.3; background: var(--block-fill); color: var(--block-text); border-radius: var(--radius-card);
+}
+.card-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-subtitle { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-foot { display: flex; align-items: center; gap: var(--space-2); margin-top: auto; color: var(--block-meta); font-size: var(--fs-meta); }
+.card-meta { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-trailing { flex: none; font-size: var(--data-font-size); color: var(--block-text); }
+.recording { position: absolute; left: 4px; right: 4px; border: 1px solid var(--bg); cursor: grab; touch-action: none; }
+.recording.dragging { cursor: grabbing; opacity: 0.85; z-index: 2; }
+.recording.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
+.recording.clipped-start { border-top: 2px dashed var(--block-text); border-top-left-radius: 0; border-top-right-radius: 0; }
+.recording.clipped-end { border-bottom: 2px dashed var(--block-text); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.recording-duration { position: absolute; right: var(--space-2); bottom: 3px; font-size: var(--data-font-size); }
+.recording .grip { position: absolute; left: 0; right: 0; height: 6px; cursor: ns-resize; }
+.recording .grip.start { top: 0; }
+.recording .grip.end { bottom: 0; }
+
+/* A running timer: a pulsing dot at its growing edge. */
+.recording.running::after {
+  content: ""; position: absolute; right: 0.462rem; top: 0.462rem; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .recording.running::after { animation: none; } }
+
+/* Suggestions: a rule's proposed recording, outlined dashed in its card text color, filled once hovered. */
+.suggestion {
+  position: absolute; left: 4px; right: 4px; box-sizing: border-box; overflow: hidden; margin: 0;
+  padding: 3px var(--space-2); display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  line-height: 1.3; font: inherit; text-align: left; color: var(--block-text); cursor: copy;
+  background: color-mix(in oklab, var(--block-fill) 45%, var(--bg));
+  border: 1px dashed var(--block-meta); border-radius: var(--radius-card);
+}
+.suggestion:hover { background: var(--block-fill); }
+.suggestion:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.suggestion svg { position: absolute; right: var(--space-2); top: 3px; color: var(--block-text); }
+.suggestion-project { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100% - 1.2rem); }
+.suggestion-rule { font-size: var(--data-font-size); color: var(--block-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* The List view's project chips: drop targets filled like a recording. */
+.project-chip {
+  display: inline-flex; align-items: center; max-width: 12rem; padding: 2px var(--space-2); border-radius: var(--radius-sm);
+  border: 1px dashed transparent; background: var(--block-fill, var(--activity-fill)); color: var(--block-text, var(--text)); font-weight: 500;
+}
+.project-chip:hover { border-color: var(--block-meta, var(--line)); }
+.project-chip.more { background: var(--activity-fill); color: var(--o2); }
+.project-chip.over { border-color: var(--accent); }

@@ -1,8 +1,10 @@
-import { memo, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { Tag } from "lucide-react";
 import type { RecordingBlock as Block } from "../../api";
 import { formatHm } from "../../lib/format";
 import { fail, useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
+import { Card } from "../Card";
 import { pointerDrag } from "./pointerDrag";
 import { useSnappedSpan } from "./useSnappedSpan";
 
@@ -59,24 +61,31 @@ export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinu
     });
   };
 
-  const color = shadeColor(block.color, block.shade);
   const classes = ["recording", focused && "focused", drag && "dragging", block.clippedStart && "clipped-start", block.clippedEnd && "clipped-end", block.running && "running"];
   return (
-    <div
+    <Card
       className={classes.filter(Boolean).join(" ")}
       ref={ref}
       data-recording-id={block.id}
       aria-label={`${block.projectName}${block.note ? `: ${block.note}` : ""}`}
-      style={{ top, height, "--rec": color } as CSSProperties}
+      style={{ top, height }}
+      color={shadeColor(block.color, block.shade)}
+      title={block.projectName}
+      subtitle={block.note || undefined}
+      meta={
+        block.tag && (
+          <>
+            <Tag size="0.846rem" aria-hidden="true" />
+            {block.tag}
+          </>
+        )
+      }
+      trailing={<span className="mono">{formatHm(shown.end - shown.start)}</span>}
       onPointerDown={press("move")}
       onDoubleClick={() => useStore.getState().openEditor({ mode: "edit", id: block.id, at: { start: block.start, end: block.end }, spanId: block.spanId })}
     >
       {movable && <span className="grip start" aria-label="Drag to change the start" onPointerDown={press("start")} />}
-      <span className="recording-project">{block.projectName}</span>
-      {block.note && <span className="recording-note mono">{block.note}</span>}
-      {block.tag && <span className="recording-tag mono">{block.tag}</span>}
-      <span className="recording-duration mono">{formatHm(shown.end - shown.start)}</span>
       {movable && <span className="grip end" aria-label="Drag to change the end" onPointerDown={press("end")} />}
-    </div>
+    </Card>
   );
 });

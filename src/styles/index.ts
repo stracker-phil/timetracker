@@ -1,15 +1,23 @@
-/** Every stylesheet, shared by the main window and the secondary windows. */
+/** Every stylesheet, shared by the main window and the secondary windows; the order is the cascade. */
 import "./fonts.css";
-import "./schemes/ayu-mirage.css";
-import "./schemes/monokai.css";
-import "./schemes/nord.css";
-import "./schemes/solarized-dark.css";
-import "./schemes/ayu-light.css";
-import "./schemes/catppuccin-latte.css";
-import "./schemes/github-light.css";
-import "./schemes/solarized-light.css";
+import "./palettes/content-light.css";
+import "./palettes/content-dark.css";
+import "./palettes/sidebar-light.css";
+import "./palettes/sidebar-dark.css";
 import "./theme.css";
-import "./app.css";
-import "./rules.css";
-import "./away.css";
+import "./base.css";
+import "./controls.css";
+import "./shell.css";
+import "./sidebar.css";
+import "./overlays.css";
+import "./forms.css";
+import "./pickers.css";
+import "./settings.css";
+import "./projects.css";
+import "./day.css";
+import "./blocks.css";
+import "./reports.css";
+import "./calendar.css";
 import "./list.css";
+import "./rules.css";
+import "./windows.css";

@@ -1,0 +1,43 @@
+/* ---------- sidebar ---------- */
+/* Only the sidebar tokens (`--sidebar-*`) inside; theme.css maps the generic ones to them for shared controls. */
+.sidebar {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--sidebar-bg); color: var(--sidebar-text); border-right: 1px solid var(--sidebar-line);
+}
+/* The strip under the window buttons, a drag region. */
+.sidebar-titlebar { flex: none; height: var(--toolbar-height); }
+/* The date navigator keeps its height in views without a period (date-nav--idle), so the view list never moves. */
+.date-nav { display: flex; flex-direction: column; gap: var(--space-1); padding: 0 var(--space-4) var(--space-3); }
+.date-nav--idle { visibility: hidden; }
+.date-nav-title {
+  align-self: flex-start; max-width: 100%; margin: 0 calc(-1 * var(--space-1)); padding: 2px var(--space-1); border: none; border-radius: var(--radius-sm);
+  background: none; color: var(--sidebar-strong); font-size: var(--fs-title); font-weight: 600; line-height: 1.3; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default;
+}
+.date-nav-title:hover { background: var(--sidebar-hover); }
+.date-nav-title:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.date-nav-buttons { display: flex; align-items: center; gap: var(--space-1); min-height: 1.846rem; margin-left: calc(-1 * var(--space-1)); }
+.date-nav-buttons .icon-btn { color: var(--sidebar-muted); }
+.date-nav-buttons .icon-btn:hover:not(:disabled) { background: var(--sidebar-hover); color: var(--sidebar-text); }
+.date-nav-buttons .btn { margin-left: var(--space-1); background: transparent; border-color: var(--sidebar-line); color: var(--sidebar-text); }
+.date-nav-buttons .btn:hover:not(:disabled) { background: var(--sidebar-hover); }
+.sidebar-body { flex: 1; overflow: auto; padding: var(--space-1) 0 var(--space-3); scrollbar-gutter: stable; }
+/* Sidebar entries: a 20px line with --pad and 4px more around it, an 8px inset, a 6px radius (docs/ux.md). On the
+   right the scrollbar's gutter (always kept) stands in for the inset, as far as it is wide. */
+.si {
+  display: flex; align-items: center; gap: var(--space-2); margin: 0 var(--space-2); padding: calc(var(--pad) + 2px) var(--space-2); line-height: 20px;
+  border: none; border-radius: var(--radius-sm); background: none; color: var(--sidebar-text); cursor: default; white-space: nowrap; text-align: left;
+}
+.sidebar-body .si { margin-right: max(0px, 8px - var(--scrollbar-size)); }
+.si:hover { background: var(--sidebar-hover); }
+.si.sel { background: var(--sidebar-selected); color: var(--sidebar-strong); font-weight: 500; }
+.si.sel svg { color: var(--accent); }
+.si:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.si .label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.si .meta { color: var(--sidebar-muted); font-size: var(--fs-meta); font-variant-numeric: tabular-nums; }
+.si svg { flex: none; color: var(--sidebar-muted); }
+.si .keycap { border-color: var(--sidebar-line); color: var(--sidebar-muted); }
+.sidebar-nav { display: flex; flex-direction: column; }
+.sidebar-entry, .sidebar-saved { display: flex; flex-direction: column; }
+.si.si-sub { padding-left: var(--space-6); font-size: var(--fs-meta); color: var(--sidebar-muted); }
+.si.si-sub:hover { color: var(--sidebar-text); }

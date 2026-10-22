@@ -9,13 +9,14 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 2. `main.tsx` calls `installModules()` (`src/modules.ts`) before the first render:
    `registerCoreSettingsPages()` (`components/settings/pages.tsx`), then `installCommands()` (core scopes,
    then the command registry).
-3. `applyInitialScheme()` (`lib/theme.ts`) sets the default scheme for the OS appearance, so the first paint
-   has colors before settings load.
+3. `applyInitialLook()` (`lib/theme.ts`) sets the default look (mode System, scheme Default) for the OS
+   appearance, so the first paint has colors before settings load.
 4. `installNativeMenuGuard()` (`lib/nativeMenu.ts`): a right-click that no app menu handled shows nothing,
    so the WebView's Reload and Inspect Element never appear; text fields keep Cut/Copy/Paste.
 5. `main.tsx` assigns the store to `window.timetracker` only when `import.meta.env.VITE_DEV_HOOKS` is `"1"`
    (the debug bundle of `bun run build:app`), then renders `<ErrorBoundary><App/></ErrorBoundary>`.
-6. `App.tsx` imports the stylesheets (fonts, the scheme files, `theme.css`, `app.css`) and calls
+6. `App.tsx` imports the stylesheets (`styles/index.ts`: fonts, the palettes, `theme.css`, then the
+   stylesheets by layer) and calls
    `useBackendEvents()` once:
    1. `loadUiState()` loads the window layout, then `restoreDay()` shows the last viewed day (within 30
       days). `loadSettings()` loads settings and keybindings; `installCommands()` runs again to apply the user's
@@ -72,7 +73,7 @@ enforces it. `src/api/index.ts` exports `api`, a flat object of thin `invoke` wr
 
 The IPC types are generated from Rust with ts-rs ([ADR 0004](adr/0004-generated-ipc-types.md)) into
 `src/api/types.gen.ts`; never edit it. `src/api/types.ts` re-exports them plus the frontend-only constants:
-`ACCENTS` and `SCHEMES` (mirror Rust's lists; a Rust test compares them), `TEXT_SIZES` and `SETTINGS_LIMITS`
+`ACCENTS` (mirrors Rust's list; a Rust test compares them), `TEXT_SIZES` and `SETTINGS_LIMITS`
 (mirror the clamps in `Settings::sanitized`, the source of truth), `LOG_LEVELS`, `BUNDLED_FONTS`,
 `Keybindings` and `EMPTY_UI_STATE`.
 
@@ -154,10 +155,23 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 
 ## Components
 
-Shell components in `components/`: `Toolbar` (title and Settings; a drag strip), `Sidebar` (`DateNavigator`, then
-the entries of `views.ts`), `StatusBar`, `EmptyView`, `Modal`, `ContextMenu`,
-`Toasts`, `Field` (`InsetField`, `KeyCap`), `Splitter`, `ErrorBoundary`, `CommandPalette` (`palette/`),
-`ShortcutsDialog`, `Dialogs`.
+Shell components in `components/`: `Toolbar` (title and Settings; a drag strip), `Sidebar` (a drag strip
+under the window buttons, `DateNavigator`, then the entries of `views.ts`), `StatusBar`, `EmptyView`, `Modal`
+(`variant`: `sheet`, `panel`, `popover`, `bare`), `ContextMenu`, `Toasts`, `Field` (`InsetField`, `KeyCap`),
+`Splitter`, `ErrorBoundary`, `CommandPalette` (`palette/`), `ShortcutsDialog`, `Dialogs`.
+
+Design components ([ux.md](ux.md#components)):
+
+- `Card` (`Card.tsx`): a recording filled in its project's color. Props `color` (a `shadeColor`), `title`,
+  `subtitle`, `meta` (the foot's left side), `trailing` (its right side) and children (extras such as grips);
+  other props go to the `div`.
+- `Block` (`Block.tsx`): a block placed on the timeline by `top`, `height` and optional `left` and `width`,
+  with `title`, `subtitle` and `meta`; without a `title` it shows no text (a tiny block). Children follow the
+  text.
+- `SegmentedControl` (`SegmentedControl.tsx`): mutually exclusive buttons (`aria-pressed`), labels
+  capitalized; `settings/controls.tsx`'s `Segmented` puts one in a settings row.
+- `AccentSwatches`, `ShadeSwatches`, `AccentDot` and `shadeColor` (`Accent.tsx`); a shade's lightness is
+  `shadeLightness` (`lib/accent.ts`).
 
 Dates are changed in one place, the sidebar:
 
@@ -208,16 +222,16 @@ Tracker components:
 | `DayPage` | `DayHeader` and `Timeline`; the empty state ("Nothing tracked on this day" with the tracker's status text on today, or "Tracking needs permission" with Allow…). Loads on a new day, on `selectDayVersion(day)`, and while today on `useLiveReload` (every 30 s, and on tracker statuses at most every 10 s, since the tracker sends no `data_changed`; paused while `document.visibilityState` is hidden, which WKWebView sets when the window hides, with one reload when it shows again) |
 | `DayHeader` | the date (`formatDayLabel`), totals `recorded 0:00 · tracked 6:12 · away 1:05` (`formatHm`) only for a day other than today (the status bar has today's), the gear that opens `TimelineSettingsPopover` (command `day.settings`, no default key), and the ⋯ menu: Delete activity for this day…, Delete activity in a range… |
 | `DeleteActivityDialog` | dialog `deleteActivity`, a `Modal` sheet: the day (its `dayView.bounds`) or two `datetime-local` fields prefilled with them, the sentence "Deletes 412 activity spans and 3 away spans. Spans that cross the range are deleted entirely. Recordings are not affected." (counts from `api.activityCount`), errors inline, and Delete (`api.activityDelete`). Then a toast `Deleted activity for Tue, Oct 21` whose Undo (`api.activityDeleteUndo`) lasts until `undoUntil`; the Day view reloads from `data_changed` |
-| `TimelineSettingsPopover` | dialog `timelineSettings`, a `Modal` panel under the header's gear: `TimelineControls` and "Hidden apps: n" from `dayView.hiddenApps`, each with Unhide |
-| `Timeline` | the scroll box: `LaneHeader` (sticky), the recordings column (empty until recordings), `TimeAxis`, the lanes with `Spans` (away, gaps) behind them and the current-time line on today. Opens a day scrolled to 30 min before its first activity. Hover (one `mouseover` listener reading `data-block-id`) shows `HoverCard` after 300 ms; right-click, the gear on a hovered block, or ⌃↵ opens the block menu. With `compact` it draws the day at 60% of the zoom and adds `timeline--compact` |
+| `TimelineSettingsPopover` | dialog `timelineSettings`, a `Modal` popover under the header's gear: `TimelineControls` and "Hidden apps: n" from `dayView.hiddenApps`, each with Unhide |
+| `Timeline` | the scroll box: `LaneHeader` (sticky), `Spans` (away and gap bands across the whole body), the recordings column (empty until recordings), `TimeAxis`, the lanes and the current-time line on today. Opens a day scrolled to 30 min before its first activity. Hover (one `mouseover` listener reading `data-block-id`) shows `HoverCard` after 300 ms; right-click, the gear on a hovered block, or ⌃↵ opens the block menu. With `compact` it draws the day at 60% of the zoom and adds `timeline--compact` |
 | `blockMenu.ts` | the block menu's entries: for tracker blocks Group by app, Titles: Document name / App name and Own lane, checked by the effective value (an override equal to the timeline's setting is removed), Hide (a toast with Undo); then Copy title (not for private blocks), Copy URL |
 | `Lane` | its blocks, absolutely placed: `top`/`height` from the times and the zoom, `left`/`width` from `col`/`cols`; only blocks within the visible part ± one screen (`useVisibleRange`, which moves in half-screen steps) |
-| `ActivityBlock` | app and `label` (no label line when it is the app; one line when short or compact, no text when tiny), a gear on hover; `private`, `dimmed` (covered) and `focused` classes |
+| `ActivityBlock` | a `Block`: the app as title, `label` as subtitle (none when it is the app) and the duration as meta (one line when short or compact, no text when tiny), a gear on hover; `private`, `dimmed` (covered) and `focused` classes |
 | `HoverCard` | app, title, URL (http(s) opens through `api.openUrl`) or path, time and duration, the source when external; beside the block, else below or above it |
 | `RecordingsColumn` | the day's `SuggestionBlock`s under its `RecordingBlock`s and, while a span is selected, a dashed outline where its recording would go |
-| `SuggestionBlock` | a rule's suggestion: a button, dashed in the project's shade, with the project, the rule and the duration; click sends `acceptSuggestion`, ⌥-click `acceptRuleSuggestions` (the `rules` slice; Rust's `data_changed` reloads the day) |
+| `SuggestionBlock` | a rule's suggestion: a button outlined dashed and half filled in the project's card colors, with the project, the rule and the duration; click sends `acceptSuggestion`, ⌥-click `acceptRuleSuggestions` (the `rules` slice; Rust's `data_changed` reloads the day) |
 | `useRuleDrag` | ⌥-pressing an activity block (in `Timeline`) shows the recent projects over the top of the recordings column; releasing over one opens the `rule` dialog with `draftFromBlock`: `<app> → <project>`, `app is <app>` and `domain is <host>` for a URL block, else `title contains <title>` |
-| `RecordingBlock` | one span of a recording (`spanId`; a recording with several spans has several blocks, all focused together): the project's shade as a 3px bar and a 22% tint, project, note, tag and duration; dashed top or bottom edge when clipped to the day. Click focuses the recording, double-click edits it at this span; dragging the body moves the span and an edge resizes it (`pointerDrag`, pointer capture), with the ghost from `useSnappedSpan`; release sends `updateSpan` |
+| `RecordingBlock` | one span of a recording (`spanId`; a recording with several spans has several blocks, all focused together): a `Card` in the project's shade: project, note, tag and duration; dashed top or bottom edge when clipped to the day. Click focuses the recording, double-click edits it at this span; dragging the body moves the span and an edge resizes it (`pointerDrag`, pointer capture), with the ghost from `useSnappedSpan`; release sends `updateSpan` |
 | `RecordingEditor` | an optional warning (the List view's gaps), project (`ProjectPicker`; focus starts on the note when one is given), From and To of one span (`HH:MM`, ↑↓ step by the snap interval; an end before the start is on the next day), duration, the recording's other spans read-only ("Also 14:25–15:00"), note (one line; pasted line breaks become spaces), tag (`TagPicker`); Save (↵ or ⌘↵) sends every span with the edited one changed (`withSpanEdited`; a running recording shows "Stop the timer first" instead), Cancel, Delete (⌘⌫) when editing. It edits the whole span, also when the day shows a part of it; `useRecordingDraft` picks the span: `editor.spanId`, else the shown day's first, else the first |
 | `OverlapDialog` | the recordings in the way, "Replace overlapped part" or Cancel |
 | `selectionPress` | the press on the lanes and the axis: a drag selects a span (auto-scrolling near the edges) and dropped on the recordings column opens the editor; a click selects a block's span, ⇧-click extends the selection, a click on nothing clears it |
@@ -344,7 +358,7 @@ Enter picks, Esc closes the list without closing the sheet around it; the list c
 
 | Page | Holds |
 |---|---|
-| Appearance | theme, light and dark scheme swatches, accent row, UI and data sizes, fonts |
+| Appearance | Mode (`SegmentedControl`: Light, Dark, System), Scheme (three tiles, each a miniature window in its light-mode look through `resolveLook`), accent row, UI and data sizes, fonts |
 | Shortcuts | `ShortcutsPage`: every command with its binding; record, reset or unbind |
 | Tracking → Capture | `CapturePage` (`CapturePage.tsx`): address and document switches, excluded apps (an "Add app…" picker listing `appsSeen(30)`), excluded websites (a field; Enter adds) |
 | Tracking → Tracker | `TrackerPage`: away after (idle minutes), check every (poll seconds) |
@@ -357,19 +371,34 @@ A change saves through `saveSettings` (`api.updateSettings`) and applies at once
 
 ## Styling
 
-The CSS is plain and global, imported in this order by `App.tsx`: `styles/fonts.css`, `styles/schemes/<id>.css`
-(one file per scheme), `styles/theme.css` (derived tokens) and `styles/app.css` (sectioned with
-`/* ---------- name ---------- */` comments: shell, fields, menus, dialogs, settings, palette, toasts). Icons
-come from `lucide-react`. Token names and roles are in [ux.md](ux.md#color-schemes-and-tokens).
+The CSS is plain and global, imported by `styles/index.ts` in this order: `styles/fonts.css`, the four palettes
+`styles/palettes/{content,sidebar}-{light,dark}.css`, `styles/theme.css` (derived tokens, the sidebar's token
+mapping, the block colors), then one stylesheet per layer, base to windows: `base.css` (reset, scrollbars,
+text utilities), `controls.css` (buttons, fields, key caps, segmented control, switch, swatches), `shell.css`
+(grid, toolbar, splitter, status bar), `sidebar.css`, `overlays.css` (dialogs, menus, toasts, palette, hover
+card, shortcut overview), `forms.css`, `pickers.css` (pickers, date picker, app picker), `settings.css`,
+`projects.css`, `day.css` (timeline, axis, lanes, away bands, selection, editor), `blocks.css` (everything
+filled: activity blocks, cards, recordings, suggestions, project chips), `reports.css`, `calendar.css`
+(Week, Month), `list.css`, `rules.css` and `windows.css` (timer picker, away prompt). The import order is the
+cascade. Icons come from `lucide-react`. Token names and roles are in [ux.md](ux.md#appearance-and-tokens).
 
-- **Color schemes.** `applyAppearance` sets `data-scheme` on `<html>` from `theme` and the
-  `lightScheme` / `darkScheme` settings, and `data-accent` from `accent`; Rust (`window.rs`) sets the native
-  window theme. Adding a scheme: a file in `styles/schemes/`, its import in `App.tsx`, its id in Rust's
-  `SCHEMES` and in `SCHEMES` in `src/api/types.ts`.
-- **No color literals** (`#hex`, `rgb(`, `hsl(`) outside `styles/schemes/`; `styles/colors.test.ts` scans.
-- **Sizing.** Chrome is in rem: `html { font-size: var(--ui-font-size) }`, so zoom scales it.
-- **macOS look.** The toolbar leaves `--traffic-lights` for the window buttons; `data-tauri-drag-region`
-  marks draggable areas; `user-select: none` applies globally, inputs and `.selectable` opt back in.
+- **Appearance.** `applyAppearance` resolves `mode` and `scheme` with `resolveLook` (`lib/theme.ts`) and sets
+  `data-content` and `data-sidebar` on `<html>`, `data-accent` from `accent`, the font sizes and families;
+  Rust (`window.rs` `apply_window_mode`) sets the native window appearance from `mode`. The palettes match
+  `[data-content="light|dark"]` and `[data-sidebar="light|dark"]`, so any element can preview a look.
+- **Sidebar tokens.** The sidebar uses `--sidebar-*` only; inside `.sidebar`, `theme.css` maps `--text`, `--o2`,
+  `--o3`, `--line`, `--row-hover` and `--sel` to the sidebar set, so shared controls (key caps, buttons)
+  follow it. The accent hues come from the content palette of the sidebar's tone
+  (`[data-sidebar="<tone>"] .sidebar` shares its rule), and `--accent` is re-derived there.
+- **Block colors.** `.card`, `.suggestion` and `.project-chip` derive `--block-fill`, `--block-text` and
+  `--block-meta` from `--rec` (inline, a `shadeColor`) and the palette's `--block-*` numbers.
+  `styles/contrast.ts` mirrors that math (OKLCH to sRGB, WCAG contrast) for the scheme audit.
+- **No color literals** (`#hex`, `rgb(`, `hsl(`) outside `styles/palettes/`; `styles/colors.test.ts` scans.
+- **Sizing.** Chrome is in rem: `html { font-size: var(--ui-font-size) }`, so zoom scales it. Spacing uses
+  `--space-*`, type the `--fs-*` scale.
+- **macOS look.** The sidebar spans the window's height under the traffic lights; without it the toolbar
+  leaves `--traffic-lights` for them. `data-tauri-drag-region` marks draggable areas (the toolbar, the
+  sidebar's top strip); `user-select: none` applies globally, inputs and `.selectable` opt back in.
 
 ## Tests
 
@@ -388,6 +417,6 @@ come from `lucide-react`. Token names and roles are in [ux.md](ux.md#color-schem
 - **Fixtures.** `src/test/settings.ts` (`settings(patch)`, the default `Settings`), `src/test/now.ts` (a fixed
   time).
 - **Scans.** `test/boundary.test.ts` (Tauri imports only in `api` files), `styles/colors.test.ts` (no color
-  literals outside schemes).
+  literals outside palettes).
 - **Style.** Query by role or text, drive the UI with `userEvent`, and assert what is visible or which API
   call was made. Reset with `resetStore()` in `beforeEach`.

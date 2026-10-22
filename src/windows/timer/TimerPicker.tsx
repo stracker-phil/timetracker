@@ -6,7 +6,7 @@ import { NoteInput } from "../../components/NoteInput";
 import { ProjectPicker } from "../../components/pickers/ProjectPicker";
 import { TagPicker } from "../../components/pickers/TagPicker";
 import { formatHm } from "../../lib/format";
-import { applyAppearance } from "../../lib/theme";
+import { applyAppearance, systemIsDark } from "../../lib/theme";
 import { useStore } from "../../state/store";
 
 type Start = (projectId: string, note: string, tagId: string | null) => void;
@@ -23,7 +23,7 @@ function useRecentTimers(): RecentTimer[] {
     const refresh = () => {
       void s.loadSettings().then(() => {
         const settings = useStore.getState().settings;
-        if (settings) applyAppearance(settings);
+        if (settings) applyAppearance(settings, systemIsDark());
       });
       void s.loadProjects();
       void s.loadTimer();
@@ -52,7 +52,7 @@ function RunningTimer({ running, onAnother, onStop }: { running: Running; onAnot
         <span className="grow-text">{running.projectName}</span>
         <span className="mono">{formatHm(running.elapsedMs)}</span>
       </div>
-      {running.recording.note && <p className="o2 mono">{running.recording.note}</p>}
+      {running.recording.note && <p className="o2">{running.recording.note}</p>}
       <div className="actions">
         <button type="button" className="btn" onClick={onAnother}>
           Start another…

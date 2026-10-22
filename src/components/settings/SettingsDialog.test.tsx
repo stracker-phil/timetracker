@@ -37,16 +37,20 @@ describe("SettingsDialog", () => {
   });
 
   describe("Appearance", () => {
-    it("saves the dark scheme chosen in the select", async () => {
+    it.each([
+      ["Light", "light"],
+      ["Dark", "dark"],
+    ])("saves the %s scheme of the clicked tile", async (name, scheme) => {
       renderDialog();
-      await userEvent.selectOptions(screen.getByLabelText("Dark scheme"), "Nord");
-      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ darkScheme: "nord" }));
+      await userEvent.click(within(screen.getByRole("group", { name: "Scheme" })).getByRole("button", { name }));
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ scheme }));
     });
 
-    it("saves the light scheme chosen in the select", async () => {
-      renderDialog();
-      await userEvent.selectOptions(screen.getByLabelText("Light scheme"), "GitHub Light");
-      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ lightScheme: "github-light" }));
+    it("marks the current scheme tile as pressed", () => {
+      renderDialog({ settings: settings({ scheme: "dark" }) });
+      const group = within(screen.getByRole("group", { name: "Scheme" }));
+      expect(group.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
+      expect(group.getByRole("button", { name: "Default" })).toHaveAttribute("aria-pressed", "false");
     });
 
     it("saves the accent of the clicked swatch", async () => {
@@ -65,10 +69,10 @@ describe("SettingsDialog", () => {
       ["Light", "light"],
       ["Dark", "dark"],
       ["System", "system"],
-    ])("saves the %s theme", async (name, theme) => {
-      renderDialog({ settings: settings({ theme: theme === "light" ? "dark" : "light" }) });
-      await userEvent.click(within(screen.getByRole("group", { name: "Theme" })).getByRole("button", { name }));
-      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ theme }));
+    ])("saves the %s mode", async (name, mode) => {
+      renderDialog({ settings: settings({ mode: mode === "light" ? "dark" : "light" }) });
+      await userEvent.click(within(screen.getByRole("group", { name: "Mode" })).getByRole("button", { name }));
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ mode }));
     });
 
     it("saves a typed text size on blur, not per keystroke", async () => {

@@ -73,7 +73,7 @@ export function DatePickerPopover() {
   };
 
   return (
-    <Modal onClose={close} variant="panel" className="date-picker" label="Pick a date" style={style}>
+    <Modal onClose={close} variant="popover" className="date-picker" label="Pick a date" style={style}>
       <div className="date-picker-head">
         <button type="button" className="icon-btn" aria-label="Previous month" onClick={() => setFocus(addMonths(focus, -1))}>
           <ChevronLeft size="1.077rem" />

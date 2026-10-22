@@ -22,6 +22,8 @@ export function formatDay(ms: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+export const capitalize = (s: string) => s[0].toUpperCase() + s.slice(1);
+
 export const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
 
 const MINUTE_MS = 60_000;

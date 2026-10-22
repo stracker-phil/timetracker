@@ -1,7 +1,6 @@
 /** Shared controls for settings pages: grouped cards and rows that apply their change right away. */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-
-export const capitalize = (s: string) => s[0].toUpperCase() + s.slice(1);
+import { SegmentedControl, type SegmentedControlProps } from "../SegmentedControl";
 
 export function Group({ title, children }: { title?: string; children: ReactNode }) {
   return (
@@ -34,31 +33,10 @@ export function Switch({ label, description, checked, onChange }: { label: strin
   );
 }
 
-/** The bare segmented buttons, for rows that show more than the control (a preview). */
-type SegmentedButtonsProps<T extends string> = {
-  label: string;
-  options: readonly T[];
-  /** `null` presses none. */
-  value: T | null;
-  onChange: (v: T) => void;
-};
-
-export function SegmentedButtons<T extends string>({ label, options, value, onChange }: SegmentedButtonsProps<T>) {
-  return (
-    <div className="segmented" role="group" aria-label={label}>
-      {options.map((o) => (
-        <button key={o} type="button" aria-pressed={value === o} onClick={() => onChange(o)}>
-          {capitalize(o)}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-export function Segmented<T extends string>({ label, description, ...buttons }: SegmentedButtonsProps<T> & { description?: ReactNode }) {
+export function Segmented<T extends string>({ label, description, ...buttons }: SegmentedControlProps<T> & { description?: ReactNode }) {
   return (
     <Row label={label} description={description}>
-      <SegmentedButtons label={label} {...buttons} />
+      <SegmentedControl label={label} {...buttons} />
     </Row>
   );
 }

@@ -9,7 +9,7 @@ use crate::launch::LaunchEvent;
 use crate::menu;
 use crate::state::AppState;
 use crate::store::keybindings::Keybindings;
-use crate::store::settings::{AppSettingPatch, LogLevel, Settings, Theme};
+use crate::store::settings::{AppSettingPatch, LogLevel, Mode, Settings};
 use crate::store::ui_state::UiState;
 use crate::timers;
 use crate::tracker::Tracker;
@@ -23,7 +23,7 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
 /// What a settings change has to apply outside the store.
 #[derive(Debug, PartialEq)]
 pub struct SettingsEffects {
-    pub theme: Option<Theme>,
+    pub mode: Option<Mode>,
     pub log_level: Option<log::LevelFilter>,
     pub launch_at_login: Option<bool>,
 }
@@ -40,7 +40,7 @@ pub fn settings_effects(
         None => changed(previous, saved, |s| s.log_level),
     };
     SettingsEffects {
-        theme: changed(previous, saved, |s| s.theme),
+        mode: changed(previous, saved, |s| s.mode),
         log_level: log_level.map(Into::into),
         launch_at_login: changed(previous, saved, |s| s.launch_at_login),
     }
@@ -59,8 +59,8 @@ fn changed<T: PartialEq>(
 
 pub fn apply_settings(app: &AppHandle, previous: Option<&Settings>, saved: &Settings) {
     let effects = settings_effects(previous, saved, app.state::<AppState>().log_override);
-    if let Some(theme) = effects.theme {
-        window::apply_window_theme(app, theme);
+    if let Some(mode) = effects.mode {
+        window::apply_window_mode(app, mode);
     }
     if let Some(level) = effects.log_level {
         log::set_max_level(level);
@@ -266,6 +266,7 @@ pub fn sanitize_log_text(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::settings::Scheme;
 
     #[test]
     fn web_url_rules_cover_scheme_case_and_credentials() {
@@ -308,14 +309,14 @@ mod tests {
     #[test]
     fn startup_without_override_applies_everything() {
         let saved = settings(|s| {
-            s.theme = Theme::Dark;
+            s.mode = Mode::Dark;
             s.log_level = LogLevel::Warn;
             s.launch_at_login = true;
         });
         assert_eq!(
             settings_effects(None, &saved, None),
             SettingsEffects {
-                theme: Some(Theme::Dark),
+                mode: Some(Mode::Dark),
                 log_level: Some(log::LevelFilter::Warn),
                 launch_at_login: Some(true),
             }
@@ -323,13 +324,27 @@ mod tests {
     }
 
     #[test]
-    fn changed_theme_is_applied() {
-        let previous = settings(|s| s.theme = Theme::Light);
-        let saved = settings(|s| s.theme = Theme::Dark);
+    fn changed_mode_is_applied() {
+        let previous = settings(|s| s.mode = Mode::Light);
+        let saved = settings(|s| s.mode = Mode::Dark);
         assert_eq!(
             settings_effects(Some(&previous), &saved, None),
             SettingsEffects {
-                theme: Some(Theme::Dark),
+                mode: Some(Mode::Dark),
+                log_level: None,
+                launch_at_login: None,
+            }
+        );
+    }
+
+    #[test]
+    fn a_scheme_change_alone_applies_nothing_outside_the_page() {
+        let previous = Settings::default();
+        let saved = settings(|s| s.scheme = Scheme::Dark);
+        assert_eq!(
+            settings_effects(Some(&previous), &saved, None),
+            SettingsEffects {
+                mode: None,
                 log_level: None,
                 launch_at_login: None,
             }
@@ -342,7 +357,7 @@ mod tests {
         assert_eq!(
             settings_effects(Some(&current), &current, None),
             SettingsEffects {
-                theme: None,
+                mode: None,
                 log_level: None,
                 launch_at_login: None,
             }
