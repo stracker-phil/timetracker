@@ -15,7 +15,7 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
    so the WebView's Reload and Inspect Element never appear; text fields keep Cut/Copy/Paste.
 5. `main.tsx` assigns the store to `window.timetracker` only when `import.meta.env.VITE_DEV_HOOKS` is `"1"`
    (the debug bundle of `bun run build:app`), then renders `<ErrorBoundary><App/></ErrorBoundary>`.
-6. `App.tsx` imports the stylesheets (`styles/index.ts`: fonts, the palettes, `theme.css`, then the
+6. `App.tsx` imports the stylesheets (`styles/index.ts`: the palettes, `theme.css`, then the
    stylesheets by layer) and calls
    `useBackendEvents()` once:
    1. `loadUiState()` loads the window layout, then `restoreDay()` shows the last viewed day (within 30
@@ -32,9 +32,8 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 ```
 App
 └─ .app grid
-   ├─ Toolbar        drag strip: traffic-light inset, app title, Settings button
    ├─ Sidebar        DateNavigator (the shown period, ‹ › Today), then Day, Week, Month, Reports, Projects, Rules
-   ├─ main           the active view's page (EmptyView for an unknown one)
+   ├─ main           the active view's page, its own Toolbar first (EmptyView for an unknown one)
    └─ StatusBar      left: sidebar toggle, TrackerStatus, the selection; right: running timer, billable ratio, today's totals
 Dialogs (settings, shortcuts, confirm) · PermissionDialog · Welcome · CommandPalette · Toasts
 ```
@@ -122,7 +121,7 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   (Space), `day.blockMenu` (⌃↵, which also offers Make a rule…), `day.selectBlock` (V, its span as the
   selection); `day.extendNext`/`extendPrev` (⇧J ⇧K) move the focus and grow the selection over the block;
   `day.clearFocus` (Escape) clears the block focus, the selection and the focused recording.
-  `activity.deleteDay` and `activity.deleteRange` (no default keys; also in the Day header's ⋯ menu) open
+  `activity.deleteDay` and `activity.deleteRange` (no default keys; also in the Day toolbar's ⋯ menu) open
   `DeleteActivityDialog` once the shown day's view has loaded. `commands/suggestions.ts` holds the
   suggestion commands and registers the `suggestion` scope (beside `day`, active while `focusedSuggestion`
   is a suggestion of the shown day and nothing else has the focus): `suggestion.approve` (↵),
@@ -161,7 +160,8 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 
 ## Components
 
-Shell components in `components/`: `Toolbar` (title and Settings; a drag strip), `Sidebar` (a drag strip
+Shell components in `components/`: `Toolbar` (the unified toolbar every view renders first: `title`, an
+optional `detail` and the actions as children; a drag region), `Sidebar` (a drag strip
 under the window buttons, `DateNavigator`, then the entries of `views.ts`), `StatusBar`, `EmptyView`, `Modal`
 (`variant`: `sheet`, `panel`, `popover`, `bare`), `ContextMenu`, `Toasts`, `Field` (`InsetField`, `KeyCap`),
 `Splitter`, `ErrorBoundary`, `CommandPalette` (`palette/`), `ShortcutsDialog`, `Dialogs`, `AppIcon`, and
@@ -240,8 +240,8 @@ Tracker components:
 | `TimesheetCard` | a `Card` (role button) in the project's shade: the note as title (the project without one), the `AccentDot` and `Project \| Client`, the tag and `n spans`, `durationMs`; its height grows with the duration (`--card-minutes`). Click or ↵ focuses the recording and opens the editor on it, hover `hoverRecording` |
 | `ZoomControl` | −, a range input (`TIMELINE_ZOOM`, step 0.5) and +: `stepTimelineZoom` and `setTimelineZoom` |
 | `LanesPopover` | dialog `lanes`: Summary (`summaryLane`) and Activity (`showAllActivity`) switches (the settings slice's `saveTimeline`), then a switch per `dayView.apps` entry for `ownLane` (`setAppSetting`) |
-| `TimelineSettingsPopover` | dialog `timelineSettings`, a `Modal` popover under the header's gear: `TimelineControls` and "Hidden apps: n" from `dayView.hiddenApps`, each with Unhide |
-| `Timeline` | `timeline-frame`: the scroll box with `LaneHeader` (sticky), `Spans` (away and gap bands across the whole body), `TimeAxis`, the time column (`RecordingsColumn`), the lanes and the current-time line on today; `ZoomControl` floats over its bottom right. Opens a day scrolled to 30 min before its first activity. Hover (one `mouseover` listener reading `data-block-id`) shows `HoverCard` after 300 ms; right-click, the gear on a hovered block, or ⌃↵ opens the block menu. With `compact` it draws the day at 60% of the zoom and adds `timeline--compact` |
+| `TimelineSettingsPopover` | dialog `timelineSettings`, a `Modal` popover under the toolbar's gear: `TimelineControls` and "Hidden apps: n" from `dayView.hiddenApps`, each with Unhide |
+| `Timeline` | `timeline-frame`: the scroll box with `LaneHeader` (sticky), `TimeAxis`, the time column (`RecordingsColumn`), the lanes and the current-time line on today; `ZoomControl` floats over its bottom right. Opens a day scrolled to 30 min before its first activity. Hover (one `mouseover` listener reading `data-block-id`) shows `HoverCard` after 300 ms; right-click, the gear on a hovered block, or ⌃↵ opens the block menu. With `compact` it draws the day at 60% of the zoom and adds `timeline--compact` |
 | `blockMenu.ts` | the block menu's entries: for tracker blocks Group by app, Titles: Document name / App name and Own lane, checked by the effective value (an override equal to the timeline's setting is removed), Hide (a toast with Undo); then Copy title (not for private blocks), Copy URL |
 | `Lane` | its blocks, absolutely placed: `top`/`height` from the times and the zoom, `left`/`width` from `col`/`cols`; only blocks within the visible part ± one screen (`useVisibleRange`, which moves in half-screen steps). The summary lane draws `summary` blocks, the others `memory` blocks |
 | `ActivityBlock` | `look="summary"`: a `Block` with the `AppIcon` (16 px) and the label as title and `activeMs` (`formatShortDuration`) at the bottom right when tall; `look="memory"`: the icon over a bar of the block's real height, the label and `activeMs` beside it (two lines, one line when short, only the bar when tiny); a gear on hover; `private`, `dimmed` (covered) and `focused` classes |
@@ -251,7 +251,7 @@ Tracker components:
 | `SuggestionCard` | a suggestion in the timesheet: a ghost `Card` (role group, Tab stop; focusing it `focusSuggestion`), note or project as title, project and client, "Suggested by <rule>" and the tag, the duration; ✓ `approveSuggestion`, ✕ `dismissSuggestions([id])`, a click `editSuggestion` |
 | `useRuleDrag` | ⌥-pressing an activity block (in `Timeline`, while no editor is open) shows the recent projects over the top of the recordings column; releasing over one opens the `rule` dialog with `draftFromBlock`: `<app> → <project>`, `app is <app>` and `domain is <host>` for a URL block, else `title contains <title>` |
 | `RecordingBlock` | one span of a recording in the Day view's time column (`spanId`; a recording with several spans has several blocks, all focused and hovered together): a `Card` in the project's shade with only its start and end. Dashed top or bottom edge when clipped to the day. A click focuses the recording and opens the editor. Hovering sets `hoverRecording`; dragging the body moves the span and an edge resizes it (`pointerDrag`, pointer capture), with the ghost from `useSnappedSpan` (the dragged edge as `moving`); release sends the unsnapped span and `moving` to `updateSpan`, and Rust snaps it |
-| `RecordingEditor` | the editor as a form card in the timesheet (in the Week and Month views inside `EditorSheet`), on the `editor` slice's `draft`: an optional warning (the List view's gaps), the note as the title field (autofocus; one line, pasted line breaks become spaces), project (`ProjectPicker`), tag (`TagPicker`), the duration (`DurationField`, `0 h 20 m` from `draft.totalMs`; a change goes to `setDraftTotal`), the covered activity (`CoveredActivity`) and the spans (`EditorSpans`); Save (↵ or ⌘↵) and Delete (⌘⌫) come from `useEditorSave` (every span as Rust rolled it; a running recording keeps its spans and sends only the fields; field errors under their field), Cancel (Escape, wherever the focus is). Opened on a suggestion it shows "Suggested by <rule>. Approve records it.", the submit reads Approve and saves through `createRecording(input, suggestionId)`. Its form is named "New recording", "Edit suggestion" or "Edit recording" (`id` lets `EditorSheet` point at it). A new recording takes the project of `useProposal` while it has none. Scrolls into view when it opens |
+| `RecordingEditor` | the editor as a form card in the timesheet (in the Week and Month views inside `EditorSheet`), on the `editor` slice's `draft`: an optional warning (the List view's gaps), the note as the title field (autofocus; one line, pasted line breaks become spaces), project (`ProjectPicker`), tag (`TagPicker`), the duration (`DurationField`, `0 h 20 m` from `draft.totalMs`; a change goes to `setDraftTotal`), the covered activity (`CoveredActivity`), the spans (`EditorSpans`) and the buttons Delete (⌘⌫) at the leading end, then Cancel (Escape, wherever the focus is) and Save (↵ or ⌘↵), the default button, last; Save and Delete come from `useEditorSave` (every span as Rust rolled it; a running recording keeps its spans and sends only the fields; field errors under their field). Opened on a suggestion it shows "Suggested by <rule>. Approve records it.", the submit reads Approve and saves through `createRecording(input, suggestionId)`. Its form is named "New recording", "Edit suggestion" or "Edit recording" (`id` lets `EditorSheet` point at it). A new recording takes the project of `useProposal` while it has none. Scrolls into view when it opens |
 | `EditorSpans` | the draft's spans as From / To rows (`TimeField`: `HH:MM`, ↑↓ by the snap step), each with ✕ while there are several, and "Add span" (`addDraftSpan`: Rust places it after the last); a running recording's spans are shown, not edited |
 | `EditorParts` | `DurationField`, `CoveredActivity` ("Activity n", opening the list of blocks with their start and time inside) and `OverlapNotice` (the recordings in the way, "Replace overlapped part" or Back, inside the editor) |
 | `useProposal` | `api.recordingProposal` for the draft's spans once they settle (150 ms) |
@@ -325,7 +325,7 @@ position) and their writes; a `data_changed` of kind `rules` reloads them.
 
 ### Week and Month
 
-`components/calendar/`: `CalendarHeader` (the title, totals), `EditorSheet` (the editor as a `Modal` sheet
+`components/calendar/`: each view's `Toolbar` (the title, totals), `EditorSheet` (the editor as a `Modal` sheet
 around `RecordingEditor`: the Week and Month have no timesheet) and `entry.ts` (`editEntry`: the editor on an
 entry's recording, found by its `start`/`end` as `at`; `entryName`). `WeekView` runs `weekView(day)` keyed by
 the day and `changeCount`: day heads (`DayHead`: `Mon 19`, today as "Today" in accent, and the day's recorded
@@ -347,7 +347,7 @@ The editor's `edit` request may carry `at` (a span of the recording), so views o
 ### Reports screen
 
 `components/reports/`: `ReportsView` (the `reports` view) runs `reportRun(filter)` keyed by the filter and
-`changeCount`: a header with the range (`formatRangeLabel`), the grouping of the copied text, Copy as text
+`changeCount`: a `Toolbar` with the range (`formatRangeLabel`), the grouping of the copied text, Copy as text
 (`reports.copyText`, ⌘⇧C: `reportText` to the clipboard) and Save report… (`reports.save`: the `prompt`
 dialog, then `saveReport`); `ReportFilters`, one slim row (Period presets as a segmented control, Custom revealing dates, `MultiSelect`
 for clients, projects and tags, Rounding, Archived projects). Below, all rendered from `ReportResult` as Rust
@@ -366,11 +366,11 @@ lists saved reports under Reports: a click opens one, right-click renames (promp
 ### Projects screen
 
 `components/projects/`: `ProjectsPage` (the `projects` view; it reloads the projects on `changeCount`, so the
-hours follow every recording): a header (Show archived, New client, New project), then a card per client by
-name (`ClientHead`: its color swatch, the name, which edits the client, the number of projects, the labels
+hours follow every recording): a `Toolbar` (Show archived, New client, New project), then an inset group per
+client by name (`ClientHead` above it: its color dot, the name, which edits the client, the number of projects, the labels
 This week and This month, and a `+` that creates a project for that client, except on archived clients;
-"No projects" when empty), client-less projects under "No client" last, then `TagsSection` as a card. A
-project row: color dot and name (click edits), a `billable` badge for a billable project, `last used 2 d
+"No projects" when empty), client-less projects under "No client" last, then `TagsSection` as one more. A
+project row: color dot and name (click edits), `billable` (a `.secondary-label`) for a billable project, `last used 2 d
 ago`, then `weekMs` and `monthMs` as `h:mm` in two right-aligned columns (`--o3` at zero); archived rows
 (with Show archived) are dimmed with Restore. The row's context menu: Edit…, Archive or Restore, Copy id.
 
@@ -393,7 +393,7 @@ Enter picks, Esc closes the list without closing the sheet around it; the list c
 | Picker | Props | Behavior |
 |---|---|---|
 | `ProjectPicker` | `value: string \| null`, `onChange(projectId)`, `autoFocus?` | shows the chosen project as color dot + `Client / Name`; empty query: "Recent" (up to 5) then all active projects by client; typed: fuzzy matches, best first; the last option is always `New project "<query>"…`, which opens `ProjectSheet` prefilled and picks the saved project. Archived projects never show |
-| `TagPicker` | `value: string \| null`, `onChange(tagId \| null)` | one tag or none ([ADR 0019](adr/0019-one-tag-per-recording.md)): the chosen tag in mono in the field, "No tag" as placeholder; the open list starts with "No tag", then every tag; typing filters; Enter picks the highlighted one or creates `New tag "<query>"` (`saveTag`) and picks it; ⌫ on an empty query removes the tag. The editor, `RuleSheet`, the timer picker and the away window use it |
+| `TagPicker` | `value: string \| null`, `onChange(tagId \| null)` | one tag or none ([ADR 0019](adr/0019-one-tag-per-recording.md)): the chosen tag in the field, "No tag" as placeholder; the open list starts with "No tag", then every tag; typing filters; Enter picks the highlighted one or creates `New tag "<query>"` (`saveTag`) and picks it; ⌫ on an empty query removes the tag. The editor, `RuleSheet`, the timer picker and the away window use it |
 
 ### Settings pages
 
@@ -402,7 +402,7 @@ Enter picks, Esc closes the list without closing the sheet around it; the list c
 
 | Page | Holds |
 |---|---|
-| Appearance | Mode (`SegmentedControl`: Light, Dark; local state, starting on the macOS mode) that picks which setting the Scheme tiles below edit (`lightScheme` or `darkScheme`; three tiles, each a miniature window in its look through `schemeLook`, pressed for that mode's scheme), accent row, UI and data sizes, fonts |
+| Appearance | Mode (`SegmentedControl`: Light, Dark; local state, starting on the macOS mode) that picks which setting the Scheme tiles below edit (`lightScheme` or `darkScheme`; three tiles, each a miniature window in its look through `schemeLook`, pressed for that mode's scheme), accent row (`AccentSwatches withSystem`: System first, then the nine hues), UI and data sizes, fonts |
 | Shortcuts | `ShortcutsPage`: every command with its binding; record, reset or unbind |
 | Tracking → Capture | `CapturePage` (`CapturePage.tsx`): address and document switches, excluded apps (an "Add app…" picker listing `appsSeen(30)`), excluded websites (a field; Enter adds) |
 | Tracking → Tracker | `TrackerPage`: away after (idle minutes), check every (poll seconds) |
@@ -415,24 +415,27 @@ A change saves through `saveSettings` (`api.updateSettings`) and applies at once
 
 ## Styling
 
-The CSS is plain and global, imported by `styles/index.ts` in this order: `styles/fonts.css`, the four palettes
+The CSS is plain and global, imported by `styles/index.ts` in this order: the four palettes
 `styles/palettes/{content,sidebar}-{light,dark}.css`, `styles/theme.css` (derived tokens, the sidebar's token
 mapping, the block colors), then one stylesheet per layer, base to windows: `base.css` (reset, scrollbars,
-text utilities), `controls.css` (buttons, fields, key caps, segmented control, switch, swatches), `shell.css`
-(grid, toolbar, splitter, status bar), `sidebar.css`, `overlays.css` (dialogs, menus, toasts, palette, hover
+text utilities), `controls.css` (the AppKit-sized controls of [ux.md](ux.md#controls): buttons, fields, popup
+buttons, key caps, segmented control, switch, swatches, secondary labels), `shell.css` (grid, the unified
+toolbar, splitter, status bar), `sidebar.css`, `overlays.css` (dialogs, menus, toasts, palette, hover
 card, shortcut overview), `forms.css`, `pickers.css` (pickers, date picker, app picker), `settings.css`,
-`projects.css`, `day.css` (timeline, axis, lanes, away bands, selection, editor), `blocks.css` (everything
+`projects.css`, `day.css` (timeline, axis, lanes, selection, editor), `blocks.css` (everything
 filled: activity blocks, cards, recordings, suggestions, project chips), `reports.css`, `calendar.css`
 (Week, Month), `list.css`, `rules.css` and `windows.css` (timer picker, away prompt). The import order is the
 cascade. Icons come from `lucide-react`. Token names and roles are in [ux.md](ux.md#appearance-and-tokens).
 
 - **Appearance.** `applyAppearance` picks `lightScheme` or `darkScheme` by `prefers-color-scheme` with
   `resolveLook` (`lib/theme.ts`; `useSystemDark` re-renders on a macOS switch) and sets `data-content` and
-  `data-sidebar` on `<html>`, `data-accent` from `accent`, the font sizes and families. The native window
+  `data-sidebar` on `<html>`, `data-accent` from `accent` (`system` maps `--accent` to WebKit's `AccentColor`
+and `--on-accent` to `--on-system-accent`; `applyInitialLook` sets it before settings load), the font sizes
+and the families in front of the system stacks (`--font-ui-system`, `--font-mono-system`). The native window
   theme is never set, so it follows macOS ([ADR 0022](adr/0022-a-scheme-per-system-mode.md)). The palettes match
   `[data-content="light|dark"]` and `[data-sidebar="light|dark"]`, so any element can preview a look.
 - **Sidebar tokens.** The sidebar uses `--sidebar-*` only; inside `.sidebar`, `theme.css` maps `--text`, `--o2`,
-  `--o3`, `--line`, `--row-hover` and `--sel` to the sidebar set, so shared controls (key caps, buttons)
+  `--o3`, `--line`, `--fill` and `--sel` to the sidebar set, so shared controls (key caps, buttons)
   follow it. The accent hues come from the content palette of the sidebar's tone
   (`[data-sidebar="<tone>"] .sidebar` shares its rule), and `--accent` is re-derived there.
 - **Block colors.** `.card`, `.suggestion` and `.project-chip` derive `--block-fill`, `--block-text` and
@@ -441,9 +444,15 @@ cascade. Icons come from `lucide-react`. Token names and roles are in [ux.md](ux
 - **No color literals** (`#hex`, `rgb(`, `hsl(`) outside `styles/palettes/`; `styles/colors.test.ts` scans.
 - **Sizing.** Chrome is in rem: `html { font-size: var(--ui-font-size) }`, so zoom scales it. Spacing uses
   `--space-*`, type the `--fs-*` scale.
-- **macOS look.** The sidebar spans the window's height under the traffic lights; without it the toolbar
-  leaves `--traffic-lights` for them. `data-tauri-drag-region` marks draggable areas (the toolbar, the
-  sidebar's top strip); `user-select: none` applies globally, inputs and `.selectable` opt back in.
+- **macOS look** ([ADR 0024](adr/0024-native-macos-look.md)). The sidebar spans the window's height under the
+  traffic lights; each view's `Toolbar` is the 52px row beside them (`trafficLightPosition` 20/28 in
+  `tauri.conf.json` centers them in it); without the sidebar the toolbar leaves `--traffic-lights` for them.
+  `data-tauri-drag-region` marks draggable areas (the toolbar, its title and spacer, the sidebar's top
+  strip); `user-select: none` applies globally, inputs and `.selectable` opt back in. The body is
+  transparent; `sidebar.css` makes the sidebar transparent where its tone matches `prefers-color-scheme`, so
+  the window's `sidebar` effect (vibrancy) shows through.
+- **Groups.** Grouped content is an inset group (`--fill-quiet`, `--radius`, no border; one shared rule in `base.css`): `.settings-card`,
+  `.project-rows` and `.tag-rows`, `.rule-rows`, `.report-totals`, `.report-chart`, `.report-table`.
 
 ## Tests
 

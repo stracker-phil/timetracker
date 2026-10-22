@@ -53,7 +53,7 @@ export const api = {
   /** The day's rows cut to the day; open rows end now. */
   activityList: (day: string) => invoke<ActivityRow[]>("activity_list", { day }),
   awayList: (day: string) => invoke<AwayRow[]>("away_list", { day }),
-  /** The Day view of a day (`YYYY-MM-DD`): lanes of packed blocks, away spans, gaps, totals. */
+  /** The Day view of a day (`YYYY-MM-DD`): lanes of packed blocks, recordings, totals. */
   dayView: (day: string) => invoke<DayView>("day_view", { day }),
   /** Recorded, tracked and away time of a day, without its view. */
   dayTotals: (day: string) => invoke<DayTotals>("day_totals", { day }),

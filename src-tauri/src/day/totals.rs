@@ -1,11 +1,8 @@
-//! The day's recorded, tracked and away time, and its gaps.
+//! The day's recorded, tracked and away time.
 
-use super::{DayInput, DayTotals, Gap, TRACKER_SOURCE};
+use super::{DayInput, DayTotals, TRACKER_SOURCE};
 use crate::db::activities::ActivityRow;
 use crate::db::time::{Ms, clip};
-
-/// Time without activity or away shorter than this is no gap.
-pub const GAP_MIN: Ms = 2 * 60_000;
 
 /// Recorded, tracked and away time inside the day; `names` is not read.
 pub fn totals(input: &DayInput) -> DayTotals {
@@ -57,32 +54,6 @@ pub(super) fn union_length(spans: Vec<(Ms, Ms)>) -> Ms {
     union(spans).iter().map(|(start, end)| end - start).sum()
 }
 
-/// Holes of at least `GAP_MIN` between the first activity's start and the last activity's end.
-pub(super) fn gaps(activity: &[(Ms, Ms)], away: &[(Ms, Ms)]) -> Vec<Gap> {
-    let (Some(first), Some(last)) = (
-        activity.iter().map(|s| s.0).min(),
-        activity.iter().map(|s| s.1).max(),
-    ) else {
-        return Vec::new();
-    };
-    let filled = union(activity.iter().chain(away).copied().collect());
-    let mut gaps = Vec::new();
-    let mut at = first;
-    for (start, end) in filled {
-        if start >= last {
-            break;
-        }
-        if start - at >= GAP_MIN {
-            gaps.push(Gap {
-                start: at,
-                end: start,
-            });
-        }
-        at = at.max(end);
-    }
-    gaps
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,37 +62,7 @@ mod tests {
     use crate::db::away::AwayReason;
 
     #[test]
-    fn a_hole_of_under_two_minutes_is_no_gap_and_two_minutes_is() {
-        for (hole, expected) in [(GAP_MIN - 1, vec![]), (GAP_MIN, vec![(mins(10), mins(12))])] {
-            let rows = vec![
-                code(1, 0, 10),
-                activity(2, mins(10) + hole, Some(mins(20) + hole), "Code", ""),
-            ];
-
-            let view = view(&input(rows, vec![]), &settings());
-
-            assert_eq!(gap_spans(&view), expected, "hole {hole}");
-        }
-    }
-
-    #[test]
-    fn gaps_lie_only_between_the_first_and_the_last_activity() {
-        let rows = vec![code(1, 300, 310), code(2, 330, 340)];
-
-        let view = view(&input(rows, vec![]), &settings());
-
-        assert_eq!(gap_spans(&view), [(mins(310), mins(330))]);
-    }
-
-    #[test]
-    fn a_day_with_one_activity_has_no_gaps() {
-        let view = view(&input(vec![code(1, 0, 10)], vec![]), &settings());
-
-        assert!(view.gaps.is_empty());
-    }
-
-    #[test]
-    fn external_activity_fills_gaps_between_tracker_spans() {
+    fn external_activity_adds_no_tracked_time_between_tracker_spans() {
         let rows = vec![
             code(1, 0, 10),
             from_source(code(2, 10, 40), "external:planner"),
@@ -130,33 +71,7 @@ mod tests {
 
         let view = view(&input(rows, vec![]), &settings());
 
-        assert!(view.gaps.is_empty());
-    }
-
-    #[test]
-    fn away_spans_fill_the_holes_they_cover() {
-        let rows = vec![code(1, 0, 10), code(2, 40, 50)];
-
-        let covered = view(
-            &input(
-                rows.clone(),
-                vec![away(1, mins(10), Some(mins(40)), AwayReason::Idle)],
-            ),
-            &settings(),
-        );
-        let partly = view(
-            &input(
-                rows,
-                vec![away(1, mins(15), Some(mins(30)), AwayReason::Idle)],
-            ),
-            &settings(),
-        );
-
-        assert!(covered.gaps.is_empty());
-        assert_eq!(
-            gap_spans(&partly),
-            [(mins(10), mins(15)), (mins(30), mins(40))]
-        );
+        assert_eq!(view.totals.tracked_ms, mins(20));
     }
 
     #[test]

@@ -4,6 +4,7 @@ The reference for how TimeTracker looks and behaves. Update this page with every
 changes an item. Decisions: [ADR 0016](adr/0016-color-schemes.md) (token sets, no literals),
 [ADR 0021](adr/0021-appearance-modes-and-schemes.md) (schemes and palettes),
 [ADR 0022](adr/0022-a-scheme-per-system-mode.md) (a scheme per macOS mode),
+[ADR 0024](adr/0024-native-macos-look.md) (the native look),
 [ADR 0018](adr/0018-one-line-notes-tags-copyable-reports.md) (notes, tags, reports). Implementation (files,
 registries, CSS structure): [frontend.md](frontend.md#styling).
 
@@ -15,8 +16,10 @@ registries, CSS structure): [frontend.md](frontend.md#styling).
   only suggests.
 - Fully keyboard-usable, light and dark. Every action is a command with a rebindable shortcut and a palette
   entry.
-- Geist for all text, titles included; times, durations and counts in tabular figures (`.tabular`); mono only
-  for machine text such as paths, URLs, ids and commands.
+- The system font (SF Pro) for all text, titles included, at the macOS text styles; numbers in tabular
+  figures; mono (SF Mono) only for machine text such as paths, URLs, ids and commands.
+- Native: it reads as a macOS app beside Calendar and System Settings (unified toolbar, inset groups,
+  AppKit-sized controls; [ADR 0024](adr/0024-native-macos-look.md)), never as a web page.
 - Hierarchy comes from weight, opacity and space: a strong title, then a normal subtitle, then meta in
   `--o2`. Recordings are filled cards in their project's color; activity is a soft grey surface.
 - The accent marks interactive things only: keys, links, focus, selection. A client's color is one of the
@@ -26,15 +29,24 @@ registries, CSS structure): [frontend.md](frontend.md#styling).
 
 ## Surfaces
 
+The window is a native macOS window ([ADR 0024](adr/0024-native-macos-look.md)): neutral greys, no tinted
+page, no outlined cards.
+
 | Token | Used for |
 |---|---|
-| `--sidebar-bg` | the sidebar, full height, under the window buttons |
-| `--bg` | content: the toolbar and the main view |
+| `--sidebar-bg` | the sidebar, full height, under the window buttons; the window's sidebar material instead where the scheme's sidebar tone matches the macOS mode |
+| `--bg` | content: the window background under the toolbar and the view |
+| `--bg-quiet` | a pane beside the active one (the timesheet), weekend columns |
 | `--chrome` | the status bar, the Settings page list |
-| `--pop` | overlays: palette, popovers, context menus, dialogs, toasts, Settings cards |
+| `--pop` | overlays: palette, popovers, context menus, dialogs, toasts |
+| `--fill-quiet` | inset groups (System Settings style): Settings groups, the Projects and Rules lists, the Reports cards |
 
 Separators are `--line` hairlines (`--sidebar-line` beside the sidebar). Bars inside content stay on `--bg`.
-Every surface is opaque; the window's `sidebar` vibrancy never shows.
+Grouped content is an **inset group**: `--fill-quiet`, `--radius` (10px), no border, rows divided by
+`--line` hairlines inside the group's 12px padding, no hover fill on plain rows; its heading (13px semibold
+`--text`, or a name with a dot) sits above it, outside the fill. In the Default scheme the dark sidebar is
+opaque; in the Light scheme in light mode and the Dark scheme in dark mode the sidebar is transparent, so the
+window's `sidebar` material (vibrancy) shows through, and it greys out while the window is inactive.
 
 ## Shell
 
@@ -50,18 +62,21 @@ One place for views and one place for dates: the sidebar.
   week is Last week). Projects and Rules keep the navigator's space empty. Clicking the heading opens a month
   calendar under it (today in accent text, the shown day, week or month on `--sel`); a day shows that day,
   its week or month, or in Reports the report's period that holds it.
-- **Toolbar**: a thin drag strip beside the sidebar with the app title and the Settings button. Without the
-  sidebar it leaves `--traffic-lights` for the window buttons.
-- **View headers** keep their titles, totals and view switches, never date controls. The Day header shows
-  the shown day's totals only when it is not today.
-- **Status bar** (plain text in `--o3` on `--chrome`, beside the sidebar): on the left the sidebar toggle,
-  the tracker's state (a dot: accent while running, `--o3` while away or paused, `--style-red` without
-  permission; the tray's text; Pause, Resume or Allow…) and the selection; on the right the running timer, the
-  billable ratio and today's totals in mono, `recorded 1:00 · tracked 3:12`, in every view. The billable ratio
-  is a small bar (a neutral track, filled in the accent; no red or green judgment) with `Billable 80 %`, and
-  `Billable 6:24 / 8:00` in its tooltip, for the period the navigator shows (day, week, month, report period;
-  today on Projects and Rules). It hides while nothing is recorded in that period. The text zoom has no
-  readout: ⌘= ⌘- ⌘0.
+- **Unified toolbar** (`Toolbar`): every view starts with one 52px row beside the window buttons (which sit
+  centered in it, 20px from the left): the view's title (`--fs-title`, bold, `--text-strong`), its detail
+  (`--fs-meta`, `--o2`, e.g. `recorded 1:00 · tracked 4:12`), then its actions at the trailing end, with a
+  hairline below. Empty parts drag the window. There is no app title and no Settings button (⌘, the app
+  menu and the palette open Settings). Without the sidebar the row leaves `--traffic-lights` for the window
+  buttons. Titles, totals and view switches live here, never date controls; the Day toolbar shows the
+  shown day's totals only when it is not today.
+- **Status bar** (plain `--fs-meta` text in `--o2` on `--chrome`, beside the sidebar): on the left the sidebar
+  toggle, the tracker's state (a dot: accent while running, `--o3` while away or paused, `--style-red`
+  without permission; the tray's text; Pause, Resume or Allow…) and the selection; on the right the running
+  timer, the billable ratio and today's totals, `recorded 1:00 · tracked 3:12`, in every view. The billable
+  ratio is a small bar (a neutral track, filled in the accent; no red or green judgment) with
+  `Billable 80 %`, and `Billable 6:24 / 8:00` in its tooltip, for the period the navigator shows (day, week,
+  month, report period; today on Projects and Rules). It hides while nothing is recorded in that period. The
+  text zoom has no readout: ⌘= ⌘- ⌘0.
 
 ## Appearance and tokens
 
@@ -73,38 +88,38 @@ is all light ([ADR 0022](adr/0022-a-scheme-per-system-mode.md)). The accent is o
 
 | Scheme | Sidebar | Content | Default for |
 |---|---|---|---|
-| Default | dark | light | light mode |
-| Light | light | light | |
-| Dark | dark (a shade darker than the content) | dark | dark mode |
+| Default | dark (opaque) | light | light mode |
+| Light | light (vibrant in light mode) | light | |
+| Dark | dark (a shade lighter than the content; vibrant in dark mode) | dark | dark mode |
 
 `resolveLook` (`lib/theme.ts`) picks the current mode's scheme, `schemeLook` turns it into a content tone and
 a sidebar tone, and `applyAppearance` sets `data-content` and `data-sidebar` on `<html>` (Settings' scheme
-tiles set them on their own element). Four
-palettes in `src/styles/palettes/` answer them, warm-grey neutrals designed for this app: `content-light`,
-`content-dark`, `sidebar-light`, `sidebar-dark`. Palettes of a kind define the same tokens; no color literal
-appears outside them (`src/styles/colors.test.ts`).
+tiles set them on their own element). Four palettes in `src/styles/palettes/` answer them, neutral macOS
+greys: `content-light`, `content-dark`, `sidebar-light`, `sidebar-dark`. Palettes of a kind define the same
+tokens; no color literal appears outside them (`src/styles/colors.test.ts`).
 
 **Content palette** tokens:
 
 | Token | Light | Dark | Role |
 |---|---|---|---|
-| `--bg` | `#fbfaf8` | `#1f1e1c` | content surface |
-| `--chrome` | `#f4f2ee` | `#1a1917` | status bar, Settings page list |
-| `--bg-quiet` | `#f5f3f0` | `#1b1a18` | a pane beside the active one |
-| `--pop` | `#ffffff` | `#2c2b28` | overlays and Settings cards |
-| `--field`, `--field-line` | `#ffffff`, `#d6d1ca` | `#171615`, `#403e3a` | input background and border; overlay border, key caps |
-| `--text`, `--text-strong` | `#2a2825`, `#12110f` | `#ebe8e3`, `#ffffff` | primary text (`--o2`, `--o3` derive from it); titles and pressed segments |
-| `--line` | `#dbd6cf` | `#383632` | hairlines |
-| `--band`, `--row-hover` | `#f1eee9`, `#efece7` | `#262523`, `#2a2926` | section band; hovered row |
-| `--track`, `--raised` | `#ebe8e3`, `#ffffff` | `#161514`, `#3a3834` | segmented control track and pressed segment |
-| `--shadow`, `--shadow-small`, `--shadow-inset` | soft, warm | deeper | overlays; raised segment, switch thumb; field inset |
-| `--scrim` | warm 22% | black 50% | behind sheets and panels |
-| `--knob`, `--shade` | | | switch thumb while off; black for `color-mix` darkening |
+| `--bg` | `#ffffff` | `#1e1e1e` | content surface, the window background |
+| `--bg-quiet` | `#f7f7f7` | `#222222` | a pane beside the active one, weekends |
+| `--chrome` | `#f5f5f5` | `#252525` | status bar, Settings page list |
+| `--pop` | `#ffffff` | `#2c2c2c` | overlays |
+| `--text`, `--text-strong` | `#262626`, black | `#e6e6e6`, white | primary text (`--o2`, `--o3` derive from it); titles and pressed segments |
+| `--fill-quiet`, `--fill`, `--fill-strong` | black at 3.5, 5.5 and 10% | white at 4.5, 8 and 14% | translucent fills over any surface: inset groups; hover bezels, the segmented track, search fields, key caps; pressed bezels, the switch track |
+| `--line` | black at 12% | white at 10% | hairlines |
+| `--control`, `--control-pressed` | white, `#ebebeb` | `#4a4a4a`, `#5c5c5c` | push button and popup button bezel; pressed |
+| `--control-shadow` | a hairline ring and a 1px drop | a top highlight, a dark ring | the push button bezel's edge |
+| `--field`, `--field-line` | white, black at 16% | white at 5%, white at 16% | text field fill and its 1px inset frame |
+| `--raised`, `--knob` | white, white | `#5a5a5a`, white | the pressed segment; the switch thumb |
+| `--shadow`, `--shadow-small` | | | overlays (a hairline ring and a soft drop; no border); the raised segment and the switch thumb |
+| `--scrim`, `--shade` | black 14% | black 35% | behind sheets and panels; black for `color-mix` darkening |
 | `--a-<name>`, `--accent-text-max-l` | deep hues, `0.56` | light hues, `1` | the nine accent hues (`ACCENTS`): app accent and project colors; the highest OKLCH lightness of `--accent-text`. They also apply inside a sidebar of the same tone |
-| `--on-accent` | white | `#1a1917` | text on any accent's fill, at least 4.5:1 on every hue |
+| `--on-accent` | white | `#1a1a1a` | text on any palette accent's fill, at least 4.5:1 on every hue |
+| `--on-system-accent` | white | white | text on the System accent, as macOS draws it |
 | `--style-green` | | | the success tint; red, yellow, blue and purple are accent hues (`theme.css`) |
-| `--activity-fill`, `-hover`, `-dim` | `#efebe5` … | `#2d2c29` … | activity blocks; hovered; covered by a recording |
-| `--away-band` | `#ebe7e1` | `#171615` | away and idle bands on the timeline |
+| `--activity-fill`, `-hover`, `-dim` | `#f0f0f0` … | `#2c2c2c` … | activity blocks; hovered; covered by a recording |
 | `--block-fill-l`, `-spread`, `-c` | `0.91`, `0.1`, `0.07` | `0.36`, `0.08`, `0.06` | a filled recording's OKLCH lightness, lightness spread per shade, chroma cap |
 | `--block-text-l`, `-c` | `0.32`, `0.1` | `0.94`, `0.035` | its text's lightness and chroma cap |
 
@@ -114,66 +129,97 @@ sidebar's tone):
 
 | Token | Dark | Light | Role |
 |---|---|---|---|
-| `--sidebar-bg` | `#161514` | `#efece7` | the surface |
-| `--sidebar-text`, `--sidebar-strong` | `#e9e6e1`, `#ffffff` | `#2a2825`, `#12110f` | entries; the selected entry and the date heading |
-| `--sidebar-muted` | `#a29d95` | `#615c55` | icons, key caps, saved reports |
-| `--sidebar-hover`, `--sidebar-selected` | `#22211f`, `#2e2c29` | `#e6e2dc`, `#e0dbd3` | hovered and selected entry |
-| `--sidebar-line` | `#2a2826` | `#ddd8d1` | its border, the Today button |
+| `--sidebar-bg` | `#262626` | `#ebebeb` | the surface where it is opaque |
+| `--sidebar-text`, `--sidebar-strong` | `#e6e6e6`, white | `#262626`, black | entries; the selected entry and the date heading |
+| `--sidebar-muted` | `#9e9e9e` | `#636363` | icons, key caps, saved reports |
+| `--sidebar-hover`, `--sidebar-selected` | white at 5 and 12% | black at 4 and 9% | hovered and selected entry (translucent, so they work on the material) |
+| `--sidebar-line` | white at 10% | black at 10% | its edge, the Today button |
 
 Derived tokens in `src/styles/theme.css`, the same for every palette:
 
 | Token | Value | Role |
 |---|---|---|
-| `--accent` | `var(--a-<choice>)` via `[data-accent]`; re-derived inside the sidebar | interactive things only |
+| `--accent` | `AccentColor` for `system`, else `var(--a-<choice>)`, via `[data-accent]`; re-derived inside the sidebar | interactive things only |
 | `--style-red`, `-yellow`, `-blue`, `-purple` | `--a-red`, `--a-gold`, `--a-blue`, `--a-purple` | status tints (an error background is a `color-mix()` of `--style-red`) |
 | `--o2`, `--o3` | `--text` at 68% and 52% | secondary and tertiary text |
 | `--sel` | `--accent` at 20% (`--sidebar-selected` in the sidebar) | selected row |
 | `--accent-text` | `--accent` with its lightness capped at `--accent-text-max-l` | the accent as text |
+| `--focus-ring` | a 3px ring of the accent at 45% | focus on fields, buttons, segments |
 | `--block-fill`, `--block-text`, `--block-meta` | from the project's shade `--rec` on `.card`, `.suggestion`, `.project-chip` | a filled recording: the fill, its text, its foot (text 75% over the fill) |
 | `--ui-font-size`, `--data-font-size` | 13px, 12px | set from Settings by `applyAppearance` (`lib/theme.ts`) |
-| `--fs-title`, `--fs-body`, `--fs-meta`, `--fs-caption` | 17, 13, 12 and 11px in rem | the type scale |
-| `--space-1` … `--space-6`, `--space-8` | 4 to 24px and 32px in rem | the 4px spacing grid |
-| `--font-ui`, `--font-mono` | Geist, JetBrains Mono | bundled defaults; Settings accepts any installed family |
-| `--radius-sm`, `--radius`, `--radius-lg` | 6, 9, 12px | buttons and fields; menus and popovers; sheets and panels |
-| `--radius-block`, `--radius-card` | 6, 8px | activity blocks; recording cards and Settings cards |
-| `--traffic-lights` | 88px | the toolbar's left inset for the window buttons without the sidebar (px: they don't scale) |
+| `--fs-display`, `--fs-title`, `--fs-body`, `--fs-meta`, `--fs-caption` | 22, 15, 13, 11 and 10px in rem | the type scale |
+| `--space-1` … `--space-6`, `--space-8`, `--margin` | 4 to 24px and 32px in rem; 20px | spacing; content margins |
+| `--control-h`, `--toolbar-control-h` | 22px, 28px in rem | push buttons, fields, popup buttons, menu items; toolbar buttons |
+| `--font-ui`, `--font-mono` | the system font (SF Pro), SF Mono | defaults; Settings accepts any installed family |
+| `--radius-sm`, `--radius`, `--radius-lg` | 6, 10, 12px | controls; menus, popovers and inset groups; sheets and panels |
+| `--radius-block`, `--radius-card` | 6, 8px | activity blocks; recording cards |
+| `--toolbar-height`, `--traffic-lights` | 52px, 84px | the unified toolbar (centered on the window buttons); its left inset without the sidebar (px: they don't scale) |
 
-**Accent:** Settings → Appearance "Accent" picks the app accent from the nine swatches.
+**Accent:** Settings → Appearance "Accent" picks the app accent: System first (a swatch of the accent hues
+around a circle; it follows the macOS accent color through WebKit's `AccentColor`, with white text on it),
+then the nine hues. System is the default (`SYSTEM_ACCENT`); an unknown value falls back to it.
 
-**Fonts:** Geist (400, 500, 600) and JetBrains Mono (400, 500, 600, italic 400) are bundled (SIL OFL).
-Settings → Appearance "UI font" and "Mono font" take any installed family name; empty means the bundled one.
+**Fonts:** none are bundled. The UI uses the system font (`-apple-system`, SF Pro) and machine text SF Mono
+(`ui-monospace`). Settings → Appearance "UI font" and "Mono font" take any installed family name; empty means
+the system one.
 
 ## Type
 
 | Token | Size | Used for |
 |---|---|---|
-| `--fs-title` | 17px | view titles, the sidebar's date heading, sheet titles |
-| `--fs-body` | 13px (the UI size) | everything else, block and card titles included |
-| `--fs-meta` | 12px | meta lines, labels, descriptions, counts, the status bar |
-| `--fs-caption` | 11px | hour labels, key caps |
+| `--fs-display` | 22px | large numbers: the timesheet total, the report total, the editor's duration, the running timer |
+| `--fs-title` | 15px | toolbar titles, the sidebar's date heading, Settings page titles, the palette's field |
+| `--fs-body` | 13px (the UI size) | everything else, block and card titles, sheet titles (bold) and group headings (semibold) included |
+| `--fs-meta` | 11px | secondary text: meta lines, labels, descriptions, counts, the status bar, toolbar details |
+| `--fs-caption` | 10px | hour labels, key caps |
 
-Times and durations use tabular figures; `--data-font-size` (12px) sizes data values such as activity titles. Both sizes are settings: Appearance "UI size"
-(13px, 10–24) and "Data size" (12px, 9–28); ⌘= and ⌘- zoom both, except in the Day view, where they zoom
-the timeline. Chrome sizes are in rem of the UI size. Weights 400, 500 and 600. Numbers and times use
-tabular figures. Durations read `1 h 05 min` (`formatDuration`), clock times `09:30` (`formatClock`).
+Times and durations use tabular figures (the body sets `tabular-nums`); `--data-font-size` (12px) sizes
+data values such as activity titles. Both sizes are settings: Appearance "UI size" (13px, 10–24) and "Data
+size" (12px, 9–28); ⌘= and ⌘- zoom both, except in the Day view, where they zoom the timeline. Chrome sizes
+are in rem of the UI size. Weights 400, 500, 600 and 700 (titles). Never mono in the UI: mono is for paths,
+bundle ids, URLs and commands only. Durations read `1 h 05 min` (`formatDuration`), clock times `09:30`
+(`formatClock`).
 
 ## Spacing and radius
 
-Spacing sits on a 4px grid (`--space-1` 4px to `--space-8` 32px, in rem so it zooms). Recording cards have an
-8px radius and 4px by 8px padding; activity blocks a 6px radius and a 1px gap to their neighbours; sheets
-24px padding and a 12px radius.
+Spacing sits on an 8px grid with 4px half steps (`--space-1` 4px to `--space-8` 32px, in rem so it zooms);
+content keeps 20px margins (`--margin`). Rows are at least 28px (inset group rows 36px). Recording cards have
+an 8px radius and 4px by 8px padding; activity blocks a 6px radius and a 1px gap to their neighbours; inset
+groups and popovers a 10px radius; sheets 20px padding and a 12px radius.
+
+## Controls
+
+AppKit sizes and looks ([ADR 0024](adr/0024-native-macos-look.md)), in `styles/controls.css`:
+
+| Kind | Class | Look |
+|---|---|---|
+| Push button | `.btn` | 22px high, 10px side padding, 6px radius, `--control` fill with `--control-shadow`, regular weight; pressed `--control-pressed`; no hover change |
+| Default button | `.btn-primary` | the push button filled with the accent and `--on-accent` text (500). Only a sheet's or window's default action, last in its row |
+| Destructive | `.btn-danger` | a push button with `--style-red` text (500) |
+| Borderless | `.btn-quiet`, `.icon-btn` | no bezel until hovered (`--fill`), pressed `--fill-strong`; icons in `--o2`. `.icon-btn` is a 22px square |
+| Toolbar button | `.btn` or `.icon-btn` inside `.toolbar` | borderless, 28px high, icon and label, hover bezel |
+| Popup button | `select.input` | WebKit's native chevrons inside the push button bezel |
+| Text field | `.input` | 22px, `--field` with a 1px inset `--field-line` frame, 6px radius; focus adds `--focus-ring` |
+| Search field | `InsetField` (`.inset-field`) | a `--fill` capsule with a leading icon and an optional key cap; on focus the field surface, frame and ring |
+| Segmented control | `SegmentedControl` (`.segmented`) | a 22px `--fill` track with 2px padding; segments in `--text`; the pressed one raised on `--raised` with `--shadow-small`, its label `--text-strong` |
+| Switch | `.switch` | 32 by 18px, a `--fill-strong` track, a white `--knob` thumb with `--shadow-small`; on, the track is the accent |
+| Key cap | `KeyCap` (`.keycap`) | the UI font at `--fs-caption`, `--o3` on a `--fill` rounded rect |
+| Secondary label | `.secondary-label` | plain `--fs-meta` `--o2` text after a name (`billable`, `archived`); never a chip or badge |
+| Swatches | `AccentSwatches`, `ShadeSwatches` | 16px circles with a hairline; the chosen one ringed; `withSystem` adds the System swatch first |
+
+Buttons in a row end with the default button: Cancel, then Save; a destructive or secondary action sits at the
+leading end (the recording editor's Delete).
 
 ## Components
 
 | Component | Where | Look |
 |---|---|---|
-| `Card` (`components/Card.tsx`) | a recording in the timesheet, the time column and the Week view's columns | filled with `--block-fill`, text `--block-text`: the title (600), the subtitle (500), a foot with meta (the tag, with an icon) and the duration in mono on the right |
-| `Block` (`components/Block.tsx`) | a summary block on the timeline, placed by time (activity lanes draw memories, see Timeline) | `--activity-fill`, 1px `--bg` border, `--radius-block`: the app (500, `--text-strong`), the title (`--text`), the duration trailing at the bottom right (mono, `--o2`), as on a card; one line when short |
-| Buttons | `.btn` (secondary), `.btn-primary`, `.btn-danger`, `.icon-btn` | secondary: `--pop` with a `--field-line` border; primary and danger: the accent or `--style-red` with `--on-accent`; icon: a 2rem square |
-| `SegmentedControl` (`components/SegmentedControl.tsx`) | Day mode, Settings choices | a `--track` with the pressed segment raised on `--raised` with `--shadow-small` |
-| Popover | `Modal variant="popover"`: the date picker, the timeline settings | `--pop`, `--radius`, placed under its control, no scrim |
-| Sheet | `Modal` (default `variant="sheet"`) | `--pop`, `--radius-lg`, 24px padding, over `--scrim` |
-| Donut (`ReportChart` in `components/reports/`) | the Reports charts | an SVG ring of slices in accent colors on a `--band` track, percentages outside, the total in the center, a legend beside |
+| `Toolbar` (`components/Toolbar.tsx`) | the first row of every view | see Shell; props `title`, `detail` and the actions as children |
+| `Card` (`components/Card.tsx`) | a recording in the timesheet, the time column and the Week view's columns | filled with `--block-fill`, text `--block-text`, no shadow: the title (600), the subtitle (500), a foot with meta (the tag, with an icon) and the duration (tabular) on the right |
+| `Block` (`components/Block.tsx`) | a summary block on the timeline, placed by time (activity lanes draw memories, see Timeline) | `--activity-fill`, 1px `--bg` border, `--radius-block`: the app (500, `--text-strong`), the title (`--text`), the duration trailing at the bottom right (`--o2`), as on a card; one line when short |
+| Popover | `Modal variant="popover"`: the date picker, the timeline settings | `--pop`, `--radius`, `--shadow`, placed under its control, no scrim |
+| Sheet | `Modal` (default `variant="sheet"`) | `--pop`, `--radius-lg`, `--shadow`, 20px padding, the title 13px bold, over `--scrim`; buttons at least 70px wide |
+| Donut (`ReportChart` in `components/reports/`) | the Reports charts | an SVG ring of slices in accent colors on a `--fill` track, percentages outside, the total in the center, a legend beside |
 
 ## Opacity levels
 
@@ -186,45 +232,37 @@ Spacing sits on a 4px grid (`--space-1` 4px to `--space-8` 32px, in rem so it zo
 ## Rows
 
 Every list shares one row: sidebar entries, palette results, settings lists. A 20px line with padding above
-and below, a 1px `--line` hairline below, `--row-hover` on hover, `--sel` when selected. Sidebar entries have
-2px more padding, an 8px inset and a 6px radius; the active one is `--sidebar-selected` with its label in
-`--sidebar-strong` (500) and its icon in the accent.
+and below (at least 28px; 36px in inset groups), hairlines between rows, no hover fill on plain rows, `--sel`
+when selected. Sidebar entries have 2px more padding, an 8px inset and a 6px radius; the active one is
+`--sidebar-selected` with its label in `--sidebar-strong` (500) and its icon in the accent.
 
-Lists grouped under a heading sit on a card (`--pop`, a `--line` border, `--radius-lg`): the Projects screen
-has one per client and one for the tags, its head the client's rounded color swatch and name (600), and
-rows separated by hairlines that take `--row-hover` with `--radius-sm`. Archived rows are dimmed (55%
-opacity) and keep a Restore action. A project row starts with a color dot (`AccentDot`, in its shade);
-a billable project carries a small `billable` badge after its name. The project sheet has a Billable switch
-(a plain yes/no; there are no rates or amounts).
-Colors are chosen with nine round swatches (`AccentSwatches` for a hue, `ShadeSwatches` for a shade), the
-chosen one ringed. A tag is plain text, never a pill; a recording has at most one
+Lists grouped under a heading are inset groups (see Surfaces): the Projects screen has one per client and
+one for the tags, the heading above each the client's color dot and name (600) with `3 projects` in `--o3`
+and the column labels. Archived rows are dimmed (55% opacity) and keep a Restore action. A project row starts
+with a color dot (`AccentDot`, in its shade); a billable project carries `billable` as a secondary label
+after its name. The project sheet has a Billable switch (a plain yes/no; there are no rates or amounts).
+Colors are chosen with round swatches (`AccentSwatches` for a hue, `ShadeSwatches` for a shade), the chosen
+one ringed. A tag is plain text, never a pill; a recording has at most one
 ([ADR 0019](adr/0019-one-tag-per-recording.md)).
 
 ## Inputs
 
-Inputs look like inputs, never like rows.
-
-- **Field:** `--field` background, 1px `--field-line` border, 6px radius, `--shadow-inset`, a leading icon,
-  placeholder in `--o3`, optional key cap on the right (`InsetField` in `components/Field.tsx`). Plain
-  `.input` controls (dialogs, Settings) share the frame without the icon.
-- **Segmented control** (`SegmentedControl`, `.segmented`): a `--track` without a border; segments in `--o2`
-  (500), hover primary text; the pressed segment is raised on `--raised` with `--shadow-small`, its label in
-  `--text-strong`. Used for the Day mode switch, the report's Period and Settings choices.
-- **Switch:** a track in `--field-line` with a `--knob` thumb; on, the track is the accent and the thumb
-  `--on-accent`.
-- **Key cap** (`KeyCap`): mono `--fs-caption`, `--o3`, 1px `--field-line` border, 4px radius. Key caps follow the
-  user's bindings.
+Inputs look like AppKit's (see Controls), never like rows. A text field is a 22px frame on `--field` with a
+1px inset `--field-line` and the accent focus ring; a search field (`InsetField`, `components/Field.tsx`) a
+`--fill` capsule with a leading icon, the placeholder in `--o3` and an optional key cap that follows the
+user's bindings. A select is a popup button. The segmented control serves the Day mode switch, the report's
+Period and Settings choices.
 
 ## Overlays
 
-Palette, popovers, context menus, toasts and dialogs: `--pop` background, 1px `--field-line` border,
-`--shadow` (a hairline ring and a soft drop). Menus, toasts and popovers take `--radius` (9px), sheets and
-panels `--radius-lg` (12px). Sheets and the palette sit over `--scrim`; popovers (the date picker, the
-timeline settings) sit over nothing. Overlays take
-`Esc` first. Palette results use the row anatomy; the active one is `--sel` with a 2px accent bar on the left,
-and command shortcuts show as key caps. Context menus use the UI font; the hovered or focused item is
-`--accent` with `--on-accent` text, disabled items `--o3`, separators a 1px `--line`. The native WebKit
-context menu is suppressed outside text fields (`lib/nativeMenu.ts`).
+Palette, popovers, context menus, toasts and dialogs: `--pop` with `--shadow` (a hairline ring and a soft
+drop; no border). Menus, toasts and popovers take `--radius` (10px), sheets and panels `--radius-lg` (12px).
+Sheets and the palette sit over `--scrim`; popovers (the date picker, the timeline settings) sit over
+nothing. Overlays take `Esc` first. Palette results use the row anatomy with a 6px radius; the active one is
+filled with the accent and `--on-accent` text, as in Spotlight, and command shortcuts show as key caps.
+Context menus use the UI font, 22px items with a 5px radius; the hovered or focused item is `--accent` with
+`--on-accent` text, disabled items `--o3`, separators an inset 1px `--line`. The native WebKit context menu is
+suppressed outside text fields (`lib/nativeMenu.ts`).
 
 Pickers (project, tag) are a field with a list below it on `--pop`, using the palette's row anatomy and
 small `--o3` section labels; the last option creates what was typed (`New project "x"…`). The tag picker
@@ -253,11 +291,11 @@ text; a row's date or detail follows its title in `--o2`.
 
 ## Timeline
 
-The Day view reads like Timely's: a slim header, the timesheet on the left, then the timeline.
+The Day view reads like Timely's: the toolbar, the timesheet on the left, then the timeline.
 
-- **Header:** the date, the day's totals (`recorded 1:00 · tracked 6:12 · away 1:05`) only for a day other
+- **Toolbar:** the date, the day's totals (`recorded 1:00 · tracked 6:12 · away 1:05`) only for a day other
   than today (the status bar has today's), the Timeline/List switch, Lanes (timeline only), the timeline
-  settings gear and the ⋯ menu.
+  settings gear and the ⋯ menu, all borderless toolbar buttons.
 - **Timesheet** (left, about a quarter of the width, resizable with the splitter; kept as the `timesheet`
   pane size): "Timesheet", the day's recorded total large (`6h 05m`) and a + button (a new recording for the
   selection, else now; `recording.new`). Below, one `Card` per recording in the order of its first span on
@@ -286,22 +324,22 @@ The Day view reads like Timely's: a slim header, the timesheet on the left, then
 - **Focus** (J/K/H/L or a click) is a 2px accent outline; Space opens the details card for it.
 - **Hover card** after 300 ms on `--pop` with `--shadow`: app, full title, URL or path (selectable; an
   http(s) URL opens in the browser), `09:12–09:40 · 28 min`, and the source when external.
-- **Away spans and gaps** are darker bands across the axis, the time column and the lanes, behind the
-  blocks: away in `--away-band` (darker than `--bg`), reading "Away · idle 25 min" in `--o2` when tall
-  enough; gaps (2 min or more between the day's first and last activity) in a lighter mix of it, unlabeled.
+- **Away time and gaps** draw nothing: the lanes show only the captured activity, and the body keeps one
+  background. Away time counts in the day's totals (`away 1:05`) and can be recorded from the away prompt.
 - **Now** is a 1px accent line on today, updated every 30 s.
-- **Empty day:** "Nothing tracked on this day" with the tracker's status line; without the Accessibility
-  permission "Tracking needs permission" with Allow…. The timesheet stays beside it.
+- **Empty day** (no activity and no recordings; away time alone is empty): "Nothing tracked on this day"
+  with the tracker's status line; without the Accessibility permission "Tracking needs permission" with
+  Allow…. The timesheet stays beside it.
 - **Zoom** is 1–8 px per minute (default 2.5), kept in `ui_state.json` as `timelineZoom`: a floating control
   at the timeline's bottom right (−, a slider, +) and ⌘= / ⌘-.
-- **Lanes** (header): a popover with Summary and Activity switches and a switch per app of the day (most
+- **Lanes** (toolbar): a popover with Summary and Activity switches and a switch per app of the day (most
   time first) that gives it a lane of its own (`ownLane`).
 - **Compact** draws the day at 60% of the zoom, every block on one line.
 - **Block gear:** a hovered block shows a gear at its top right; it opens the same menu as a right-click.
 
 ### Timeline settings
 
-Settings → Timeline and the Day header's gear (both save at once; the Day view reloads):
+Settings → Timeline and the Day toolbar's gear (both save at once; the Day view reloads):
 
 | Setting | Values | Does |
 |---|---|---|
@@ -315,7 +353,7 @@ Settings → Timeline and the Day header's gear (both save at once; the Day view
 | Time snapping | 5 min | the grid recordings snap to: 1, 5, 10 or 15 min |
 
 Per app (Settings → Timeline → Apps, or a block's menu): Group by app and Titles (default follows the
-timeline), Hidden (gone from every lane; the header popover lists hidden apps with Unhide), Own lane.
+timeline), Hidden (gone from every lane; the Lanes popover lists hidden apps with Unhide), Own lane.
 
 ## Recordings
 
@@ -339,7 +377,7 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   the card. A span shows only its start (top left) and end (bottom right), and a click on it opens the
   editor (the Week lists whole recordings as cards, see [Week and Month](#week-and-month)). Each is a `Card` filled in the project's shade (`--block-fill`, light in light palettes, a muted dark tint
   in dark ones) with `--block-text`, at least 4.5:1 for every accent and shade: the project name (600), the
-  note (500), then the tag with a tag icon and the duration in mono at the bottom right. A dashed top or
+  note (500), then the tag with a tag icon and the duration (tabular) at the bottom right. A dashed top or
   bottom edge means the span continues on another day. The top and bottom 6px resize the span; the body
   moves it. Activity under recordings (half or more) takes `--activity-fill-dim` (summary) or a regular-weight
   `--o2` label (memories); hover lifts it.
@@ -383,8 +421,8 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 
 - ⌘⇧L or Day mode → List shows the day as rows grouped like the timeline, longest first: the app's icon and
   name in `--o2`, the label (500), the URL or path (mono, `--o3`), the duration right (tabular) with a thin
-  covered bar (the accent over `--line`) and `· 3 spans` when the activity came in parts. Rows are separated
-  by hairlines and take `--row-hover` with rounded corners. The search is an inset field with its `/` key cap. The timesheet with its cards stays on the left, as in the
+  covered bar (the accent over `--fill-strong`) and `· 3 spans` when the activity came in parts. Rows are
+  separated by hairlines, without a hover fill; the focused row is `--sel`. The search is an inset field with its `/` key cap. The timesheet with its cards stays on the left, as in the
   timeline.
 - A strip of project chips (recent first, More… for the rest), each filled like a recording card, sits above
   the rows. Drag a row onto a chip
@@ -415,12 +453,13 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   recordings column; the one under the pointer gets a dashed accent outline. Dropping opens the rule sheet,
   filled in; nothing is saved before Save. From the keyboard, the block menu's Make a rule… (⌃↵) opens the
   sheet with the block's conditions and no project.
-- **Rules screen**: one card per rule (`--pop`, small shadow, at most 52rem wide): a grip, the enable switch,
-  the name (600) with today's matches on the right ("1h 20m today · 2 to review" in the accent while
-  suggestions wait, "Nothing today", "Off" when disabled), then the project as a filled chip and the
-  conditions in `--o2`; a disabled rule's text is dimmed. The order is the priority; drag the grip, or ⌥↑ ⌥↓ with the focus in a row.
+- **Rules screen**: the toolbar with New rule, the intro, then one inset group of rules (at most 52rem
+  wide), a row per rule divided by hairlines: a grip, the enable switch, the name (600) with today's matches
+  on the right ("1h 20m today · 2 to review" in the accent while suggestions wait, "Nothing today", "Off" when
+  disabled), then the project as a dot in its shade with its name and the conditions in `--o2`; a disabled
+  rule's text is dimmed. A dragged row lifts onto `--pop` with `--shadow`. The order is the priority; drag the grip, or ⌥↑ ⌥↓ with the focus in a row.
 - **Rule sheet**: the form on the left, "Last 7 days" on the right with the matching time and the hits
-  (day and time in mono `--o2`, the app, the title). Below 720px the preview moves under the form.
+  (day and time in `--o2`, the app, the title). Below 720px the preview moves under the form.
 
 ## Timer
 
@@ -456,45 +495,48 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   hours on the right, then one line per recording in start order, all the same height: a dot in the
   project's shade, the note or the project (ellipsized) and the duration on the right; a click edits it. No
   cap on the lines.
-- Both headers read the period's label and its totals, `recorded 32:10 · tracked 41:05` (Month: recorded).
+- Both toolbars read the period's label and its totals, `recorded 32:10 · tracked 41:05` (Month: recorded).
+  The Month grid runs edge to edge under the toolbar, without an outer frame, as in Calendar.
 
 ## Projects
 
-- A header with Show archived, New client and New project (primary). Below, one card per client (by name;
-  client-less projects under "No client" last): the head has the client's swatch, its name (a click edits
-  it), `3 projects` in `--o3`, the column labels This week and This month, and + for a new project of that
-  client. Each project row: its dot, the name (a click edits it), `billable`, `last used 2 d ago` in `--o3`,
-  then the hours this week and this month as `3:20` (tabular, `--o3` at zero; Rust computes both for the
-  current week and month). Right-click: Edit…, Archive or Restore, Copy id. The tags follow on a card of
-  their own.
+- The toolbar holds Show archived, New client and New project (toolbar buttons). Below, one inset group per
+  client (by name; client-less projects under "No client" last) under its heading: the client's dot, its
+  name (a click edits it), `3 projects` in `--o3`, the column labels This week and This month, and + for a
+  new project of that client. Each project row: its dot, the name (a click edits it), `billable` and
+  `last used 2 d ago` as secondary labels, then the hours this week and this month as `3:20` (tabular,
+  `--o3` at zero; Rust computes both for the current week and month). Right-click: Edit…, Archive or
+  Restore, Copy id. The tags follow in an inset group of their own, with the New tag field below it.
 
 ## Settings
 
-- A panel with the page list on `--chrome` (the current page on `--sel`, its icon in the accent) and the page
-  on `--bg`: the title in `--fs-title`, the intro in `--o2`, then groups. A group heading is small semibold
-  `--o2` text over its card (`--pop`, `--radius-card`); each row has the label and its description (`--o2`)
-  on the left and the control on the right, hairlines between rows. Counts and durations use tabular
+- A panel in the System Settings layout: the page list on `--chrome` (28px rows; the current page filled
+  with the accent and `--on-accent` text, as a focused macOS sidebar) and the page on `--bg`: the title in
+  `--fs-title` bold, the intro in `--o2`, then groups. A group heading is 13px semibold `--text` over its
+  inset group; each row (at least 36px) has the label and its description (`--fs-meta`, `--o2`) on the left
+  and the control on the right, hairlines between rows. Counts and durations use tabular
   figures; paths, bundle ids and commands are mono and selectable. A failure reads in red on a light red
   tint.
 
 ## Reports
 
-The Reports screen follows Timely's day report, without money. The header has the period as title, then
+The Reports screen follows Timely's day report, without money. The toolbar has the period as title, then
 the grouping of the copied text (By project, tag, day, week or month), Copy as text and Save report…; below,
 one slim filter bar (Period presets as a segmented control, Custom revealing dates, clients, projects, tags, rounding, archived projects). The
-sidebar's navigator steps the period. The content sits on `--pop` cards with `--radius-lg`:
+sidebar's navigator steps the period. The content sits in inset groups:
 
-1. **Totals:** `Total` with the hours large (`--text-strong`, 1.75 × `--fs-title`), then Recordings,
+1. **Totals:** `Total` with the hours large (`--text-strong`, `--fs-display` bold), then Recordings,
    Projects, Untagged (only when there is untagged time) and `Billable 6:24 h · 80 %` (of the rounded total;
    only when time is recorded), each a `--o2` label over its value. With rounding, the unrounded total stands
    below in `--o3`.
 2. **Charts:** two donuts side by side, By client and By tag; a By select on each switches between client,
    project and tag. The ring has the slices in their colors (a client's accent, a project's shade, a tag's
-   accent by its place in the tag list, graphite for No client and Untagged) on a `--band` track, the
+   accent by its place in the tag list, graphite for No client and Untagged) on a `--fill` track, the
    percentages outside the ring in `--o2` (from 3 %), the total and the count (`2 clients`) in the center,
    and a legend with a dot, the name and the hours.
-3. **Table:** client rows on `--band` with their hours; project rows with a color dot, the name, the
-   `billable` badge, the number of recordings, a **Copy notes** button and the hours; a click on a project
+3. **Table:** rows divided by hairlines: client rows (600) with their hours; project rows with a color dot,
+   the name, `billable` as a secondary label, the number of recordings, a borderless **Copy notes** button
+   and the hours; a click on a project
    unfolds its recordings (Expand all / Collapse all for every project). A recording row shows its day and
    all its spans of the day (`Wed, Oct 21 · 14:25–15:00, 16:05–20:15`), the note and the tag below. Copy
    notes copies the project's notes for the period, by first span, one per line (empty notes skipped,
@@ -710,18 +752,19 @@ The three schemes in both modes are checked on the Day view, List view, Week, Re
 sets the current macOS mode's scheme to each of the three through `scripts/dev/js.sh` and restores the
 settings; the app follows macOS, so switch the system appearance and run it again for the other mode). Only
 the default look of each mode is committed: `default-light-day.png` and `dark-dark-day.png`. Each scheme is
-one look in either mode; the mode changes only the native window chrome. Fixes live in
-`src/styles/palettes/` only.
+one look in either mode; the mode changes the native window chrome and, where the sidebar's tone matches it,
+lets the sidebar material show through. Fixes live in `src/styles/palettes/` only.
 
 Targets, computed by `src/styles/contrast.ts` (WCAG contrast; OKLCH as the CSS computes it):
-- `--text` at least 7:1, `--o2` at least 4.5:1 and `--o3` at least 3:1 on `--bg`; `--line` at least 1.3:1
-  against `--bg`.
-- `--on-accent` at least 4.5:1 on every accent; each accent at least 3:1 on `--bg`.
+- `--text` at least 7:1, `--o2` at least 4.5:1 and `--o3` at least 3:1 on `--bg`; `--line` (over `--bg`) at
+  least 1.3:1 against `--bg`.
+- `--on-accent` at least 4.5:1 on every palette accent (the System accent takes white, as macOS does); each
+  accent at least 3:1 on `--bg`.
 - A filled recording, for every accent and all nine shades: `--block-text` at least 4.5:1 on `--block-fill`,
   its foot (`--block-meta`) too.
 - Sidebar: `--sidebar-text` and `--sidebar-muted` at least 4.5:1 on `--sidebar-bg`; every accent of the sidebar's tone
   at least 3:1 on it.
 
 Measured: light content block text 8.5:1 at worst (foot 4.6), dark content 8.3 (foot 5.4); `--o3` 3.2 (light)
-and 4.7 (dark); the weakest on-accent pair 4.65 (gold, light). The List view's covered bar fills with the
+and 4.6 (dark); the weakest on-accent pair 4.65 (gold, light). The List view's covered bar fills with the
 accent.

@@ -2,8 +2,12 @@
 /* Only the sidebar tokens (`--sidebar-*`) inside; theme.css maps the generic ones to them for shared controls. */
 .sidebar {
   display: flex; flex-direction: column; min-height: 0;
-  background: var(--sidebar-bg); color: var(--sidebar-text); border-right: 1px solid var(--sidebar-line);
+  background: var(--sidebar-bg); color: var(--sidebar-text); box-shadow: inset -1px 0 0 var(--sidebar-line);
 }
+/* Where the sidebar's tone matches the macOS mode, the window's sidebar material shows through (vibrancy), as in a
+   native sidebar; the Default scheme's dark sidebar in light mode stays opaque. */
+@media (prefers-color-scheme: light) { [data-sidebar="light"] .sidebar { background: transparent; } }
+@media (prefers-color-scheme: dark) { [data-sidebar="dark"] .sidebar { background: transparent; } }
 /* The strip under the window buttons, a drag region. */
 .sidebar-titlebar { flex: none; height: var(--toolbar-height); }
 /* The date navigator keeps its height in views without a period (date-nav--idle), so the view list never moves. */
@@ -19,7 +23,7 @@
 .date-nav-buttons { display: flex; align-items: center; gap: var(--space-1); min-height: 1.846rem; margin-left: calc(-1 * var(--space-1)); }
 .date-nav-buttons .icon-btn { color: var(--sidebar-muted); }
 .date-nav-buttons .icon-btn:hover:not(:disabled) { background: var(--sidebar-hover); color: var(--sidebar-text); }
-.date-nav-buttons .btn { margin-left: var(--space-1); background: transparent; border-color: var(--sidebar-line); color: var(--sidebar-text); }
+.date-nav-buttons .btn { margin-left: var(--space-1); background: transparent; box-shadow: inset 0 0 0 1px var(--sidebar-line); color: var(--sidebar-text); }
 .date-nav-buttons .btn:hover:not(:disabled) { background: var(--sidebar-hover); }
 .sidebar-body { flex: 1; overflow: auto; padding: var(--space-1) 0 var(--space-3); scrollbar-gutter: stable; }
 /* Sidebar entries: a 20px line with --pad and 4px more around it, an 8px inset, a 6px radius (docs/ux.md). On the
@@ -36,7 +40,7 @@
 .si .label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .si .meta { color: var(--sidebar-muted); font-size: var(--fs-meta); font-variant-numeric: tabular-nums; }
 .si svg { flex: none; color: var(--sidebar-muted); }
-.si .keycap { border-color: var(--sidebar-line); color: var(--sidebar-muted); }
+.si .keycap { background: none; color: var(--sidebar-muted); }
 .sidebar-nav { display: flex; flex-direction: column; }
 .sidebar-entry, .sidebar-saved { display: flex; flex-direction: column; }
 .si.si-sub { padding-left: var(--space-6); font-size: var(--fs-meta); color: var(--sidebar-muted); }

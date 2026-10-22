@@ -8,6 +8,8 @@ no color literal appears outside them stays.
 
 Superseded in part by [0022](0022-a-scheme-per-system-mode.md): the Mode setting, the single scheme and the
 dark-mode rule.
+Superseded in part by [0024](0024-native-macos-look.md): the warm-grey neutrals and the dark sidebar a shade
+darker than dark content.
 
 ## Context
 

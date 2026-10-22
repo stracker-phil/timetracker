@@ -120,6 +120,18 @@ describe("SettingsDialog", () => {
       expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ accent: "teal" }));
     });
 
+    it("saves the system accent when the System swatch is clicked", async () => {
+      renderDialog();
+      await userEvent.click(screen.getByRole("button", { name: "Accent system" }));
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ accent: "system" }));
+    });
+
+    it("marks the System swatch as pressed while the accent is system", () => {
+      renderDialog({ settings: settings({ accent: "system" }) });
+      expect(screen.getByRole("button", { name: "Accent system" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "Accent orange" })).toHaveAttribute("aria-pressed", "false");
+    });
+
     it("marks the current accent as pressed", () => {
       renderDialog();
       expect(screen.getByRole("button", { name: "Accent orange" })).toHaveAttribute("aria-pressed", "true");

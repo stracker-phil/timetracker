@@ -7,12 +7,12 @@
   padding: var(--space-3) var(--space-3) var(--space-2); border: none; border-left: 1px solid var(--line); background: none; color: var(--text); text-align: left;
 }
 .week-day-head:first-child, .week-column:first-child { border-left: none; }
-.week-day-head:hover { background: var(--row-hover); }
+.week-day-head:hover { background: var(--fill); }
 .week-day-head.weekend { background: var(--bg-quiet); }
-.week-day-head.weekend:hover { background: var(--row-hover); }
+.week-day-head.weekend:hover { background: var(--fill); }
 .week-day-name { font-weight: 600; color: var(--text-strong); white-space: nowrap; }
 .week-day-head.today .week-day-name { color: var(--accent-text); }
-.week-day-total { font-size: var(--fs-meta); font-weight: 500; color: var(--o2); font-variant-numeric: tabular-nums; }
+.week-day-total { font-size: var(--fs-meta); color: var(--o2); }
 .week-body { flex: 1 0 auto; }
 .week-column { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-left: 1px solid var(--line); }
 .week-column--weekend { background: color-mix(in oklab, var(--bg-quiet) 70%, transparent); }
@@ -31,26 +31,27 @@
   flex: none; display: flex; align-items: center; justify-content: center; gap: var(--space-1); padding: var(--space-1) var(--space-2);
   border: 1px dashed transparent; border-radius: var(--radius-card); background: none; color: var(--o3); font-size: var(--fs-meta); font-weight: 500;
 }
-.week-add:hover, .week-add:focus-visible { border-color: var(--line); background: var(--row-hover); color: var(--text); }
+.week-add:hover, .week-add:focus-visible { border-color: var(--line); background: var(--fill); color: var(--text); }
 /* An empty day: the + is a card-sized slot at the top, like a first entry. */
 .week-add--empty { min-height: 3.5rem; border-color: var(--line); }
 
 /* ---------- month: rows of whole weeks, each as tall as its fullest day; one line per recording ---------- */
-.month-grid { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; padding: var(--space-3) var(--space-5) var(--space-5); }
+.month-grid { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .month-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-height: 6.154rem; }
 .month-week:last-child .month-day { border-bottom: 1px solid var(--line); }
 .month-day {
   display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: var(--space-1) var(--space-1) var(--space-2);
   border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: var(--bg); color: var(--text);
 }
-.month-day:last-child { border-right: 1px solid var(--line); }
+.month-week:first-child .month-day { border-top: none; }
+.month-day:first-child { border-left: none; }
 .month-day--weekend { background: var(--bg-quiet); }
 .month-day-head { display: flex; align-items: center; gap: var(--space-1); min-height: 1.692rem; margin-bottom: 2px; }
 .month-day-date {
   display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-1) 0 var(--space-1); border: none; border-radius: 999px;
   background: none; color: var(--o2); font-size: var(--fs-meta); font-weight: 500;
 }
-.month-day-date:hover { background: var(--row-hover); color: var(--text); }
+.month-day-date:hover { background: var(--fill); color: var(--text); }
 .month-day-number {
   display: inline-grid; place-items: center; min-width: 1.538rem; height: 1.538rem; padding: 0 2px; border-radius: 999px;
   font-size: var(--fs-body); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-strong);
@@ -64,13 +65,13 @@
   opacity: 0;
 }
 .month-day:hover .month-day-add, .month-day-add:focus-visible { opacity: 1; }
-.month-day-add:hover { background: var(--row-hover); color: var(--text); }
-.month-day-hours { margin-left: auto; padding-right: var(--space-1); font-size: var(--fs-meta); font-weight: 500; color: var(--o2); font-variant-numeric: tabular-nums; }
+.month-day-add:hover { background: var(--fill); color: var(--text); }
+.month-day-hours { margin-left: auto; padding-right: var(--space-1); font-size: var(--fs-meta); color: var(--o2); }
 .month-entry {
   display: flex; align-items: center; gap: var(--space-1); min-width: 0; padding: 1px var(--space-1); border: none; border-radius: var(--radius-sm);
-  background: none; color: var(--text); font-size: var(--fs-caption); line-height: 1.4; text-align: left;
+  background: none; color: var(--text); font-size: var(--fs-meta); line-height: 1.4; text-align: left;
 }
-.month-entry:hover { background: var(--row-hover); }
+.month-entry:hover { background: var(--fill); }
 .month-entry-dot { flex: none; width: 0.538rem; height: 0.538rem; border-radius: 50%; background: var(--rec); }
 .month-entry-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .month-entry-time { flex: none; color: var(--o2); font-variant-numeric: tabular-nums; }

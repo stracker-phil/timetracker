@@ -37,7 +37,7 @@ export function ConditionRow({ index, condition, error, onChange, onRemove, appK
       <div className="condition-value">
         {app && <AppIcon app={app} bundleId={appKeyOf?.(app) ?? null} />}
         <input
-          className="input mono"
+          className="input"
           aria-label={`${label} value`}
           placeholder={condition.op === "pattern" ? "* any text, ? one character" : "Value"}
           value={condition.value}

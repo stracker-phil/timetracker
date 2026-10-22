@@ -583,7 +583,7 @@ mod tests {
     }
 
     #[test]
-    fn noise_is_judged_after_bridging_and_leaves_tracked_time_and_gaps_alone() {
+    fn noise_is_judged_after_bridging_and_leaves_tracked_time_alone() {
         let rows = || rows(&[(0, 1, "Code", ""), (2, 3, "Code", ""), (10, 11, "Mail", "")]);
         let denoised = with_timeline(settings(), |t| {
             t.continuity = Continuity::Short;
@@ -601,8 +601,6 @@ mod tests {
         assert!(lane_by_id(&alone, "activity").blocks.is_empty());
         for view in [&bridged, &alone] {
             assert_eq!(view.totals.tracked_ms, mins(3));
-            let gaps: Vec<(Ms, Ms)> = view.gaps.iter().map(|g| (g.start, g.end)).collect();
-            assert_eq!(gaps, [(mins(3), mins(10))]);
         }
     }
 

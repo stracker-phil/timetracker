@@ -11,7 +11,7 @@ import { useLiveReload } from "./useLiveReload";
 
 const TIMESHEET = { min: 220, max: 560, share: 0.25 };
 
-const isEmpty = (view: DayView) => view.away.length === 0 && view.recordings.length === 0 && view.lanes.every((lane) => lane.blocks.length === 0);
+const isEmpty = (view: DayView) => view.recordings.length === 0 && view.lanes.every((lane) => lane.blocks.length === 0);
 
 function EmptyDay({ day }: { day: string }) {
   const tracker = useStore((s) => s.tracker);

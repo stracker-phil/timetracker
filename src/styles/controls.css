@@ -1,102 +1,106 @@
-/* Buttons (docs/ux.md, Components): secondary (`.btn`), primary and danger, and the square icon button. */
+/* AppKit-sized controls; see docs/ux.md, Controls. */
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
-  height: 2rem; padding: 0 var(--space-3);
-  border: 1px solid var(--field-line); border-radius: var(--radius-sm);
-  background: var(--pop); color: var(--text); font-weight: 500; cursor: default; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1);
+  height: var(--control-h); padding: 0 var(--space-3);
+  border: none; border-radius: var(--radius-sm);
+  background: var(--control); box-shadow: var(--control-shadow); color: var(--text); font-weight: 400; cursor: default; white-space: nowrap;
 }
-.btn:hover:not(:disabled) { background: var(--row-hover); }
-.btn:active:not(:disabled) { background: color-mix(in srgb, var(--text) 12%, transparent); }
+.btn:active:not(:disabled) { background: var(--control-pressed); }
 .btn:disabled { opacity: 0.45; }
-.btn-primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
-.btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, var(--shade)); }
-.btn-danger { background: var(--style-red); border-color: transparent; color: var(--on-accent); }
-.btn-quiet { background: transparent; border-color: transparent; color: var(--o2); }
-.btn-quiet:hover:not(:disabled) { color: var(--text); }
+.btn:focus-visible { outline: none; box-shadow: var(--control-shadow), var(--focus-ring); }
+.btn-primary { background: var(--accent); color: var(--on-accent); font-weight: 500; }
+.btn-primary:active:not(:disabled) { background: color-mix(in srgb, var(--accent) 85%, var(--shade)); }
+.btn-danger { color: var(--style-red); font-weight: 500; }
+/* Borderless: no bezel until hovered (toolbar and inline actions). */
+.btn-quiet { background: transparent; box-shadow: none; color: var(--o2); }
+.btn-quiet:hover:not(:disabled) { background: var(--fill); color: var(--text); }
+.btn-quiet:active:not(:disabled) { background: var(--fill-strong); }
 .icon-btn {
-  display: inline-grid; place-items: center; width: 2rem; height: 2rem; flex: none;
+  display: inline-grid; place-items: center; width: var(--control-h); height: var(--control-h); flex: none; padding: 0;
   border: none; border-radius: var(--radius-sm); background: transparent; color: var(--o2);
 }
-.icon-btn:hover:not(:disabled) { background: var(--row-hover); color: var(--text); }
+.icon-btn:hover:not(:disabled) { background: var(--fill); color: var(--text); }
+.icon-btn:active:not(:disabled) { background: var(--fill-strong); }
 .icon-btn:disabled { opacity: 0.35; }
-/* Inputs look like inputs, never like rows (docs/ux.md, Inputs). */
+.icon-btn.tiny { width: 1.385rem; height: 1.385rem; }
+
 .input {
-  height: 2rem; padding: 0 var(--space-2); width: 100%;
-  border: 1px solid var(--field-line); border-radius: var(--radius-sm);
-  background: var(--field); box-shadow: var(--shadow-inset); outline: none;
+  height: var(--control-h); padding: 0 var(--space-2); width: 100%;
+  border: none; border-radius: var(--radius-sm); outline: none;
+  background: var(--field); box-shadow: inset 0 0 0 1px var(--field-line);
 }
 .input::placeholder { color: var(--o3); }
-.input:focus { border-color: var(--accent); box-shadow: var(--shadow-inset), 0 0 0 0.231rem var(--sel); }
+.input:focus { box-shadow: inset 0 0 0 1px var(--field-line), var(--focus-ring); }
 .input.mono { font-family: var(--font-mono); font-size: var(--data-font-size); }
+/* A popup button: a push button's bezel around WebKit's native chevrons. */
+select.input { appearance: auto; padding: 0 var(--space-1) 0 var(--space-2); background: var(--control); box-shadow: var(--control-shadow); }
+select.input:focus { box-shadow: var(--control-shadow), var(--focus-ring); }
 
-/* The macOS field: leading icon, the control, an optional key cap (`InsetField` in Field.tsx). */
+/* The search field: leading icon, the control, an optional key cap (`InsetField` in Field.tsx). */
 .inset-field {
-  display: flex; align-items: center; gap: 0.462rem; min-width: 0; height: 1.846rem; padding: 0 0.462rem 0 var(--space-2);
-  border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field); box-shadow: var(--shadow-inset);
-  color: var(--text); cursor: text;
+  display: flex; align-items: center; gap: var(--space-2); min-width: 0; height: var(--control-h); padding: 0 var(--space-2) 0 var(--space-2);
+  border-radius: var(--radius-sm); background: var(--fill); color: var(--text); cursor: text;
 }
-.inset-field:has(> .keycap) { padding-right: calc((1.846rem - 2px - var(--keycap-h)) / 2); }
-.inset-field:focus-within { border-color: var(--accent); }
+.inset-field:has(> .keycap) { padding-right: calc((var(--control-h) - var(--keycap-h)) / 2); }
+.inset-field:focus-within { background: var(--field); box-shadow: inset 0 0 0 1px var(--field-line), var(--focus-ring); }
 .inset-field input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; outline: none; color: var(--text); }
 .inset-field input::placeholder { color: var(--o3); }
 .inset-field-icon { display: inline-flex; flex: none; color: var(--o3); }
 .keycap {
-  flex: none; padding: 0 var(--space-1); border: 1px solid var(--field-line); border-radius: 4px;
-  font-family: var(--font-mono); font-size: 0.846rem; line-height: calc(var(--keycap-h) - 2px); color: var(--o3); white-space: nowrap;
+  flex: none; padding: 0 var(--space-1); border-radius: 4px; background: var(--fill);
+  font-family: var(--font-ui); font-size: var(--fs-caption); line-height: var(--keycap-h); color: var(--o3); white-space: nowrap;
 }
 
 .field { display: flex; flex-direction: column; gap: var(--space-1); }
-.field > span, .field > label { font-size: var(--fs-meta); color: var(--o2); font-weight: 500; }
+.field > span, .field > label { font-size: var(--fs-meta); color: var(--o2); }
 .check { display: flex; align-items: center; gap: 0.538rem; }
 
-/* The segmented control (`SegmentedControl`): a quiet track; the pressed segment is a raised tile with its label in
-   the strongest text color. A key cap sits `--seg-inset` from the segment's top, bottom and right edge: a block, so
-   no line box offsets it. */
+/* The segmented control (`SegmentedControl`): a fill track; the pressed segment is a raised tile. A key cap sits
+   `--seg-inset` from the segment's top, bottom and right edge: a block, so no line box offsets it. */
 .segmented {
-  --seg-h: 1.538rem; --seg-inset: 3px;
-  display: inline-flex; padding: 2px; border-radius: var(--radius-sm); background: var(--track);
+  --seg-h: calc(var(--control-h) - 4px); --seg-inset: 2px;
+  display: inline-flex; padding: 2px; gap: 2px; border-radius: var(--radius-sm); background: var(--fill);
 }
 .segmented button {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); white-space: nowrap;
-  height: var(--seg-h); padding: 0 var(--space-3); border: none; border-radius: calc(var(--radius-sm) - 2px); background: transparent; color: var(--o2);
-  font-weight: 500;
+  height: var(--seg-h); padding: 0 var(--space-3); border: none; border-radius: calc(var(--radius-sm) - 2px); background: transparent; color: var(--text);
 }
 .segmented button .keycap { --keycap-h: calc(var(--seg-h) - 2 * var(--seg-inset)); display: block; }
 .segmented button:has(.keycap) { padding-right: var(--seg-inset); }
-.segmented button:hover { color: var(--text); }
+.segmented button:active:not([aria-pressed="true"]) { background: var(--fill); }
 .segmented button[aria-pressed="true"] { background: var(--raised); box-shadow: var(--shadow-small); color: var(--text-strong); }
 
-.badge {
-  display: inline-flex; align-items: center; height: 1.308rem; padding: 0 0.462rem;
-  border-radius: 0.692rem; font-size: 0.808rem; font-weight: 600; background: color-mix(in srgb, var(--text) 12%, transparent); color: var(--o2);
-}
+/* A plain secondary label after a name, e.g. `billable` or `archived`; never a chip. */
+.secondary-label { flex: none; font-size: var(--fs-meta); color: var(--o2); white-space: nowrap; }
 
-/* macOS-style toggle */
 .switch {
   appearance: none; flex: none; position: relative; width: 2.462rem; height: 1.385rem; margin: 0;
-  border-radius: 999px; background: color-mix(in srgb, var(--text) 12%, transparent); box-shadow: inset 0 0 0 1px var(--field-line);
+  border-radius: 999px; background: var(--fill-strong); box-shadow: inset 0 0 0 0.5px var(--fill);
   transition: background .15s;
 }
 .switch::after {
-  content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.385rem - 4px); height: calc(1.385rem - 4px);
+  content: ""; position: absolute; top: 1px; left: 1px; width: calc(1.385rem - 2px); height: calc(1.385rem - 2px);
   border-radius: 50%; background: var(--knob); box-shadow: var(--shadow-small); transition: transform .15s;
 }
-.switch:checked { background: var(--accent); box-shadow: none; }
-.switch:checked::after { background: var(--on-accent); transform: translateX(calc(2.462rem - 1.385rem)); }
-.switch:focus-visible { outline: none; box-shadow: 0 0 0 0.231rem var(--sel); }
+.switch:checked { background: var(--accent); }
+.switch:checked::after { transform: translateX(calc(2.462rem - 1.385rem)); }
+.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
-.icon-btn.tiny { width: 1.385rem; height: 1.385rem; }
 /* An inline text button in the accent (toast details). */
 .link-btn { margin: 0; padding: 0; border: none; border-radius: 0.308rem; background: none; color: var(--accent-text); font-size: inherit; }
 .accent-swatches { display: flex; gap: var(--space-2); }
-.accent-swatches button { width: 1.538rem; height: 1.538rem; border-radius: 50%; border: none; }
-.accent-swatches button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--pop), 0 0 0 0.308rem var(--o2); }
+.accent-swatches button { width: 1.231rem; height: 1.231rem; padding: 0; border-radius: 50%; border: none; box-shadow: inset 0 0 0 0.5px var(--fill-strong); }
+.accent-swatches button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 0.308rem var(--o3); }
+/* The System swatch: the accent hues around a circle, as macOS shows its multicolor choice. */
+.accent-swatches .accent-system {
+  background: conic-gradient(var(--a-red), var(--a-orange), var(--a-gold), var(--a-teal), var(--a-blue), var(--a-indigo), var(--a-purple), var(--a-magenta), var(--a-red));
+}
 .accent-dot { flex: none; width: 0.615rem; height: 0.615rem; border-radius: 50%; }
 
 /* An installed app's icon, or its initial (`AppIcon`). */
 .app-icon { flex: none; border-radius: 22%; }
 .app-icon--16 { width: 1.231rem; height: 1.231rem; }
 .app-icon--20 { width: 1.538rem; height: 1.538rem; }
-.app-icon--initial { display: inline-grid; place-items: center; background: var(--line); color: var(--o2); font-weight: 600; line-height: 1; }
+.app-icon--initial { display: inline-grid; place-items: center; background: var(--fill-strong); color: var(--o2); font-weight: 600; line-height: 1; }
 .app-icon--16.app-icon--initial { font-size: var(--fs-caption); }
 .app-icon--20.app-icon--initial { font-size: var(--fs-meta); }

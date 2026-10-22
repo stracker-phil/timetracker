@@ -1,40 +1,31 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
-
-import { installCommands } from "../commands";
-import { resetStore } from "../state/store";
-import { settings } from "../test/settings";
-import { Dialogs } from "./Dialogs";
 import { Toolbar } from "./Toolbar";
 
 describe("Toolbar", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resetStore({ settings: settings() });
-    installCommands();
+  it("shows the title as the level-1 heading", () => {
+    render(<Toolbar title="Projects" />);
+    expect(screen.getByRole("heading", { level: 1, name: "Projects" })).toBeInTheDocument();
+  });
+
+  it("shows the detail beside the title", () => {
+    render(<Toolbar title="Week" detail={<span aria-label="Totals">12h 30m</span>} />);
+    expect(screen.getByLabelText("Totals")).toHaveTextContent("12h 30m");
+  });
+
+  it("renders the actions", () => {
     render(
-      <>
-        <Toolbar />
-        <Dialogs />
-      </>,
+      <Toolbar title="Rules">
+        <button type="button">New rule</button>
+      </Toolbar>,
     );
+    expect(screen.getByRole("button", { name: "New rule" })).toBeInTheDocument();
   });
 
-  it("shows the app title and the Settings button only", () => {
-    expect(screen.getByText("TimeTracker")).toBeInTheDocument();
-    expect(screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Settings"]);
-  });
-
-  it("has no view switch", () => {
-    expect(screen.queryByRole("group", { name: "View" })).not.toBeInTheDocument();
-    for (const name of ["Day", "Week", "Month", "Reports"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
-  });
-
-  it("opens Settings from its button", async () => {
-    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
-    expect(await screen.findByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+  it("renders nothing but the title without detail and actions", () => {
+    render(<Toolbar title="Reports" />);
+    expect(screen.queryByLabelText("Totals")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 });

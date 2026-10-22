@@ -94,6 +94,12 @@ describe("applyInitialLook", () => {
     expect(root.dataset.sidebar).toBe("dark");
   });
 
+  it("follows the macOS accent", () => {
+    delete root.dataset.accent;
+    applyInitialLook();
+    expect(root.dataset.accent).toBe("system");
+  });
+
   it("uses the Dark scheme while macOS is dark", () => {
     system.dark = true;
     delete root.dataset.content;

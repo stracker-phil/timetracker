@@ -147,7 +147,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_open_activity_and_an_open_away_span_end_at_now() {
+    async fn an_open_activity_and_an_open_sleep_span_end_at_now() {
         let db = Db::open_memory().await.unwrap();
         let today = day("2026-01-05");
         let start = today.bounds().0 + HOUR;
@@ -156,7 +156,7 @@ mod tests {
             &db,
             NewAway {
                 start: start + HOUR,
-                reason: AwayReason::Idle,
+                reason: AwayReason::Sleep,
             },
         )
         .await
@@ -166,13 +166,8 @@ mod tests {
         let view = load(&db, today, &Settings::default(), now).await.unwrap();
 
         assert_eq!(activity_spans(&view), [(start, now)]);
-        assert_eq!(
-            view.away
-                .iter()
-                .map(|a| (a.start, a.end))
-                .collect::<Vec<_>>(),
-            [(start + HOUR, now)]
-        );
+        assert_eq!(view.barriers, [(start + HOUR, now)]);
+        assert_eq!(view.totals.away_ms, 2 * HOUR);
     }
 
     #[tokio::test]

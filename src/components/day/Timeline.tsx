@@ -9,7 +9,6 @@ import { blockMenu } from "./blockMenu";
 import { HoverCard } from "./HoverCard";
 import { Lane } from "./Lane";
 import { LaneHeader } from "./LaneHeader";
-import { Spans } from "./Spans";
 import { RecordingsColumn } from "./RecordingsColumn";
 import { HALF_HOURS_FROM_PX, TimeAxis } from "./TimeAxis";
 import { useSelectionPress } from "./useSelectionPress";
@@ -120,7 +119,6 @@ export function Timeline({ view }: { view: DayView }) {
       <div className={view.compact ? "timeline timeline--compact" : "timeline"} ref={scrollRef} onMouseLeave={hover.leave}>
         <LaneHeader lanes={view.lanes} trackedMs={view.totals.trackedMs} />
         <div className="timeline-body" style={{ height: y(end) }}>
-          <Spans away={view.away} gaps={view.gaps} y={y} />
           <TimeAxis bounds={view.bounds} pxPerMinute={pxPerMinute} onPointerDown={press} />
           <RecordingsColumn ref={columnRef} recordings={view.recordings} suggestions={view.suggestions} y={y} bounds={view.bounds} pxPerMinute={pxPerMinute} selection={selection} onPress={press} />
           <div

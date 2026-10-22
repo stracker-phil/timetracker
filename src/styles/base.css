@@ -8,8 +8,8 @@ body {
   margin: 0;
   font-family: var(--font-ui);
   font-size: 1rem;
+  font-variant-numeric: tabular-nums;
   color: var(--text);
-  background: var(--bg);
   -webkit-font-smoothing: antialiased;
   user-select: none;
   -webkit-user-select: none;
@@ -19,7 +19,7 @@ body {
 input, textarea, select, button { font: inherit; color: inherit; }
 input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 
-:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset: 0; }
 
 /* ---------- scrollbars ---------- */
 /* One style for every scroll box (docs/ux.md, Scrollbars): a transparent 8px track with a rounded 6px thumb,
@@ -40,7 +40,12 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
   .main, .sidebar-body, .settings-body, .settings-nav, .dialog, .palette-list, .toast-details
 ) { isolation: isolate; }
 /* Boxes with rounded corners keep the thumb clear of them. */
-:is(.dialog, .palette-list, .toast-details)::-webkit-scrollbar-track { margin: 0.462rem 0; }
+:is(.dialog, .palette-list, .toast-details)::-webkit-scrollbar-track { margin: var(--space-2) 0; }
+
+/* Inset groups (docs/ux.md, Surfaces): each screen's own rule sets only its padding. */
+:is(.settings-card, .project-rows, .tag-rows, .project-none, .rule-rows, .report-totals, .report-chart, .report-table) {
+  background: var(--fill-quiet); border-radius: var(--radius);
+}
 
 .hint { font-size: var(--fs-meta); color: var(--o3); }
 .muted { color: var(--o2); }

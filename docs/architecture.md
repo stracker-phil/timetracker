@@ -59,7 +59,7 @@ The Day view showing a day, the main path through every layer:
    only place that calls `invoke`).
 3. `day::commands::day_view` parses the day, reads the activity and away rows that share time with it
    (`db::activities::list_for_range`, `db::away::list_for_range`, one indexed query each) and the settings.
-4. `day::view` clips the rows, computes totals and gaps from them, then applies the timeline settings in a
+4. `day::view` clips the rows, computes totals from them, then applies the timeline settings in a
    fixed order: `transform::without_hidden`, `transform::identified` (titles, grouping), `summary::summary`,
    `transform::grouped` (continuity, noise), `lanes::lanes` (lanes and columns), `mark_covered`. A pure
    function, tested without a database ([ADR 0012](adr/0012-timeline-layout-in-rust.md)).
@@ -188,7 +188,7 @@ src/
   commands/                  registry, scopes, index (APP_COMMANDS)
   components/                shell: Toolbar, Sidebar, StatusBar, Modal, CommandPalette, Dialogs, settings/
   registry/settingsPages.ts
-  lib/ styles/ test/ assets/fonts/
+  lib/ styles/ test/
 docs/                        this folder; adr/ holds the decision records
 scripts/dev/ scripts/install-*.sh   dev loop; links for the app and the command (release, or --debug)
 .claude/                     rules, agents, skills, settings

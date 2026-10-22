@@ -24,8 +24,8 @@ use crate::store::settings::{AppOverride, Settings, TimelineSettings};
 
 pub use load::{load, names, totals_of, view_of};
 pub use recordings::{recording_blocks, timesheet};
-pub use totals::{GAP_MIN, totals, tracked_ms};
-use totals::{gaps, union};
+use totals::union;
+pub use totals::{totals, tracked_ms};
 pub use types::*;
 
 const TRACKER_SOURCE: &str = "tracker";
@@ -91,15 +91,15 @@ pub struct ProjectRef {
 pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
     let rows = clipped_blocks(input);
     let recordings = recording_blocks(&input.recordings, &input.names, input.bounds, input.now);
-    let away = away_blocks(input);
-    let captured = captured(input, &rows, &away);
+    let barriers = barriers(input);
+    let captured = captured(input, &rows);
     let hidden_apps = hidden_apps(&rows, settings);
 
     let (tracker, external): (Vec<_>, Vec<_>) =
         rows.into_iter().partition(|b| b.source == TRACKER_SOURCE);
     let tracker = transform::without_hidden(tracker, settings);
     let apps = apps::day_apps(&tracker, settings);
-    let mut lanes = timeline_lanes(tracker, external, &away, input.bounds, settings);
+    let mut lanes = timeline_lanes(tracker, external, &barriers, input.bounds, settings);
     mark_covered(&mut lanes, &recordings);
 
     DayView {
@@ -108,8 +108,7 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
         lanes,
         timesheet: timesheet(&recordings),
         recordings,
-        away,
-        gaps: captured.gaps,
+        barriers,
         totals: captured.totals,
         first_activity: captured.first_activity,
         sources: captured.sources,
@@ -123,21 +122,17 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
 /// What was captured, before any setting hides or merges it.
 struct Captured {
     totals: DayTotals,
-    gaps: Vec<Gap>,
     first_activity: Option<Ms>,
     sources: Vec<String>,
 }
 
-fn captured(input: &DayInput, rows: &[ActivityBlock], away: &[AwayBlock]) -> Captured {
-    let activity: Vec<(Ms, Ms)> = rows.iter().map(|b| (b.start, b.end)).collect();
-    let away: Vec<(Ms, Ms)> = away.iter().map(|a| (a.start, a.end)).collect();
+fn captured(input: &DayInput, rows: &[ActivityBlock]) -> Captured {
     let mut sources: Vec<String> = rows.iter().map(|b| b.source.clone()).collect();
     sources.sort();
     sources.dedup();
     Captured {
         totals: totals(input),
-        gaps: gaps(&activity, &away),
-        first_activity: activity.iter().map(|s| s.0).min(),
+        first_activity: rows.iter().map(|b| b.start).min(),
         sources,
     }
 }
@@ -146,23 +141,18 @@ fn captured(input: &DayInput, rows: &[ActivityBlock], away: &[AwayBlock]) -> Cap
 fn timeline_lanes(
     tracker: Vec<ActivityBlock>,
     external: Vec<ActivityBlock>,
-    away: &[AwayBlock],
+    barriers: &[(Ms, Ms)],
     bounds: (Ms, Ms),
     settings: &ViewSettings,
 ) -> Vec<Lane> {
     let pieces = transform::identified(tracker, settings);
-    let barriers: Vec<(Ms, Ms)> = away
-        .iter()
-        .filter(|a| transform::breaks_continuity(a.reason))
-        .map(|a| (a.start, a.end))
-        .collect();
     let timeline = &settings.timeline;
     let mut lanes: Vec<Lane> = Vec::new();
     if timeline.summary_lane {
         let bucket = Ms::from(timeline.summary_minutes) * 60_000;
         lanes.push(summary::summary(&pieces, bucket, bounds));
     }
-    let tracker = transform::grouped(pieces, settings, &barriers);
+    let tracker = transform::grouped(pieces, settings, barriers);
     lanes.extend(lanes::lanes(tracker, external, settings));
     lanes
 }
@@ -201,19 +191,13 @@ fn mark_covered(lanes: &mut [Lane], recordings: &[RecordingBlock]) {
     }
 }
 
-fn away_blocks(input: &DayInput) -> Vec<AwayBlock> {
+/// The away spans that break continuity (sleep, lock, pause), cut to the day.
+fn barriers(input: &DayInput) -> Vec<(Ms, Ms)> {
     input
         .away
         .iter()
-        .filter_map(|row| {
-            let (start, end) = clip(row.start, row.end, input.bounds, input.now)?;
-            Some(AwayBlock {
-                id: row.id,
-                start,
-                end,
-                reason: row.reason,
-            })
-        })
+        .filter(|row| transform::breaks_continuity(row.reason))
+        .filter_map(|row| clip(row.start, row.end, input.bounds, input.now))
         .collect()
 }
 
@@ -334,12 +318,11 @@ mod tests {
     }
 
     #[test]
-    fn away_spans_are_clipped_to_the_day_and_an_open_one_ends_at_now() {
+    fn away_time_is_clipped_to_the_day_and_an_open_span_ends_at_now() {
         let away_rows = vec![
             away(1, mins(30), Some(mins(90)), AwayReason::Sleep),
             away(2, mins(110), None, AwayReason::Idle),
-            away(3, 0, Some(mins(60)), AwayReason::Lock),
-            away(4, 3 * HOUR, Some(4 * HOUR), AwayReason::Paused),
+            away(3, 3 * HOUR, Some(4 * HOUR), AwayReason::Paused),
         ];
         let input = DayInput {
             bounds: (HOUR, 2 * HOUR),
@@ -349,24 +332,28 @@ mod tests {
 
         let view = view(&input, &settings());
 
-        assert_eq!(
-            view.away,
-            [
-                AwayBlock {
-                    id: 1,
-                    start: mins(60),
-                    end: mins(90),
-                    reason: AwayReason::Sleep
-                },
-                AwayBlock {
-                    id: 2,
-                    start: mins(110),
-                    end: mins(115),
-                    reason: AwayReason::Idle
-                },
-            ]
-        );
         assert_eq!(view.totals.away_ms, mins(35));
+    }
+
+    #[test]
+    fn barriers_hold_the_clipped_sleep_lock_and_pause_spans_and_leave_idle_out() {
+        let away_rows = vec![
+            away(1, mins(30), Some(mins(90)), AwayReason::Sleep),
+            away(2, mins(100), Some(mins(105)), AwayReason::Idle),
+            away(3, mins(110), None, AwayReason::Lock),
+            away(4, 0, Some(mins(40)), AwayReason::Paused),
+            away(5, 3 * HOUR, Some(4 * HOUR), AwayReason::Sleep),
+        ];
+        let input = DayInput {
+            bounds: (HOUR, 2 * HOUR),
+            now: mins(115),
+            ..input(vec![], away_rows)
+        };
+
+        assert_eq!(
+            barriers(&input),
+            [(mins(60), mins(90)), (mins(110), mins(115))]
+        );
     }
 
     #[test]
@@ -378,7 +365,6 @@ mod tests {
 
         let view = view(&input(vec![], away_rows), &settings());
 
-        assert_eq!(view.away.len(), 2);
         assert_eq!(view.totals.away_ms, mins(50));
     }
 
@@ -448,7 +434,7 @@ mod tests {
         assert_eq!(lane.label, "Activity");
         assert_eq!(lane.app_key, None);
         assert!(lane.blocks.is_empty());
-        assert!(view.gaps.is_empty());
+        assert!(view.barriers.is_empty());
         assert_eq!(view.totals, DayTotals::default());
         assert_eq!(view.first_activity, None);
     }
@@ -542,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn a_hidden_app_vanishes_from_the_lanes_but_still_counts_and_leaves_no_gap() {
+    fn a_hidden_app_vanishes_from_the_lanes_but_still_counts() {
         let rows = vec![
             code(1, 0, 10),
             activity(2, mins(10), Some(mins(60)), "Mail", ""),
@@ -560,7 +546,6 @@ mod tests {
         assert_eq!(block_ids(activity_lane(&view)), ["a1", "a3"]);
         assert_eq!(block_ids(lane_by_id(&view, "source:planner")), ["a4"]);
         assert_eq!(view.totals.tracked_ms, mins(70));
-        assert!(view.gaps.is_empty());
         assert_eq!(view.sources, ["external:planner", "tracker"]);
         assert_eq!(view.first_activity, Some(0));
     }
@@ -655,12 +640,16 @@ mod tests {
     #[test]
     fn the_view_serializes_with_camel_case_keys_and_lowercase_kinds() {
         let rows = vec![activity(1, mins(10), Some(mins(20)), "Code", "main.rs")];
-        let away_rows = vec![away(3, mins(30), Some(mins(40)), AwayReason::Idle)];
+        let away_rows = vec![away(3, mins(30), Some(mins(40)), AwayReason::Sleep)];
 
         let view = view(&input(rows, away_rows), &settings());
 
+        let value = serde_json::to_value(&view).unwrap();
+        for key in ["away", "gaps", "barriers"] {
+            assert!(value.get(key).is_none(), "{key}");
+        }
         assert_eq!(
-            serde_json::to_value(&view).unwrap(),
+            value,
             json!({
                 "day": "2026-01-05",
                 "bounds": [0, DAY_LENGTH],
@@ -692,8 +681,6 @@ mod tests {
                 }],
                 "recordings": [],
                 "timesheet": [],
-                "away": [{"id": 3, "start": mins(30), "end": mins(40), "reason": "idle"}],
-                "gaps": [],
                 "totals": {"recordedMs": 0, "trackedMs": mins(10), "awayMs": mins(10)},
                 "firstActivity": mins(10),
                 "sources": ["tracker"],

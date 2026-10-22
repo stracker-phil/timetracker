@@ -3,7 +3,6 @@
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::db::away::AwayReason;
 use crate::db::time::{Day, Ms};
 use crate::rules::types::Suggestion;
 
@@ -19,8 +18,10 @@ pub struct DayView {
     pub recordings: Vec<RecordingBlock>,
     /// The timesheet: one card per recording on the day, by its first span on the day.
     pub timesheet: Vec<TimesheetCard>,
-    pub away: Vec<AwayBlock>,
-    pub gaps: Vec<Gap>,
+    /// Sleep, lock and pause spans cut to the day: the continuity barriers for the rules.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub barriers: Vec<(Ms, Ms)>,
     pub totals: DayTotals,
     pub first_activity: Option<Ms>,
     /// Every source of the day's activity, sorted.
@@ -161,25 +162,6 @@ pub struct DayApp {
     /// Its tracked time on the day.
     pub active_ms: i64,
     pub own_lane: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct AwayBlock {
-    pub id: i64,
-    pub start: Ms,
-    pub end: Ms,
-    pub reason: AwayReason,
-}
-
-/// Time inside the day's activity with neither activity nor away.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct Gap {
-    pub start: Ms,
-    pub end: Ms,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, TS)]

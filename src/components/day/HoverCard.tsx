@@ -68,7 +68,7 @@ export function HoverCard({ block, anchor, onPointerEnter, onPointerLeave }: Pro
           <p className="mono hover-card-url">{url}</p>
         ))}
       {block.path && <p className="mono hover-card-url">{block.path}</p>}
-      <p className="mono o2">
+      <p className="o2">
         {formatClock(block.start)}–{formatClock(block.end)} · {formatDuration(block.end - block.start)}
         {source !== "tracker" && ` · ${source}`}
       </p>

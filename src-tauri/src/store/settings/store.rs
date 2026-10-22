@@ -311,7 +311,7 @@ mod tests {
         let loaded = SettingsStore::open(dir.path()).get();
 
         assert_eq!(loaded.ui_font_size, 24);
-        assert_eq!(loaded.accent, "orange");
+        assert_eq!(loaded.accent, "system");
     }
 
     #[test]

@@ -25,11 +25,14 @@ export const LOG_LEVELS = (Object.keys(LOG_LEVEL_RANK) as LogLevel[]).sort((a, b
 /** Accent hues, defined by every palette. Rust's `ACCENTS` is the source of truth; keep these equal. */
 export const ACCENTS = ["orange", "gold", "red", "magenta", "purple", "indigo", "blue", "teal", "graphite"] as const;
 
+/** The app accent that follows the macOS accent color (Rust's `SYSTEM_ACCENT`); projects never take it. */
+export const SYSTEM_ACCENT = "system";
+
 /** How many shades a project color has; Rust's `projects::SHADES`. */
 export const SHADES = 9;
 
-/** Families bundled in `src/assets/fonts/`; the font settings fall back to them when empty. */
-export const BUNDLED_FONTS = { ui: "Geist", mono: "JetBrains Mono" } as const;
+/** The system families the font settings fall back to when empty. */
+export const DEFAULT_FONTS = { ui: "SF Pro", mono: "SF Mono" } as const;
 
 /** Shortcut overrides by command id; `null` unbinds. Rust: the `Keybindings` alias (a map, so ts-rs can't export it). */
 export type Keybindings = Record<string, string | null>;

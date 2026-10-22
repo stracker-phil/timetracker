@@ -44,7 +44,7 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 ## The Day view
 
 - Time runs top to bottom: the recordings column on the left, activity lanes on the right (one for the
-  tracker, one per external source), away time shaded.
+  tracker, one per external source); the lanes show only activity, away time adds to the day's totals.
 - Drag over time or click activity (⇧-click to extend, ⌘-click to gather; or J/K, V and ↵): the editor opens
   in the timesheet, snapped to the grid, for a one-line note, a project (often proposed), a tag and the spans.
 - Recordings never overlap. Drag to move or resize, ⌘Z undoes; rules (⌥-drag a block onto a project) suggest

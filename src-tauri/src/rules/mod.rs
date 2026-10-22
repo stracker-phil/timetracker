@@ -11,7 +11,7 @@ pub mod suggest;
 pub(crate) mod testing;
 pub mod types;
 
-use crate::day::transform::{breaks_continuity, continuity_ms};
+use crate::day::transform::continuity_ms;
 use crate::day::{ActivityBlock, DayView, LaneKind, Names, TimesheetCard};
 use crate::db::Db;
 use crate::db::dismissed::Dismissal;
@@ -49,16 +49,10 @@ pub fn day_suggestions(
     if rules.is_empty() {
         return Vec::new();
     }
-    let barriers: Vec<(Ms, Ms)> = view
-        .away
-        .iter()
-        .filter(|a| breaks_continuity(a.reason))
-        .map(|a| (a.start, a.end))
-        .collect();
     let mut suggestions = suggest::suggest(
         &candidates(view),
         &view.recordings,
-        &barriers,
+        &view.barriers,
         rules,
         names,
         continuity_ms(settings.timeline.continuity),
@@ -751,6 +745,37 @@ mod tests {
             ),
             (Some("Initech"), Some(&w.tag_id), Some("billing"))
         );
+    }
+
+    #[tokio::test]
+    async fn suggestions_bridge_a_short_idle_gap_but_not_a_lock_or_sleep() {
+        use crate::db::away::{self, AwayReason, NewAway};
+
+        let cases = [
+            ("idle", Some(AwayReason::Idle), 1),
+            ("lock", Some(AwayReason::Lock), 2),
+            ("sleep", Some(AwayReason::Sleep), 2),
+            ("nothing", None, 1),
+        ];
+        for (name, reason, count) in cases {
+            let mut w = World::new().await;
+            w.settings = plain_settings(Continuity::Regular);
+            let today = day("2026-01-05");
+            w.app_rule("Slack").await;
+            w.work(today, "Slack", (9, 0), (9, 10)).await;
+            w.work(today, "Slack", (9, 15), (9, 30)).await;
+            if let Some(reason) = reason {
+                let start = on(today, 9, 11);
+                away::insert(&w.db, NewAway { start, reason })
+                    .await
+                    .unwrap();
+                away::close_open(&w.db, on(today, 9, 14)).await.unwrap();
+            }
+
+            let suggestions = w.suggestions(today).await;
+
+            assert_eq!(suggestions.len(), count, "{name}");
+        }
     }
 
     #[tokio::test]

@@ -1,5 +1,4 @@
 /** Every stylesheet, shared by the main window and the secondary windows; the order is the cascade. */
-import "./fonts.css";
 import "./palettes/content-light.css";
 import "./palettes/content-dark.css";
 import "./palettes/sidebar-light.css";

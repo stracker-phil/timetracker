@@ -2,23 +2,24 @@
    by `data-content` and `data-sidebar` on <html>); this file only derives from them, so it holds no color
    literal. lib/theme.ts sets those attributes, `data-accent`, the font sizes and the chosen font families.
    Sizing: chrome is in rem of `--ui-font-size` (html font-size), so ⌘= and ⌘- scale it; `--data-font-size`
-   drives times, durations and data values; the row anatomy and the window's own chrome (traffic lights) are
-   in px. */
+   drives times, durations and data values; the row anatomy and the window's own chrome (traffic lights, the
+   toolbar beside them) are in px. */
 :root {
-  --font-ui-bundled: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-mono-bundled: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  --font-ui: var(--font-ui-bundled);
-  --font-mono: var(--font-mono-bundled);
+  --font-ui-system: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono-system: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-ui: var(--font-ui-system);
+  --font-mono: var(--font-mono-system);
   --ui-font-size: 13px;
   --data-font-size: 12px;
 
-  /* Type scale: 17, 13, 12 and 11px at the default UI size; rem so ⌘= and ⌘- scale them. */
-  --fs-title: 1.308rem;
+  /* Type scale: the macOS text styles, in rem so ⌘= and ⌘- scale them. */
+  --fs-display: 1.692rem;
+  --fs-title: 1.154rem;
   --fs-body: 1rem;
-  --fs-meta: 0.923rem;
-  --fs-caption: 0.846rem;
+  --fs-meta: 0.846rem;
+  --fs-caption: 0.769rem;
 
-  /* Spacing on a 4px grid (in rem of the 13px UI size). */
+  /* Spacing on an 8px grid with 4px half steps (in rem of the 13px UI size); content keeps 20px margins. */
   --space-1: 0.308rem;
   --space-2: 0.615rem;
   --space-3: 0.923rem;
@@ -26,8 +27,9 @@
   --space-5: 1.538rem;
   --space-6: 1.846rem;
   --space-8: 2.462rem;
+  --margin: var(--space-5);
 
-  --accent: var(--a-orange);
+  --accent: AccentColor;
   --style-red: var(--a-red);
   --style-yellow: var(--a-gold);
   --style-blue: var(--a-blue);
@@ -47,16 +49,22 @@
   /* A key cap's height (.keycap); a field or tab ending in one keeps the same gap beside it as above and below. */
   --keycap-h: calc(1.231rem + 2px);
 
+  /* Control metrics (docs/ux.md, Controls): push buttons, fields and popup buttons; toolbar buttons; segments. */
+  --control-h: 1.692rem;
+  --toolbar-control-h: 2.154rem;
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent);
+
   --radius-sm: 0.462rem;
-  --radius: 0.692rem;
+  --radius: 0.769rem;
   --radius-lg: 0.923rem;
   --radius-block: 0.462rem;
   --radius-card: 0.615rem;
   --sidebar-width: 14rem;
-  --toolbar-height: 3.385rem;
-  /* The window's buttons (trafficLightPosition in tauri.conf.json) don't scale with the UI size: a bar under
-     them keeps clear of them. */
-  --traffic-lights: 88px;
+  /* The unified toolbar: the window buttons (trafficLightPosition in tauri.conf.json) sit centered in its height
+     and don't scale with the UI size, so neither does it. */
+  --toolbar-height: 52px;
+  --statusbar-height: 1.846rem;
+  --traffic-lights: 84px;
 
   /* The Day view's columns: the hour axis, the time column (recordings), and each lane's narrowest width. */
   --timeline-axis-w: 52px;
@@ -76,20 +84,21 @@
   --o3: var(--sidebar-muted);
   --line: var(--sidebar-line);
   --field-line: var(--sidebar-line);
-  --row-hover: var(--sidebar-hover);
+  --fill: var(--sidebar-hover);
   --pop: var(--sidebar-hover);
 }
 
 /* Derived from the accent wherever it is set: an element with `data-accent` sets its own, and the sidebar
    re-derives it from its hues. */
 :root, [data-accent], .sidebar {
-  --cell: color-mix(in srgb, var(--accent) 24%, transparent);
   --sel: color-mix(in srgb, var(--accent) 20%, transparent);
   /* The accent as text: no lighter than the palette allows, so it stays readable on light surfaces. */
   --accent-text: oklch(from var(--accent) min(l, var(--accent-text-max-l)) c h);
 }
 .sidebar { --sel: var(--sidebar-selected); }
 
+/* System follows the macOS accent color (WebKit's `AccentColor`), with white text on it as macOS draws it. */
+[data-accent="system"], [data-accent="system"] .sidebar { --accent: AccentColor; --on-accent: var(--on-system-accent); }
 [data-accent="orange"], [data-accent="orange"] .sidebar { --accent: var(--a-orange); }
 [data-accent="gold"], [data-accent="gold"] .sidebar { --accent: var(--a-gold); }
 [data-accent="blue"], [data-accent="blue"] .sidebar { --accent: var(--a-blue); }

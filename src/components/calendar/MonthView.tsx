@@ -5,7 +5,7 @@ import { formatHm } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
-import { CalendarHeader } from "./CalendarHeader";
+import { Toolbar } from "../Toolbar";
 import { EditorSheet } from "./EditorSheet";
 import { editEntry, entryName } from "./entry";
 
@@ -57,13 +57,16 @@ export function MonthView() {
 
   return (
     <section className="day-page" aria-label="Month">
-      <CalendarHeader title={month?.label ?? ""}>
-        {month && (
-          <span className="day-totals o2" aria-label="Totals">
-            recorded {formatHm(month.totalMs)}
-          </span>
-        )}
-      </CalendarHeader>
+      <Toolbar
+        title={month?.label ?? ""}
+        detail={
+          month && (
+            <span className="toolbar-detail" aria-label="Totals">
+              recorded {formatHm(month.totalMs)}
+            </span>
+          )
+        }
+      />
       {error && !month && <p className="settings-alert">{error.message}</p>}
       {month && (
         <div className="month-grid" role="grid" aria-label={month.label}>

@@ -106,17 +106,17 @@ export function RecordingEditor({ id }: { id?: string }) {
       <EditorSpans spans={draft.spans} step={step} runningSince={open?.start ?? null} error={errors.end ?? errors.start ?? errors.spans} />
       {overlap && <OverlapNotice overlap={overlap} />}
       <div className="editor-actions">
-        <button type="submit" className="btn btn-primary" title={suggestion ? "Approve (↵)" : "Save (↵)"}>
-          {suggestion ? "Approve" : "Save"}
-        </button>
-        <button type="button" className="btn btn-quiet" title="Cancel (Escape)" onClick={closeEditor}>
-          Cancel
-        </button>
         {editing && (
           <button type="button" className="btn btn-quiet editor-delete" aria-label="Delete" title="Delete (⌘⌫)" onClick={remove}>
             <Trash2 size="1rem" aria-hidden="true" />
           </button>
         )}
+        <button type="button" className="btn" title="Cancel (Escape)" onClick={closeEditor}>
+          Cancel
+        </button>
+        <button type="submit" className="btn btn-primary" title={suggestion ? "Approve (↵)" : "Save (↵)"}>
+          {suggestion ? "Approve" : "Save"}
+        </button>
       </div>
     </form>
   );

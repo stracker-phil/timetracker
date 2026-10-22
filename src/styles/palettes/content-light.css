@@ -1,41 +1,47 @@
-/* Light content: warm near-white surfaces. Every content palette defines the same tokens (docs/ux.md); palette
-   files are the only place for color literals. The selector is not limited to <html>: Settings previews a look
-   inside its own element. */
+/* Light content: the macOS light window, white with neutral greys; any element can carry it (Settings previews). */
 [data-content="light"] {
   color-scheme: light;
 
   /* surfaces */
-  --chrome: #f4f2ee;
-  --bg: #fbfaf8;
-  --bg-quiet: #f5f3f0;
-  --shade: #000000;
+  --bg: #ffffff;
+  --bg-quiet: #f7f7f7;
+  --chrome: #f5f5f5;
   --pop: #ffffff;
+  --shade: #000000;
+  --text: #262626;
+  --text-strong: #000000;
+
+  /* translucent fills over any surface: quaternary (inset groups), tertiary (hover bezels, tracks), secondary
+     (pressed bezels) */
+  --fill-quiet: rgba(0, 0, 0, 0.035);
+  --fill: rgba(0, 0, 0, 0.055);
+  --fill-strong: rgba(0, 0, 0, 0.1);
+  --line: rgba(0, 0, 0, 0.12);
+
+  /* controls: push buttons, fields, the pressed segment, switch thumbs */
+  --control: #ffffff;
+  --control-pressed: #ebebeb;
+  --control-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.12);
   --field: #ffffff;
-  --field-line: #d6d1ca;
-  --text: #2a2825;
-  --text-strong: #12110f;
-  --line: #dbd6cf;
-  --band: #f1eee9;
-  --row-hover: #efece7;
-  --track: #ebe8e3;
+  --field-line: rgba(0, 0, 0, 0.16);
   --raised: #ffffff;
-  --shadow: 0 0 0 1px rgba(40, 32, 24, 0.05), 0 10px 32px rgba(40, 32, 24, 0.16);
-  --shadow-small: 0 1px 2px rgba(40, 32, 24, 0.2);
-  --shadow-inset: inset 0 1px 2px rgba(40, 32, 24, 0.06);
-  --scrim: rgba(30, 24, 18, 0.22);
   --knob: #ffffff;
 
-  /* text on an accent fill, at least 4.5:1 on every hue */
+  --shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 12px 36px rgba(0, 0, 0, 0.18);
+  --shadow-small: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 0.5px 2px rgba(0, 0, 0, 0.2);
+  --scrim: rgba(0, 0, 0, 0.14);
+
+  /* text on an accent fill, at least 4.5:1 on every hue; white on the macOS accent */
   --on-accent: #ffffff;
+  --on-system-accent: #ffffff;
 
   /* status colors; red, yellow, blue and purple are accent hues (theme.css) */
-  --style-green: #2f8a3e;
+  --style-green: #24853a;
 
   /* timeline: activity surfaces and the away band */
-  --activity-fill: #efebe5;
-  --activity-fill-hover: #e7e2db;
-  --activity-fill-dim: #f5f2ee;
-  --away-band: #ebe7e1;
+  --activity-fill: #f0f0f0;
+  --activity-fill-hover: #e7e7e7;
+  --activity-fill-dim: #f7f7f7;
 
   /* recording blocks: OKLCH lightness and chroma cap of the fill and its text (theme.css derives them) */
   --block-fill-l: 0.91;
@@ -57,5 +63,5 @@
   --a-indigo: #4d55c8;
   --a-blue: #1f6fbf;
   --a-teal: #0f7d6c;
-  --a-graphite: #6b6863;
+  --a-graphite: #6e6e73;
 }

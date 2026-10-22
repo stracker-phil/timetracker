@@ -6,12 +6,12 @@ import { formatHm } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { useContextMenu } from "../ContextMenu";
 import { SegmentedControl } from "../SegmentedControl";
+import { Toolbar } from "../Toolbar";
 
 const DAY_MODES = ["timeline", "list"] as const;
 
 const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` : label);
 
-/** A slim bar: the date, a past day's totals, Timeline or List, Lanes, the timeline settings and the ⋯ menu. */
 export function DayHeader({ day, totals }: { day: string; totals: DayTotals | null }) {
   const settingsKeys = useBindingLabel("day.settings");
   const mode = useStore((s) => s.uiState.dayMode);
@@ -25,18 +25,21 @@ export function DayHeader({ day, totals }: { day: string; totals: DayTotals | nu
     ]);
   };
   return (
-    <header className="day-head">
-      <h1 className="day-title">{formatDayLabel(day)}</h1>
-      {totals && !isToday(day) && (
-        <span className="day-totals o2" aria-label="Totals">
-          recorded {formatHm(totals.recordedMs)} · tracked {formatHm(totals.trackedMs)} · away {formatHm(totals.awayMs)}
-        </span>
-      )}
-      <span className="day-head-spacer" />
+    <Toolbar
+      title={formatDayLabel(day)}
+      detail={
+        totals &&
+        !isToday(day) && (
+          <span className="toolbar-detail" aria-label="Totals">
+            recorded {formatHm(totals.recordedMs)} · tracked {formatHm(totals.trackedMs)} · away {formatHm(totals.awayMs)}
+          </span>
+        )
+      }
+    >
       <SegmentedControl label="Day mode" options={DAY_MODES} value={mode} onChange={setDayMode} />
       {mode === "timeline" && (
         <button type="button" className="btn btn-quiet" data-lanes-button aria-haspopup="dialog" onClick={() => useStore.getState().openDialog({ type: "lanes" })}>
-          <Columns3 size="1rem" aria-hidden="true" />
+          <Columns3 size="1.154rem" aria-hidden="true" />
           Lanes
         </button>
       )}
@@ -48,12 +51,12 @@ export function DayHeader({ day, totals }: { day: string; totals: DayTotals | nu
         data-timeline-settings
         onClick={() => useStore.getState().openDialog({ type: "timelineSettings" })}
       >
-        <SlidersHorizontal size="1.077rem" />
+        <SlidersHorizontal size="1.154rem" />
       </button>
       <button type="button" className="icon-btn" aria-label="More day actions" aria-haspopup="menu" title="More" onClick={(e) => openMenu(e.currentTarget)}>
-        <Ellipsis size="1.077rem" />
+        <Ellipsis size="1.154rem" />
       </button>
       {menu.element}
-    </header>
+    </Toolbar>
   );
 }

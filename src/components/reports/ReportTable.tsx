@@ -33,14 +33,14 @@ function ProjectRows({ project, open, onToggle }: { project: ReportProject; open
             <Chevron size="0.923rem" aria-hidden="true" />
             <AccentDot accent={project.color} shade={project.shade} />
             <span className="report-project-name">{project.name}</span>{" "}
-            {project.billable && <span className="badge">billable</span>}{" "}
+            {project.billable && <span className="secondary-label">billable</span>}{" "}
             <span className="o3">{plural(project.rows.length, "recording", "recordings")}</span>
           </button>
         </td>
         <td className="report-project-actions">
           <button
             type="button"
-            className="btn"
+            className="btn btn-quiet"
             aria-label={`Copy notes of ${project.label}`}
             title={plural(project.notes.count, "note", "notes")}
             disabled={project.notes.count === 0}

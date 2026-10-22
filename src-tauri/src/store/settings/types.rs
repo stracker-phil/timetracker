@@ -50,6 +50,14 @@ pub fn is_accent(name: &str) -> bool {
     ACCENTS.contains(&name)
 }
 
+/// The app accent that follows the macOS accent color; projects never take it.
+pub const SYSTEM_ACCENT: &str = "system";
+
+/// Whether `name` can be the app accent: the system's or one of `ACCENTS`.
+pub fn is_app_accent(name: &str) -> bool {
+    name == SYSTEM_ACCENT || is_accent(name)
+}
+
 /// Lengths of the summary lane's buckets, in minutes.
 pub const SUMMARY_MINUTES: &[u16] = &[5, 10, 15, 20, 30, 45, 60];
 /// Grid that dragged recordings snap to, in minutes.

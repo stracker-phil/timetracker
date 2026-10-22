@@ -1,4 +1,4 @@
-import type { ActivityBlock, AwayBlock, DayApp, DayTotals, DayView, Gap, Lane, RecordingBlock, TimesheetCard } from "../api/types";
+import type { ActivityBlock, DayApp, DayTotals, DayView, Lane, RecordingBlock, TimesheetCard } from "../api/types";
 
 /** A fixed past day, so tests never depend on the clock. */
 export const DAY = "2026-03-10";
@@ -129,14 +129,6 @@ export function summaryLane(blocks: ActivityBlock[]): Lane {
   return lane({ id: "summary", kind: "summary", label: "Summary", blocks });
 }
 
-export function away(patch: Partial<AwayBlock> = {}): AwayBlock {
-  return { id: 1, start: at("12:00"), end: at("12:30"), reason: "idle", ...patch };
-}
-
-export function gap(patch: Partial<Gap> = {}): Gap {
-  return { start: at("10:00"), end: at("10:10"), ...patch };
-}
-
 /**
  * A day without activity; `patch` overrides fields. `firstActivity` defaults to the earliest block start
  * (or null), `sources` to the external sources of the lanes.
@@ -152,8 +144,6 @@ export function dayView(patch: Partial<DayView> = {}): DayView {
     lanes,
     compact: false,
     hiddenApps: [],
-    away: [],
-    gaps: [],
     recordings: [],
     timesheet: [],
     apps: [],

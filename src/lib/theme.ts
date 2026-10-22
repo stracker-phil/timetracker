@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { Scheme, Settings } from "../api";
+import { SYSTEM_ACCENT, type Scheme, type Settings } from "../api/types";
 
 // One query for the whole app; matchMedia is missing in some test environments.
 const darkQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -44,10 +44,10 @@ function applyLook(look: Look) {
   dataset.sidebar = look.sidebar;
 }
 
-/** A family name the user typed, quoted for CSS and put in front of the bundled stack. */
-function fontStack(family: string | null, bundled: string): string | null {
+/** A family name the user typed, quoted for CSS and put in front of the system stack. */
+function fontStack(family: string | null, fallback: string): string | null {
   if (!family) return null;
-  return `"${family.replace(/["\\]/g, "\\$&")}", var(${bundled})`;
+  return `"${family.replace(/["\\]/g, "\\$&")}", var(${fallback})`;
 }
 
 function setOrRemove(style: CSSStyleDeclaration, name: string, value: string | null) {
@@ -62,11 +62,12 @@ export function applyAppearance(settings: Settings, systemDark: boolean) {
   root.dataset.accent = settings.accent;
   root.style.setProperty("--ui-font-size", `${settings.uiFontSize}px`);
   root.style.setProperty("--data-font-size", `${settings.dataFontSize}px`);
-  setOrRemove(root.style, "--font-ui", fontStack(settings.fontUi, "--font-ui-bundled"));
-  setOrRemove(root.style, "--font-mono", fontStack(settings.fontMono, "--font-mono-bundled"));
+  setOrRemove(root.style, "--font-ui", fontStack(settings.fontUi, "--font-ui-system"));
+  setOrRemove(root.style, "--font-mono", fontStack(settings.fontMono, "--font-mono-system"));
 }
 
 /** Applies the default look for the OS appearance before settings load, so the first paint has colors. */
 export function applyInitialLook() {
   applyLook(resolveLook(DEFAULT_APPEARANCE, systemIsDark()));
+  document.documentElement.dataset.accent = SYSTEM_ACCENT;
 }

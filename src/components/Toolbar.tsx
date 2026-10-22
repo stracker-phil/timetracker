@@ -1,16 +1,23 @@
-import { Settings as SettingsIcon } from "lucide-react";
-import { runCommand, useBindingLabel } from "../commands";
+import type { ReactNode } from "react";
 
-/** The window's drag strip: the app title and Settings; views and dates live in the sidebar. */
-export function Toolbar() {
-  const settingsKeys = useBindingLabel("settings.toggle");
+interface Props {
+  title: ReactNode;
+  /** Secondary text beside the title, e.g. the period's totals. */
+  detail?: ReactNode;
+  /** The view's actions, at the trailing end. */
+  children?: ReactNode;
+}
+
+/** One row beside the window buttons, rendered by every view; its empty space drags the window. */
+export function Toolbar({ title, detail, children }: Props) {
   return (
     <header className="toolbar" data-tauri-drag-region>
-      <span className="app-title" data-tauri-drag-region>TimeTracker</span>
+      <h1 className="toolbar-title" data-tauri-drag-region>
+        {title}
+      </h1>
+      {detail}
       <span className="spacer" data-tauri-drag-region />
-      <button className="icon-btn" aria-label="Settings" title={settingsKeys ? `Settings (${settingsKeys})` : "Settings"} onClick={() => runCommand("settings.toggle")}>
-        <SettingsIcon size="1.077rem" />
-      </button>
+      {children}
     </header>
   );
 }

@@ -33,9 +33,9 @@ describe("App", () => {
   beforeEach(() => vi.clearAllMocks());
 
   describe("shell", () => {
-    it("shows the toolbar title, the status bar and the Day view", async () => {
+    it("shows the status bar and the Day view without a global title bar", async () => {
       await renderApp();
-      expect(screen.getByText("TimeTracker")).toBeInTheDocument();
+      expect(screen.queryByText("TimeTracker")).not.toBeInTheDocument();
       expect(await screen.findByText("Nothing tracked on this day")).toBeInTheDocument();
       expect(mainHeading("Day")).toBeInTheDocument();
     });
@@ -359,10 +359,17 @@ describe("App", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    it("opens from the toolbar button", async () => {
+    it("opens from the command palette", async () => {
       await renderApp();
-      await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+      await userEvent.keyboard("{Meta>}k{/Meta}");
+      await userEvent.type(await screen.findByLabelText("Search"), "settings");
+      await userEvent.click(screen.getByRole("option", { name: /^Settings…/ }));
       expect(await screen.findByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+    });
+
+    it("has no Settings button in the window", async () => {
+      await renderApp();
+      expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
     });
 
     it("closes with Escape", async () => {

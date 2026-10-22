@@ -1,34 +1,30 @@
-/* ---------- day: a slim header over the timesheet pane and the timeline (or list) ---------- */
+/* ---------- day: the toolbar over the timesheet pane and the timeline (or list) ---------- */
 .day-page { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.day-head { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: 2.769rem; padding: 0 var(--space-4); border-bottom: 1px solid var(--line); }
-.day-title { margin: 0; font-size: var(--fs-body); font-weight: 600; white-space: nowrap; }
-.day-totals { font-size: var(--fs-meta); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.day-head-spacer { flex: 1; }
 .day-body { flex: 1; display: flex; min-height: 0; }
 .day-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
-.day-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.462rem; color: var(--text); }
+.day-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); color: var(--text); }
 .day-empty p { margin: 0; }
 
 /* ---------- timesheet: the day's total, then one filled card per recording ---------- */
 .timesheet-pane { flex: none; min-width: 0; display: flex; }
 .timesheet { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg-quiet); }
-.timesheet-head { flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); padding: var(--space-3) var(--space-4) var(--space-3); }
+.timesheet-head { flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); padding: var(--space-4) var(--space-4) var(--space-3); }
 .timesheet-heading { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .timesheet-label { font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }
-.timesheet-total { font-size: 1.692rem; font-weight: 650; letter-spacing: -0.01em; color: var(--text-strong); font-variant-numeric: tabular-nums; }
-.timesheet-add { width: 2.462rem; height: 2.462rem; padding: 0; }
+.timesheet-total { font-size: var(--fs-display); font-weight: 700; color: var(--text-strong); }
+.timesheet-add { width: var(--toolbar-control-h); height: var(--toolbar-control-h); padding: 0; }
 .timesheet-cards { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1) var(--space-4) var(--space-6); }
 .timesheet-empty { margin: var(--space-2) 0; line-height: 1.5; }
 
 /* Taller for longer recordings, never shorter than its text. */
 .sheet-card {
   flex: none; position: relative; min-height: calc(3.692rem + min(var(--card-minutes), 300) * 0.6px);
-  padding: var(--space-2) var(--space-3); gap: 3px; outline: none; cursor: default; box-shadow: var(--shadow-small);
+  padding: var(--space-2) var(--space-3); gap: 3px; outline: none; cursor: default;
 }
-.sheet-card .card-title { font-size: 1.077rem; }
+.sheet-card .card-title { font-size: var(--fs-title); }
 .sheet-card .card-subtitle { display: flex; align-items: center; gap: var(--space-1); font-size: var(--fs-meta); }
 .sheet-card .card-meta { gap: var(--space-1); }
-.sheet-card .card-trailing { font-size: 1.077rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sheet-card .card-trailing { font-size: var(--fs-title); font-weight: 600; }
 .sheet-card.hovered { box-shadow: 0 0 0 2px var(--block-meta); }
 .sheet-card.focused, .sheet-card:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
 
@@ -49,7 +45,7 @@
 .suggestion-card-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .timesheet-review {
   flex: none; display: flex; align-items: center; gap: var(--space-1); margin: 0 var(--space-4) var(--space-2); padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
-  border-radius: var(--radius-card); background: var(--sel); font-size: var(--fs-meta);
+  border-radius: var(--radius); background: var(--sel); font-size: var(--fs-meta);
 }
 .timesheet-review-count { flex: 1; font-weight: 600; color: var(--accent-text); }
 .timesheet-review-action { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); font-size: var(--fs-meta); }
@@ -62,11 +58,11 @@
 .lane-heads { display: flex; }
 .lane-head {
   flex: 1 1 0; min-width: var(--lane-min-w); box-sizing: border-box; padding: var(--space-2); border-left: 1px solid var(--line);
-  color: var(--o2); font-weight: 500; display: flex; align-items: center; gap: var(--space-2);
+  color: var(--o2); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);
 }
 .lane-head svg { flex: none; color: var(--o3); }
 .lane-head-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lane-head-total { margin-left: auto; color: var(--o3); font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lane-head-total { margin-left: auto; color: var(--o3); font-weight: 400; white-space: nowrap; }
 .timeline-body { position: relative; }
 .recordings-col { position: relative; border-left: 1px solid var(--line); }
 .time-axis, .lanes { z-index: 1; }
@@ -74,7 +70,7 @@
 
 .time-axis { position: relative; }
 .axis-mark { position: absolute; left: 0; right: 0; height: 0; }
-.axis-label { position: absolute; right: var(--space-2); top: -0.6em; font-size: var(--fs-caption); color: var(--o2); font-variant-numeric: tabular-nums; }
+.axis-label { position: absolute; right: var(--space-2); top: -0.6em; font-size: var(--fs-caption); color: var(--o2); }
 
 /* `--hour-px` (set from the zoom) spaces the hour hairlines; `--half-line` draws half hours when zoomed in. */
 .lanes {
@@ -92,11 +88,6 @@
 .lane-head--activity, .lane--activity { flex: 2 1 0; min-width: var(--activity-lane-min-w); }
 .lane-head--app, .lane--app { flex: 0.6 1 0; min-width: var(--app-lane-min-w); }
 
-/* Away and idle time: darker bands across the time column and the lanes, behind the blocks; gaps a lighter one. */
-.span { position: absolute; left: 0; right: 0; box-sizing: border-box; z-index: 0; pointer-events: none; }
-.span.away { background: var(--away-band); }
-.span.gap { background: color-mix(in srgb, var(--away-band) 45%, transparent); }
-.span-label { position: absolute; top: 3px; right: var(--space-2); font-size: var(--fs-meta); color: var(--o2); }
 .now-line { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--accent); z-index: 2; pointer-events: none; }
 
 .recording-drop { position: absolute; left: 4px; right: 4px; box-sizing: border-box; border: 1px dashed var(--accent); border-radius: var(--radius-card); pointer-events: none; }
@@ -105,12 +96,12 @@
   position: absolute; left: 0; right: 0; z-index: 2; pointer-events: none; background: var(--sel);
   border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent);
 }
-.selection-label { position: absolute; top: 2px; left: 0.462rem; font-size: var(--data-font-size); font-weight: 500; font-variant-numeric: tabular-nums; color: var(--accent-text); }
+.selection-label { position: absolute; top: 2px; left: 0.462rem; font-size: var(--data-font-size); font-weight: 500; color: var(--accent-text); }
 
 /* The zoom, floating over the timeline's bottom right. */
 .zoom-control {
   position: absolute; right: var(--space-4); bottom: var(--space-4); z-index: 4; display: flex; align-items: center; gap: var(--space-1);
-  padding: 2px; background: var(--pop); border: 1px solid var(--field-line); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 2px; background: var(--pop); border-radius: var(--radius); box-shadow: var(--shadow);
 }
 .zoom-slider { width: 7.692rem; margin: 0 var(--space-1); accent-color: var(--accent); }
 
@@ -119,42 +110,41 @@
 /* ---------- recording editor: a card in the timesheet (a sheet in the Week view) ---------- */
 .recording-editor {
   flex: none; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3);
-  background: var(--pop); border-radius: var(--radius-card); box-shadow: 0 0 0 2px var(--accent), var(--shadow-small); scroll-margin: var(--space-4);
+  background: var(--pop); border-radius: var(--radius); box-shadow: 0 0 0 2px var(--accent), var(--shadow-small); scroll-margin: var(--space-4);
 }
 .recording-editor-sheet { width: min(26rem, 92vw); padding: 0; }
 .recording-editor-sheet .recording-editor { box-shadow: none; }
 .editor-suggested { display: flex; align-items: center; gap: var(--space-1); margin: 0; color: var(--o2); font-size: var(--fs-meta); }
-.editor-warning { margin: 0; padding: 0.462rem var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); line-height: 1.4; }
+.editor-warning { margin: 0; padding: var(--space-2) var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); line-height: 1.35; }
 .editor-note { display: flex; flex-direction: column; gap: 2px; }
-.editor-note .input { font-size: 1.077rem; font-weight: 600; border-color: transparent; background: transparent; padding-left: 0; }
-.editor-note .input:focus { border-color: var(--field-line); background: var(--bg); padding-left: var(--space-2); }
-.editor-duration { display: flex; align-items: baseline; gap: var(--space-1); font-size: 1.385rem; font-weight: 600; color: var(--text-strong); }
-.duration-input { width: 2.4em; padding: 0 2px; font: inherit; color: inherit; text-align: right; font-variant-numeric: tabular-nums; background: transparent; border: none; border-bottom: 1px solid var(--field-line); }
-.duration-input:focus { outline: none; border-bottom-color: var(--accent); }
-.duration-unit { font-size: var(--fs-meta); color: var(--o2); font-weight: 500; }
+.editor-note .input { font-size: var(--fs-title); font-weight: 600; background: transparent; box-shadow: none; padding-left: 0; }
+.editor-note .input:focus { background: var(--field); box-shadow: inset 0 0 0 1px var(--field-line), var(--focus-ring); padding-left: var(--space-2); }
+.editor-duration { display: flex; align-items: baseline; gap: var(--space-1); font-size: var(--fs-display); font-weight: 700; color: var(--text-strong); }
+.duration-input { width: 2.4em; padding: 0 4px; font: inherit; color: inherit; text-align: right; background: var(--fill); border: none; border-radius: var(--radius-sm); }
+.duration-input:focus { outline: none; background: var(--field); box-shadow: inset 0 0 0 1px var(--field-line), var(--focus-ring); }
+.duration-unit { font-size: var(--fs-meta); color: var(--o2); font-weight: 400; }
 .editor-activity-head { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-1) 0; background: none; border: none; color: var(--text); font: inherit; font-weight: 500; cursor: pointer; }
 .editor-activity-head:disabled { cursor: default; color: var(--o2); }
-.editor-activity-count { margin-left: auto; color: var(--o2); font-variant-numeric: tabular-nums; }
+.editor-activity-count { margin-left: auto; color: var(--o2); }
 .editor-activity-list { margin: 0; padding: 0 0 0 var(--space-4); list-style: none; display: flex; flex-direction: column; gap: 2px; max-height: 12rem; overflow: auto; font-size: var(--fs-meta); }
 .editor-activity-list li { display: flex; justify-content: space-between; gap: var(--space-2); }
 .editor-activity-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editor-spans { display: flex; flex-direction: column; gap: var(--space-1); }
 .editor-span { display: flex; align-items: center; gap: var(--space-2); }
-.editor-span-label { font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--o2); }
-.editor-span-time { font-variant-numeric: tabular-nums; }
+.editor-span-label { font-size: var(--fs-meta); color: var(--o2); }
 .editor-span-remove { margin-left: auto; padding: var(--space-1); }
 .editor-span-add { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--space-1); }
-.time-input { width: 4.5rem; font-variant-numeric: tabular-nums; }
+.time-input { width: 4.5rem; }
 .editor-overlap { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); }
 .editor-overlap-title { margin: 0; font-weight: 600; }
-.editor-actions { display: flex; align-items: center; gap: var(--space-2); }
-.editor-delete { margin-left: auto; }
+.editor-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.editor-delete { margin-right: auto; }
 
 /* The open editor's spans in the time column. */
 .recording-draft {
   position: absolute; left: 4px; right: 4px; z-index: 2; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;
   padding: 3px var(--space-1) 2px; border-radius: var(--radius-card); background: var(--sel); border: 1px solid var(--accent); pointer-events: none;
 }
-.recording-draft-time { font-size: var(--fs-caption); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--accent-text); }
+.recording-draft-time { font-size: var(--fs-caption); font-weight: 600; color: var(--accent-text); }
 .recording-draft-time:last-child { align-self: flex-end; }
 .overlap-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-1); }

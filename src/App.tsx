@@ -14,7 +14,6 @@ import { WeekView } from "./components/calendar/WeekView";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { Toasts } from "./components/Toasts";
-import { Toolbar } from "./components/Toolbar";
 import { handleKeydown, installCommands, runMenuCommand } from "./commands";
 import { installMenuSync } from "./commands/menu";
 import { answerRemote } from "./commands/remote";
@@ -118,7 +117,6 @@ export default function App() {
   return (
     <>
       <div className="app">
-        <Toolbar />
         <Workspace />
         <StatusBar />
       </div>

@@ -9,7 +9,7 @@ import { handleKeydown, installCommands, runCommand } from "../../commands";
 import { today } from "../../lib/day";
 import { resetStore, useStore } from "../../state/store";
 import { trackerStatus } from "../../test/data";
-import { appLane, at, away, block, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane, timesheetCard, withTimesheet } from "../../test/dayFixtures";
+import { appLane, at, block, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane, timesheetCard, withTimesheet } from "../../test/dayFixtures";
 import { listRow, listView } from "../../test/listFixtures";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
@@ -132,15 +132,11 @@ describe("DayPage", () => {
       expect(await blockEl("Safari: Private")).toHaveTextContent("Private");
     });
 
-    it("labels an away span with its reason and length", async () => {
-      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], away: [away({ reason: "idle", start: at("12:00"), end: at("12:30") })] }));
-      expect(await screen.findByText("Away · idle 30 min")).toBeInTheDocument();
-    });
-
-    it("leaves a very short away span unlabeled", async () => {
-      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], away: [away({ start: at("12:00"), end: at("12:05") })] }));
+    it("shows no away text on a day with activity", async () => {
+      const totals = { recordedMs: 0, trackedMs: 30 * MINUTE_MS, awayMs: 30 * MINUTE_MS };
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], totals }));
       await blockEl("Safari: Docs");
-      expect(screen.queryByText(/^Away/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^Away ·/)).not.toBeInTheDocument();
     });
   });
 
@@ -1290,22 +1286,12 @@ describe("DayPage", () => {
     });
   });
 
-  describe("away spans", () => {
-    it("draws every away span with its reason and length", async () => {
-      renderDay(
-        dayView({
-          lanes: [lane({ blocks: [docs] })],
-          away: [away({ id: 1, reason: "lock", start: at("12:00"), end: at("13:05") }), away({ id: 2, reason: "sleep", start: at("15:00"), end: at("15:45") })],
-        }),
-      );
-      expect(await screen.findByText("Away · lock 1 h 05 min")).toBeInTheDocument();
-      expect(screen.getByText("Away · sleep 45 min")).toBeInTheDocument();
-    });
-
-    it("shows a day with only away time as a timeline", async () => {
-      renderDay(dayView({ away: [away({ reason: "idle", start: at("12:00"), end: at("12:30") })] }));
-      expect(await screen.findByText("Away · idle 30 min")).toBeInTheDocument();
-      expect(screen.queryByText("Nothing tracked on this day")).not.toBeInTheDocument();
+  describe("away time", () => {
+    it("a day with only away time shows the empty state", async () => {
+      const totals = { recordedMs: 0, trackedMs: 0, awayMs: 30 * MINUTE_MS };
+      renderDay(dayView({ totals }));
+      expect(await screen.findByText("Nothing tracked on this day")).toBeInTheDocument();
+      expect(screen.queryByText(/^Away ·/)).not.toBeInTheDocument();
     });
   });
 

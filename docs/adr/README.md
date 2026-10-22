@@ -26,6 +26,7 @@ and a dated amendment under Status only corrects facts that changed.
 | [0018](0018-one-line-notes-tags-copyable-reports.md) | Notes are one line, tags classify work, reports are built for copying | Accepted (2026-10-21), implemented, amended, superseded in part by 0019 |
 | [0019](0019-one-tag-per-recording.md) | A recording has at most one tag | Accepted (2026-10-21), implemented |
 | [0020](0020-recordings-have-spans.md) | A recording holds one or more spans of time | Accepted (2026-10-22), implemented, superseded in part by 0023 |
-| [0021](0021-appearance-modes-and-schemes.md) | Appearance is a mode and one of three schemes, built from four palettes | Accepted (2026-10-22), implemented, superseded in part by 0022 |
+| [0021](0021-appearance-modes-and-schemes.md) | Appearance is a mode and one of three schemes, built from four palettes | Accepted (2026-10-22), implemented, superseded in part by 0022 and 0024 |
 | [0022](0022-a-scheme-per-system-mode.md) | Appearance follows macOS, with one scheme per mode | Accepted (2026-10-22), implemented |
 | [0023](0023-week-and-month-are-lists.md) | The Week and Month list recordings per day; a Week drag moves a recording's day | Accepted (2026-10-22), implemented |
+| [0024](0024-native-macos-look.md) | The app looks native: system font, inset groups, a unified toolbar, AppKit control metrics | Accepted (2026-10-22), implemented |

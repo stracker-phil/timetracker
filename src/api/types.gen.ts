@@ -89,8 +89,6 @@ app: string, lastSeen: number, totalMs: number, };
  */
 export type AppSettingPatch = { groupByApp?: boolean | null, titles?: Titles | null, ownLane?: boolean, hidden?: boolean, };
 
-export type AwayBlock = { id: number, start: number, end: number, reason: AwayReason, };
-
 export type AwayPrompt = { span: AwayRow, 
 /**
  * The span's end; prompts are only made for closed spans.
@@ -282,7 +280,7 @@ recordings: Array<RecordingBlock>,
 /**
  * The timesheet: one card per recording on the day, by its first span on the day.
  */
-timesheet: Array<TimesheetCard>, away: Array<AwayBlock>, gaps: Array<Gap>, totals: DayTotals, firstActivity: number | null, 
+timesheet: Array<TimesheetCard>, totals: DayTotals, firstActivity: number | null, 
 /**
  * Every source of the day's activity, sorted.
  */
@@ -320,11 +318,6 @@ export type DraftSpans = {
 spans: Array<Span>, totalMs: number, };
 
 export type ErrorKind = "db" | "io" | "invalid_input" | "not_found" | "overlap" | "permission_required" | "tracker_paused" | "session_not_found" | "cancelled";
-
-/**
- * Time inside the day's activity with neither activity nor away.
- */
-export type Gap = { start: number, end: number, };
 
 export type Group = "project" | "tag" | "day" | "week" | "month";
 
@@ -744,7 +737,11 @@ lightScheme: Scheme,
 /**
  * The look while macOS is in dark mode.
  */
-darkScheme: Scheme, accent: string, 
+darkScheme: Scheme, 
+/**
+ * The app accent: `system` (the macOS accent color) or one of `ACCENTS`.
+ */
+accent: string, 
 /**
  * Chrome: sidebar, labels, buttons (also scales rem).
  */
@@ -754,11 +751,11 @@ uiFontSize: number,
  */
 dataFontSize: number, 
 /**
- * An installed font family; `None` uses the bundled Geist.
+ * An installed font family; `None` uses the system font (SF Pro).
  */
 fontUi: string | null, 
 /**
- * An installed font family; `None` uses the bundled JetBrains Mono.
+ * An installed font family; `None` uses the system mono font (SF Mono).
  */
 fontMono: string | null, logLevel: LogLevel, launchAtLogin: boolean, 
 /**

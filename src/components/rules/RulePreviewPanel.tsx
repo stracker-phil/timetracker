@@ -21,11 +21,11 @@ export function RulePreviewPanel({ input }: { input: RuleInput }) {
       {preview.state === "failed" && key !== null && <p className="settings-alert">{preview.error.message}</p>}
       {data && (
         <>
-          <p className="o2 mono">{data.hits.length === 0 ? "Nothing matches" : `${formatDuration(data.totalMs)} on ${data.days === 1 ? "1 day" : `${data.days} days`}`}</p>
+          <p className="o2">{data.hits.length === 0 ? "Nothing matches" : `${formatDuration(data.totalMs)} on ${data.days === 1 ? "1 day" : `${data.days} days`}`}</p>
           <ul className="rule-hits">
             {data.hits.map(({ block, day }) => (
               <li key={`${day}:${block.id}`}>
-                <span className="mono o2">
+                <span className="o2">
                   {formatDayLabel(day)} {formatClock(block.start)}
                 </span>
                 <span className="rule-hit-app">{block.app}</span>

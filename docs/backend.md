@@ -77,7 +77,7 @@ app runs; a later launch or the tray shows it.
 ## Window lifecycle
 
 The main window is declared in `tauri.conf.json`: label `main`, 1200 × 800 (minimum 900 × 560), invisible
-until setup shows it, overlay title bar with hidden title, traffic lights at 16/20, transparent background with
+until setup shows it, overlay title bar with hidden title, traffic lights at 20/28 (centered in the 52px toolbar), transparent background with
 the `sidebar` vibrancy effect. The away prompt (`away_prompt/window.rs`) and the timer picker
 (`timers/picker.rs`) are built in Rust with `WebviewWindowBuilder`.
 
@@ -274,16 +274,16 @@ by the commands and the CLI. Activity is never edited (ADR 0005), so deletion wo
 0012](adr/0012-timeline-layout-in-rust.md)); `day::load` reads the rows (`list_for_range`, spans
 from the day before included) and calls it. `ViewSettings` is a copy of `Settings.timeline` and
 `Settings.apps`. The module is split by concern: `types.rs` (everything `DayView` sends), `totals.rs`
-(`totals`, `tracked_ms`, gaps, span unions), `recordings.rs` (`recording_blocks`, `timesheet`), `summary.rs`
+(`totals`, `tracked_ms`, span unions), `recordings.rs` (`recording_blocks`, `timesheet`), `summary.rs`
 (the summary lane), `lanes.rs` (lanes and columns), `transform.rs` (the timeline settings). In order:
 
 1. `clipped_blocks`: every activity cut to the day's bounds (an open span ends at `now`); private rows keep
    the app and read "Private" without URL or path. `appKey` is the bundle id, else the app name: what
    `Settings.apps` overrides are keyed by.
-2. Totals (`totals`, also behind `day_totals`), gaps, `firstActivity` and `sources` come from these raw rows,
+2. Totals (`totals`, also behind `day_totals`), `firstActivity` and `sources` come from these raw rows,
    so hiding and merging never change them: `trackedMs` the union of tracker spans, `awayMs` the union of away spans, `recordedMs` the sum of
-   the recordings' parts in the day; gaps are holes of `GAP_MIN` (2 min) or longer between the first
-   activity's start and the last one's end, without activity or away.
+   the recordings' parts in the day. The away spans themselves are not sent: `barriers` keeps the sleep,
+   lock and pause spans cut to the day (`#[serde(skip)]`) for `transform::grouped` and the rules.
 3. External rows go to their source lanes as they are. Tracker rows run through `day/transform.rs`:
    `without_hidden` drops apps with `hidden`; `identified` labels each row (`titles`: the title, or the app
    when empty or in `app` mode; private rows "Private") and keys it by app (`groupByApp`) or by app and
@@ -775,7 +775,7 @@ save leaves memory unchanged. `JsonStore::open_with` normalizes the loaded value
 
 | File | Contents |
 |---|---|
-| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets an unknown accent (`ACCENTS`) to `orange` (an unknown `lightScheme` or `darkScheme` falls back to `default` or `dark` through `lenient`) and moves a 0021 file's `scheme` into `lightScheme`; turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline` or `apps` emits `data_changed { kind: settings, day: null }`, so every open day reloads. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
+| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets an unknown accent (neither `system` (`SYSTEM_ACCENT`) nor one of `ACCENTS`: `is_app_accent`) to `system` (an unknown `lightScheme` or `darkScheme` falls back to `default` or `dark` through `lenient`) and moves a 0021 file's `scheme` into `lightScheme`; turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline` or `apps` emits `data_changed { kind: settings, day: null }`, so every open day reloads. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed. A trailing `++` is the `+` key |
 | `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay`, `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id), `dayMode`, `onboardingDone` (default `false`: the welcome sheet shows) |
 | `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere (written only by `data_move`) |

@@ -575,6 +575,14 @@ mod tests {
                 },
                 "color",
             ),
+            (
+                "system accent",
+                ProjectInput {
+                    color: "system".into(),
+                    ..input("x")
+                },
+                "color",
+            ),
         ];
         for (case, bad, field) in cases {
             let err = insert(&db, bad).await.unwrap_err();

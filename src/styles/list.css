@@ -1,8 +1,8 @@
 /* The Day view's List mode: a search field and the project strip over the day's activity, longest first. */
 .list-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .list-view.dragging, .list-view.dragging * { cursor: grabbing; }
-.list-tools { flex: none; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
-.list-search { max-width: 28rem; height: 2rem; }
+.list-tools { flex: none; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--margin); border-bottom: 1px solid var(--line); }
+.list-search { max-width: 28rem; }
 .list-search input::-webkit-search-cancel-button { display: none; }
 
 .list-strip { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; }
@@ -13,7 +13,6 @@
 /* Row anatomy: --pad around a line of at least 20px, like the sidebar (docs/ux.md). */
 .list-row { padding: 0 var(--space-2); border-radius: var(--radius-sm); outline: none; cursor: grab; touch-action: none; user-select: none; }
 .list-row + .list-row { box-shadow: inset 0 1px 0 var(--line); }
-.list-row:hover { background: var(--row-hover); }
 .list-row:focus-visible, .list-row:focus { background: var(--sel); }
 .list-row.dragging { opacity: 0.6; }
 .list-row-main {
@@ -32,7 +31,7 @@
 .list-total .o3 { font-weight: 400; }
 
 /* The recorded share of the row's time. */
-.covered-bar { display: block; width: 3.5rem; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.covered-bar { display: block; width: 3.5rem; height: 4px; border-radius: 2px; background: var(--fill-strong); overflow: hidden; }
 .covered-bar > span { display: block; height: 100%; background: var(--accent); }
 
 .list-details {

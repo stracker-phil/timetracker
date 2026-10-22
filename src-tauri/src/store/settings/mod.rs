@@ -28,15 +28,16 @@ pub struct Settings {
     #[serde(rename = "scheme", skip_serializing, deserialize_with = "lenient")]
     #[ts(skip)]
     pub(crate) legacy_scheme: Option<Scheme>,
+    /// The app accent: `system` (the macOS accent color) or one of `ACCENTS`.
     pub accent: String,
     /// Chrome: sidebar, labels, buttons (also scales rem).
     pub ui_font_size: u8,
     /// Data: times, durations, titles on the timeline.
     pub data_font_size: u8,
-    /// An installed font family; `None` uses the bundled Geist.
+    /// An installed font family; `None` uses the system font (SF Pro).
     #[serde(deserialize_with = "lenient")]
     pub font_ui: Option<String>,
-    /// An installed font family; `None` uses the bundled JetBrains Mono.
+    /// An installed font family; `None` uses the system mono font (SF Mono).
     #[serde(deserialize_with = "lenient")]
     pub font_mono: Option<String>,
     #[serde(deserialize_with = "lenient")]
@@ -66,7 +67,7 @@ impl Default for Settings {
             light_scheme: Scheme::Default,
             dark_scheme: Scheme::Dark,
             legacy_scheme: None,
-            accent: "orange".into(),
+            accent: SYSTEM_ACCENT.into(),
             ui_font_size: 13,
             data_font_size: 12,
             font_ui: None,
@@ -92,7 +93,7 @@ impl Settings {
         if let Some(scheme) = self.legacy_scheme.take() {
             self.light_scheme = scheme;
         }
-        if !is_accent(&self.accent) {
+        if !is_app_accent(&self.accent) {
             self.accent = d.accent;
         }
         self.font_ui = non_blank(self.font_ui);
@@ -624,7 +625,20 @@ mod tests {
     #[test]
     fn an_unknown_accent_resets_to_the_default() {
         let sanitized = settings(|s| s.accent = "chartreuse".into()).sanitized();
-        assert_eq!(sanitized.accent, "orange");
+        assert_eq!(sanitized.accent, "system");
+    }
+
+    #[test]
+    fn the_default_accent_follows_the_system() {
+        assert_eq!(Settings::default().accent, "system");
+    }
+
+    #[test]
+    fn accents_survive_sanitizing() {
+        for accent in ["system", "orange", "teal"] {
+            let sanitized = settings(|s| s.accent = accent.into()).sanitized();
+            assert_eq!(sanitized.accent, accent, "{accent}");
+        }
     }
 
     #[test]
@@ -711,7 +725,7 @@ mod tests {
             json!({
                 "lightScheme": "default",
                 "darkScheme": "dark",
-                "accent": "orange",
+                "accent": "system",
                 "uiFontSize": 13,
                 "dataFontSize": 12,
                 "fontUi": null,

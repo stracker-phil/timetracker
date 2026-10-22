@@ -5,6 +5,7 @@ import { formatRangeLabel } from "../../lib/day";
 import { useApiResult } from "../../lib/useApiResult";
 import { defaultFilter } from "../../state/slices/reports";
 import { useStore } from "../../state/store";
+import { Toolbar } from "../Toolbar";
 import { copyReport, promptSaveReport } from "./actions";
 import { ReportChart } from "./ReportChart";
 import { ReportFilters } from "./ReportFilters";
@@ -48,8 +49,7 @@ export function ReportsView() {
 
   return (
     <section className="reports-page" aria-label="Reports">
-      <header className="reports-head">
-        <h1 className="reports-title">{result && formatRangeLabel(result.from, result.to)}</h1>
+      <Toolbar title={result && formatRangeLabel(result.from, result.to)}>
         <select className="input" aria-label="Group copied text by" value={filter.groupBy} onChange={(e) => setReportFilter({ groupBy: e.target.value as Group })}>
           {TEXT_GROUPS.map((group) => (
             <option key={group} value={group}>
@@ -58,12 +58,12 @@ export function ReportsView() {
           ))}
         </select>
         <button type="button" className="btn" title={copyKeys ? `Copy as text (${copyKeys})` : undefined} onClick={() => void copyReport()}>
-          <Copy size="1rem" /> Copy as text
+          <Copy size="1.154rem" /> Copy as text
         </button>
         <button type="button" className="btn" onClick={() => promptSaveReport()}>
-          <Save size="1rem" /> Save report…
+          <Save size="1.154rem" /> Save report…
         </button>
-      </header>
+      </Toolbar>
       <ReportFilters filter={filter} shown={shown} onChange={setReportFilter} />
       <div className="report-result">
         {error && <p className="settings-alert">{error.message}</p>}

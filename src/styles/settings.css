@@ -1,36 +1,36 @@
 /* ---------- settings window: sidebar of pages, grouped cards of label/control rows ---------- */
 .dialog.settings-window { display: flex; width: min(54rem, calc(100vw - 2.462rem)); height: min(46rem, calc(100vh - 4.615rem)); }
 .settings-nav {
-  flex: none; width: 13.5rem; padding: var(--space-4) 0.769rem; overflow: auto;
-  background: var(--chrome); border-right: 1px solid var(--line);
-  display: flex; flex-direction: column; gap: 1.077rem;
+  flex: none; width: 13.5rem; padding: var(--space-4) var(--space-2); overflow: auto;
+  background: var(--chrome); box-shadow: inset -1px 0 0 var(--line);
+  display: flex; flex-direction: column; gap: var(--space-3);
 }
 .settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
-.settings-nav-heading { padding: 0 var(--space-2) var(--space-1); font-size: var(--fs-meta); font-weight: 500; color: var(--o3); }
+.settings-nav-heading { padding: 0 var(--space-2) 2px; font-size: var(--fs-meta); font-weight: 600; color: var(--o3); }
 .settings-nav button {
-  display: flex; align-items: center; gap: var(--space-2); height: 2rem; padding: 0 var(--space-2);
+  display: flex; align-items: center; gap: var(--space-2); height: 2.154rem; padding: 0 var(--space-2);
   border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text); text-align: left;
 }
 .settings-nav button svg { color: var(--o2); flex: none; }
-.settings-nav button:hover { background: var(--row-hover); }
-.settings-nav button[aria-current="page"] { background: var(--sel); font-weight: 500; }
-.settings-nav button[aria-current="page"] svg { color: var(--accent-text); }
+.settings-nav button[aria-current="page"] { background: var(--accent); color: var(--on-accent); }
+.settings-nav button[aria-current="page"] svg { color: inherit; }
 /* The title bar stays put; only the page below it scrolls. */
 .settings-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
-.settings-pane > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 0.769rem; padding: var(--space-4) var(--space-5) 0.769rem; border-bottom: 1px solid var(--line); }
-.settings-body { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: var(--space-4) var(--space-5) var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
-.settings-pane h2 { margin: 0; font-size: var(--fs-title); font-weight: 600; }
-.settings-intro { margin: 0; color: var(--o2); line-height: 1.45; }
+.settings-pane > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); height: 3.538rem; padding: 0 var(--space-3) 0 var(--margin); }
+.settings-body { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 0 var(--margin) var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
+.settings-pane h2 { margin: 0; font-size: var(--fs-title); font-weight: 700; color: var(--text-strong); }
+.settings-intro { margin: 0; color: var(--o2); line-height: 1.4; }
 .settings-group { display: flex; flex-direction: column; gap: var(--space-2); }
-.settings-group h3 { margin: 0 0 0 var(--space-4); font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }
-.settings-card { background: var(--pop); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 0 var(--space-4); }
-.settings-row { display: flex; align-items: center; gap: var(--space-4); min-height: 3.077rem; padding: var(--space-3) 0; }
+.settings-group h3 { margin: 0 0 0 var(--space-3); font-size: var(--fs-body); font-weight: 600; color: var(--text); }
+/* An inset group, as in System Settings: a quiet fill, no border, hairlines between rows from the text's edge. */
+.settings-card { padding: 0 var(--space-3); }
+.settings-row { display: flex; align-items: center; gap: var(--space-4); min-height: 2.769rem; padding: var(--space-2) 0; }
 .settings-row + .settings-row { border-top: 1px solid var(--line); }
 .settings-row.stacked { flex-direction: column; align-items: stretch; gap: var(--space-2); }
 .settings-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .settings-row-text label, .settings-row-label { color: var(--text); }
 .settings-row-label.with-icon { display: flex; align-items: center; gap: var(--space-2); }
-.settings-row-desc { font-size: var(--fs-meta); color: var(--o2); line-height: 1.4; }
+.settings-row-desc { font-size: var(--fs-meta); color: var(--o2); line-height: 1.35; }
 .settings-alert { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-red) 12%, transparent); color: var(--style-red); line-height: 1.4; }
 /* The same alert where a view failed to load. */
 :is(.day-page, .day-main) > .settings-alert { margin: var(--space-4); }
@@ -42,7 +42,7 @@
 .app-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); font-size: var(--fs-meta); }
 .inline-switch { display: flex; align-items: center; gap: var(--space-2); }
 .settings-input .input.number { width: 6.5rem; text-align: right; }
-.settings-search { flex: none; height: 2rem; }
+.settings-search { flex: none; }
 .shortcut-control { display: flex; align-items: center; gap: var(--space-1); }
 
 /* Settings → Appearance: one miniature window per scheme, in its light-mode look; the chosen one ringed. */
@@ -54,18 +54,18 @@
 .scheme-option[aria-pressed="true"] { color: var(--text); }
 .scheme-tile {
   display: flex; width: 6.154rem; height: 4rem; overflow: hidden; border-radius: var(--radius-sm);
-  border: 1px solid var(--field-line); background: var(--bg);
+  background: var(--bg); box-shadow: 0 0 0 0.5px var(--field-line);
 }
-.scheme-option[aria-pressed="true"] .scheme-tile { box-shadow: 0 0 0 2px var(--pop), 0 0 0 4px var(--accent); }
+.scheme-option[aria-pressed="true"] .scheme-tile { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
 .scheme-option:focus-visible { outline: none; }
-.scheme-option:focus-visible .scheme-tile { box-shadow: 0 0 0 2px var(--pop), 0 0 0 4px var(--sel); }
+.scheme-option:focus-visible .scheme-tile { box-shadow: 0 0 0 2px var(--bg), var(--focus-ring); }
 .scheme-tile-sidebar { width: 34%; padding: var(--space-3) var(--space-1) 0; background: var(--sidebar-bg); }
 .scheme-tile-entry { display: block; height: 0.462rem; border-radius: 2px; background: var(--sidebar-selected); }
 .scheme-tile-content { flex: 1; padding: var(--space-3) var(--space-2) 0; border-top: 0.615rem solid var(--chrome); }
 .scheme-tile-block { display: block; height: 1.231rem; border-radius: 3px; background: var(--activity-fill); }
 
 /* ---------- shortcuts settings ---------- */
-.shortcut-field { display: inline-flex; align-items: center; justify-content: center; width: 7rem; height: 1.692rem; border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field); box-shadow: var(--shadow-inset); font-family: var(--font-ui); }
-.shortcut-field.recording { border-color: var(--accent); box-shadow: 0 0 0 3px var(--sel); color: var(--o3); }
+.shortcut-field { display: inline-flex; align-items: center; justify-content: center; width: 7rem; height: var(--control-h); border: none; border-radius: var(--radius-sm); background: var(--field); box-shadow: inset 0 0 0 1px var(--field-line); font-family: var(--font-ui); }
+.shortcut-field.recording { box-shadow: inset 0 0 0 1px var(--field-line), var(--focus-ring); color: var(--o3); }
 .shortcut-field.unbound { color: var(--o3); font-style: italic; }
-.shortcut-conflicts { padding: 0.462rem var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); color: var(--style-yellow); font-size: var(--fs-meta); }
+.shortcut-conflicts { padding: var(--space-2) var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); color: var(--style-yellow); font-size: var(--fs-meta); }

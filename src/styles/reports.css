@@ -1,59 +1,54 @@
 /* ---------- reports ---------- */
 .reports-page { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.reports-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--line); }
-.reports-title { margin: 0 auto 0 0; font-size: var(--fs-title); font-weight: 600; }
-.reports-head select.input { width: auto; }
 
 /* The slim filter bar: one wrapping row. */
-.report-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--line); }
+.report-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--margin); border-bottom: 1px solid var(--line); }
 .report-range, .report-options { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .report-range .input, .report-options select.input { width: auto; }
 .report-pickers { flex: 1; min-width: 24rem; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
 .multi-select-chosen { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
 
-.report-result { flex: 1; overflow: auto; padding: var(--space-5) var(--space-6) var(--space-8); display: flex; flex-direction: column; gap: var(--space-5); }
-.report-totals, .report-chart, .report-table { background: var(--pop); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.report-result { flex: 1; overflow: auto; padding: var(--margin) var(--margin) var(--space-8); display: flex; flex-direction: column; gap: var(--space-5); }
 
 /* Totals: the total large, the rest beside it. */
-.report-totals { margin: 0; display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4) var(--space-8); padding: var(--space-5) var(--space-6); }
+.report-totals { margin: 0; display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4) var(--space-8); padding: var(--space-4) var(--margin); }
 .report-stat { display: flex; flex-direction: column; gap: var(--space-1); }
-.report-stat dt { color: var(--o2); font-size: var(--fs-meta); font-weight: 500; }
-.report-stat dd { margin: 0; font-size: var(--fs-title); font-weight: 600; font-variant-numeric: tabular-nums; }
-.report-stat--total dd:first-of-type { font-size: calc(var(--fs-title) * 1.75); line-height: 1.1; color: var(--text-strong); }
+.report-stat dt { color: var(--o2); font-size: var(--fs-meta); }
+.report-stat dd { margin: 0; font-size: var(--fs-title); font-weight: 600; }
+.report-stat--total dd:first-of-type { font-size: var(--fs-display); font-weight: 700; line-height: 1.1; color: var(--text-strong); }
 .report-stat dd.report-stat-note { font-size: var(--fs-meta); font-weight: 400; color: var(--o3); }
 
 /* Charts: two donuts side by side, each with its legend. */
 .report-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: var(--space-5); }
-.report-chart { padding: var(--space-4) var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
+.report-chart { padding: var(--space-3) var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
 .report-chart-head { display: flex; align-items: center; gap: var(--space-2); font-weight: 600; }
 .report-chart-head select.input { width: auto; font-weight: 600; }
 .report-chart-body { display: flex; align-items: center; gap: var(--space-5); }
 .donut { flex: none; width: 12rem; height: 12rem; }
 .donut circle { fill: none; stroke-width: 20; }
-.donut-track { stroke: var(--band); }
+.donut-track { stroke: var(--fill); }
 .donut text { text-anchor: middle; dominant-baseline: middle; fill: var(--o2); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
 .donut .donut-total { fill: var(--text-strong); font-size: var(--fs-title); font-weight: 600; }
 .report-legend { flex: 1; min-width: 0; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
 .report-legend li { display: flex; align-items: center; gap: var(--space-2); }
 
 /* Table: client, project, recordings. */
-.report-table { padding: var(--space-3) var(--space-5) var(--space-4); }
+.report-table { padding: var(--space-3) var(--space-3) var(--space-2); }
 .report-table-head { display: flex; align-items: center; gap: var(--space-2); padding-bottom: var(--space-2); }
 .report-table-head h2 { margin: 0 auto 0 0; font-size: var(--fs-body); font-weight: 600; }
-.report-rows { width: 100%; border-collapse: separate; border-spacing: 0 var(--space-1); }
+.report-rows { width: 100%; border-collapse: collapse; }
 .report-rows th, .report-rows td { padding: var(--space-2); text-align: left; vertical-align: middle; }
-.report-rows tr > :first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
-.report-rows tr > :last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
-.report-rows thead th { color: var(--o3); font-size: var(--fs-meta); font-weight: 500; padding-block: 0; }
+.report-rows tbody tr + tr > * { box-shadow: inset 0 1px 0 var(--line); }
+.report-rows thead th { color: var(--o2); font-size: var(--fs-meta); font-weight: 400; padding-block: 0 var(--space-1); }
 .report-hours { font-variant-numeric: tabular-nums; }
 .report-rows .report-hours { width: 1%; white-space: nowrap; text-align: right; }
 .report-client th { font-weight: 600; }
 .report-client th .accent-dot { display: inline-block; margin-right: var(--space-2); }
-.report-client > * { background: var(--band); }
+.report-client th, .report-client td { padding-top: var(--space-3); }
 .report-project-toggle { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 0 0 0 var(--space-3); border: none; background: none; color: inherit; text-align: left; }
 .report-project-name { font-weight: 500; }
 .report-project-actions { width: 1%; white-space: nowrap; }
-.report-project:hover > * { background: var(--row-hover); }
+
 .report-recording td:first-child { padding-left: calc(var(--space-8) + var(--space-3)); }
 .report-recording td { font-size: var(--fs-meta); color: var(--o2); }
 .report-recording td:first-child > span { display: block; }

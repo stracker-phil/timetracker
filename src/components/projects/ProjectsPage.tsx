@@ -7,6 +7,7 @@ import { groupProjects } from "../../state/slices/projects";
 import { useStore } from "../../state/store";
 import { AccentDot } from "../Accent";
 import { useContextMenu, type MenuEntry } from "../ContextMenu";
+import { Toolbar } from "../Toolbar";
 import { TagsSection } from "./TagsSection";
 
 function Hours({ ms, label }: { ms: number; label: string }) {
@@ -28,8 +29,8 @@ function ProjectRow({ item, onMenu }: { item: ProjectListItem; onMenu: (e: Mouse
           <AccentDot accent={project.color} shade={project.shade} />
           <span className="grow-text">{project.name}</span>
         </button>
-        {project.billable && <span className="badge">billable</span>}
-        {item.lastUsed !== null && <span className="project-last-used o3">last used {relativeTime(item.lastUsed)}</span>}
+        {project.billable && <span className="secondary-label">billable</span>}
+        {item.lastUsed !== null && <span className="secondary-label project-last-used">last used {relativeTime(item.lastUsed)}</span>}
       </span>
       <Hours ms={item.weekMs} label="This week" />
       <Hours ms={item.monthMs} label="This month" />
@@ -70,7 +71,7 @@ function ClientHead({ client, count }: { client: Client | null; count: number })
             "No client"
           )}
         </h2>
-        {archived && <span className="badge">archived</span>}
+        {archived && <span className="secondary-label">archived</span>}
         <span className="o3">{plural(count, "project", "projects")}</span>
       </span>
       <span className="client-column">This week</span>
@@ -105,33 +106,34 @@ export function ProjectsPage() {
   };
 
   return (
-    <section className="projects-page" aria-label="Projects">
-      <header className="projects-head">
-        <h1>Projects</h1>
+    <section className="view-page" aria-label="Projects">
+      <Toolbar title="Projects">
         <label className="projects-archived">
           <input type="checkbox" className="switch" role="switch" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
           Show archived
         </label>
         <button type="button" className="btn" onClick={() => openDialog({ type: "client" })}>
-          <Plus size="1.077rem" /> New client
+          <Plus size="1.154rem" /> New client
         </button>
-        <button type="button" className="btn btn-primary" onClick={() => openDialog({ type: "project" })}>
-          <Plus size="1.077rem" /> New project
+        <button type="button" className="btn" onClick={() => openDialog({ type: "project" })}>
+          <Plus size="1.154rem" /> New project
         </button>
-      </header>
-      {loaded && groups.length === 0 && <p className="o3">No projects yet. A project is where recorded time goes.</p>}
-      {groups.map((group) => (
-        <section key={group.client?.id ?? ""} className="projects-card" aria-label={group.client?.name ?? "No client"}>
-          <ClientHead client={group.client} count={group.projects.length} />
-          {group.projects.length === 0 && <p className="o3 project-none">No projects</p>}
-          <ul className="project-rows">
-            {group.projects.map((item) => (
-              <ProjectRow key={item.project.id} item={item} onMenu={openMenu} />
-            ))}
-          </ul>
-        </section>
-      ))}
-      <TagsSection />
+      </Toolbar>
+      <div className="projects-page">
+        {loaded && groups.length === 0 && <p className="o3">No projects yet. A project is where recorded time goes.</p>}
+        {groups.map((group) => (
+          <section key={group.client?.id ?? ""} className="projects-card" aria-label={group.client?.name ?? "No client"}>
+            <ClientHead client={group.client} count={group.projects.length} />
+            {group.projects.length === 0 && <p className="o3 project-none">No projects</p>}
+            <ul className="project-rows">
+              {group.projects.map((item) => (
+                <ProjectRow key={item.project.id} item={item} onMenu={openMenu} />
+              ))}
+            </ul>
+          </section>
+        ))}
+        <TagsSection />
+      </div>
       {menu.element}
     </section>
   );

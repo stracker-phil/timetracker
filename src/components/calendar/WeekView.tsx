@@ -4,7 +4,7 @@ import { api, type DayColumn as Column } from "../../api";
 import { formatHm } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
-import { CalendarHeader } from "./CalendarHeader";
+import { Toolbar } from "../Toolbar";
 import { EditorSheet } from "./EditorSheet";
 import { WeekCard, type CardDrag } from "./WeekCard";
 
@@ -60,13 +60,16 @@ export function WeekView() {
 
   return (
     <section className="day-page" aria-label="Week">
-      <CalendarHeader title={week?.label ?? ""}>
-        {week && (
-          <span className="day-totals o2" aria-label="Totals">
-            recorded {formatHm(week.totalMs)} · tracked {formatHm(week.trackedMs)}
-          </span>
-        )}
-      </CalendarHeader>
+      <Toolbar
+        title={week?.label ?? ""}
+        detail={
+          week && (
+            <span className="toolbar-detail" aria-label="Totals">
+              recorded {formatHm(week.totalMs)} · tracked {formatHm(week.trackedMs)}
+            </span>
+          )
+        }
+      />
       {error && !week && <p className="settings-alert">{error.message}</p>}
       {week && (
         <div className="week">

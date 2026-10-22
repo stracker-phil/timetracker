@@ -232,10 +232,6 @@ pub fn columns(lane: &Lane) -> Vec<(u8, u8)> {
     lane.blocks.iter().map(|b| (b.col, b.cols)).collect()
 }
 
-pub fn gap_spans(view: &DayView) -> Vec<(Ms, Ms)> {
-    view.gaps.iter().map(|g| (g.start, g.end)).collect()
-}
-
 pub fn code(id: i64, start_min: i64, end_min: i64) -> ActivityRow {
     activity(id, mins(start_min), Some(mins(end_min)), "Code", "")
 }

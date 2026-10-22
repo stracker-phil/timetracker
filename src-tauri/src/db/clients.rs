@@ -425,6 +425,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_system_accent_is_refused_for_a_client() {
+        let db = Db::open_memory().await.unwrap();
+        let client = insert(&db, colored("Acme", "teal")).await.unwrap();
+
+        let err = insert(&db, colored("Globex", "system")).await.unwrap_err();
+        assert_eq!(color_error(err), "must be one of the accent colors");
+        let err = update(&db, &client.id, colored("Acme", "system"))
+            .await
+            .unwrap_err();
+        assert_eq!(color_error(err), "must be one of the accent colors");
+        assert_eq!(list(&db, true).await.unwrap(), [client]);
+    }
+
+    #[tokio::test]
     async fn an_explicit_accent_is_stored_and_a_non_accent_is_refused() {
         let db = Db::open_memory().await.unwrap();
         let client = insert(&db, colored("Acme", "teal")).await.unwrap();

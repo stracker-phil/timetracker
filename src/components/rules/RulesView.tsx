@@ -2,6 +2,7 @@ import { Plus } from "lucide-react";
 import { useEffect, useState, type PointerEvent } from "react";
 import { useStore } from "../../state/store";
 import { pointerDrag } from "../day/pointerDrag";
+import { Toolbar } from "../Toolbar";
 import { RuleRow } from "./RuleRow";
 
 /** The row a drag of `dy` px from `index` lands on, within the list. */
@@ -46,25 +47,26 @@ export function RulesView() {
   };
 
   return (
-    <section className="rules-page" aria-label="Rules">
-      <header className="rules-head">
-        <h1>Rules</h1>
+    <section className="view-page" aria-label="Rules">
+      <Toolbar title="Rules">
         <button type="button" className="btn" onClick={() => useStore.getState().openDialog({ type: "rule" })}>
-          <Plus size="1.077rem" /> New rule
+          <Plus size="1.154rem" /> New rule
         </button>
-      </header>
-      <p className="rules-intro">
-        Rules suggest recordings for activity they match; the first matching rule wins. Suggestions wait in the Day view until you approve or dismiss them. ⌥-drag an activity block onto a project to make a rule.
-      </p>
-      {rules.length === 0 ? (
-        <p className="rules-empty">No rules yet.</p>
-      ) : (
-        <ul className="rule-rows" aria-label="Rules in order">
-          {rules.map((rule, index) => (
-            <RuleRow key={rule.id} rule={rule} today={today.find((t) => t.ruleId === rule.id)} offset={drag?.id === rule.id ? drag.dy : 0} onGrip={grip(index)} />
-          ))}
-        </ul>
-      )}
+      </Toolbar>
+      <div className="rules-page">
+        <p className="rules-intro">
+          Rules suggest recordings for activity they match; the first matching rule wins. Suggestions wait in the Day view until you approve or dismiss them. ⌥-drag an activity block onto a project to make a rule.
+        </p>
+        {rules.length === 0 ? (
+          <p className="rules-empty">No rules yet.</p>
+        ) : (
+          <ul className="rule-rows" aria-label="Rules in order">
+            {rules.map((rule, index) => (
+              <RuleRow key={rule.id} rule={rule} today={today.find((t) => t.ruleId === rule.id)} offset={drag?.id === rule.id ? drag.dy : 0} onGrip={grip(index)} />
+            ))}
+          </ul>
+        )}
+      </div>
     </section>
   );
 }

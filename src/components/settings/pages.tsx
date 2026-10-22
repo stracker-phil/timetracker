@@ -1,7 +1,7 @@
 /** The core settings pages. Modules register their own pages from their install function. */
 import { Activity, Copy, Database, Download, EyeOff, FolderInput, FolderOpen, GanttChart, Keyboard, Palette, Power, ScrollText } from "lucide-react";
 import { useState } from "react";
-import { api, BUNDLED_FONTS, LOG_LEVELS, TEXT_SIZES, toAppError, type DataInfo, type LogLevel, type Scheme } from "../../api";
+import { api, DEFAULT_FONTS, LOG_LEVELS, TEXT_SIZES, toAppError, type DataInfo, type LogLevel, type Scheme } from "../../api";
 import { copyText } from "../../lib/clipboard";
 import { capitalize, formatBytes, formatCount, formatDay } from "../../lib/format";
 import { schemeLook, systemIsDark, type Tone } from "../../lib/theme";
@@ -56,15 +56,15 @@ function AppearancePage({ s, set }: SettingsPageProps) {
         <Row label="Scheme" description={`Used while macOS is in ${mode} mode.`} stacked>
           <SchemePicker label={`${capitalize(mode)} mode scheme`} value={s[key]} onChange={(scheme) => set({ [key]: scheme })} />
         </Row>
-        <Row label="Accent" description="Buttons, links, selection and focus.">
-          <AccentSwatches value={s.accent} onChange={(accent) => set({ accent })} />
+        <Row label="Accent" description="Buttons, links, selection and focus. System follows macOS.">
+          <AccentSwatches withSystem value={s.accent} onChange={(accent) => set({ accent })} />
         </Row>
       </Group>
       <Group title="Text">
         <NumberField label="UI size" description="Sidebar, toolbar and labels." suffix="px" value={s.uiFontSize} min={TEXT_SIZES.ui.min} max={TEXT_SIZES.ui.max} onCommit={(uiFontSize) => set({ uiFontSize })} />
         <NumberField label="Data size" description="Times, durations and titles. ⌘= / ⌘- zoom both." suffix="px" value={s.dataFontSize} min={TEXT_SIZES.data.min} max={TEXT_SIZES.data.max} onCommit={(dataFontSize) => set({ dataFontSize })} />
-        <TextField label="UI font" description="Any installed family; empty uses the bundled font." placeholder={BUNDLED_FONTS.ui} value={s.fontUi ?? ""} onCommit={(name) => set({ fontUi: name.trim() || null })} />
-        <TextField label="Mono font" description="Times and data values. Any installed family; empty uses the bundled font." placeholder={BUNDLED_FONTS.mono} value={s.fontMono ?? ""} onCommit={(name) => set({ fontMono: name.trim() || null })} />
+        <TextField label="UI font" description="Any installed family; empty uses the system font." placeholder={DEFAULT_FONTS.ui} value={s.fontUi ?? ""} onCommit={(name) => set({ fontUi: name.trim() || null })} />
+        <TextField label="Mono font" description="Paths, ids and commands. Any installed family; empty uses the system mono font." placeholder={DEFAULT_FONTS.mono} value={s.fontMono ?? ""} onCommit={(name) => set({ fontMono: name.trim() || null })} />
       </Group>
     </>
   );
