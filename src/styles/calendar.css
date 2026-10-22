@@ -26,7 +26,7 @@
 }
 .week-card .card-title { flex: none; }
 .week-card.dragging { cursor: grabbing; opacity: 0.6; }
-.week-card.focused, .week-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+[data-input="keyboard"] .week-card.focused, .week-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .week-add {
   flex: none; display: flex; align-items: center; justify-content: center; gap: var(--space-1); padding: var(--space-1) var(--space-2);
   border: 1px dashed transparent; border-radius: var(--radius-card); background: none; color: var(--o3); font-size: var(--fs-meta); font-weight: 500;

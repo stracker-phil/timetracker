@@ -30,7 +30,7 @@
 .sheet-card .card-meta { gap: var(--space-1); }
 .sheet-card .card-trailing { font-size: var(--fs-title); font-weight: 600; }
 .sheet-card.hovered { box-shadow: 0 0 0 2px var(--block-meta); }
-.sheet-card.focused, .sheet-card:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+[data-input="keyboard"] .sheet-card.focused, .sheet-card:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
 
 /* A suggestion: a ghost of the card it would become, dashed and faint until approved. */
 .suggestion-card {
@@ -153,5 +153,13 @@
   padding: 3px var(--space-1) 2px; border-radius: var(--radius-card); background: var(--sel); border: 1px solid var(--accent); pointer-events: none;
 }
 .recording-draft-time { font-size: var(--fs-caption); font-weight: 600; color: var(--accent-text); }
-.recording-draft-time:last-child { align-self: flex-end; }
+.recording-draft-time + .recording-draft-time { align-self: flex-end; }
+/* Presses on the draft fall through to the column (a drag there adds a span); only its edges are its own. */
+.recording-draft .grip { pointer-events: auto; }
+.recording-draft .grip::after {
+  content: ""; position: absolute; left: 50%; width: 1.231rem; height: 3px; border-radius: 2px; background: var(--accent); transform: translateX(-50%);
+}
+.recording-draft .grip.start::after { top: 0; }
+.recording-draft .grip.end::after { bottom: 0; }
+.recording-draft.dragging { z-index: 3; }
 .overlap-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-1); }

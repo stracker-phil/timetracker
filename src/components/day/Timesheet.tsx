@@ -83,9 +83,11 @@ export function Timesheet({ view }: { view: DayView }) {
             {formatDuration(view.totals.recordedMs)}
           </span>
         </div>
-        <button type="button" className="btn timesheet-add" aria-label="New recording" title={newKeys ? `New recording (${newKeys})` : "New recording"} onClick={() => runCommand("recording.new")}>
-          <Plus size="1.077rem" aria-hidden="true" />
-        </button>
+        {!editor && (
+          <button type="button" className="btn timesheet-add" aria-label="New recording" title={newKeys ? `New recording (${newKeys})` : "New recording"} onClick={() => runCommand("recording.new")}>
+            <Plus size="1.077rem" aria-hidden="true" />
+          </button>
+        )}
       </header>
       <ReviewLine suggestions={view.suggestions} />
       <div className="timesheet-cards">

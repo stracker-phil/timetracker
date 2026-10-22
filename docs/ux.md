@@ -305,6 +305,14 @@ Inputs look like AppKit's (see Controls), never like rows. A text field is a 22p
 user's bindings. A select is a popup button. The segmented control serves the Day mode switch, the report's
 Period and Settings choices.
 
+### Focus rings
+
+A focus ring is for the keyboard only; a click never draws one. Buttons, rows, cards and links show theirs on
+`:focus-visible`; text fields keep the accent ring on any focus, since they take typing. The Day view's key
+focus (a block, recording, suggestion or card marked `.focused`, also set by a click) and the Week's focused
+card show their accent outline only while `<html data-input="keyboard">` is set (`lib/inputModality.ts`): a
+key press outside a text field (or Tab in one) sets it, a pointer press clears it.
+
 ## Overlays
 
 Palette, popovers, context menus, toasts and dialogs: `--pop` with `--shadow` (a hairline ring and a soft
@@ -354,7 +362,8 @@ The Day view reads like Timely's: the toolbar, the timesheet on the left, then t
   left out), View options and the ⋯ menu, borderless toolbar buttons.
 - **Timesheet** (left, about a quarter of the width, resizable with the splitter; kept as the `timesheet`
   pane size): "Timesheet", the day's recorded total large (`6h 05m`) and a + button (a new recording for the
-  selection, else now; `recording.new`). Below, one `Card` per recording in the order of its first span on
+  selection, else now; `recording.new`), hidden while the editor is open: the editor is that form, and + is
+  for time added without the timeline. Below, one `Card` per recording in the order of its first span on
   the day, filled in the project's shade: the note as title (the project without one), the project's dot and
   `Project | Client`, the tag (and `2 times` when it has several on the day), the day's total at the bottom
   right (`1h 20m`). Longer recordings get taller cards (from about one line up to 300 minutes). A click or
@@ -377,7 +386,8 @@ The Day view reads like Timely's: the toolbar, the timesheet on the left, then t
   on two lines when there is room, else on one; text may run past a short block, the bar keeps the real
   length; tiny ones show only the bar. Private blocks read "Private" in `--o2`. Overlapping blocks of one lane
   share its width side by side.
-- **Focus** (J/K/H/L or a click) is a 2px accent outline; Space opens the details card for it.
+- **Focus** (J/K/H/L or a click) is a 2px accent outline, drawn only while the keyboard is in use (a click
+  focuses without an outline, see [Focus rings](#focus-rings)); Space opens the details card for it.
 - **Hover card** after 300 ms on `--pop` with `--shadow`: app, full title, URL or path (selectable; an
   http(s) URL opens in the browser), `09:12–09:40 · 28m`, and the source when external.
 - **Away time and gaps** draw nothing: the lanes show only the captured activity, and the body keeps one
@@ -434,7 +444,7 @@ timeline's for every app.
   project for a rule.
 - **Snapping** (the Time snapping setting, 5 min by default) applies to every selection, drag and resize,
   on both ends, and Rust computes it: a selection over activity snaps each end to the nearest mark (blocks
-  from 13:12 to 13:38 give 13:10–13:40); dragging an edge of a selection or a recording, or dragging in the
+  from 13:12 to 13:38 give 13:10–13:40); dragging an edge of a selection, a recording or a draft block, or dragging in the
   time column, moves that edge in whole steps (13:40, 13:45, …); an end that would reach the other keeps one
   step. ⌥⇧↑ ⌥⇧↓ on a recording move its end the same way.
 - **Selection** (the keyboard's way: V on the focused block, ⇧J and ⇧K add the next or previous one; ↵ opens
@@ -465,7 +475,10 @@ timeline's for every app.
   field's surface, frame and ring, so nothing moves. The other rows put the label right-aligned in a leading
   column, on the line of its control; every field (pickers, duration, times) is 22px high, rows 8px apart.
   The editor shows no activity: activity is only a signal for recording, never linked to a recording. The draft's spans show in the time column as accent-filled blocks with their
-  times. A new recording's project is proposed: the project of the latest recording (two weeks back) that
+  times and a short accent bar on the top and bottom edge (an edge in another day has none): dragging an edge
+  moves that end in snap steps while the block follows; on release Rust merges spans that now touch or
+  overlap into one, and the From and To fields follow. A click on a block can split them again (its span
+  leaves the draft). Editing an existing recording draws its spans the same way. A new recording's project is proposed: the project of the latest recording (two weeks back) that
   covered the same main app, else the rule matching most of the activity. Field errors show under their
   field. A running recording's spans are shown, not edited.
 - **Leaving the view** with the editor open (the sidebar, the calendar, ⌘1…⌘7, the palette): an unchanged
@@ -556,7 +569,7 @@ timeline's for every app.
   day is one card with its total and "n times"; one past midnight shows in both days with each day's share.
   A "New recording" button (+) follows the last card (at the top of an empty column); as in the Month it shows
   while the column is hovered or the button has the keyboard focus, and it opens the editor as a sheet on the
-  default span on that day. A click on a card focuses it (accent ring), a double-click or ↵
+  default span on that day. A click on a card focuses it (the accent ring shows for the keyboard only), a double-click or ↵
   edits it, ⌫ deletes it. Dragged to another column (the column under the pointer gets an accent ring) the
   recording's time on that day moves there at the same clock times; with ⌥ it is copied. Times are edited in
   the editor or the Day view; the Week has no resize. Today's column has a faint accent tint, Saturday and

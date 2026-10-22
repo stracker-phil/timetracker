@@ -1,6 +1,7 @@
 import { type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { useStore } from "../../state/store";
 import { pointerDrag } from "./pointerDrag";
+import { msOfPx } from "./spanDrag";
 
 /** Near the scroll box's top or bottom edge (px) a drag scrolls it. */
 const EDGE_PX = 24;
@@ -39,7 +40,7 @@ export function useSelectionPress({ origin, pxPerMinute, scrollRef }: Options) {
   return (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
     const el = e.currentTarget;
-    const msAt = (clientY: number) => origin + ((clientY - el.getBoundingClientRect().top) / pxPerMinute) * 60_000;
+    const msAt = (clientY: number) => origin + msOfPx(clientY - el.getBoundingClientRect().top, pxPerMinute);
     const anchor = msAt(e.clientY);
     const blockId = blockIdAt(e.target);
     pointerDrag(e, {

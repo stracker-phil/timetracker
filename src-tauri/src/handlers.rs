@@ -73,6 +73,7 @@ pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         recordings::commands::recording_draft_total,
         recordings::commands::recording_draft_add,
         recordings::commands::recording_draft_include,
+        recordings::commands::recording_draft_resize,
         recordings::commands::recording_draft_toggle,
         recordings::commands::undo,
         recordings::commands::redo,

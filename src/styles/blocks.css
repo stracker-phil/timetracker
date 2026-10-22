@@ -20,7 +20,7 @@
 .block.dimmed { background: var(--activity-fill-dim); opacity: 1; }
 .block.dimmed .block-title, .block.dimmed .block-subtitle { color: var(--o2); }
 .block.dimmed:hover { background: var(--activity-fill-hover); }
-.block.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
+[data-input="keyboard"] .block.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
 .block.selected { box-shadow: inset 0 0 0 1px var(--accent); }
 
 /* The summary lane's blocks: the icon and the label of each run's main app, on a fuller fill. */
@@ -44,7 +44,7 @@
 .memory:hover { --memory-bar: var(--o2); }
 .memory:hover .memory-title { color: var(--accent-text); }
 .memory.private .memory-title, .memory.dimmed .memory-title { color: var(--o2); font-weight: 400; }
-.memory.focused { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: var(--radius-sm); z-index: 2; }
+[data-input="keyboard"] .memory.focused { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: var(--radius-sm); z-index: 2; }
 .memory.selected { --memory-bar: var(--accent); }
 .memory.selected .memory-title { color: var(--accent-text); }
 .memory:hover .block-gear { display: grid; }
@@ -63,16 +63,16 @@
 /* In the Day view's time column: only the start (top left) and the end (bottom right). */
 .recording { position: absolute; left: 4px; right: 4px; padding: 3px var(--space-1) 2px; border: 1px solid var(--bg); cursor: grab; touch-action: none; }
 .recording.dragging { cursor: grabbing; opacity: 0.85; z-index: 2; }
-.recording.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
-.recording.hovered:not(.focused) { box-shadow: 0 0 0 2px var(--block-meta); z-index: 2; }
+[data-input="keyboard"] .recording.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
+.recording.hovered { box-shadow: 0 0 0 2px var(--block-meta); z-index: 2; }
 .recording .card-title { font-size: var(--fs-caption); font-weight: 600; font-variant-numeric: tabular-nums; }
 .recording .card-trailing { font-size: var(--fs-caption); font-weight: 600; }
 .recording.clipped-start { border-top: 2px dashed var(--block-text); border-top-left-radius: 0; border-top-right-radius: 0; }
 .recording.clipped-end { border-bottom: 2px dashed var(--block-text); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .recording-duration { position: absolute; right: var(--space-2); bottom: 3px; font-size: var(--data-font-size); }
-.recording .grip { position: absolute; left: 0; right: 0; height: 6px; cursor: ns-resize; }
-.recording .grip.start { top: 0; }
-.recording .grip.end { bottom: 0; }
+.recording .grip, .recording-draft .grip { position: absolute; left: 0; right: 0; height: 6px; cursor: ns-resize; }
+:is(.recording, .recording-draft) .grip.start { top: 0; }
+:is(.recording, .recording-draft) .grip.end { bottom: 0; }
 
 /* A running timer: a pulsing dot at its growing edge. */
 .recording.running::after, .sheet-card.running::after, .week-card.running::after {
@@ -91,7 +91,7 @@
   border: 1px dashed var(--block-meta); border-radius: var(--radius-card);
 }
 .suggestion:hover { background: var(--block-fill); }
-.suggestion.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
+[data-input="keyboard"] .suggestion.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
 .suggestion-project { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .suggestion-rule { font-size: var(--data-font-size); color: var(--block-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 

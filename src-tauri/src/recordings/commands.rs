@@ -217,6 +217,19 @@ pub fn recording_draft_toggle(
     draft::toggled_on_grid(&spans, block, &others, snap_minutes(&state), &Local)
 }
 
+/// The editor's spans after a drag moved an edge of the one at `index` to `span`: snapped with `moving` as the
+/// dragged end, then merged with the spans it touches or overlaps.
+#[tauri::command]
+pub fn recording_draft_resize(
+    state: State<'_, AppState>,
+    spans: Vec<Span>,
+    index: usize,
+    span: Span,
+    moving: Option<SnapEdge>,
+) -> DraftSpans {
+    draft::resized_on_grid(&spans, index, span, moving, snap_minutes(&state), &Local)
+}
+
 /// The editor's spans and one more after the last (Add time).
 #[tauri::command]
 pub fn recording_draft_add(state: State<'_, AppState>, spans: Vec<Span>) -> DraftSpans {

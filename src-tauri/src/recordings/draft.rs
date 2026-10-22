@@ -5,7 +5,7 @@ use chrono::TimeZone;
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::{MINUTE_MS, Span, default_span, snap_span};
+use super::{MINUTE_MS, SnapEdge, Span, default_span, snap_moving, snap_span};
 use crate::db::time::{Day, Ms, same_time_on_in};
 
 /// How long a span added with "Add time" starts out.
@@ -166,6 +166,30 @@ pub fn toggled_on_grid<Tz: TimeZone>(
     let snapped = |s: &Span| snap_span(s.start, s.end, minutes);
     let others: Vec<Span> = others.iter().map(snapped).collect();
     toggled(spans, snapped(&block), &others, tz)
+}
+
+/// `spans` with the one at `index` set to `span`, merged with the spans it now touches or overlaps; unchanged
+/// when there is no span at `index`.
+pub fn resized<Tz: TimeZone>(spans: &[Span], index: usize, span: Span, tz: &Tz) -> DraftSpans {
+    let mut spans = draft(spans, tz).spans;
+    let Some(resized) = spans.get_mut(index) else {
+        return draft(&spans, tz);
+    };
+    *resized = span;
+    draft(&merged(spans), tz)
+}
+
+/// `resized` with `span` (a drag's raw times) snapped to the `minutes` grid first, `moving` as the dragged end.
+pub fn resized_on_grid<Tz: TimeZone>(
+    spans: &[Span],
+    index: usize,
+    span: Span,
+    moving: Option<SnapEdge>,
+    minutes: u32,
+    tz: &Tz,
+) -> DraftSpans {
+    let snapped = snap_moving(span.start, span.end, minutes, moving);
+    resized(spans, index, snapped, tz)
 }
 
 /// `spans` and a new span after the last one, else the default span before `now`.
@@ -638,6 +662,196 @@ mod tests {
                 spans: Vec::new(),
                 total_ms: 0,
                 included: false
+            }
+        );
+    }
+
+    fn two_spans() -> [Span; 2] {
+        [
+            span(june(15, 9, 0), june(15, 10, 0)),
+            span(june(15, 11, 0), june(15, 12, 0)),
+        ]
+    }
+
+    #[test]
+    fn resizing_replaces_the_span_at_the_index() {
+        let resized = resized(
+            &two_spans(),
+            1,
+            span(june(15, 11, 0), june(15, 13, 0)),
+            &Vienna,
+        );
+
+        assert_eq!(
+            resized,
+            DraftSpans {
+                spans: vec![
+                    span(june(15, 9, 0), june(15, 10, 0)),
+                    span(june(15, 11, 0), june(15, 13, 0))
+                ],
+                total_ms: 3 * HOUR
+            }
+        );
+    }
+
+    #[test]
+    fn resizing_a_span_onto_or_into_another_merges_them() {
+        for (index, new_span, expected) in [
+            (
+                0,
+                span(june(15, 9, 0), june(15, 11, 0)),
+                span(june(15, 9, 0), june(15, 12, 0)),
+            ),
+            (
+                0,
+                span(june(15, 9, 0), june(15, 11, 30)),
+                span(june(15, 9, 0), june(15, 12, 0)),
+            ),
+            (
+                1,
+                span(june(15, 10, 0), june(15, 12, 0)),
+                span(june(15, 9, 0), june(15, 12, 0)),
+            ),
+            (
+                1,
+                span(june(15, 8, 0), june(15, 12, 0)),
+                span(june(15, 8, 0), june(15, 12, 0)),
+            ),
+        ] {
+            let resized = resized(&two_spans(), index, new_span, &Vienna);
+
+            assert_eq!(resized.spans, [expected], "{index} {new_span:?}");
+            assert_eq!(
+                resized.total_ms,
+                expected.end - expected.start,
+                "{index} {new_span:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn resizing_keeps_spans_that_do_not_touch_separate_and_sorted() {
+        let resized = resized(
+            &two_spans(),
+            1,
+            span(june(15, 7, 0), june(15, 8, 0)),
+            &Vienna,
+        );
+
+        assert_eq!(
+            resized,
+            DraftSpans {
+                spans: vec![
+                    span(june(15, 7, 0), june(15, 8, 0)),
+                    span(june(15, 9, 0), june(15, 10, 0))
+                ],
+                total_ms: 2 * HOUR
+            }
+        );
+    }
+
+    #[test]
+    fn resizing_an_index_out_of_range_leaves_the_spans_unchanged() {
+        let resized = resized(
+            &two_spans(),
+            2,
+            span(june(15, 9, 0), june(15, 12, 0)),
+            &Vienna,
+        );
+
+        assert_eq!(resized, draft(&two_spans(), &Vienna));
+    }
+
+    #[test]
+    fn resizing_on_the_grid_snaps_the_moved_start() {
+        let resized = resized_on_grid(
+            &two_spans(),
+            1,
+            span(june(15, 10, 33), june(15, 12, 0)),
+            Some(SnapEdge::Start),
+            5,
+            &Vienna,
+        );
+
+        assert_eq!(
+            resized,
+            DraftSpans {
+                spans: vec![
+                    span(june(15, 9, 0), june(15, 10, 0)),
+                    span(june(15, 10, 35), june(15, 12, 0))
+                ],
+                total_ms: 85 * MIN + HOUR
+            }
+        );
+    }
+
+    #[test]
+    fn resizing_on_the_grid_snaps_the_moved_end() {
+        let resized = resized_on_grid(
+            &two_spans(),
+            0,
+            span(june(15, 9, 0), june(15, 10, 33)),
+            Some(SnapEdge::End),
+            5,
+            &Vienna,
+        );
+
+        assert_eq!(
+            resized.spans,
+            [
+                span(june(15, 9, 0), june(15, 10, 35)),
+                span(june(15, 11, 0), june(15, 12, 0))
+            ]
+        );
+    }
+
+    #[test]
+    fn resizing_on_the_grid_keeps_a_dragged_end_a_step_from_the_other_end() {
+        let spans = two_spans();
+
+        let end_dragged_before_start = resized_on_grid(
+            &spans,
+            1,
+            span(june(15, 11, 0), june(15, 10, 40)),
+            Some(SnapEdge::End),
+            5,
+            &Vienna,
+        );
+        let start_dragged_past_end = resized_on_grid(
+            &spans,
+            1,
+            span(june(15, 12, 20), june(15, 12, 0)),
+            Some(SnapEdge::Start),
+            5,
+            &Vienna,
+        );
+
+        assert_eq!(
+            end_dragged_before_start.spans[1],
+            span(june(15, 11, 0), june(15, 11, 5))
+        );
+        assert_eq!(
+            start_dragged_past_end.spans[1],
+            span(june(15, 11, 55), june(15, 12, 0))
+        );
+    }
+
+    #[test]
+    fn dragging_an_end_to_the_next_span_on_the_grid_merges_them() {
+        let resized = resized_on_grid(
+            &two_spans(),
+            0,
+            span(june(15, 9, 0), june(15, 10, 58)),
+            Some(SnapEdge::End),
+            5,
+            &Vienna,
+        );
+
+        assert_eq!(
+            resized,
+            DraftSpans {
+                spans: vec![span(june(15, 9, 0), june(15, 12, 0))],
+                total_ms: 3 * HOUR
             }
         );
     }

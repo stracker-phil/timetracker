@@ -1,9 +1,8 @@
 import type { PointerEvent, Ref } from "react";
 import type { RecordingBlock as Block, Span, Suggestion } from "../../api";
-import { formatClock } from "../../lib/format";
 import type { Draft, Editor } from "../../state/slices/editor";
 import { useStore } from "../../state/store";
-import { drawnParts } from "./drawnParts";
+import { DraftBlock } from "./DraftBlock";
 import { RecordingBlock } from "./RecordingBlock";
 import { SuggestionBlock } from "./SuggestionBlock";
 
@@ -12,7 +11,7 @@ interface Props {
   recordings: Block[];
   suggestions: Suggestion[];
   y: (ms: number) => number;
-  /** The shown day's first and last instant: draft spans are cut to them. */
+  /** The shown day's first and last instant: draft spans are drawn cut to them. */
   bounds: [number, number];
   pxPerMinute: number;
   /** The selection's snapped span, outlined where its recording would go. */
@@ -31,8 +30,8 @@ function editedEntryId(draft: Draft | null, editor: Editor | null): string | nul
 const onEmptyTime = (target: EventTarget) => target instanceof Element && !target.closest(".recording, [data-suggestion-id], button");
 
 /**
- * The time column: a block per recording span, the suggestions and the open editor's spans; a drag over empty
- * time selects it and opens the editor.
+ * The time column: a block per recording span, the suggestions and the open editor's spans (their edges drag);
+ * a drag over empty time selects it and opens the editor.
  */
 export function RecordingsColumn({ ref, recordings, suggestions, y, bounds, pxPerMinute, selection, onPress }: Props) {
   const focused = useStore((s) => s.focusedRecording);
@@ -41,7 +40,6 @@ export function RecordingsColumn({ ref, recordings, suggestions, y, bounds, pxPe
   const draft = useStore((s) => s.draft);
   const editor = useStore((s) => s.editor);
   const edited = editedEntryId(draft, editor);
-  const drafts = drawnParts(draft?.spans ?? [], bounds);
   const press = (e: PointerEvent<HTMLDivElement>) => {
     if (onEmptyTime(e.target)) onPress(e);
   };
@@ -58,11 +56,8 @@ export function RecordingsColumn({ ref, recordings, suggestions, y, bounds, pxPe
         .map((r) => (
           <RecordingBlock key={r.spanId} block={r} y={y} pxPerMinute={pxPerMinute} focused={r.id === focused} hovered={r.id === hovered} />
         ))}
-      {drafts.map((s, i) => (
-        <div key={i} className="recording-draft" style={{ top: y(s.start), height: Math.max(2, y(s.end) - y(s.start)) }} aria-label={`Draft ${formatClock(s.start)}–${formatClock(s.end)}`}>
-          <span className="recording-draft-time">{formatClock(s.start)}</span>
-          <span className="recording-draft-time">{formatClock(s.end)}</span>
-        </div>
+      {draft?.spans.map((s, i) => (
+        <DraftBlock key={i} span={s} index={i} y={y} bounds={bounds} pxPerMinute={pxPerMinute} />
       ))}
     </div>
   );

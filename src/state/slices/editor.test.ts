@@ -232,6 +232,48 @@ describe("editor slice", () => {
       });
     });
 
+    describe("resizeDraftSpan", () => {
+      const dragged = { start: noon.start, end: at("12:03") };
+
+      it("keeps the times until Rust has answered, then takes its snapped answer", async () => {
+        const slow = deferred();
+        mocked.recordingDraftResize.mockReturnValueOnce(slow.promise);
+        const done = state().resizeDraftSpan(0, dragged, "end");
+        expect(state().draft?.spans).toEqual([noon]);
+        expect(mocked.recordingDraftResize).toHaveBeenCalledWith([noon], 0, dragged, "end");
+        slow.answer({ spans: [{ start: noon.start, end: at("12:00") }], totalMs: 60 * MINUTE_MS });
+        await done;
+        expect(state().draft).toMatchObject({ spans: [{ start: noon.start, end: at("12:00") }], totalMs: 60 * MINUTE_MS });
+      });
+
+      it("takes the merged spans Rust answers with", async () => {
+        state().addDraftSpan();
+        await vi.waitFor(() => expect(state().draft?.spans).toHaveLength(2));
+        const merged = { start: noon.start, end: noon.end + 30 * MINUTE_MS };
+        mocked.recordingDraftResize.mockResolvedValueOnce({ spans: [merged], totalMs: merged.end - merged.start });
+        await state().resizeDraftSpan(0, { start: noon.start, end: noon.end + 20 * MINUTE_MS }, "end");
+        expect(state().draft?.spans).toEqual([merged]);
+      });
+
+      it("keeps the latest ask when an older answer arrives after it", async () => {
+        const first = deferred();
+        mocked.recordingDraftResize.mockReturnValueOnce(first.promise);
+        void state().resizeDraftSpan(0, dragged, "end");
+        await state().resizeDraftSpan(0, { start: noon.start, end: at("12:30") }, "end");
+        first.answer({ spans: [{ start: noon.start, end: at("12:00") }], totalMs: 60 * MINUTE_MS });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(state().draft?.spans).toEqual([{ start: noon.start, end: at("12:30") }]);
+      });
+
+      it("keeps the fields and toasts when Rust cannot answer", async () => {
+        state().patchDraft({ note: "keep" });
+        mocked.recordingDraftResize.mockRejectedValueOnce({ kind: "io", message: "no answer", code: null });
+        await state().resizeDraftSpan(0, dragged, "end");
+        expect(toastMessages()).toEqual(["Could not change the times: no answer"]);
+        expect(state().draft).toMatchObject({ note: "keep", spans: [noon] });
+      });
+    });
+
     it("removeDraftSpan asks Rust about the remaining spans", async () => {
       state().addDraftSpan();
       await vi.waitFor(() => expect(state().draft?.spans).toHaveLength(2));

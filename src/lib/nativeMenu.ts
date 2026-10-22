@@ -1,6 +1,7 @@
 const EDITABLE = 'input, textarea, [contenteditable=""], [contenteditable="true"]';
 
-function isEditable(target: EventTarget | null): boolean {
+/** Inside a text field, where keys type rather than act. */
+export function isEditable(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(EDITABLE) !== null;
 }
 

@@ -19,6 +19,7 @@ body {
 input, textarea, select, button { font: inherit; color: inherit; }
 input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 
+/* Key focus only, see lib/inputModality.ts. */
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset: 0; }
 
 /* ---------- scrollbars ---------- */

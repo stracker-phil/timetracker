@@ -5,22 +5,12 @@ import { fail, useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
 import { Card } from "../Card";
 import { pointerDrag } from "./pointerDrag";
+import { spanAfterDrag, type Grip } from "./spanDrag";
 import { useSnappedSpan, type DraggedSpan } from "./useSnappedSpan";
 
-type Grip = "move" | "start" | "end";
-
-const MINUTE_MS = 60_000;
 /** Below this height (px) a block shows no times; below `BOTH_TIMES_PX` only its start. */
 const TIMES_MIN_PX = 16;
 const BOTH_TIMES_PX = 34;
-
-/** Where the pointer has dragged `grip` to after `dy` px, unsnapped: Rust snaps it, keeping a dragged end a step from the other. */
-function spanAfterDrag(block: Block, grip: Grip, dy: number, pxPerMinute: number): DraggedSpan {
-  const shift = (dy / pxPerMinute) * MINUTE_MS;
-  const start = grip === "end" ? block.start : block.start + shift;
-  const end = grip === "start" ? block.end : block.end + shift;
-  return grip === "move" ? { start, end } : { start, end, moving: grip };
-}
 
 interface Props {
   block: Block;

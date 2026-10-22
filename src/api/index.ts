@@ -84,6 +84,8 @@ export const api = {
   recordingDraftTotal: (spans: Span[], totalMs: number) => invoke<DraftSpans>("recording_draft_total", { spans, totalMs }),
   /** The editor's spans with `span` (snapped) in them, merged with the spans it touches or overlaps. */
   recordingDraftInclude: (spans: Span[], span: Span) => invoke<DraftSpans>("recording_draft_include", { spans, span }),
+  /** The editor's spans after a drag of one span's `moving` edge; Rust snaps and merges them. */
+  recordingDraftResize: (spans: Span[], index: number, span: Span, moving: SnapEdge | null) => invoke<DraftSpans>("recording_draft_resize", { spans, index, span, moving }),
   /** The editor's spans after a click on a block: without its span when they cover it, else with it. */
   recordingDraftToggle: (spans: Span[], block: Span, others: Span[]) => invoke<DraftToggle>("recording_draft_toggle", { spans, block, others }),
   /** The editor's spans and one more after the last. */

@@ -1,4 +1,4 @@
-import { api, type DayView, type DraftSpans, type Recording, type Span } from "../../api";
+import { api, type DayView, type DraftSpans, type Recording, type SnapEdge, type Span } from "../../api";
 import { findBlock } from "../../lib/blockFocus";
 import { fail } from "../requests";
 import type { Slice, View } from "../store";
@@ -58,10 +58,14 @@ export interface EditorSlice {
    * and for a changed one only after "Discard changes?" is answered with Discard (Keep editing stays).
    */
   leaveEditor: (proceed: () => void) => void;
-  /** New times for one span; shown at once, then as Rust rolls them. */
-  /** Resolves once Rust has answered for the new spans. */
+  /** New times for one span; shown at once, then as Rust rolls them. Resolves once Rust has answered for the new spans. */
   setDraftSpan: (index: number, span: Span) => Promise<void>;
   removeDraftSpan: (index: number) => void;
+  /**
+   * The span at `index` as a drag of its `moving` edge left it on the timeline: Rust snaps it and merges it with
+   * the spans it then touches or overlaps. Resolves once Rust has answered.
+   */
+  resizeDraftSpan: (index: number, span: Span, moving: SnapEdge) => Promise<void>;
   /** A span after the last (Add span), placed by Rust. */
   addDraftSpan: () => void;
   /** Moves the last span's end so the spans add up to `totalMs` (Rust's call). */
@@ -220,6 +224,11 @@ export const editorSlice: Slice<EditorSlice> = {
       removeDraftSpan(index) {
         const spans = spansNow().filter((_, i) => i !== index);
         void respan(spans, () => api.recordingDraftSpans(spans));
+      },
+
+      resizeDraftSpan(index, span, moving) {
+        const spans = spansNow();
+        return respan(null, () => api.recordingDraftResize(spans, index, span, moving));
       },
 
       addDraftSpan() {
