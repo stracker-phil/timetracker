@@ -13,8 +13,7 @@ import { TagsPage } from "./TagsPage";
 
 const mocked = vi.mocked(api, true);
 
-function renderTags(tags = [tag({ name: "admin" }), tag({ name: "research", recordings: 3 }), tag({ name: "support", recordings: 1 })]) {
-  resetStore(projectsStore({ tags }));
+function renderTags(tags = [tag({ name: "admin" }), tag({ name: "research", recordings: 3 }), tag({ name: "support", recordings: 1 })]) {  resetStore(projectsStore({ tags }));
   render(
     <>
       <TagsPage />
@@ -25,7 +24,10 @@ function renderTags(tags = [tag({ name: "admin" }), tag({ name: "research", reco
 }
 
 describe("TagsPage", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocked.tagsSave.mockReset();
+  });
 
   it("is a page of its own titled Tags", () => {
     renderTags();
@@ -78,12 +80,169 @@ describe("TagsPage", () => {
     });
   });
 
+  describe("renaming", () => {
+    const admin = tag({ name: "admin" });
+    const support = tag({ name: "support", recordings: 1 });
+    const analysis = tag({ id: "tag-research", name: "analysis", recordings: 3 });
+    const rowAt = (i: number) => screen.getAllByRole("listitem")[i];
+    const researchRow = () => rowAt(1);
+    const field = () => screen.getByRole("textbox", { name: "Tag name" }) as HTMLInputElement;
+    const noField = () => screen.queryByRole("textbox", { name: "Tag name" });
+    const reloadsRenamed = () => mocked.tagsList.mockResolvedValueOnce([admin, analysis, support]);
+    const startRename = () => userEvent.click(screen.getByRole("button", { name: "Rename tag research" }));
+    const duplicate = { kind: "invalid_input", message: "A tag with this name already exists", code: null, field: "name" };
+
+    describe("opening the field", () => {
+      it("opens focused with the whole name selected from the Rename button", async () => {
+        renderTags();
+        await startRename();
+        expect(field()).toHaveValue("research");
+        expect(field()).toHaveFocus();
+        expect([field().selectionStart, field().selectionEnd]).toEqual([0, "research".length]);
+      });
+
+      it("opens on a double click on the name", async () => {
+        renderTags();
+        await userEvent.dblClick(screen.getByText("research"));
+        expect(field()).toHaveValue("research");
+        expect(field()).toHaveFocus();
+      });
+
+      it("opens on Enter once the row is reached with Tab", async () => {
+        renderTags();
+        await userEvent.tab();
+        await userEvent.tab();
+        await userEvent.tab();
+        await userEvent.tab();
+        expect(researchRow()).toHaveFocus();
+        await userEvent.keyboard("{Enter}");
+        expect(field()).toHaveValue("research");
+        expect(field()).toHaveFocus();
+      });
+    });
+
+    describe("saving", () => {
+      it("saves the typed name on Enter, closes the field and returns focus to the row", async () => {
+        reloadsRenamed();
+        renderTags();
+        await startRename();
+        await userEvent.keyboard("analysis{Enter}");
+        await vi.waitFor(() => expect(noField()).not.toBeInTheDocument());
+        expect(mocked.tagsSave).toHaveBeenCalledWith("tag-research", "analysis");
+        expect(researchRow()).toHaveTextContent("analysis");
+        expect(researchRow()).toHaveFocus();
+      });
+
+      it("saves when the field loses focus after an edit", async () => {
+        reloadsRenamed();
+        renderTags();
+        await startRename();
+        await userEvent.keyboard("analysis");
+        await userEvent.tab();
+        expect(await screen.findByText("analysis")).toBeInTheDocument();
+        expect(mocked.tagsSave).toHaveBeenCalledWith("tag-research", "analysis");
+        expect(noField()).not.toBeInTheDocument();
+      });
+
+      it("trims surrounding spaces", async () => {
+        reloadsRenamed();
+        renderTags();
+        await startRename();
+        await userEvent.keyboard("  analysis  {Enter}");
+        await vi.waitFor(() => expect(noField()).not.toBeInTheDocument());
+        expect(mocked.tagsSave).toHaveBeenCalledWith("tag-research", "analysis");
+      });
+
+      it("renames once when Enter is followed by the field losing focus", async () => {
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => (release = resolve));
+        let saved = false;
+        mocked.tagsSave.mockImplementation(async (id, name) => {
+          if (saved && id === "tag-research") throw { kind: "io", message: "Saved twice", code: null };
+          saved = true;
+          await gate;
+          return { id: id ?? "", name, createdAt: 0 };
+        });
+        reloadsRenamed();
+        renderTags();
+        await startRename();
+        await userEvent.keyboard("analysis{Enter}");
+        await userEvent.tab();
+        release();
+        await vi.waitFor(() => expect(researchRow()).toHaveTextContent("analysis"));
+        expect(noField()).not.toBeInTheDocument();
+        expect(screen.queryByText(/Could not save the tag/)).not.toBeInTheDocument();
+      });
+    });
+
+    describe("leaving without saving", () => {
+      it("cancels on Escape, keeping the name and the focus on the row", async () => {
+        renderTags();
+        await startRename();
+        await userEvent.keyboard("analysis{Escape}");
+        expect(noField()).not.toBeInTheDocument();
+        expect(mocked.tagsSave).not.toHaveBeenCalled();
+        expect(researchRow()).toHaveTextContent("research");
+        expect(researchRow()).toHaveFocus();
+      });
+
+      it.each([
+        ["emptied", ""],
+        ["whitespace-only", "   "],
+        ["unchanged", "research"],
+      ])("closes without saving when the name is %s", async (_, text) => {
+        renderTags();
+        await startRename();
+        await userEvent.clear(field());
+        if (text) await userEvent.keyboard(text);
+        await userEvent.keyboard("{Enter}");
+        expect(noField()).not.toBeInTheDocument();
+        expect(mocked.tagsSave).not.toHaveBeenCalled();
+        expect(researchRow()).toHaveTextContent("research");
+      });
+    });
+
+    describe("when the save fails", () => {
+      it("keeps the field open and shows a taken name inline, without a toast", async () => {
+        mocked.tagsSave.mockRejectedValueOnce(duplicate);
+        renderTags();
+        await startRename();
+        await userEvent.keyboard("admin{Enter}");
+        expect(await screen.findByRole("alert")).toHaveTextContent("A tag with this name already exists");
+        expect(field()).toHaveAttribute("aria-invalid", "true");
+        expect(screen.queryByText(/Could not save the tag/)).not.toBeInTheDocument();
+      });
+
+      it("clears the inline error when typing again", async () => {
+        mocked.tagsSave.mockRejectedValueOnce(duplicate);
+        renderTags();
+        await startRename();
+        await userEvent.keyboard("admin{Enter}");
+        await screen.findByRole("alert");
+        await userEvent.type(field(), "2");
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(field()).toHaveAttribute("aria-invalid", "false");
+      });
+
+      it("keeps the field open and toasts any other failure, without an inline error", async () => {
+        mocked.tagsSave.mockRejectedValueOnce({ kind: "io", message: "disk", code: null });
+        renderTags();
+        await startRename();
+        await userEvent.keyboard("analysis{Enter}");
+        expect(await screen.findByText("Could not save the tag: disk")).toBeInTheDocument();
+        expect(field()).toHaveValue("analysis");
+        expect(field()).toHaveAttribute("aria-invalid", "false");
+        expect(within(researchRow()).queryByRole("alert")).not.toBeInTheDocument();
+      });
+    });
+  });
+
   describe("adding", () => {
     it("creates the typed tag on Enter and clears the field", async () => {
       renderTags();
       await userEvent.type(screen.getByLabelText("New tag"), "billing{Enter}");
       expect(mocked.tagsSave).toHaveBeenCalledWith(null, "billing");
-      expect(screen.getByLabelText("New tag")).toHaveValue("");
+      await vi.waitFor(() => expect(screen.getByLabelText("New tag")).toHaveValue(""));
     });
 
     it("trims the name", async () => {

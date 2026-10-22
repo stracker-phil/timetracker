@@ -530,8 +530,14 @@ timeline), Hidden (gone from every lane; the Lanes popover lists hidden apps wit
 ## Tags
 
 - A page of its own (⌘6): the toolbar reads `Tags` and `One per recording, for kinds of work across projects.`
-  Below, one inset group with a row per tag (its name, the number of recordings, ✕ to delete; a confirm first
-  when recordings carry it), then the New tag field (↵ adds); ⌘N (`tags.new`) asks for a name in a sheet.
+  Below, one inset group with a row per tag (its name, the number of recordings, a pencil to rename, ✕ to
+  delete; a confirm first when recordings carry it), then the New tag field (↵ adds); ⌘N (`tags.new`) asks
+  for a name in a sheet.
+- Rename in place, as in Finder: a double click on the name, ↵ on the focused row (rows are Tab stops) or the
+  pencil turns the name into a field with its text selected. ↵ or leaving the field saves, Escape cancels; an
+  empty or unchanged name cancels. A name another tag has (ignoring case) keeps the field open with the error
+  next to it; other failures keep it open after the toast. Recordings, rules and reports link a tag by id, so
+  every view shows the new name once it reloads.
 
 ## Settings
 
@@ -617,6 +623,7 @@ Rules of the keys (`handleKeydown`):
   recording editor wherever the focus is.
 - ↵ and Space on a focused button or link activate it. J, K, H, L, V, ⇧J, ⇧K, ] and [ give the keys back to
   the timeline: they take the focus off a Tabbed-to button.
+- ↵ on a focused tag row renames the tag (`TagRow`, not a command); in its field ↵ saves and Escape cancels.
 - A command has one binding. P, N and O replaced ⌘←, ⌘→ and T for the dates; ] and [ replaced N and ⇧N for
   the recordings; T is free.
 - `Tab` is never bound: it moves the keyboard focus. Dialogs keep it inside (`Modal`), in reading order:

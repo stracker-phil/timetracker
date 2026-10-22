@@ -1,12 +1,13 @@
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useState } from "react";
 import type { TagListItem } from "../../api";
 import { plural } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { InsetField } from "../Field";
 import { Toolbar } from "../Toolbar";
+import { TagRow } from "./TagRow";
 
-/** The tags, one per recording, for kinds of work across projects; added and deleted here. */
+/** The tags, one per recording, for kinds of work across projects; added, renamed and deleted here. */
 export function TagsPage() {
   const tags = useStore((s) => s.tags);
   const [draft, setDraft] = useState("");
@@ -38,13 +39,7 @@ export function TagsPage() {
       <div className="tags-page">
         <ul className="tag-rows">
           {tags.map((tag) => (
-            <li key={tag.id} className="tag-row">
-              <span className="grow-text">{tag.name}</span>
-              <span className="o2 tabular">{plural(tag.recordings, "recording", "recordings")}</span>
-              <button type="button" className="icon-btn" aria-label={`Delete tag ${tag.name}`} title="Delete" onClick={() => remove(tag)}>
-                <X size="1.077rem" />
-              </button>
-            </li>
+            <TagRow key={tag.id} tag={tag} onDelete={remove} />
           ))}
         </ul>
         <InsetField icon={<Plus size="1.077rem" />} className="tag-add">

@@ -65,6 +65,12 @@ describe("projects slice", () => {
       await vi.waitFor(() => expect(useStore.getState().projects.map((p) => p.project.name)).toEqual(["After"]));
     });
 
+    it("saveTag resolves only after the tags have reloaded", async () => {
+      mocked.tagsList.mockResolvedValueOnce([tag({ name: "analysis" })]);
+      await useStore.getState().saveTag("tag-research", "analysis");
+      expect(useStore.getState().tags.map((t) => t.name)).toEqual(["analysis"]);
+    });
+
     it("saveClient sends the id and input", async () => {
       await useStore.getState().saveClient("c9", clientInput);
       expect(mocked.clientsSave).toHaveBeenCalledWith("c9", clientInput);

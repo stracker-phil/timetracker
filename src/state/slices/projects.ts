@@ -28,7 +28,7 @@ export interface ProjectsSlice {
 
 export const projectsSlice: Slice<ProjectsSlice> = {
   create: (set, get) => {
-    /** Runs a write and reloads after it; a failure is toasted under `context` unless a form field shows it. */
+    /** Runs a write and settles once the lists have reloaded; a failure is toasted under `context` unless a form field shows it. */
     async function write<T>(context: string, run: () => Promise<T>): Promise<T> {
       try {
         return await run();
@@ -36,7 +36,10 @@ export const projectsSlice: Slice<ProjectsSlice> = {
         if (!toAppError(e).field) fail(e, context);
         throw e;
       } finally {
-        void get().loadProjects();
+        // A reload failure is toasted on its own and never replaces the write's result or error.
+        await get()
+          .loadProjects()
+          .catch((e: unknown) => fail(e, "Could not reload the projects"));
       }
     }
 
