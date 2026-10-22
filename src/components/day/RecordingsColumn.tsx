@@ -5,16 +5,16 @@ import { useStore } from "../../state/store";
 import { DraftBlock } from "./DraftBlock";
 import { RecordingBlock } from "./RecordingBlock";
 import { SuggestionBlock } from "./SuggestionBlock";
+import type { TickGrid } from "./tickPointer";
 
 interface Props {
   ref?: Ref<HTMLDivElement>;
   recordings: Block[];
   suggestions: Suggestion[];
-  y: (ms: number) => number;
+  grid: TickGrid;
   /** The shown day's first and last instant: draft spans are drawn cut to them. */
   bounds: [number, number];
-  pxPerMinute: number;
-  /** The selection's snapped span, outlined where its recording would go. */
+  /** The selection on the grid, outlined where its recording would go. */
   selection: Span | null;
   /** A press on empty time starts a selection. */
   onPress: (e: PointerEvent<HTMLDivElement>) => void;
@@ -33,7 +33,8 @@ const onEmptyTime = (target: EventTarget) => target instanceof Element && !targe
  * The time column: a block per recording span, the suggestions and the open editor's spans (their edges drag);
  * a drag over empty time selects it and opens the editor.
  */
-export function RecordingsColumn({ ref, recordings, suggestions, y, bounds, pxPerMinute, selection, onPress }: Props) {
+export function RecordingsColumn({ ref, recordings, suggestions, grid, bounds, selection, onPress }: Props) {
+  const { y } = grid;
   const focused = useStore((s) => s.focusedRecording);
   const focusedSuggestion = useStore((s) => s.focusedSuggestion);
   const hovered = useStore((s) => s.hoveredRecording);
@@ -54,10 +55,10 @@ export function RecordingsColumn({ ref, recordings, suggestions, y, bounds, pxPe
       {recordings
         .filter((r) => r.id !== edited || r.running)
         .map((r) => (
-          <RecordingBlock key={r.spanId} block={r} y={y} pxPerMinute={pxPerMinute} focused={r.id === focused} hovered={r.id === hovered} />
+          <RecordingBlock key={r.spanId} block={r} grid={grid} focused={r.id === focused} hovered={r.id === hovered} />
         ))}
       {draft?.spans.map((s, i) => (
-        <DraftBlock key={i} span={s} index={i} y={y} bounds={bounds} pxPerMinute={pxPerMinute} />
+        <DraftBlock key={i} span={s} index={i} grid={grid} bounds={bounds} />
       ))}
     </div>
   );

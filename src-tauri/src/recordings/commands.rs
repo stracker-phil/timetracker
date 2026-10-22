@@ -5,7 +5,7 @@ use super::draft::{self, DraftSpans, DraftToggle};
 use super::proposal::{self, RecordingProposal};
 use super::undo::UndoStatus;
 use super::{
-    Change, Overlap, RecordingInput, Recordings, SnapEdge, Span, default_span_on, snap_moving,
+    Change, Overlap, RecordingInput, Recordings, SnapEdge, Span, default_span_on, snap_span,
 };
 use crate::db::recordings::{self, Recording, RecordingPatch};
 use crate::db::time::{Day, Ms, now_ms};
@@ -86,7 +86,7 @@ pub async fn recording_add_span(
     changing(&app, async |s| s.add_span(&id, span, overlap).await).await
 }
 
-/// New times for the span, snapped with `moving` as the end a drag holds (`null` when it moved whole).
+/// New times for the span as a drag left them; with `moving`, only that end snaps and the other keeps its time.
 #[tauri::command]
 pub async fn recording_update_span(
     app: AppHandle,
@@ -176,15 +176,10 @@ pub async fn recordings_list(
     recordings::list_for_range(&state.data.db()?, from, to).await
 }
 
-/// The span on the snap grid, for a selection or a drag: `moving` is the end the pointer drags.
+/// The span on the snap grid, for a selection of activity blocks (a drag's selection is already on it).
 #[tauri::command]
-pub fn recording_snap(
-    state: State<'_, AppState>,
-    start: Ms,
-    end: Ms,
-    moving: Option<SnapEdge>,
-) -> Span {
-    snap_moving(start, end, snap_minutes(&state), moving)
+pub fn recording_snap(state: State<'_, AppState>, start: Ms, end: Ms) -> Span {
+    snap_span(start, end, snap_minutes(&state))
 }
 
 /// The editor's spans with ends at or before their start rolled to the next day, and their sum.
@@ -217,8 +212,7 @@ pub fn recording_draft_toggle(
     draft::toggled_on_grid(&spans, block, &others, snap_minutes(&state), &Local)
 }
 
-/// The editor's spans after a drag moved an edge of the one at `index` to `span`: snapped with `moving` as the
-/// dragged end, then merged with the spans it touches or overlaps.
+/// The editor's spans with the one at `index` dragged to `span` (only `moving` snaps), merged with what it touches.
 #[tauri::command]
 pub fn recording_draft_resize(
     state: State<'_, AppState>,

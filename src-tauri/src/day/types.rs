@@ -14,6 +14,9 @@ pub struct DayView {
     /// The toolbar's title, by the day title setting (`titles::day_title`).
     pub label: String,
     pub bounds: (Ms, Ms),
+    /// Every mark of the snap grid from the first instant of `bounds` to the last, both included, ascending
+    /// (`recordings::ticks`): the only times a drag on the timeline lands on.
+    pub ticks: Vec<Ms>,
     /// The summary, activity, app and source lanes, each when shown.
     pub lanes: Vec<Lane>,
     /// The recordings column, by start.

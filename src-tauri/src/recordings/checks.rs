@@ -56,6 +56,15 @@ pub(super) fn snapped_span(span: Span, snap_minutes: u32) -> AppResult<Span> {
     Ok(span)
 }
 
+/// `span` checked, its times as they are.
+pub(super) fn checked_span(span: Span) -> AppResult<Span> {
+    if span.end <= span.start {
+        return Err(invalid("end", "must be after the start"));
+    }
+    check_length(span)?;
+    Ok(span)
+}
+
 /// Each span checked and snapped, by start; refused when there is none. Whether they overlap each other
 /// is `db::recordings::check_spans`'s call once they belong to a recording.
 pub(super) fn snapped_spans(spans: &[Span], snap_minutes: u32) -> AppResult<Vec<Span>> {

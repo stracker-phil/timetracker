@@ -1,6 +1,6 @@
 //! Writes on single spans of a recording, and merging two recordings.
 
-use super::checks::{closed_span, invalid, require_finished, snapped_span};
+use super::checks::{checked_span, closed_span, invalid, require_finished, snapped_span};
 use super::ops::Op;
 use super::{
     Change, Overlap, Recordings, SnapEdge, Span, grid_step, snap, snap_moving, snap_span,
@@ -67,11 +67,22 @@ impl Recordings<'_> {
         span: Span,
         overlap: Overlap,
     ) -> AppResult<Change<Recording>> {
+        let span = snapped_span(span, self.snap_minutes)?;
+        self.set_span(id, span_id, span, overlap).await
+    }
+
+    /// Gives the span `span_id` the times of `span`, as the caller checked them.
+    async fn set_span(
+        &self,
+        id: &str,
+        span_id: &str,
+        span: Span,
+        overlap: Overlap,
+    ) -> AppResult<Change<Recording>> {
         let mut undo = self.undo.lock().await;
         let current = recordings::get(self.db, id).await?;
         require_finished(&current)?;
         current.span(span_id)?;
-        let span = snapped_span(span, self.snap_minutes)?;
         let spans = with_span_set(&current.spans, span_id, span.start, span.end);
         let after = with_spans(&current, spans)?;
         let label = update_label(&current, &after);
@@ -79,8 +90,8 @@ impl Recordings<'_> {
             .await
     }
 
-    /// Gives the span `span_id` the times a drag left it at, snapped with `moving` as the dragged end (none
-    /// when the whole span moved).
+    /// Gives the span `span_id` the times a drag left it at, snapped by `snap_moving` with `moving` as the
+    /// dragged end (none when the whole span moved): an edge drag leaves the other end where it was.
     pub async fn drag_span(
         &self,
         id: &str,
@@ -89,8 +100,8 @@ impl Recordings<'_> {
         moving: Option<SnapEdge>,
         overlap: Overlap,
     ) -> AppResult<Change<Recording>> {
-        let span = snap_moving(span.start, span.end, self.snap_minutes, moving);
-        self.update_span(id, span_id, span, overlap).await
+        let span = checked_span(snap_moving(span.start, span.end, self.snap_minutes, moving))?;
+        self.set_span(id, span_id, span, overlap).await
     }
 
     /// Moves the start and the end of the span `span_id` by whole snap steps each, from their marks on the
@@ -536,6 +547,65 @@ mod tests {
             assert_eq!(span_ids(&after), span_ids(&saved), "{name}");
             assert_round_trip(&w, label, &before).await;
         }
+    }
+
+    #[tokio::test]
+    async fn drag_span_keeps_an_off_grid_fixed_edge() {
+        let cases = [
+            (
+                "end dragged",
+                span(at(13, 2), at(14, 13)),
+                SnapEdge::End,
+                (at(13, 2), at(14, 15)),
+            ),
+            (
+                "start dragged",
+                span(at(12, 32), at(13, 38)),
+                SnapEdge::Start,
+                (at(12, 30), at(13, 38)),
+            ),
+        ];
+        for (name, dragged, moving, expected) in cases {
+            let w = World::new().await;
+            let saved =
+                test_support::recording(&w.db, &w.project.id, at(13, 2), Some(at(13, 38))).await;
+
+            let after = w
+                .service()
+                .drag_span(
+                    &saved.id,
+                    &saved.spans[0].id,
+                    dragged,
+                    Some(moving),
+                    Overlap::Cancel,
+                )
+                .await
+                .unwrap()
+                .value;
+
+            assert_eq!(times(&after), [expected], "{name}");
+        }
+    }
+
+    #[tokio::test]
+    async fn drag_span_refuses_a_span_longer_than_a_day() {
+        let w = World::new().await;
+        let saved = w.create(at(13, 0), at(14, 0)).await;
+
+        let err = w
+            .service()
+            .drag_span(
+                &saved.id,
+                &saved.spans[0].id,
+                span(at(13, 0), at(13, 0) + 25 * HOUR),
+                Some(SnapEdge::End),
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(field_of(&err).as_deref(), Some("end"));
+        assert_eq!(w.rows().await, [saved]);
     }
 
     #[tokio::test]

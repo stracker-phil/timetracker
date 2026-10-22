@@ -5,23 +5,23 @@ import { focusCleared } from "../focus";
 import { fail } from "../requests";
 import type { Slice, Store } from "../store";
 
-/** A span picked on the timeline, unsnapped (Rust snaps it), with the activity blocks it came from. */
+/** A span picked on the timeline and the activity blocks it came from, on ticks when dragged, else the blocks' own times. */
 export interface Selection {
   start: number;
   end: number;
   blockIds: string[];
-  /** The end a drag moves, which snaps in whole steps away from the other. */
-  moving?: SnapEdge;
 }
 
 export interface RecordingsSlice {
   selection: Selection | null;
-  /** The selection as Rust will snap it, while one exists. */
+  /** The selection on the snap grid, as it is drawn and recorded; a block selection's once Rust has snapped it. */
   selectionSnap: Span | null;
-  setSelectionSnap: (span: Span | null) => void;
+  /** A selection drawn as it is: a drag's, on ticks (a block's until `recordSelection` snaps it); null clears it. */
   setSelection: (selection: Selection | null) => void;
   /** Grows the selection to also cover `blockId`'s span. */
   extendSelection: (blockId: string) => void;
+  /** The selection snapped by Rust, stored as `selectionSnap` while it is still the selection; null (toasted with `context`) on failure. */
+  snapSelection: (context: string) => Promise<Span | null>;
   /** The recording keys act on. */
   focusedRecording: string | null;
   focusRecording: (id: string | null) => void;
@@ -36,7 +36,7 @@ export interface RecordingsSlice {
    */
   createRecording: (input: RecordingInput, suggestionId?: string) => Promise<Recording | null>;
   updateRecording: (id: string, patch: RecordingPatch) => Promise<Recording | null>;
-  /** New times for one span of the recording as a drag left them; Rust snaps them with `moving` as the dragged end. */
+  /** New times for one span of the recording as a drag left them, on ticks; with `moving`, the other end keeps its time. */
   updateSpan: (id: string, spanId: string, span: Span, moving?: SnapEdge | null) => Promise<Recording | null>;
   /** Moves the span's start and end by whole snap steps each. */
   nudgeSpan: (id: string, spanId: string, startSteps: number, endSteps: number) => Promise<Recording | null>;
@@ -115,24 +115,38 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
       undoStatus: NOTHING_TO_UNDO,
 
       setSelection(selection) {
-        set(selection ? { selection, ...focusCleared("other") } : { selection, selectionSnap: null });
-      },
-
-      setSelectionSnap(selectionSnap) {
-        set({ selectionSnap });
+        if (!selection) return set({ selection, selectionSnap: null });
+        set({
+          selection,
+          selectionSnap: { start: selection.start, end: selection.end },
+          ...focusCleared("other"),
+        });
       },
 
       extendSelection(blockId) {
         const span = blockSpan(get(), blockId);
         if (!span) return;
         const current = get().selection ?? { ...span, blockIds: [] };
-        set({
-          selection: {
-            start: Math.min(current.start, span.start),
-            end: Math.max(current.end, span.end),
-            blockIds: [...new Set([...current.blockIds, blockId])],
-          },
-        });
+        const selection = {
+          start: Math.min(current.start, span.start),
+          end: Math.max(current.end, span.end),
+          blockIds: [...new Set([...current.blockIds, blockId])],
+        };
+        set({ selection });
+        void get().snapSelection("Could not select the time");
+      },
+
+      async snapSelection(context) {
+        const selection = get().selection;
+        if (!selection) return null;
+        try {
+          const span = await api.recordingSnap(selection.start, selection.end);
+          if (get().selection === selection) set({ selectionSnap: span });
+          return span;
+        } catch (e) {
+          fail(e, context);
+          return null;
+        }
       },
 
       focusRecording(id) {

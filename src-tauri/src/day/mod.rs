@@ -21,6 +21,7 @@ use crate::db::activities::ActivityRow;
 use crate::db::away::AwayRow;
 use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms, clip};
+use crate::recordings::ticks;
 use crate::store::settings::{AppOverride, DayTitle, Settings, TimelineSettings};
 
 pub use load::{load, names, totals_of, view_of};
@@ -109,6 +110,11 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
         day: input.day,
         label: day_title(input.day, settings.day_title, Day::of(input.now)),
         bounds: input.bounds,
+        ticks: ticks(
+            input.bounds.0,
+            input.bounds.1,
+            u32::from(settings.timeline.snap_minutes),
+        ),
         lanes,
         timesheet: timesheet(&recordings),
         recordings,
@@ -662,6 +668,7 @@ mod tests {
                 "day": "2026-01-05",
                 "label": "Monday, January 5, 2026",
                 "bounds": [0, DAY_LENGTH],
+                "ticks": view.ticks,
                 "lanes": [{
                     "id": "activity",
                     "kind": "activity",
@@ -705,6 +712,25 @@ mod tests {
                 "suggestions": []
             })
         );
+    }
+
+    #[test]
+    fn the_view_lists_the_snap_marks_from_the_first_to_the_last_instant_of_the_day() {
+        let bounds = day().bounds();
+        let input = DayInput {
+            bounds,
+            ..input(vec![], vec![])
+        };
+        let settings = settings();
+        let step = i64::from(settings.timeline.snap_minutes) * 60_000;
+
+        let view = view(&input, &settings);
+
+        assert_eq!(view.ticks.first(), Some(&bounds.0));
+        assert_eq!(view.ticks.last(), Some(&bounds.1));
+        assert!(view.ticks.windows(2).all(|w| w[1] - w[0] == step));
+        let value = serde_json::to_value(&view).unwrap();
+        assert_eq!(value["ticks"], json!(view.ticks));
     }
 
     #[test]

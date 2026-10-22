@@ -34,7 +34,7 @@ use overlaps::{claimed, clearing, in_the_way};
 pub use review::suggestions_label;
 pub use snap::{
     NEW_RECORDING_MINUTES, SnapEdge, default_span, default_span_on, grid_step, snap, snap_moving,
-    snap_span,
+    snap_span, ticks,
 };
 use undo::{Entry, UndoStack};
 

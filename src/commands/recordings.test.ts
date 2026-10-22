@@ -290,15 +290,8 @@ describe("recording commands", () => {
       state().setSelection({ start: at("09:02"), end: at("10:28"), blockIds: [] });
       expect(runCommand("recording.open")).toBe(true);
       await vi.waitFor(() => expect(state().editor).toEqual({ mode: "create", start: at("09:00"), end: at("10:30") }));
-      expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("10:28"), null);
+      expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("10:28"));
       await vi.waitFor(() => expect(state().draft?.spans).toEqual([{ start: at("09:00"), end: at("10:30") }]));
-    });
-
-    it("passes the end a drag moves to Rust's snap", async () => {
-      state().setSelection({ start: at("09:02"), end: at("10:28"), blockIds: [], moving: "start" });
-      runCommand("recording.open");
-      await vi.waitFor(() => expect(state().editor).not.toBeNull());
-      expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("10:28"), "start");
     });
 
     it("edits the focused recording rather than the selection", () => {

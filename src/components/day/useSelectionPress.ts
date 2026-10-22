@@ -1,16 +1,15 @@
 import { type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { useStore } from "../../state/store";
 import { pointerDrag } from "./pointerDrag";
-import { msOfPx } from "./spanDrag";
+import { selectedSpan } from "./spanDrag";
+import { tickPointer, type TickGrid } from "./tickPointer";
 
 /** Near the scroll box's top or bottom edge (px) a drag scrolls it. */
 const EDGE_PX = 24;
 const SCROLL_STEP_PX = 8;
 
 interface Options {
-  /** The day's first instant (ms). */
-  origin: number;
-  pxPerMinute: number;
+  grid: TickGrid;
   scrollRef: RefObject<HTMLElement | null>;
 }
 
@@ -24,11 +23,12 @@ function autoScroll(box: HTMLElement | null, clientY: number) {
 }
 
 /**
- * The press handler of the lanes, the axis and the time column: a drag selects a span and opens the editor on
+ * The press handler of the lanes, the axis and the time column: a drag selects the span between the tick it was
+ * pressed on and the pointer's tick (`selectedSpan`) and opens the editor on
  * release (an open editor takes it as another span); a click on a block toggles its span in the editor's spans
  * (the first opens the editor); a click on nothing clears the selection.
  */
-export function useSelectionPress({ origin, pxPerMinute, scrollRef }: Options) {
+export function useSelectionPress({ grid, scrollRef }: Options) {
   function selectClicked(blockId: string | null) {
     const s = useStore.getState();
     s.focusRecording(null);
@@ -39,15 +39,14 @@ export function useSelectionPress({ origin, pxPerMinute, scrollRef }: Options) {
 
   return (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
-    const el = e.currentTarget;
-    const msAt = (clientY: number) => origin + msOfPx(clientY - el.getBoundingClientRect().top, pxPerMinute);
-    const anchor = msAt(e.clientY);
+    if (grid.ticks.length < 2) return;
+    const tickAt = tickPointer(grid, e.currentTarget);
+    const origin = tickAt(e.clientY).index;
     const blockId = blockIdAt(e.target);
     pointerDrag(e, {
       move: (_dy, ev) => {
         autoScroll(scrollRef.current, ev.clientY);
-        const at = msAt(ev.clientY);
-        useStore.getState().setSelection({ start: Math.min(anchor, at), end: Math.max(anchor, at), blockIds: [], moving: at < anchor ? "start" : "end" });
+        useStore.getState().setSelection({ ...selectedSpan(grid.ticks, origin, tickAt(ev.clientY)), blockIds: [] });
       },
       end: (_dy, dragged) => (dragged ? void useStore.getState().recordSelection() : selectClicked(blockId)),
     });

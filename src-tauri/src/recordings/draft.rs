@@ -179,7 +179,7 @@ pub fn resized<Tz: TimeZone>(spans: &[Span], index: usize, span: Span, tz: &Tz) 
     draft(&merged(spans), tz)
 }
 
-/// `resized` with `span` (a drag's raw times) snapped to the `minutes` grid first, `moving` as the dragged end.
+/// `resized` with `span` (a drag's times) snapped by `snap_moving` first, `moving` as the dragged end.
 pub fn resized_on_grid<Tz: TimeZone>(
     spans: &[Span],
     index: usize,
@@ -834,6 +834,57 @@ mod tests {
             start_dragged_past_end.spans[1],
             span(june(15, 11, 55), june(15, 12, 0))
         );
+    }
+
+    #[test]
+    fn resizing_on_the_grid_keeps_an_off_grid_fixed_edge() {
+        let spans = [span(june(15, 9, 2), june(15, 10, 0))];
+
+        let start_dragged = resized_on_grid(
+            &spans,
+            0,
+            span(june(15, 8, 33), june(15, 10, 0)),
+            Some(SnapEdge::Start),
+            5,
+            &Vienna,
+        );
+        let end_dragged = resized_on_grid(
+            &spans,
+            0,
+            span(june(15, 9, 2), june(15, 10, 33)),
+            Some(SnapEdge::End),
+            5,
+            &Vienna,
+        );
+
+        assert_eq!(
+            start_dragged.spans,
+            [span(june(15, 8, 35), june(15, 10, 0))]
+        );
+        assert_eq!(end_dragged.spans, [span(june(15, 9, 2), june(15, 10, 35))]);
+    }
+
+    #[test]
+    fn resizing_on_the_grid_keeps_times_that_are_already_ticks() {
+        for moving in [Some(SnapEdge::Start), Some(SnapEdge::End), None] {
+            let resized = resized_on_grid(
+                &two_spans(),
+                1,
+                span(june(15, 11, 15), june(15, 12, 30)),
+                moving,
+                15,
+                &Vienna,
+            );
+
+            assert_eq!(
+                resized.spans,
+                [
+                    span(june(15, 9, 0), june(15, 10, 0)),
+                    span(june(15, 11, 15), june(15, 12, 30))
+                ],
+                "{moving:?}"
+            );
+        }
     }
 
     #[test]

@@ -108,7 +108,7 @@ export function createApiMock(): typeof realApi {
       return draftSpans([...spans, { start, end: start + 30 * 60_000 }]);
     }),
     recordingDraftInclude: vi.fn(async (spans: Span[], span: Span) => draftSpans(sorted([...spans, span]))),
-    recordingDraftResize: vi.fn(async (spans: Span[], index: number, span: Span) => draftSpans(sorted(spans.map((s, i) => (i === index ? span : s))))),
+    recordingDraftResize: vi.fn(async (spans: Span[], index: number, span: Span, _moving: SnapEdge | null) => draftSpans(sorted(spans.map((s, i) => (i === index ? span : s))))),
     recordingDraftToggle: vi.fn(async (spans: Span[], block: Span, _others: Span[]) => {
       const present = spans.some((s) => s.start === block.start && s.end === block.end);
       const next = present ? spans.filter((s) => s.start !== block.start || s.end !== block.end) : sorted([...spans, block]);

@@ -51,9 +51,22 @@ describe("recordings slice", () => {
       expect(state().selection).toBeNull();
     });
 
+    it("shows the span Rust snapped a block selection to", async () => {
+      mocked.recordingSnap.mockResolvedValueOnce({ start: at("08:55"), end: at("09:35") });
+      state().extendSelection("a1");
+      await vi.waitFor(() => expect(state().selectionSnap).toEqual({ start: at("08:55"), end: at("09:35") }));
+    });
+
+    it("toasts when Rust cannot snap a block selection and keeps the selection", async () => {
+      mocked.recordingSnap.mockRejectedValueOnce({ kind: "io", message: "no snap", code: null });
+      state().extendSelection("a1");
+      await vi.waitFor(() => expect(toastMessages()).toEqual(["Could not select the time: no snap"]));
+      expect(state().selection).toMatchObject({ start: docs.start, end: docs.end });
+    });
+
     it("forgets the snapped span when the selection is cleared", () => {
       state().setSelection({ start: 1, end: 2, blockIds: [] });
-      state().setSelectionSnap({ start: 1, end: 2 });
+      expect(state().selectionSnap).toEqual({ start: 1, end: 2 });
       state().setSelection(null);
       expect(state().selectionSnap).toBeNull();
     });

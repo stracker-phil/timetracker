@@ -129,9 +129,18 @@ export function summaryLane(blocks: ActivityBlock[]): Lane {
   return lane({ id: "summary", kind: "summary", label: "Summary", blocks });
 }
 
+/** The snap marks Rust sends for a day: every 5 minutes from its first instant to its last, both included. */
+export function dayTicks([start, end]: [number, number]): number[] {
+  const step = 5 * 60_000;
+  const ticks: number[] = [];
+  for (let t = start; t < end; t += step) ticks.push(t);
+  ticks.push(end);
+  return ticks;
+}
+
 /**
  * A day without activity; `patch` overrides fields. `firstActivity` defaults to the earliest block start
- * (or null), `sources` to the external sources of the lanes.
+ * (or null), `sources` to the external sources of the lanes, `ticks` to a 5-minute grid over the bounds.
  */
 export function dayView(patch: Partial<DayView> = {}): DayView {
   const day = patch.day ?? DAY;
@@ -142,6 +151,7 @@ export function dayView(patch: Partial<DayView> = {}): DayView {
     day,
     label: day,
     bounds: dayBounds(day),
+    ticks: dayTicks(patch.bounds ?? dayBounds(day)),
     lanes,
     compact: false,
     hiddenApps: [],

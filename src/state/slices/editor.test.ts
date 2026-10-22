@@ -138,7 +138,6 @@ describe("editor slice", () => {
     it("drops the editor, its draft and the selection with its snap", async () => {
       await openCreate(morning);
       state().setSelection({ ...morning, blockIds: ["a1"] });
-      state().setSelectionSnap(morning);
       state().closeEditor();
       expect([state().editor, state().draft, state().editing, state().selection, state().selectionSnap]).toEqual([null, null, null, null, null]);
     });
@@ -272,6 +271,24 @@ describe("editor slice", () => {
         expect(toastMessages()).toEqual(["Could not change the times: no answer"]);
         expect(state().draft).toMatchObject({ note: "keep", spans: [noon] });
       });
+
+      it("shows the dragged span until Rust has answered, then drops it", async () => {
+        const slow = deferred();
+        mocked.recordingDraftResize.mockReturnValueOnce(slow.promise);
+        state().setDraftDrag({ index: 0, span: dragged });
+        const done = state().resizeDraftSpan(0, dragged, "end");
+        expect(state().draftDrag).toEqual({ index: 0, span: dragged });
+        slow.answer({ spans: [dragged], totalMs: 48 * MINUTE_MS });
+        await done;
+        expect(state().draftDrag).toBeNull();
+      });
+
+      it("drops the dragged span when Rust cannot answer", async () => {
+        mocked.recordingDraftResize.mockRejectedValueOnce({ kind: "io", message: "no answer", code: null });
+        state().setDraftDrag({ index: 0, span: dragged });
+        await state().resizeDraftSpan(0, dragged, "end");
+        expect(state().draftDrag).toBeNull();
+      });
     });
 
     it("removeDraftSpan asks Rust about the remaining spans", async () => {
@@ -314,15 +331,9 @@ describe("editor slice", () => {
       mocked.recordingSnap.mockResolvedValueOnce(morning);
       state().setSelection({ start: at("09:02"), end: at("09:28"), blockIds: [] });
       await state().recordSelection();
-      expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("09:28"), null);
+      expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("09:28"));
       expect(state().editor).toEqual({ mode: "create", ...morning });
       await vi.waitFor(() => expect(state().draft?.spans).toEqual([morning]));
-    });
-
-    it("hands Rust the end a drag moves", async () => {
-      state().setSelection({ start: at("09:02"), end: at("09:28"), blockIds: [], moving: "start" });
-      await state().recordSelection();
-      expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("09:28"), "start");
     });
 
     it("remembers the clicked blocks of the selection a new editor opens on", async () => {

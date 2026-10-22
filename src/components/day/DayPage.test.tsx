@@ -16,6 +16,7 @@ import { suggestion } from "../../test/ruleFixtures";
 import { settings } from "../../test/settings";
 import { Dialogs } from "../Dialogs";
 import { PermissionDialog } from "../PermissionDialog";
+import { StatusBar } from "../StatusBar";
 import { Toasts } from "../Toasts";
 import { DayPage } from "./DayPage";
 
@@ -62,18 +63,17 @@ function expectSpan(form: HTMLElement, from: string, to: string, row = 1) {
   expect(within(form).getByLabelText(`Time ${row} from`)).toHaveValue(from);
   expect(within(form).getByLabelText(`Time ${row} to`)).toHaveValue(to);
 }
-/** Presses `handle` and releases it `dy` px lower (unscrolled jsdom has no layout, so only the distance counts). */
-function dragBy(handle: HTMLElement, dy: number) {
-  fireEvent.pointerDown(handle, { button: 0, clientY: 1000 });
-  fireEvent.pointerMove(handle, { clientY: 1000 + dy });
-  fireEvent.pointerUp(handle, { clientY: 1000 + dy });
+/** Presses `handle` at `from` (px) and moves it through `via`; the returned function releases it at the last of them. */
+function holdAt(handle: HTMLElement, from: number, ...via: number[]) {
+  fireEvent.pointerDown(handle, { button: 0, clientX: 300, clientY: from });
+  for (const y of via) fireEvent.pointerMove(handle, { clientX: 300, clientY: y });
+  return () => fireEvent.pointerUp(handle, { clientX: 300, clientY: via[via.length - 1] ?? from });
 }
+/** A whole drag: pressed at `from` (px), moved through `via`, released at the last of them. */
+const dragPath = (handle: HTMLElement, from: number, ...via: number[]) => holdAt(handle, from, ...via)();
 const gripOf = (draftLabel: string, which: "start" | "end") => within(screen.getByLabelText(draftLabel)).getByLabelText(`Drag to change the ${which}`);
-/** A snap that refuses fractions, as Rust's `Ms` does. */
-const wholeMsOnly = (start: number, end: number) =>
-  Number.isInteger(start) && Number.isInteger(end)
-    ? Promise.resolve({ start, end })
-    : Promise.reject(Object.assign(new Error("invalid type: floating point"), { kind: "invalid_input", code: null }));
+/** Less than a pixel between two 5-minute ticks (12.5 px apart): which one is nearest stays the same. */
+const FRACTION_PX = 0.3;
 const scrollBox = () => screen.getByRole("row").parentElement as HTMLElement;
 /** The element that takes the press of a selection drag: the parent of the lanes. */
 const lanesEl = () => screen.getByLabelText("Safari: Docs").closest("[data-lane-id]")?.parentElement as HTMLElement;
@@ -314,12 +314,9 @@ describe("DayPage", () => {
     });
 
     it("opens the editor with the dragged span on an empty day", async () => {
-      mocked.recordingSnap.mockResolvedValue({ start: at("09:00"), end: at("10:30") });
       renderDay(dayView({ lanes: [lane()] }));
       const message = await screen.findByText("Nothing tracked on this day");
-      fireEvent.pointerDown(message, { button: 0, clientX: 300, clientY: px("09:02") });
-      fireEvent.pointerMove(message, { clientX: 300, clientY: px("10:28") });
-      fireEvent.pointerUp(message, { clientX: 300, clientY: px("10:28") });
+      dragPath(message, px("09:02"), px("10:28"));
       expectSpan(await editorForm("New recording"), "09:00", "10:30");
     });
 
@@ -781,7 +778,7 @@ describe("DayPage", () => {
       renderDay(busyDay());
       await userEvent.click(await blockEl("Safari: Docs"));
       expectSpan(await editorDialog(), "08:55", "09:35");
-      expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:00"), at("09:30"), null);
+      expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:00"), at("09:30"));
     });
 
     it("adds the span of a second clicked block as another row and keeps the note", async () => {
@@ -897,30 +894,63 @@ describe("DayPage", () => {
     });
 
     describe("dragging", () => {
-      /** Presses `target` at 09:02 and drags to 10:28 (Rust snaps it to 09:00–10:30); the returned function releases. */
-      async function dragOver(target: () => HTMLElement) {
-        mocked.recordingSnap.mockResolvedValue({ start: at("09:00"), end: at("10:30") });
+      /** Presses `target` at 09:02 and drags to 10:28, which are the ticks 09:00 and 10:30; the returned function releases. */
+      async function dragOver(target: () => HTMLElement, offset = 0) {
         renderDay(busyDay());
         await blockEl("Safari: Docs");
-        fireEvent.pointerDown(target(), { button: 0, clientX: 300, clientY: px("09:02") });
-        fireEvent.pointerMove(target(), { clientX: 300, clientY: px("10:28") });
+        const release = holdAt(target(), px("09:02") + offset, px("10:28") + offset);
         const band = await screen.findByLabelText("Selection 09:00–10:30");
-        return { band, release: () => fireEvent.pointerUp(target(), { clientX: 300, clientY: px("10:28") }) };
+        return { band, release };
       }
 
-      it("shows the dragged span with the times Rust snaps it to, as a band without text", async () => {
+      it("shows the dragged span as a band without text and asks Rust nothing while moving", async () => {
         const { band } = await dragOver(lanesEl);
         expect(band).toBeEmptyDOMElement();
-        expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("10:28"), "end");
+        expect(mocked.recordingSnap).not.toHaveBeenCalled();
+        expect(mocked.recordingDraftInclude).not.toHaveBeenCalled();
+        expect(mocked.recordingDraftSpans).not.toHaveBeenCalled();
       });
 
-      it("opens the editor with the snapped span when released over the lanes", async () => {
-        const { release } = await dragOver(lanesEl);
+      it("shows only tick times in the band and the status bar when the pointer is between pixels", async () => {
+        const { band } = await dragOver(lanesEl, FRACTION_PX);
+        render(<StatusBar />);
+        expect(band).toBeEmptyDOMElement();
+        expect(screen.getByLabelText("Selection")).toHaveTextContent("09:00–10:30 · 1h 30m");
+      });
+
+      it("keeps the tick it was pressed on while the pointer passes above and below it", async () => {
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        const lanes = lanesEl();
+        fireEvent.pointerDown(lanes, { button: 0, clientX: 300, clientY: px("10:00") });
+        fireEvent.pointerMove(lanes, { clientX: 300, clientY: px("09:30") });
+        expect(screen.getByLabelText("Selection 09:30–10:00")).toBeInTheDocument();
+        fireEvent.pointerMove(lanes, { clientX: 300, clientY: px("10:20") + FRACTION_PX });
+        expect(screen.getByLabelText("Selection 10:00–10:20")).toBeInTheDocument();
+        fireEvent.pointerMove(lanes, { clientX: 300, clientY: px("09:15") });
+        expect(screen.getByLabelText("Selection 09:15–10:00")).toBeInTheDocument();
+      });
+
+      it("spans one tick toward the pointer while it stays on the tick it was pressed on", async () => {
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        const lanes = lanesEl();
+        fireEvent.pointerDown(lanes, { button: 0, clientX: 300, clientY: px("10:00") });
+        fireEvent.pointerMove(lanes, { clientX: 300, clientY: px("10:00") - 4 });
+        expect(screen.getByLabelText("Selection 09:55–10:00")).toBeInTheDocument();
+        fireEvent.pointerMove(lanes, { clientX: 300, clientY: px("10:00") + 4 });
+        expect(screen.getByLabelText("Selection 10:00–10:05")).toBeInTheDocument();
+      });
+
+      it("opens the editor with the drawn span, asking Rust only on release", async () => {
+        const { release } = await dragOver(lanesEl, FRACTION_PX);
+        expect(mocked.recordingSnap).not.toHaveBeenCalled();
         release();
         expectSpan(await editorDialog(), "09:00", "10:30");
+        expect(mocked.recordingSnap).toHaveBeenLastCalledWith(at("09:00"), at("10:30"));
       });
 
-      it("opens the editor with the snapped span after a drag in the time column", async () => {
+      it("opens the editor with the drawn span after a drag in the time column", async () => {
         const { release } = await dragOver(() => screen.getByLabelText("Recordings"));
         release();
         expectSpan(await editorDialog(), "09:00", "10:30");
@@ -939,40 +969,18 @@ describe("DayPage", () => {
         renderDay(busyDay());
         await userEvent.click(await blockEl("Safari: Docs"));
         const form = await editorDialog();
-        fireEvent.pointerDown(lanesEl(), { button: 0, clientX: 300, clientY: px("13:00") });
-        fireEvent.pointerMove(lanesEl(), { clientX: 300, clientY: px("13:30") });
-        fireEvent.pointerUp(lanesEl(), { clientX: 300, clientY: px("13:30") });
+        dragPath(lanesEl(), px("13:00"), px("13:30"));
         await waitFor(() => expectSpan(form, "13:00", "13:30", 2));
         expectSpan(form, "09:00", "09:30");
         expect(screen.getAllByRole("form")).toHaveLength(1);
       });
 
-      it("opens the editor, with no error, for a drag that starts and ends between pixels", async () => {
-        mocked.recordingSnap.mockImplementation(wholeMsOnly);
-        renderDay(busyDay());
-        await blockEl("Safari: Docs");
-        fireEvent.pointerDown(lanesEl(), { button: 0, clientX: 300, clientY: px("09:02") + 0.00003 });
-        fireEvent.pointerMove(lanesEl(), { clientX: 300, clientY: px("10:28") + 0.00003 });
-        fireEvent.pointerUp(lanesEl(), { clientX: 300, clientY: px("10:28") + 0.00003 });
-        await editorDialog();
-        expect(screen.queryByText(/Could not open the editor/)).not.toBeInTheDocument();
-        for (const [start, end] of mocked.recordingSnap.mock.calls) {
-          expect(Number.isInteger(start)).toBe(true);
-          expect(Number.isInteger(end)).toBe(true);
-        }
-      });
-
-      it("sends whole milliseconds to include a drag in the open editor", async () => {
+      it("includes the drawn span of a drag between pixels in the open editor", async () => {
         renderDay(busyDay());
         await userEvent.click(await blockEl("Safari: Docs"));
         const form = await editorDialog();
-        fireEvent.pointerDown(lanesEl(), { button: 0, clientX: 300, clientY: px("13:00") + 0.00003 });
-        fireEvent.pointerMove(lanesEl(), { clientX: 300, clientY: px("13:30") + 0.00003 });
-        fireEvent.pointerUp(lanesEl(), { clientX: 300, clientY: px("13:30") + 0.00003 });
-        await waitFor(() => expect(mocked.recordingDraftInclude).toHaveBeenCalled());
-        const included = mocked.recordingDraftInclude.mock.calls[0][1];
-        expect(Number.isInteger(included.start)).toBe(true);
-        expect(Number.isInteger(included.end)).toBe(true);
+        dragPath(lanesEl(), px("13:00") + FRACTION_PX, px("13:30") + FRACTION_PX);
+        await waitFor(() => expect(mocked.recordingDraftInclude).toHaveBeenCalledWith([{ start: at("09:00"), end: at("09:30") }], { start: at("13:00"), end: at("13:30") }));
         await waitFor(() => expectSpan(form, "13:00", "13:30", 2));
       });
     });
@@ -1010,28 +1018,46 @@ describe("DayPage", () => {
       });
 
       it.each([
-        ["start", -25, { start: at("08:50"), end: at("09:30") }, "Draft 08:50–09:30", ["08:50", "09:30"]],
-        ["end", 25, { start: at("09:00"), end: at("09:40") }, "Draft 09:00–09:40", ["09:00", "09:40"]],
-      ] as const)("moving the %s grip sends the span to Rust and shows its answer in the box and the fields", async (edge, dy, span, label, [from, to]) => {
+        ["start", "09:00", "08:50", { start: at("08:50"), end: at("09:30") }, "Draft 08:50–09:30", ["08:50", "09:30"]],
+        ["end", "09:30", "09:40", { start: at("09:00"), end: at("09:40") }, "Draft 09:00–09:40", ["09:00", "09:40"]],
+      ] as const)("moving the %s grip shows the tick span in the box and the fields, and sends it to Rust on release", async (edge, from, to, span, label, [fromText, toText]) => {
         const form = await openDraft();
-        dragBy(gripOf("Draft 09:00–09:30", edge), dy);
+        const release = holdAt(gripOf("Draft 09:00–09:30", edge), px(from), px(to) + FRACTION_PX);
+        expect(screen.getByLabelText(label)).toBeInTheDocument();
+        expectSpan(form, fromText, toText);
+        expect(mocked.recordingDraftResize).not.toHaveBeenCalled();
+        release();
         await waitFor(() => expect(mocked.recordingDraftResize).toHaveBeenCalledWith([docsSpan], 0, span, edge));
         expect(await screen.findByLabelText(label)).toBeInTheDocument();
-        await waitFor(() => expectSpan(form, from, to));
+        await waitFor(() => expectSpan(form, fromText, toText));
       });
 
-      it("sends whole milliseconds for a grip dragged by a fractional distance", async () => {
+      it.each([
+        ["end", "09:30", "08:30", "Draft 09:00–09:05"],
+        ["start", "09:00", "10:00", "Draft 09:25–09:30"],
+      ] as const)("stops the %s grip one tick before the other edge", async (edge, from, to, label) => {
         await openDraft();
-        dragBy(gripOf("Draft 09:00–09:30", "end"), 10.001);
-        await waitFor(() => expect(mocked.recordingDraftResize).toHaveBeenCalledWith([docsSpan], 0, { start: docsSpan.start, end: docsSpan.end + 240_024 }, "end"));
+        holdAt(gripOf("Draft 09:00–09:30", edge), px(from), px(to));
+        expect(screen.getByLabelText(label)).toBeInTheDocument();
+      });
+
+      it("keeps the other edge while the grip passes it and comes back", async () => {
+        await openDraft();
+        holdAt(gripOf("Draft 09:00–09:30", "end"), px("09:30"), px("08:30"), px("09:50"));
+        expect(screen.getByLabelText("Draft 09:00–09:50")).toBeInTheDocument();
       });
 
       it("changes nothing when the grip is released where it was pressed", async () => {
         await openDraft();
-        const handle = gripOf("Draft 09:00–09:30", "end");
-        fireEvent.pointerDown(handle, { button: 0, clientY: 1000 });
-        fireEvent.pointerUp(handle, { clientY: 1000 });
+        dragPath(gripOf("Draft 09:00–09:30", "end"), px("09:30"));
         expect(mocked.recordingDraftResize).not.toHaveBeenCalled();
+      });
+
+      it("changes nothing when the grip is dragged away and back to its tick", async () => {
+        await openDraft();
+        dragPath(gripOf("Draft 09:00–09:30", "end"), px("09:30"), px("09:50"), px("09:30") + 4);
+        expect(mocked.recordingDraftResize).not.toHaveBeenCalled();
+        expect(screen.getByLabelText("Draft 09:00–09:30")).toBeInTheDocument();
       });
 
       it("shows one box and one row when Rust merges two boxes", async () => {
@@ -1039,7 +1065,7 @@ describe("DayPage", () => {
         await userEvent.click(screen.getByLabelText("Notes: Todo"));
         await screen.findByLabelText("Draft 10:00–10:30");
         mocked.recordingDraftResize.mockResolvedValueOnce({ spans: [{ start: at("09:00"), end: at("10:30") }], totalMs: 90 * MINUTE_MS });
-        dragBy(gripOf("Draft 09:00–09:30", "end"), 150);
+        dragPath(gripOf("Draft 09:00–09:30", "end"), px("09:30"), px("10:30"));
         await waitFor(() => expect(mocked.recordingDraftResize).toHaveBeenCalledWith([docsSpan, todoSpan], 0, { start: at("09:00"), end: at("10:30") }, "end"));
         expect(await screen.findByLabelText("Draft 09:00–10:30")).toBeInTheDocument();
         expect(screen.queryByLabelText("Draft 10:00–10:30")).not.toBeInTheDocument();
@@ -1053,7 +1079,7 @@ describe("DayPage", () => {
         await userEvent.click(await screen.findByLabelText("Website: standup"));
         const form = await editorForm("Edit recording");
         await screen.findByLabelText("Draft 11:00–11:45");
-        dragBy(gripOf("Draft 11:00–11:45", "end"), 25);
+        dragPath(gripOf("Draft 11:00–11:45", "end"), px("11:45"), px("11:55"));
         await waitFor(() => expect(mocked.recordingDraftResize).toHaveBeenCalledWith([{ start: at("11:00"), end: at("11:45") }], 0, { start: at("11:00"), end: at("11:55") }, "end"));
         expect(await screen.findByLabelText("Draft 11:00–11:55")).toBeInTheDocument();
         await waitFor(() => expectSpan(form, "11:00", "11:55"));
@@ -1145,51 +1171,59 @@ describe("DayPage", () => {
 
     describe("dragging", () => {
       it.each([
-        ["its body moves it", null, 25, "11:10", "11:55"],
-        ["its top edge changes the start", "start", -25, "10:50", "11:45"],
-        ["its bottom edge changes the end", "end", 25, "11:00", "11:55"],
-      ] as const)("%s, sending the raw span and the dragged edge for Rust to snap", async (_name, edge, dy, start, end) => {
+        ["its body moves it", null, "11:20", "11:30", "11:10", "11:55"],
+        ["its top edge changes the start", "start", "11:00", "10:50", "10:50", "11:45"],
+        ["its bottom edge changes the end", "end", "11:45", "11:55", "11:00", "11:55"],
+      ] as const)("%s, showing only ticks and writing the span on release", async (_name, edge, from, to, start, end) => {
         renderDay(recordedDay(), withProject);
         const el = await recordingEl();
-        const handle = edge ? grip(el, edge) : el;
-        fireEvent.pointerDown(handle, { button: 0, clientY: 1000 });
-        fireEvent.pointerMove(handle, { clientY: 1000 + dy });
-        fireEvent.pointerUp(handle, { clientY: 1000 + dy });
+        const release = holdAt(edge ? grip(el, edge) : el, px(from), px(to) + FRACTION_PX);
+        expect(within(el).getByText(start)).toBeInTheDocument();
+        expect(within(el).getByText(end)).toBeInTheDocument();
+        expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
+        release();
         await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at(start), end: at(end) }, edge, "cancel"));
         expect(await screen.findByText("Recording changed")).toBeInTheDocument();
-      });
-
-      it("sends whole milliseconds for an edge dragged by a fractional distance", async () => {
-        renderDay(recordedDay(), withProject);
-        const handle = grip(await recordingEl(), "start");
-        dragBy(handle, 10.001);
-        await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at("11:00") + 240_024, end: at("11:45") }, "start", "cancel"));
       });
 
       it("changes the span of the dragged block when the recording has several", async () => {
         const second = { ...meeting, spanId: "r1-s2", spanCount: 2 };
         renderDay(dayView({ recordings: [second] }), withProject);
-        const el = await recordingEl();
-        fireEvent.pointerDown(el, { button: 0, clientY: 1000 });
-        fireEvent.pointerMove(el, { clientY: 1025 });
-        fireEvent.pointerUp(el, { clientY: 1025 });
+        dragPath(await recordingEl(), px("11:20"), px("11:30"));
         await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s2", { start: at("11:10"), end: at("11:55") }, null, "cancel"));
       });
 
       it("changes nothing when the pointer is released where it was pressed", async () => {
         renderDay(recordedDay(), withProject);
-        const handle = grip(await recordingEl(), "end");
-        fireEvent.pointerDown(handle, { button: 0, clientY: 1000 });
-        fireEvent.pointerUp(handle, { clientY: 1000 });
+        dragPath(grip(await recordingEl(), "end"), px("11:45"));
+        expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ["body", null, "11:20"],
+        ["top edge", "start", "11:00"],
+        ["bottom edge", "end", "11:45"],
+      ] as const)("writes nothing when the %s is dragged away and back to its tick", async (_name, edge, from) => {
+        renderDay(recordedDay(), withProject);
+        const el = await recordingEl();
+        dragPath(edge ? grip(el, edge) : el, px(from), px("12:30"), px(from) + 4);
+        expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
+        expect(within(el).getByText("11:00")).toBeInTheDocument();
+        expect(within(el).getByText("11:45")).toBeInTheDocument();
+      });
+
+      it("opens the editor on a click that moves less than a drag", async () => {
+        mocked.recordingsList.mockResolvedValue([meetingRow]);
+        renderDay(recordedDay(), withProject);
+        dragPath(await recordingEl(), px("11:20"), px("11:20") + 2);
+        expectSpan(await editorForm("Edit recording"), "11:00", "11:45");
         expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
       });
 
       it("does not move a recording that continues on another day", async () => {
         renderDay(dayView({ recordings: [{ ...meeting, clippedEnd: true }] }), withProject);
         const el = await recordingEl();
-        fireEvent.pointerDown(el, { button: 0, clientY: 1000 });
-        fireEvent.pointerMove(el, { clientY: 1025 });
-        fireEvent.pointerUp(el, { clientY: 1025 });
+        dragPath(el, px("11:20"), px("11:30"));
         expect(within(el).queryByLabelText(/^Drag to change/)).not.toBeInTheDocument();
         expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
       });
@@ -1197,10 +1231,7 @@ describe("DayPage", () => {
       it("shows an error toast when Rust refuses the new times", async () => {
         mocked.recordingUpdateSpan.mockRejectedValueOnce({ kind: "invalid_input", message: "`end`: too long", code: null, field: { path: "end", message: "Too long" } });
         renderDay(recordedDay(), withProject);
-        const handle = grip(await recordingEl(), "end");
-        fireEvent.pointerDown(handle, { button: 0, clientY: 1000 });
-        fireEvent.pointerMove(handle, { clientY: 1025 });
-        fireEvent.pointerUp(handle, { clientY: 1025 });
+        dragPath(grip(await recordingEl(), "end"), px("11:45"), px("11:55"));
         expect(await screen.findByRole("alert")).toHaveTextContent("Could not change the recording");
       });
     });
@@ -1731,6 +1762,23 @@ describe("DayPage", () => {
         await userEvent.keyboard("jj{Shift>}k{/Shift}");
         expect(await screen.findByLabelText("Selection 09:00–10:30")).toBeInTheDocument();
         expect(focusedBlocks()).toEqual(["Safari: Docs"]);
+      });
+
+      it("shows the span Rust snapped the selection to", async () => {
+        mocked.recordingSnap.mockResolvedValue({ start: at("08:55"), end: at("10:35") });
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        await userEvent.keyboard("j{Shift>}j{/Shift}");
+        expect(await screen.findByLabelText("Selection 08:55–10:35")).toBeInTheDocument();
+        expect(mocked.recordingSnap).toHaveBeenLastCalledWith(at("09:00"), at("10:30"));
+      });
+
+      it("toasts when Rust cannot snap the selection", async () => {
+        mocked.recordingSnap.mockRejectedValue({ kind: "io", message: "no snap", code: null });
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        await userEvent.keyboard("{Shift>}j{/Shift}");
+        expect(await screen.findByRole("alert")).toHaveTextContent("Could not select the time");
       });
 
       it("selects the first block when nothing is focused", async () => {

@@ -443,10 +443,15 @@ timeline's for every app.
   (not on the running timer's, whose spans Rust ends). ⌥ on a block without an open editor drags it onto a
   project for a rule.
 - **Snapping** (the Time snapping setting, 5 min by default) applies to every selection, drag and resize,
-  on both ends, and Rust computes it: a selection over activity snaps each end to the nearest mark (blocks
-  from 13:12 to 13:38 give 13:10–13:40); dragging an edge of a selection, a recording or a draft block, or dragging in the
-  time column, moves that edge in whole steps (13:40, 13:45, …); an end that would reach the other keeps one
-  step. ⌥⇧↑ ⌥⇧↓ on a recording move its end the same way.
+  and Rust computes the grid ([ADR 0026](adr/0026-timeline-pointer-input-snaps-to-ticks.md)): a selection over
+  activity snaps each end to the nearest mark (blocks from 13:12 to 13:38 give 13:10–13:40). The pointer
+  itself never becomes a time: a press lands on the nearest mark (13:28 is 13:30), which stays the drag's
+  origin, and each move lands on the nearest mark again, so a box drawn while dragging only ever shows marks
+  and never flickers. A drag in the time column spans from the origin to the pointer's mark, at least one
+  step. Dragging an edge of a recording or a draft block moves that edge from mark to mark while the other
+  edge stays exactly where it was (also an old 13:28), at least one mark away; dragging a recording's body
+  moves both edges by whole marks. Nothing jumps on release: Rust takes the marks as they are. ⌥⇧↑ ⌥⇧↓ on a
+  recording move its end by one step.
 - **Selection** (the keyboard's way: V on the focused block, ⇧J and ⇧K add the next or previous one; ↵ opens
   the editor, or adds the span to an open one): a `--sel` band with accent hairlines over the lanes, with no
   time in it (the time column shows the times); the status bar shows the snapped span with the duration. A
@@ -476,8 +481,8 @@ timeline's for every app.
   column, on the line of its control; every field (pickers, duration, times) is 22px high, rows 8px apart.
   The editor shows no activity: activity is only a signal for recording, never linked to a recording. The draft's spans show in the time column as accent-filled blocks with their
   times and a short accent bar on the top and bottom edge (an edge in another day has none): dragging an edge
-  moves that end in snap steps while the block follows; on release Rust merges spans that now touch or
-  overlap into one, and the From and To fields follow. A click on a block can split them again (its span
+  moves that end from mark to mark while the block and the From and To fields follow; on release Rust merges
+  spans that now touch or overlap into one. A click on a block can split them again (its span
   leaves the draft). Editing an existing recording draws its spans the same way. A new recording's project is proposed: the project of the latest recording (two weeks back) that
   covered the same main app, else the rule matching most of the activity. Field errors show under their
   field. A running recording's spans are shown, not edited.

@@ -13,7 +13,6 @@ import { LaneHeader } from "./LaneHeader";
 import { RecordingsColumn } from "./RecordingsColumn";
 import { HALF_HOURS_FROM_PX, TimeAxis } from "./TimeAxis";
 import { useSelectionPress } from "./useSelectionPress";
-import { useSnappedSpan } from "./useSnappedSpan";
 import { useRuleDrag } from "./useRuleDrag";
 import { useTimelineScroll } from "./useTimelineScroll";
 import { useVisibleRange } from "./useVisibleRange";
@@ -86,7 +85,8 @@ export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) 
 
   useTimelineScroll(scrollRef, view, focusedBlock, y, live ? now : null);
   const columnRef = useRef<HTMLDivElement>(null);
-  const press = useSelectionPress({ origin, pxPerMinute, scrollRef });
+  const grid = { ticks: view.ticks, y };
+  const press = useSelectionPress({ grid, scrollRef });
   const ruleDrag = useRuleDrag(columnRef, scrollRef);
   // ⌥ on a block drags it onto a project for a rule; while the editor is open it is a plain press.
   const pressLanes = (e: PointerEvent<HTMLDivElement>) => {
@@ -96,17 +96,11 @@ export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) 
     if (found) ruleDrag.start(e, found.block);
     else press(e);
   };
-  const selection = useSnappedSpan(useStore((s) => s.selection));
+  const selection = useStore((s) => s.selectionSnap);
   const draft = useStore((s) => s.draft);
   const selectedBlocks = useStore(selectHighlightedBlocks);
   const draftBands = drawnParts(draft?.spans ?? [], view.bounds);
   const ownBand = selectionBand(selection, draftBands);
-  const selectionStart = selection?.start;
-  const selectionEnd = selection?.end;
-  useEffect(() => {
-    const { setSelectionSnap } = useStore.getState();
-    setSelectionSnap(selectionStart === undefined || selectionEnd === undefined ? null : { start: selectionStart, end: selectionEnd });
-  }, [selectionStart, selectionEnd]);
 
   const openMenu = (anchor: { x: number; y: number } | MouseEvent, id: string) => {
     const found = findBlock(view, id);
@@ -130,7 +124,7 @@ export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) 
         <LaneHeader lanes={view.lanes} trackedMs={view.totals.trackedMs} />
         <div className="timeline-body" style={{ height: y(end) }}>
           <TimeAxis bounds={view.bounds} pxPerMinute={pxPerMinute} onPointerDown={press} />
-          <RecordingsColumn ref={columnRef} recordings={view.recordings} suggestions={view.suggestions} y={y} bounds={view.bounds} pxPerMinute={pxPerMinute} selection={selection} onPress={press} />
+          <RecordingsColumn ref={columnRef} recordings={view.recordings} suggestions={view.suggestions} grid={grid} bounds={view.bounds} selection={selection} onPress={press} />
           <div
             className={pxPerMinute >= HALF_HOURS_FROM_PX ? "lanes half-hours" : "lanes"}
             style={{ "--hour-px": `${60 * pxPerMinute}px` } as CSSProperties}

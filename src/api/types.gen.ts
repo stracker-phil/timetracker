@@ -284,6 +284,11 @@ export type DayView = { day: Day,
  */
 label: string, bounds: [number, number], 
 /**
+ * Every mark of the snap grid from the first instant of `bounds` to the last, both included, ascending
+ * (`recordings::ticks`): the only times a drag on the timeline lands on.
+ */
+ticks: Array<number>, 
+/**
  * The summary, activity, app and source lanes, each when shown.
  */
 lanes: Array<Lane>, 

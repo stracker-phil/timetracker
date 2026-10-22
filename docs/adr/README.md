@@ -6,7 +6,7 @@ and a dated amendment under Status only corrects facts that changed.
 
 | No. | Title | Status |
 |---|---|---|
-| [0001](0001-rust-owns-the-logic.md) | Rust owns the logic, React only renders | Accepted (2026-10-21), implemented |
+| [0001](0001-rust-owns-the-logic.md) | Rust owns the logic, React only renders | Accepted (2026-10-21), implemented, superseded in part by 0026 |
 | [0002](0002-ipc-in-api-files.md) | IPC only through `api.ts` files | Accepted (2026-10-21), implemented |
 | [0003](0003-errors-as-kinds.md) | Errors cross IPC as `{kind, message, code}` | Accepted (2026-10-21), implemented |
 | [0004](0004-generated-ipc-types.md) | TypeScript IPC types are generated from Rust with ts-rs | Accepted (2026-10-21), implemented |
@@ -31,3 +31,4 @@ and a dated amendment under Status only corrects facts that changed.
 | [0023](0023-week-and-month-are-lists.md) | The Week and Month list recordings per day; a Week drag moves a recording's day | Accepted (2026-10-22), implemented |
 | [0024](0024-native-macos-look.md) | The app looks native: system font, inset groups, a unified toolbar, AppKit control metrics | Accepted (2026-10-22), implemented |
 | [0025](0025-rust-labels-dates-and-durations.md) | Rust labels dates in the region's order; one duration format | Accepted (2026-10-22), implemented |
+| [0026](0026-timeline-pointer-input-snaps-to-ticks.md) | Timeline pointer input snaps to Rust-provided ticks | Accepted (2026-10-22), implemented |

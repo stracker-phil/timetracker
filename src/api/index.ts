@@ -76,8 +76,8 @@ export const api = {
     invoke<Recording>("recording_nudge", { id, spanId, startSteps, endSteps, overlap }),
   /** Recordings sharing time with `[from, to)`. */
   recordingsList: (from: number, to: number) => invoke<Recording[]>("recordings_list", { from, to }),
-  /** The span on the snap grid: both ends at the nearest mark; `moving` (the dragged end) stays a step from the other. */
-  recordingSnap: (start: number, end: number, moving: SnapEdge | null) => invoke<Span>("recording_snap", { start, end, moving }),
+  /** The span on the snap grid: both ends at the nearest mark. */
+  recordingSnap: (start: number, end: number) => invoke<Span>("recording_snap", { start, end }),
   /** The editor's spans with ends at or before their start rolled to the next day, and their sum. */
   recordingDraftSpans: (spans: Span[]) => invoke<DraftSpans>("recording_draft_spans", { spans }),
   /** The editor's spans with the last one's end moved so they add up to `totalMs`. */

@@ -71,9 +71,10 @@ The Day view showing a day, the main path through every layer:
 
 Recording an hour of activity:
 
-1. The user drags over the lanes or the time column (`useSelectionPress`); the outline shows the span Rust snaps
-   (`api.recordingSnap`, at most once per frame). On release the `editor` slice asks Rust for the snapped span
-   once more and opens `RecordingEditor` inline in the timesheet; `recording_proposal` proposes a project from
+1. The user drags over the lanes or the time column (`useSelectionPress`); `tickPointer` turns the pointer into
+   one of `DayView.ticks`, so the outline shows only marks Rust sent, with no IPC while the pointer moves
+   ([ADR 0026](adr/0026-timeline-pointer-input-snaps-to-ticks.md)). On release the `editor` slice asks Rust for
+   the snapped span once (a no-op on ticks) and opens `RecordingEditor` inline in the timesheet; `recording_proposal` proposes a project from
    the activity the span covers.
 2. Save calls the `recordings` slice's `createRecording`, which invokes `recording_create` with `overlap:
    cancel`. An `overlap` error asks inside the editor (`OverlapNotice`); Replace sends the same input with

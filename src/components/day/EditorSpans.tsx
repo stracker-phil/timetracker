@@ -16,10 +16,12 @@ interface Props {
 
 /**
  * The recording's spans (its times) as `From 10:00 to 10:20` rows, each removable while there are several, and a row that
- * adds one after the last (Rust places it).
+ * adds one after the last (Rust places it). A span whose edge is being dragged on the timeline shows the drag's times.
  */
-export function EditorSpans({ spans, step, runningSince, error }: Props) {
+export function EditorSpans({ spans: saved, step, runningSince, error }: Props) {
   const { setDraftSpan, removeDraftSpan, addDraftSpan } = useStore.getState();
+  const dragged = useStore((s) => s.draftDrag);
+  const spans = saved.map((s, i) => (dragged?.index === i ? dragged.span : s));
   const editable = runningSince === null;
   return (
     <div className="editor-spans" role="group" aria-label="Times">

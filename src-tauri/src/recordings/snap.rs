@@ -61,26 +61,83 @@ pub fn snap_span(start: Ms, end: Ms, minutes: u32) -> Span {
     }
 }
 
-/// Both ends at the nearest mark; the `moving` end stays a step from the other (else `snap_span`).
+/// A drag's span on the grid. With a `moving` end (an edge drag) only that end snaps, to the nearest mark past
+/// the other end, which keeps its time even when it is off the grid; without one (the span moved whole) both
+/// ends snap (`snap_span`). The timeline sends marks from `ticks`, which this leaves unchanged.
 pub fn snap_moving(start: Ms, end: Ms, minutes: u32, moving: Option<SnapEdge>) -> Span {
-    let step = grid_step(minutes);
     match moving {
         None => snap_span(start, end, minutes),
         Some(SnapEdge::Start) => {
-            let end = snap(end, minutes);
+            let snapped = snap(start, minutes);
             Span {
-                start: snap(start, minutes).min(end - step),
+                start: if snapped < end {
+                    snapped
+                } else {
+                    mark_before(end, minutes)
+                },
                 end,
             }
         }
         Some(SnapEdge::End) => {
-            let start = snap(start, minutes);
+            let snapped = snap(end, minutes);
             Span {
                 start,
-                end: snap(end, minutes).max(start + step),
+                end: if snapped > start {
+                    snapped
+                } else {
+                    mark_after(start, minutes)
+                },
             }
         }
     }
+}
+
+/// The last mark before `ms`.
+fn mark_before(ms: Ms, minutes: u32) -> Ms {
+    snap(ms - 1 - grid_step(minutes) / 2, minutes)
+}
+
+/// The first mark after `ms`.
+fn mark_after(ms: Ms, minutes: u32) -> Ms {
+    snap(ms + grid_step(minutes) / 2, minutes)
+}
+
+/// Every mark of the `minutes` grid from `first` to `last`, both included, ascending: what the Day view's
+/// pointer input picks from. Counted from each local midnight like `snap`, so a DST day has the marks its
+/// wall clock shows (none in the skipped hour, the repeated hour's twice).
+pub fn ticks(first: Ms, last: Ms, minutes: u32) -> Vec<Ms> {
+    ticks_in(first, last, minutes, &Local)
+}
+
+pub(crate) fn ticks_in<Tz: TimeZone>(first: Ms, last: Ms, minutes: u32, tz: &Tz) -> Vec<Ms> {
+    let (Some(from), Some(to)) = (
+        chrono::DateTime::from_timestamp_millis(first),
+        chrono::DateTime::from_timestamp_millis(last),
+    ) else {
+        return Vec::new();
+    };
+    let step = Duration::milliseconds(grid_step(minutes));
+    let mut ticks = Vec::new();
+    let mut date = from.with_timezone(tz).date_naive();
+    while date <= to.with_timezone(tz).date_naive() {
+        let mut wall = date.and_time(NaiveTime::MIN);
+        while wall.date() == date {
+            match tz.from_local_datetime(&wall) {
+                LocalResult::Single(t) => ticks.push(t.timestamp_millis()),
+                LocalResult::Ambiguous(a, b) => {
+                    ticks.extend([a.timestamp_millis(), b.timestamp_millis()]);
+                }
+                LocalResult::None => {}
+            }
+            wall += step;
+        }
+        let Some(next) = date.succ_opt() else { break };
+        date = next;
+    }
+    ticks.retain(|&t| (first..=last).contains(&t));
+    ticks.sort_unstable();
+    ticks.dedup();
+    ticks
 }
 
 /// How long a recording made with New Recording lasts by default.
@@ -264,35 +321,32 @@ mod tests {
     }
 
     #[test]
-    fn snap_moving_snaps_both_ends_and_keeps_the_dragged_end_a_step_from_the_other() {
+    fn snap_moving_snaps_only_the_dragged_end_and_keeps_it_past_the_other() {
         use SnapEdge::{End, Start};
         let t = |minute| at(13, minute);
         let cases = [
-            ("no end moving", 1, (12, 38), None, (12, 38)),
-            ("no end moving", 10, (12, 38), None, (10, 40)),
-            ("no end moving", 15, (12, 38), None, (15, 45)),
-            ("start inside", 1, (27, 50), Some(Start), (27, 50)),
-            ("start inside", 10, (27, 50), Some(Start), (30, 50)),
-            ("start inside", 15, (27, 50), Some(Start), (30, 45)),
-            ("start past the end", 1, (43, 38), Some(Start), (37, 38)),
-            ("start past the end", 10, (43, 38), Some(Start), (30, 40)),
-            ("start past the end", 15, (43, 38), Some(Start), (30, 45)),
-            ("start onto the end", 1, (38, 38), Some(Start), (37, 38)),
-            ("start onto the end", 10, (38, 38), Some(Start), (30, 40)),
-            ("start onto the end", 15, (38, 38), Some(Start), (30, 45)),
-            ("end inside", 1, (12, 38), Some(End), (12, 38)),
-            ("end inside", 10, (12, 38), Some(End), (10, 40)),
-            ("end inside", 15, (12, 38), Some(End), (15, 45)),
-            ("end before the start", 1, (20, 10), Some(End), (20, 21)),
-            ("end before the start", 10, (20, 10), Some(End), (20, 30)),
-            ("end before the start", 15, (20, 10), Some(End), (15, 30)),
-            ("end onto the start", 1, (20, 20), Some(End), (20, 21)),
-            ("end onto the start", 10, (20, 20), Some(End), (20, 30)),
-            ("end onto the start", 15, (20, 20), Some(End), (15, 30)),
+            ("start inside", 1, (27, 50), Start, (27, 50)),
+            ("start inside", 10, (27, 50), Start, (30, 50)),
+            ("start inside", 15, (27, 50), Start, (30, 50)),
+            ("start past the end", 1, (43, 38), Start, (37, 38)),
+            ("start past the end", 10, (43, 38), Start, (30, 38)),
+            ("start past the end", 15, (43, 38), Start, (30, 38)),
+            ("start onto the end", 1, (38, 38), Start, (37, 38)),
+            ("start onto the end", 10, (38, 38), Start, (30, 38)),
+            ("start onto the end", 15, (38, 38), Start, (30, 38)),
+            ("end inside", 1, (12, 38), End, (12, 38)),
+            ("end inside", 10, (12, 38), End, (12, 40)),
+            ("end inside", 15, (12, 38), End, (12, 45)),
+            ("end before the start", 1, (20, 10), End, (20, 21)),
+            ("end before the start", 10, (20, 10), End, (20, 30)),
+            ("end before the start", 15, (20, 10), End, (20, 30)),
+            ("end onto the start", 1, (20, 20), End, (20, 21)),
+            ("end onto the start", 10, (20, 20), End, (20, 30)),
+            ("end onto the start", 15, (20, 20), End, (20, 30)),
         ];
         for (name, minutes, (start, end), moving, (expected_start, expected_end)) in cases {
             assert_eq!(
-                snap_moving(t(start), t(end), minutes, moving),
+                snap_moving(t(start), t(end), minutes, Some(moving)),
                 Span {
                     start: t(expected_start),
                     end: t(expected_end)
@@ -300,6 +354,43 @@ mod tests {
                 "{name} at {minutes} min"
             );
         }
+    }
+
+    #[test]
+    fn snap_moving_returns_a_span_on_the_grid_unchanged() {
+        for minutes in [1, 5, 10, 15] {
+            for moving in [None, Some(SnapEdge::Start), Some(SnapEdge::End)] {
+                assert_eq!(
+                    snap_moving(at(10, 0), at(11, 30), minutes, moving),
+                    Span {
+                        start: at(10, 0),
+                        end: at(11, 30)
+                    },
+                    "{minutes} min, {moving:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn snap_moving_keeps_an_off_grid_fixed_edge() {
+        let kept_end = snap_moving(at(13, 3), at(13, 28), 5, Some(SnapEdge::Start));
+        let kept_start = snap_moving(at(13, 28), at(14, 2), 5, Some(SnapEdge::End));
+
+        assert_eq!(
+            kept_end,
+            Span {
+                start: at(13, 5),
+                end: at(13, 28)
+            }
+        );
+        assert_eq!(
+            kept_start,
+            Span {
+                start: at(13, 28),
+                end: at(14, 0)
+            }
+        );
     }
 
     #[test]
@@ -317,6 +408,111 @@ mod tests {
                     snap_moving(start, end, minutes, None),
                     snap_span(start, end, minutes),
                     "{minutes} min: {start}..{end}"
+                );
+            }
+        }
+    }
+
+    fn day_ticks(month: u32, day: u32, minutes: u32) -> Vec<Ms> {
+        ticks_in(
+            vienna(2026, month, day, 0, 0, 0),
+            vienna(2026, month, day + 1, 0, 0, 0),
+            minutes,
+            &Vienna,
+        )
+    }
+
+    #[test]
+    fn ticks_of_a_day_run_from_one_midnight_to_the_next_on_every_step() {
+        let cases = [
+            ("normal day", 6, 15, 5, 289),
+            ("spring day", 3, 29, 5, 277),
+            ("autumn day", 10, 25, 5, 301),
+            ("1 min", 6, 15, 1, 1441),
+            ("10 min", 6, 15, 10, 145),
+            ("15 min", 6, 15, 15, 97),
+            ("15 min spring", 3, 29, 15, 93),
+            ("15 min autumn", 10, 25, 15, 101),
+        ];
+        for (name, month, day, minutes, count) in cases {
+            let ticks = day_ticks(month, day, minutes);
+
+            assert_eq!(ticks.len(), count, "{name}");
+            assert_eq!(ticks[0], vienna(2026, month, day, 0, 0, 0), "{name}");
+            assert_eq!(
+                ticks[count - 1],
+                vienna(2026, month, day + 1, 0, 0, 0),
+                "{name}"
+            );
+            assert!(
+                ticks
+                    .windows(2)
+                    .all(|w| w[1] - w[0] == i64::from(minutes) * MIN),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn ticks_of_the_autumn_day_hold_the_repeated_hour_twice() {
+        let ticks = day_ticks(10, 25, 15);
+        let first_pass = Vienna
+            .with_ymd_and_hms(2026, 10, 25, 2, 30, 0)
+            .earliest()
+            .unwrap()
+            .timestamp_millis();
+        let second_pass = Vienna
+            .with_ymd_and_hms(2026, 10, 25, 2, 30, 0)
+            .latest()
+            .unwrap()
+            .timestamp_millis();
+
+        assert!(ticks.contains(&first_pass));
+        assert!(ticks.contains(&second_pass));
+        assert_eq!(second_pass - first_pass, HOUR);
+    }
+
+    #[test]
+    fn ticks_of_the_spring_day_skip_the_missing_hour() {
+        let ticks = day_ticks(3, 29, 15);
+        let before_gap = vienna(2026, 3, 29, 1, 45, 0);
+        let after_gap = vienna(2026, 3, 29, 3, 0, 0);
+
+        assert!(ticks.contains(&before_gap));
+        assert!(ticks.contains(&after_gap));
+        assert_eq!(after_gap - before_gap, 15 * MIN);
+    }
+
+    #[test]
+    fn ticks_include_both_ends_when_they_are_on_the_grid_and_otherwise_stay_inside() {
+        let at = |h, m, s| vienna(2026, 6, 15, h, m, s);
+
+        let on_grid = ticks_in(at(10, 0, 0), at(10, 15, 0), 5, &Vienna);
+        let off_grid = ticks_in(at(10, 2, 0), at(10, 18, 0), 5, &Vienna);
+        let none = ticks_in(at(10, 1, 0), at(10, 4, 0), 5, &Vienna);
+
+        assert_eq!(
+            on_grid,
+            [at(10, 0, 0), at(10, 5, 0), at(10, 10, 0), at(10, 15, 0)]
+        );
+        assert_eq!(off_grid, [at(10, 5, 0), at(10, 10, 0), at(10, 15, 0)]);
+        assert_eq!(none, Vec::<Ms>::new());
+    }
+
+    #[test]
+    fn every_tick_is_unchanged_by_snapping() {
+        for (month, day, minutes) in [
+            (6, 15, 5),
+            (3, 29, 5),
+            (10, 25, 5),
+            (10, 25, 15),
+            (6, 15, 1),
+        ] {
+            for tick in day_ticks(month, day, minutes) {
+                assert_eq!(
+                    snap_in(tick, minutes, &Vienna),
+                    tick,
+                    "{month}-{day} at {minutes} min: {tick}"
                 );
             }
         }

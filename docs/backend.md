@@ -174,7 +174,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `recording_update` | `id, patch: RecordingPatch, overlap` | `Recording` | the same |
 | `recording_delete` | `id` | – | `not_found`, `db` |
 | `recording_add_span` | `id, span: Span, overlap` | `Recording` with the span added (snapped) | the same, `invalid_input` for the running timer |
-| `recording_update_span` | `id, spanId, span: Span, moving: SnapEdge \| null, overlap` | `Recording` with the span's new times as a drag left them, snapped by `Recordings::drag_span` (`snap_moving` with `moving` as the dragged end; `null` when the span moved whole) | the same; `not_found` for an unknown span |
+| `recording_update_span` | `id, spanId, span: Span, moving: SnapEdge \| null, overlap` | `Recording` with the span's new times as a drag left them (on `DayView.ticks`), through `Recordings::drag_span`: `snap_moving` with `moving` as the dragged end, which keeps the other edge's time (`null` when the span moved whole: both snapped), checked but not snapped again | the same; `not_found` for an unknown span |
 | `recording_remove_span` | `id, spanId` | `Recording`, or `null` when it was the last span and the recording was deleted | `invalid_input` (the running timer), `not_found`, `db` |
 | `recording_split_span` | `id, spanId, at: Ms` | `Recording` whose span is cut in two at the snapped `at`; both halves stay in it | `invalid_input` (`field`: `at` not inside the span; the running timer), `not_found`, `db` |
 | `recording_merge` | `into, from` | `Recording` `into` with the spans of `from` (which keeps its project, note and tag); `from` is deleted | `invalid_input` (`field`: `from` the same recording; a running one), `not_found`, `db` |
@@ -189,12 +189,12 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `calendar_step` | `unit: PeriodUnit, day: Day, by: i32` | `Day`: `by` days, weeks or months from `day` (a month step lands on the 1st; `calendar::period::step`); P and N, the date picker's keys, moving a recording a day | `invalid_input` (out of the date range) |
 | `calendar_parse_time` | `text: string, on: Ms` | `Ms \| null` (`cli::time::typed`): a clock time (`9:30`, `09:30`, `930`, `0930`) on the local day of `on`, or a date and time (`2026-10-21T09:30`) as the CLI reads it; `null` while it is neither; the editor's and the away prompt's From / To, the Delete activity range | – |
 | `recordings_list` | `from: Ms, to: Ms` | `Recording[]` with a span sharing time with the range, each with all its spans | `db` |
-| `recording_snap` | `start: Ms, end: Ms, moving: SnapEdge \| null` (`start`, `end`) | `Span` on the grid (`snap_moving`): both ends at the nearest mark; the `moving` end (the one a drag holds) stays at least one step from the other, which keeps its mark; without one, as a write snaps (`snap_span`). The selection, the drag ghost, and what a drag saves | – |
+| `recording_snap` | `start: Ms, end: Ms` | `Span` on the grid (`snap_span`), as a write snaps: a block selection (a click or ⇧J ⇧K) and what `recordSelection` opens; a drag's selection is on the grid already | – |
 | `recording_draft_spans` (`recordings/draft.rs`) | `spans: Span[]` | `DraftSpans { spans, totalMs }`: each end moved to the first instant with its clock time after its start (an end at or before the start is on the next day, DST-safe through `same_time_on_in`), in the order given, and their sum; the editor's From / To | – |
 | `recording_draft_total` | `spans: Span[], totalMs` | `DraftSpans` with the last span's end moved so they add up to `totalMs`; unchanged when that would end it at or before its start or a day or more after it; the editor's duration | – |
 | `recording_draft_add` | `spans: Span[]` | `DraftSpans` with a 30-minute span after the last (without spans, from the start of `default_span`); Add span | – |
 | `recording_draft_include` | `spans: Span[], span` | `DraftSpans` by start with `span` (a snapped selection) in them, merged with the spans it touches or overlaps; a drag or ↵ while the editor is open | – |
-| `recording_draft_resize` | `spans: Span[], index, span, moving: SnapEdge \| null` | `DraftSpans` by start with the span at `index` replaced by `span` snapped with `snap_moving` (`draft::resized_on_grid`), merged with the spans it then touches or overlaps; unchanged without a span at `index`; a dragged edge of a draft block in the Day view | – |
+| `recording_draft_resize` | `spans: Span[], index, span, moving: SnapEdge \| null` | `DraftSpans` by start with the span at `index` replaced by `span` snapped with `snap_moving` (`draft::resized_on_grid`; ticks stay, the other edge keeps its time), merged with the spans it then touches or overlaps; unchanged without a span at `index`; a dragged edge of a draft block in the Day view | – |
 | `recording_draft_toggle` | `spans: Span[], block: Span, others: Span[]` | `DraftToggle { spans, totalMs, included }`: `block` snapped with `snap_span`; when one span covers it, its time leaves them (a span sticking out on both sides becomes two) except where it overlaps `others` (the other clicked blocks, snapped), else it joins them, merged with what it touches; by start; a click on a block in the Day view | – |
 | `recording_proposal` | `spans: Span[]` | `RecordingProposal { projectId }` (`recordings/proposal.rs`): the project of the latest recording in the 14 days before the first span that covered the spans' main app (`main_app`: the app with the most time inside the spans among the blocks of every lane but the summary on the spans' days, private left out), else of the rule matching the most time inside; archived projects are never proposed. The editor's project prefill | `db` |
 | `recording_default_span` | `day: Day \| null` | `Span`: the half hour up to now (`NEW_RECORDING_MINUTES`), snapped (`recordings::default_span`); on another `day` the same clock times there (`recordings::default_span_on`). File → New Recording… without a selection, and the Week's and Month's + for a day | – |
@@ -309,7 +309,8 @@ from the day before included) and calls it. `ViewSettings` is a copy of `Setting
    blocks sharing its width (`col` of `cols`).
 7. `mark_covered`: a block of any lane is `covered` when at least half of it lies inside recordings.
 
-`DayView` also carries `compact` (from `timeline`), `hiddenApps` (every hidden override, named from the
+`DayView` also carries `ticks` (every snap mark from the first instant of `bounds` to the last, both
+included: `recordings::ticks`), `compact` (from `timeline`), `hiddenApps` (every hidden override, named from the
 day's rows, else by its key) for the header's popover, `apps` (the day's tracked apps that are not hidden,
 most time first by `activeMs`, with `ownLane`; `apps::day_apps`) for the View options popover, and `timesheet`: one `TimesheetCard` per recording,
 in the order of its first span on the day, with the day's parts of its spans added up (`durationMs`), its
@@ -327,11 +328,14 @@ clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `co
 `data_changed { kind: recordings, day }` for every day a span of the op touched, before and after
 (`Change.days`).
 
-- **Snapping** (`snap.rs`: `snap`, `snap_span`, `snap_moving`, `grid_step`): to the nearest multiple of
+- **Snapping** (`snap.rs`: `snap`, `snap_span`, `snap_moving`, `ticks`, `grid_step`): to the nearest multiple of
   `timeline.snapMinutes` counted from local midnight, read at call time; an end that snaps onto or before the
-  start lands one step after it. `snap_moving` is the rule for a drag: both ends go to the nearest mark and the
-  moving end (`SnapEdge::Start | End`) keeps at least one step from the other, so a selection over activity
-  from 13:12 to 13:38 is 13:10–13:40 and dragging an edge moves it in whole steps. `update` snaps only when the
+  start lands one step after it, so a selection over activity from 13:12 to 13:38 is 13:10–13:40.
+  `ticks(first, last, minutes)` lists every mark from `first` to `last`, both included (none in a skipped DST
+  hour, a repeated hour's twice); it fills `DayView.ticks`, the only times a timeline drag lands on
+  ([ADR 0026](adr/0026-timeline-pointer-input-snaps-to-ticks.md)). `snap_moving` is the rule for saving a
+  drag: with a moving end (`SnapEdge::Start | End`) only that end snaps, to the nearest mark past the other
+  end, which keeps its time even off the grid; without one both ends snap (`snap_span`). A tick stays as it is. `update` snaps only when the
   patch has `spans`, so editing a note keeps the times.
 - **Validation** (`checks.rs`, `InvalidField`): at least one span (`spans`), each `end` after its `start` and at most 24 h
   later, none overlapping another of the recording (`spans`, checked by `db::recordings::check_spans` for both layers; touching is fine); `note` one line, at most 500

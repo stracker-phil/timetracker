@@ -30,7 +30,7 @@ describe("recording.new", () => {
     state().setSelection({ start: at("09:02"), end: at("10:28"), blockIds: [] });
     expect(runCommand("recording.new")).toBe(true);
     await vi.waitFor(() => expect(state().editor).toEqual({ mode: "create", start: at("09:00"), end: at("10:30") }));
-    expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("10:28"), null);
+    expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("10:28"));
   });
 
   it("switches to today's Day view and opens the editor on Rust's default span", async () => {

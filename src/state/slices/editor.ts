@@ -45,6 +45,9 @@ export interface EditorSlice {
   editorOverlap: EditorOverlap | null;
   /** The activity blocks clicked into the open editor's spans, marked as selected on the timeline. */
   draftBlockIds: string[];
+  /** A span of the draft while a drag of one of its edges holds it, on ticks: drawn and shown in its fields instead. */
+  draftDrag: { index: number; span: Span } | null;
+  setDraftDrag: (drag: { index: number; span: Span } | null) => void;
   openEditor: (editor: Editor) => void;
   /** A new recording on Rust's default span: the half hour up to now, on another `day` at the same clock times. */
   openNewRecording: (day?: string) => Promise<void>;
@@ -62,8 +65,8 @@ export interface EditorSlice {
   setDraftSpan: (index: number, span: Span) => Promise<void>;
   removeDraftSpan: (index: number) => void;
   /**
-   * The span at `index` as a drag of its `moving` edge left it on the timeline: Rust snaps it and merges it with
-   * the spans it then touches or overlaps. Resolves once Rust has answered.
+   * The span at `index` as a drag of its `moving` edge left it on the timeline (on ticks; the other edge as it
+   * was): Rust merges it with the spans it then touches or overlaps. Ends the drag once Rust has answered.
    */
   resizeDraftSpan: (index: number, span: Span, moving: SnapEdge) => Promise<void>;
   /** A span after the last (Add span), placed by Rust. */
@@ -71,8 +74,8 @@ export interface EditorSlice {
   /** Moves the last span's end so the spans add up to `totalMs` (Rust's call). */
   setDraftTotal: (totalMs: number) => void;
   /**
-   * The selection, snapped by Rust: a new editor opens on it; an open editor takes it as another span, merged
-   * with the spans it touches or overlaps.
+   * The selection, snapped by Rust (a drag's is on the grid already): a new editor opens on it; an open editor
+   * takes it as another span, merged with the spans it touches or overlaps.
    */
   recordSelection: () => Promise<void>;
   /**
@@ -157,11 +160,12 @@ export const editorSlice: Slice<EditorSlice> = {
       editing: null,
       editorOverlap: null,
       draftBlockIds: [],
+      draftDrag: null,
 
       openEditor(editor) {
         get().editorOverlap?.resolve(false);
         openedDraft = null;
-        set({ editor, editorView: get().view, draft: null, editing: null, editorOverlap: null, draftBlockIds: [] });
+        set({ editor, editorView: get().view, draft: null, editing: null, editorOverlap: null, draftBlockIds: [], draftDrag: null });
         const opened =
           editor.mode === "create"
             ? fill(editor, { projectId: editor.projectId ?? null, note: editor.note ?? "", tagId: editor.tagId ?? null }, [{ start: editor.start, end: editor.end }])
@@ -181,7 +185,7 @@ export const editorSlice: Slice<EditorSlice> = {
       closeEditor() {
         get().editorOverlap?.resolve(false);
         openedDraft = null;
-        set({ editor: null, editorView: null, draft: null, editing: null, editorOverlap: null, draftBlockIds: [], selection: null, selectionSnap: null });
+        set({ editor: null, editorView: null, draft: null, editing: null, editorOverlap: null, draftBlockIds: [], draftDrag: null, selection: null, selectionSnap: null });
       },
 
       leaveEditor(proceed) {
@@ -226,9 +230,14 @@ export const editorSlice: Slice<EditorSlice> = {
         void respan(spans, () => api.recordingDraftSpans(spans));
       },
 
-      resizeDraftSpan(index, span, moving) {
+      setDraftDrag(draftDrag) {
+        set({ draftDrag });
+      },
+
+      async resizeDraftSpan(index, span, moving) {
         const spans = spansNow();
-        return respan(null, () => api.recordingDraftResize(spans, index, span, moving));
+        await respan(null, () => api.recordingDraftResize(spans, index, span, moving));
+        set({ draftDrag: null });
       },
 
       addDraftSpan() {
@@ -244,13 +253,8 @@ export const editorSlice: Slice<EditorSlice> = {
       async recordSelection() {
         const selection = get().selection;
         if (!selection) return;
-        let span: Span;
-        try {
-          span = await api.recordingSnap(selection.start, selection.end, selection.moving ?? null);
-        } catch (e) {
-          fail(e, "Could not open the editor");
-          return;
-        }
+        const span = await get().snapSelection("Could not open the editor");
+        if (!span) return;
         const { editor, draft, editing } = get();
         if (editor && draft) {
           if (runningEdited(editing)) return;
