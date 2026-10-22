@@ -1,5 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
-import { Trash2 } from "lucide-react";
+import { Sparkles, Trash2 } from "lucide-react";
 import { useStore } from "../../state/store";
 import { NoteInput } from "../NoteInput";
 import { FormField } from "../Field";
@@ -15,7 +15,7 @@ const MINUTE_MS = 60_000;
 /**
  * The recording editor, inline in the timesheet (a sheet in the Week view, labelled by `id`): note, project, tag,
  * duration, the activity it covers and its spans; Save (↵ or ⌘↵), Cancel (Escape), Delete (⌘⌫). Rust snaps the
- * times on save.
+ * times on save. Opened on a suggestion, it is prefilled with it and Save (Approve) approves it as edited.
  */
 export function RecordingEditor({ id }: { id?: string }) {
   const editor = useStore((s) => s.editor);
@@ -51,6 +51,7 @@ export function RecordingEditor({ id }: { id?: string }) {
 
   if (!editor || !draft) return null;
   const open = editing?.spans.find((s) => s.end === null) ?? null;
+  const suggestion = editor.mode === "create" ? editor.suggestion : undefined;
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (!e.metaKey) return;
@@ -68,7 +69,7 @@ export function RecordingEditor({ id }: { id?: string }) {
       ref={ref}
       id={id}
       className="recording-editor"
-      aria-label={editing ? "Edit recording" : "New recording"}
+      aria-label={editing ? "Edit recording" : suggestion ? "Edit suggestion" : "New recording"}
       onKeyDown={onKeyDown}
       onSubmit={(e) => {
         e.preventDefault();
@@ -78,6 +79,12 @@ export function RecordingEditor({ id }: { id?: string }) {
       {editor.mode === "create" && editor.warning && (
         <p className="editor-warning" role="note">
           {editor.warning}
+        </p>
+      )}
+      {suggestion && (
+        <p className="editor-suggested" role="note">
+          <Sparkles size="0.923rem" aria-hidden="true" />
+          Suggested by {suggestion.ruleName}. Approve records it.
         </p>
       )}
       <div className="editor-note">
@@ -99,8 +106,8 @@ export function RecordingEditor({ id }: { id?: string }) {
       <EditorSpans spans={draft.spans} step={step} runningSince={open?.start ?? null} error={errors.end ?? errors.start ?? errors.spans} />
       {overlap && <OverlapNotice overlap={overlap} />}
       <div className="editor-actions">
-        <button type="submit" className="btn btn-primary" title="Save (↵)">
-          Save
+        <button type="submit" className="btn btn-primary" title={suggestion ? "Approve (↵)" : "Save (↵)"}>
+          {suggestion ? "Approve" : "Save"}
         </button>
         <button type="button" className="btn btn-quiet" title="Cancel (Escape)" onClick={closeEditor}>
           Cancel

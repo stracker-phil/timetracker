@@ -12,9 +12,10 @@ build it or port it, point a coding agent at [AGENTS.md](AGENTS.md).
 
 ![The Day view in light mode](docs/screens/default-light-day.png)
 
-![The Day view in dark mode](docs/screens/default-dark-day.png)
+![The Day view in dark mode](docs/screens/dark-dark-day.png)
 
-The Day view in the Default scheme, in light and dark mode; `scripts/dev/screenshot-looks.sh` captures every look.
+The Day view in light mode (Default scheme) and dark mode (Dark scheme), the default look of each; Settings →
+Appearance picks one of three schemes per macOS mode, and `scripts/dev/screenshot-looks.sh` captures every look.
 
 ## Install
 
@@ -47,7 +48,7 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 - Drag over time or click activity (⇧-click to extend, ⌘-click to gather; or J/K, V and ↵): the editor opens
   in the timesheet, snapped to the grid, for a one-line note, a project (often proposed), a tag and the spans.
 - Recordings never overlap. Drag to move or resize, ⌘Z undoes; rules (⌥-drag a block onto a project) suggest
-  recordings you accept with a click.
+  recordings that wait in the timesheet as ghost cards until you approve, edit or dismiss them.
 - The sidebar shows the day (or week, month, report period) with ‹ › and Today; P, N and O do the same, and a
   click on the date opens a calendar. ⌘1 to ⌘6 switch to Day, Week, Month, Reports, Projects and Rules.
 - Everything works from the keyboard: ⌘K opens the command palette, ? lists the shortcuts.

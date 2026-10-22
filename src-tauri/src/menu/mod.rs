@@ -167,7 +167,13 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
                 "recording.copyToPrevDay",
                 "recording.copyToNextDay",
             ],
-            &["suggestion.accept", "suggestion.acceptRule"],
+            &[
+                "suggestion.approve",
+                "suggestion.edit",
+                "suggestion.dismiss",
+                "suggestion.approveRule",
+            ],
+            &["suggestion.approveAll", "suggestion.dismissAll"],
             &["activity.deleteDay", "activity.deleteRange"],
         ],
     )?

@@ -1,9 +1,10 @@
 //! Suggested recordings: each block goes to its first matching rule, a rule's blocks join into runs across
-//! short gaps, and what recordings already cover is cut away.
+//! short gaps, and what recordings already cover or the owner dismissed is cut away.
 
 use super::matching::{Compiled, matches};
 use super::types::Suggestion;
 use crate::day::{ActivityBlock, Names, RecordingBlock};
+use crate::db::dismissed::Dismissal;
 use crate::db::time::Ms;
 
 /// Shorter remainders are not worth a suggestion.
@@ -77,6 +78,14 @@ fn matched_spans(blocks: &[&ActivityBlock], rules: &[Compiled]) -> Vec<Vec<Span>
     matched.into_iter().map(union).collect()
 }
 
+/// The activity time each rule matched (by rule index), before runs, recordings and dismissals.
+pub(super) fn matched_ms(blocks: &[&ActivityBlock], rules: &[Compiled]) -> Vec<Ms> {
+    matched_spans(blocks, rules)
+        .iter()
+        .map(|spans| spans.iter().map(|(start, end)| end - start).sum())
+        .collect()
+}
+
 /// Each rule's share of the time: matched time first, then bridged gaps, earlier rules first in each pass.
 fn claimed_pieces(own: &[Vec<Span>], bridges: &[Vec<Span>]) -> Vec<Vec<Span>> {
     let mut claimed: Vec<Span> = Vec::new();
@@ -92,7 +101,8 @@ fn claimed_pieces(own: &[Vec<Span>], bridges: &[Vec<Span>]) -> Vec<Vec<Span>> {
 }
 
 /// The suggestions of the day, by start. Matched time goes to its rule first; a run's bridged gaps only take
-/// time no rule matched, so suggestions never overlap. Tags deleted since the rule was saved are left out.
+/// time no rule matched, so suggestions never overlap. A rule's dismissed time stays its own and is not
+/// suggested again. Tags deleted since the rule was saved are left out.
 pub fn suggest(
     blocks: &[&ActivityBlock],
     recordings: &[RecordingBlock],
@@ -100,6 +110,7 @@ pub fn suggest(
     rules: &[Compiled],
     names: &Names,
     bridge_ms: Ms,
+    dismissed: &[Dismissal],
 ) -> Vec<Suggestion> {
     let own = matched_spans(blocks, rules);
     let bridges: Vec<Vec<Span>> = own
@@ -114,7 +125,13 @@ pub fn suggest(
             continue;
         };
         let tag_id = rule.tag_id.clone().filter(|id| names.tags.contains_key(id));
-        let spans = subtract(&pieces, &recorded);
+        let tag = tag_id.as_ref().and_then(|id| names.tags.get(id)).cloned();
+        let rule_dismissed = dismissed
+            .iter()
+            .filter(|d| d.rule_id == rule.rule_id)
+            .map(|d| (d.start, d.end));
+        let cut = union(recorded.iter().copied().chain(rule_dismissed).collect());
+        let spans = subtract(&pieces, &cut);
         suggestions.extend(
             spans
                 .into_iter()
@@ -125,12 +142,16 @@ pub fn suggest(
                     rule_name: rule.rule_name.clone(),
                     project_id: rule.project_id.clone(),
                     project_name: project.name.clone(),
+                    client_name: project.client_name.clone(),
                     color: project.color.clone(),
                     shade: project.shade,
                     start,
                     end,
+                    duration_ms: end - start,
                     note: rule.note.clone(),
                     tag_id: tag_id.clone(),
+                    tag: tag.clone(),
+                    next_card: None,
                 }),
         );
     }
@@ -141,9 +162,10 @@ pub fn suggest(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::time::Day;
     use crate::rules::matching::compile;
     use crate::rules::testing::*;
-    use crate::rules::types::Rule;
+    use crate::rules::types::{Rule, RuleField, RuleOp};
 
     type Found = Vec<(&'static str, i64, i64)>;
 
@@ -184,6 +206,7 @@ mod tests {
             &compile(&rules()),
             &names(&["p1", "p2"], &[]),
             bridge_min * MIN,
+            &[],
         )
         .into_iter()
         .map(|s| (s.rule_id, s.start / MIN, s.end / MIN))
@@ -393,6 +416,7 @@ mod tests {
             &compile(&[rule]),
             &names(&["p1"], &["t1"]),
             0,
+            &[],
         );
 
         assert_eq!(
@@ -403,12 +427,16 @@ mod tests {
                 rule_name: "Rule r1".into(),
                 project_id: "p1".into(),
                 project_name: "Project p1".into(),
+                client_name: None,
                 color: "blue".into(),
                 shade: 4,
                 start: 10 * MIN,
                 end: 20 * MIN,
+                duration_ms: 10 * MIN,
                 note: "standup".into(),
                 tag_id: Some("t1".into()),
+                tag: Some("tag t1".into()),
+                next_card: None,
             }]
         );
     }
@@ -429,6 +457,7 @@ mod tests {
             &compile(&[rule]),
             &names(&["p1"], &["t1"]),
             0,
+            &[],
         );
 
         assert_eq!(found.len(), 1);
@@ -447,6 +476,7 @@ mod tests {
                 &compile(&rules()),
                 &names(&["p1", "p2"], &[]),
                 0,
+                &[],
             )
         };
 
@@ -468,9 +498,133 @@ mod tests {
         let refs: Vec<&ActivityBlock> = blocks.iter().collect();
         let rules = [app_is("r3", "gone", "Mail")];
 
-        let found = suggest(&refs, &[], &[], &compile(&rules), &names(&["p1"], &[]), 0);
+        let found = suggest(
+            &refs,
+            &[],
+            &[],
+            &compile(&rules),
+            &names(&["p1"], &[]),
+            0,
+            &[],
+        );
 
         assert!(found.is_empty());
+    }
+
+    /// `(rule id, start minute, end minute)` of each suggestion with `(rule id, start, end)` minutes dismissed.
+    fn suggested_but_dismissed(
+        blocks: &[ActivityBlock],
+        dismissed: &[(&str, i64, i64)],
+    ) -> Vec<(String, i64, i64)> {
+        let blocks: Vec<&ActivityBlock> = blocks.iter().collect();
+        let dismissed: Vec<Dismissal> = dismissed
+            .iter()
+            .map(|&(rule_id, start, end)| Dismissal {
+                rule_id: rule_id.into(),
+                day: Day::parse("2026-01-05").unwrap(),
+                start: start * MIN,
+                end: end * MIN,
+            })
+            .collect();
+        suggest(
+            &blocks,
+            &[],
+            &[],
+            &compile(&rules()),
+            &names(&["p1", "p2"], &[]),
+            0,
+            &dismissed,
+        )
+        .into_iter()
+        .map(|s| (s.rule_id, s.start / MIN, s.end / MIN))
+        .collect()
+    }
+
+    #[test]
+    fn a_dismissed_span_is_not_suggested_again() {
+        struct Case {
+            name: &'static str,
+            blocks: Vec<ActivityBlock>,
+            dismissed: Vec<(&'static str, i64, i64)>,
+            expected: Found,
+        }
+        let cases = [
+            Case {
+                name: "the rule's dismissed span is dropped and its other spans stay",
+                blocks: vec![slack(0, 10), slack(30, 40)],
+                dismissed: vec![("r1", 0, 10)],
+                expected: vec![("r1", 30, 40)],
+            },
+            Case {
+                name: "a dismissal in the middle of a run leaves both sides",
+                blocks: vec![slack(0, 60)],
+                dismissed: vec![("r1", 20, 40)],
+                expected: vec![("r1", 0, 20), ("r1", 40, 60)],
+            },
+            Case {
+                name: "several dismissals leave what is between them",
+                blocks: vec![slack(0, 60)],
+                dismissed: vec![("r1", 0, 10), ("r1", 50, 60)],
+                expected: vec![("r1", 10, 50)],
+            },
+            Case {
+                name: "another rule's dismissal changes nothing",
+                blocks: vec![slack(0, 10)],
+                dismissed: vec![("r2", 0, 10)],
+                expected: vec![("r1", 0, 10)],
+            },
+            Case {
+                name: "a dismissal next to the span changes nothing",
+                blocks: vec![slack(0, 10)],
+                dismissed: vec![("r1", 10, 20)],
+                expected: vec![("r1", 0, 10)],
+            },
+            Case {
+                name: "dismissed time stays its rule's and is not handed to the next rule",
+                blocks: vec![slack(0, 10), code(5, 15)],
+                dismissed: vec![("r1", 0, 10)],
+                expected: vec![("r2", 10, 15)],
+            },
+        ];
+        for case in cases {
+            assert_eq!(
+                suggested_but_dismissed(&case.blocks, &case.dismissed),
+                expect(&case.expected),
+                "{}",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    fn what_a_dismissal_leaves_under_the_minimum_is_dropped() {
+        for (dismissed_end, expected) in [(57, vec![]), (50, vec![("r1", 50, 60)])] {
+            assert_eq!(
+                suggested_but_dismissed(&[slack(0, 60)], &[("r1", 0, dismissed_end)]),
+                expect(&expected),
+                "dismissed until minute {dismissed_end}"
+            );
+        }
+    }
+
+    #[test]
+    fn matched_time_counts_each_block_for_its_first_matching_rule_only() {
+        let blocks = [
+            slack(0, 10),
+            slack(5, 20),
+            code(30, 33),
+            block(40, 50, "Mail", ""),
+        ];
+        let refs: Vec<&ActivityBlock> = blocks.iter().collect();
+        let rules = [
+            app_is("r1", "p1", "Slack"),
+            rule("r2", "p2", &[(RuleField::App, RuleOp::Contains, "o")]),
+            app_is("r3", "p1", "Code"),
+        ];
+
+        let matched = matched_ms(&refs, &compile(&rules));
+
+        assert_eq!(matched, [20 * MIN, 3 * MIN, 0]);
     }
 
     #[test]
@@ -479,7 +633,15 @@ mod tests {
         let refs: Vec<&ActivityBlock> = blocks.iter().collect();
         let rules = [app_is("r1", "p1", "Slack"), rule("r2", "p1", &[])];
 
-        let found = suggest(&refs, &[], &[], &compile(&rules), &names(&["p1"], &[]), 0);
+        let found = suggest(
+            &refs,
+            &[],
+            &[],
+            &compile(&rules),
+            &names(&["p1"], &[]),
+            0,
+            &[],
+        );
 
         assert!(found.is_empty());
     }

@@ -80,18 +80,17 @@
 @keyframes pulse { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .recording.running::after, .sheet-card.running::after { animation: none; } }
 
-/* Suggestions: a rule's proposed recording, outlined dashed in its card text color, filled once hovered. */
+/* Suggestions: a rule's proposed recording, hatched in its project's color and outlined dashed: not a recording yet. */
 .suggestion {
   position: absolute; left: 4px; right: 4px; box-sizing: border-box; overflow: hidden; margin: 0;
   padding: 3px var(--space-2); display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
-  line-height: 1.3; font: inherit; text-align: left; color: var(--block-text); cursor: copy;
-  background: color-mix(in oklab, var(--block-fill) 45%, var(--bg));
+  line-height: 1.3; text-align: left; color: var(--block-text); cursor: pointer;
+  background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--block-fill) 70%, transparent) 0 5px, color-mix(in oklab, var(--block-fill) 25%, transparent) 5px 10px), var(--bg);
   border: 1px dashed var(--block-meta); border-radius: var(--radius-card);
 }
 .suggestion:hover { background: var(--block-fill); }
-.suggestion:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
-.suggestion svg { position: absolute; right: var(--space-2); top: 3px; color: var(--block-text); }
-.suggestion-project { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100% - 1.2rem); }
+.suggestion.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
+.suggestion-project { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .suggestion-rule { font-size: var(--data-font-size); color: var(--block-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
 /* The List view's project chips: drop targets filled like a recording. */

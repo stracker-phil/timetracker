@@ -85,6 +85,25 @@ export function timesheetCard(patch: Partial<TimesheetCard> = {}): TimesheetCard
   };
 }
 
+/**
+ * `view` with the timesheet Rust would send for its recordings: one card per recording, by its first span, spanning
+ * its earliest start to its latest end. Use it for views that step through the timesheet (`]`, `[`).
+ */
+export function withTimesheet(view: DayView): DayView {
+  const cards = new Map<string, TimesheetCard>();
+  for (const r of [...view.recordings].sort((a, b) => a.start - b.start)) {
+    const card = cards.get(r.id);
+    if (card) {
+      card.end = Math.max(card.end, r.end);
+      card.durationMs += r.end - r.start;
+      card.spanIds.push(r.spanId);
+    } else {
+      cards.set(r.id, timesheetCard({ id: r.id, projectId: r.projectId, projectName: r.projectName, clientName: r.clientName, color: r.color, shade: r.shade, note: r.note, tag: r.tag, start: r.start, end: r.end, spanIds: [r.spanId], running: r.running }));
+    }
+  }
+  return { ...view, timesheet: [...cards.values()] };
+}
+
 /** An app a day can give a lane of its own, with 30 minutes of tracked time; `patch` overrides fields. */
 export function dayApp(patch: Partial<DayApp> = {}): DayApp {
   return { appKey: "com.apple.Safari", app: "Safari", bundleId: "com.apple.Safari", activeMs: 30 * 60_000, ownLane: false, ...patch };

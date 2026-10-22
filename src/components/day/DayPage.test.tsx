@@ -9,7 +9,7 @@ import { handleKeydown, installCommands, runCommand } from "../../commands";
 import { today } from "../../lib/day";
 import { resetStore, useStore } from "../../state/store";
 import { trackerStatus } from "../../test/data";
-import { appLane, at, away, block, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane, timesheetCard } from "../../test/dayFixtures";
+import { appLane, at, away, block, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane, timesheetCard, withTimesheet } from "../../test/dayFixtures";
 import { listRow, listView } from "../../test/listFixtures";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
@@ -35,7 +35,7 @@ const busyDay = () => dayView({ lanes: [lane({ blocks: [docs, todo] }), sourceLa
 const website = projectItem({ project: { id: "p-site", name: "Website" } });
 const meeting = recordingBlock({ id: "r1", projectId: "p-site", projectName: "Website", note: "standup", start: at("11:00"), end: at("11:45") });
 const meetingRow = recording({ id: "r1", projectId: "p-site", note: "standup", start: at("11:00"), end: at("11:45") });
-const recordedDay = () => dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [meeting] });
+const recordedDay = () => withTimesheet(dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [meeting] }));
 const withProject = { settings: settings(), ...projectsStore({ projects: [website] }) };
 
 /** The `clientY` of a wall-clock time of `DAY` on the unscrolled timeline. */
@@ -56,7 +56,7 @@ function renderDay(view: DayView, patch: Parameters<typeof resetStore>[0] = {}) 
 }
 
 const blockEl = (name: string) => screen.findByLabelText(name);
-const editorForm = (name: "New recording" | "Edit recording") => screen.findByRole("form", { name });
+const editorForm = (name: "New recording" | "Edit recording" | "Edit suggestion") => screen.findByRole("form", { name });
 const sheetOf = () => screen.getByRole("complementary", { name: "Timesheet" });
 /** The From and To of the editor's `row`th span row (1-based). */
 function expectSpan(form: HTMLElement, from: string, to: string, row = 1) {
@@ -1037,7 +1037,7 @@ describe("DayPage", () => {
       });
 
       it("does not nudge a recording that continues on another day", async () => {
-        renderDay(dayView({ recordings: [{ ...meeting, clippedStart: true }] }), withProject);
+        renderDay(withTimesheet(dayView({ recordings: [{ ...meeting, clippedStart: true }] })), withProject);
         await recordingEl();
         await userEvent.keyboard("]");
         await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
@@ -1310,77 +1310,211 @@ describe("DayPage", () => {
   });
 
   describe("suggestions", () => {
-    const proposed = suggestion({ ruleId: "rule-slack", ruleName: "Slack", projectName: "Website", start: at("09:00"), end: at("09:45") });
-    const suggestionEl = () => screen.findByRole("button", { name: "Record Website 09:00–09:45, suggested by Slack" });
+    const review = timesheetCard({ id: "c1", projectId: "p-site", note: "review", start: at("10:00"), end: at("10:30") });
+    const standupIdea = suggestion({ ruleId: "rule-slack", ruleName: "Slack", projectId: "p-site", projectName: "Website", note: "standup", start: at("09:00"), end: at("09:45"), nextCard: "c1" });
+    const mailIdea = suggestion({ ruleId: "rule-mail", ruleName: "Mail", projectId: "p-site", projectName: "Website", start: at("14:00"), end: at("14:30"), nextCard: null });
+    const withSuggestions = () => dayView({ lanes: [lane({ blocks: [docs] })], timesheet: [review], suggestions: [standupIdea, mailIdea] });
+    const standupCard = () => screen.findByRole("group", { name: /^Suggested: standup/ });
+    const mailCard = () => screen.findByRole("group", { name: /^Suggested: Website, Website/ });
+    const focusCard = async (card: Promise<HTMLElement>) => {
+      const el = await card;
+      act(() => el.focus());
+    };
 
-    it("draws a suggestion as a button in the recordings column", async () => {
-      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
-      const el = await suggestionEl();
-      expect(screen.getByLabelText("Recordings")).toContainElement(el);
-      expect(within(el).getByText("Website")).toBeInTheDocument();
-      expect(within(el).getByText("Slack")).toBeInTheDocument();
-      expect(within(el).getByText("0:45")).toBeInTheDocument();
+    describe("ghost cards", () => {
+      it("draws one per suggestion in the timesheet with the rule that suggested it", async () => {
+        renderDay(withSuggestions(), withProject);
+        const card = within(await standupCard());
+        expect(sheetOf()).toContainElement(await standupCard());
+        expect(card.getByText("standup")).toBeInTheDocument();
+        expect(card.getByText("Suggested by Slack")).toBeInTheDocument();
+        expect(card.getByText("45m")).toBeInTheDocument();
+        expect(within(await mailCard()).getByText("Suggested by Mail")).toBeInTheDocument();
+      });
+
+      it("puts each before the recording card it precedes and the last one at the end", async () => {
+        renderDay(withSuggestions(), withProject);
+        await standupCard();
+        const order = within(sheetOf())
+          .getAllByLabelText(/^(Suggested: standup|review, |Suggested: Website, Website)/)
+          .map((el) => el.getAttribute("aria-label")?.split(",")[0]);
+        expect(order).toEqual(["Suggested: standup", "review", "Suggested: Website"]);
+      });
+
+      it("draws none when the day has no suggestions", async () => {
+        renderDay(busyDay());
+        await blockEl("Safari: Docs");
+        expect(screen.queryByRole("group", { name: /^Suggested:/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole("group", { name: "Suggestions to review" })).not.toBeInTheDocument();
+      });
+
+      it("approves with ✓, records on the shown day and offers Undo, without opening the editor", async () => {
+        renderDay(withSuggestions(), withProject);
+        await userEvent.click(within(await standupCard()).getByRole("button", { name: "Approve" }));
+        expect(mocked.suggestionApprove).toHaveBeenCalledWith(DAY, standupIdea.id);
+        expect(await screen.findByText("Recorded 45 min for Website")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+        expect(screen.queryByRole("form")).not.toBeInTheDocument();
+      });
+
+      it("shows the error when the suggestion is gone", async () => {
+        mocked.suggestionApprove.mockRejectedValueOnce({ kind: "not_found", message: "Suggestion not found", code: null });
+        renderDay(withSuggestions(), withProject);
+        await userEvent.click(within(await standupCard()).getByRole("button", { name: "Approve" }));
+        expect(await screen.findByRole("alert")).toHaveTextContent("Could not approve the suggestion: Suggestion not found");
+      });
+
+      it("dismisses with ✕ and offers Undo", async () => {
+        renderDay(withSuggestions(), withProject);
+        await userEvent.click(within(await standupCard()).getByRole("button", { name: "Dismiss" }));
+        expect(mocked.suggestionsDismiss).toHaveBeenCalledWith(DAY, [standupIdea.id]);
+        expect(await screen.findByText("Dismissed 1 suggestion")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+      });
     });
 
-    it("draws no suggestion when the day has none", async () => {
-      renderDay(busyDay());
-      await blockEl("Safari: Docs");
-      expect(screen.queryByRole("button", { name: /suggested by/ })).not.toBeInTheDocument();
+    describe("the time column", () => {
+      it("draws each suggestion as a hatched button in the recordings column", async () => {
+        renderDay(withSuggestions(), withProject);
+        const el = await screen.findByRole("button", { name: "Suggested: Website 09:00–09:45, by Slack" });
+        expect(screen.getByLabelText("Recordings")).toContainElement(el);
+        expect(within(el).getByText("Slack")).toBeInTheDocument();
+      });
+
+      it("opens the suggestion in the editor with a click", async () => {
+        renderDay(withSuggestions(), withProject);
+        await userEvent.click(await screen.findByRole("button", { name: "Suggested: Website 09:00–09:45, by Slack" }));
+        expect(await editorForm("Edit suggestion")).toBeInTheDocument();
+        expect(mocked.suggestionApprove).not.toHaveBeenCalled();
+      });
     });
 
-    it("records the suggestion on the shown day with a click and offers Undo", async () => {
-      mocked.suggestionAccept.mockResolvedValue({ recording: recording({ start: at("09:00"), end: at("09:45") }), durationMs: 45 * MINUTE_MS });
-      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
-      await userEvent.click(await suggestionEl());
-      expect(mocked.suggestionAccept).toHaveBeenCalledWith(DAY, proposed.id);
-      expect(mocked.suggestionsAcceptRule).not.toHaveBeenCalled();
-      expect(await screen.findByText("Recorded 45 min for Website")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+    describe("editing", () => {
+      it("opens the editor in place of the card, prefilled with the note and project of the suggestion", async () => {
+        renderDay(withSuggestions(), withProject);
+        await userEvent.click(await standupCard());
+        const form = await editorForm("Edit suggestion");
+        expect(sheetOf()).toContainElement(form);
+        expect(within(form).getByLabelText("Note")).toHaveValue("standup");
+        expect(within(form).getByRole("combobox", { name: "Project" })).toHaveValue("Website");
+        expectSpan(form, "09:00", "09:45");
+        expect(within(form).getByText("Suggested by Slack. Approve records it.")).toBeInTheDocument();
+        expect(screen.queryByRole("group", { name: /^Suggested: standup/ })).not.toBeInTheDocument();
+      });
+
+      it("approves the edited suggestion with Approve, sending the editor's input", async () => {
+        renderDay(withSuggestions(), withProject);
+        await userEvent.click(await standupCard());
+        const form = within(await editorForm("Edit suggestion"));
+        await userEvent.type(form.getByLabelText("Note"), " notes");
+        await userEvent.click(form.getByRole("button", { name: "Approve" }));
+        await waitFor(() =>
+          expect(mocked.suggestionApproveEdited).toHaveBeenCalledWith(DAY, standupIdea.id, { projectId: "p-site", spans: [{ start: at("09:00"), end: at("09:45") }], note: "standup notes", tagId: null }, "cancel"),
+        );
+        expect(mocked.recordingCreate).not.toHaveBeenCalled();
+        await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
+      });
+
+      it("keeps the suggestion when the editor is cancelled", async () => {
+        renderDay(withSuggestions(), withProject);
+        await userEvent.click(await standupCard());
+        await editorForm("Edit suggestion");
+        await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+        expect(await standupCard()).toBeInTheDocument();
+        expect(mocked.suggestionApproveEdited).not.toHaveBeenCalled();
+      });
     });
 
-    it("records every suggestion of the rule with an ⌥-click", async () => {
-      mocked.suggestionsAcceptRule.mockResolvedValue([recording({ id: "r1" }), recording({ id: "r2" })]);
-      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
-      fireEvent.click(await suggestionEl(), { altKey: true });
-      await vi.waitFor(() => expect(mocked.suggestionsAcceptRule).toHaveBeenCalledWith(DAY, "rule-slack"));
-      expect(mocked.suggestionAccept).not.toHaveBeenCalled();
-      expect(await screen.findByText("Recorded 2 suggestions")).toBeInTheDocument();
+    describe("the review line", () => {
+      const reviewLine = () => screen.findByRole("group", { name: "Suggestions to review" });
+
+      it("counts the suggestions of the day", async () => {
+        renderDay(withSuggestions(), withProject);
+        expect(within(await reviewLine()).getByText("2 suggestions")).toBeInTheDocument();
+      });
+
+      it("says 1 suggestion for a single one", async () => {
+        renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [mailIdea] }), withProject);
+        expect(within(await reviewLine()).getByText("1 suggestion")).toBeInTheDocument();
+      });
+
+      it("approves every shown suggestion with Approve all", async () => {
+        mocked.suggestionsApprove.mockResolvedValueOnce([recording({ id: "r1" }), recording({ id: "r2" })]);
+        renderDay(withSuggestions(), withProject);
+        await userEvent.click(within(await reviewLine()).getByRole("button", { name: "Approve all" }));
+        expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [standupIdea.id, mailIdea.id]);
+        expect(await screen.findByText("Recorded 2 suggestions")).toBeInTheDocument();
+      });
+
+      it("dismisses every shown suggestion with Dismiss all", async () => {
+        mocked.suggestionsDismiss.mockResolvedValueOnce(2);
+        renderDay(withSuggestions(), withProject);
+        await userEvent.click(within(await reviewLine()).getByRole("button", { name: "Dismiss all" }));
+        expect(mocked.suggestionsDismiss).toHaveBeenCalledWith(DAY, [standupIdea.id, mailIdea.id]);
+        expect(await screen.findByText("Dismissed 2 suggestions")).toBeInTheDocument();
+      });
     });
 
-    it("shows the error when the suggestion is gone", async () => {
-      mocked.suggestionAccept.mockRejectedValueOnce({ kind: "not_found", message: "Suggestion not found", code: null });
-      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
-      await userEvent.click(await suggestionEl());
-      expect(await screen.findByRole("alert")).toHaveTextContent("Could not accept the suggestion: Suggestion not found");
-    });
+    describe("keys on a focused suggestion", () => {
+      it("approves it with ↵", async () => {
+        renderDay(withSuggestions(), withProject);
+        await focusCard(standupCard());
+        await userEvent.keyboard("{Enter}");
+        await vi.waitFor(() => expect(mocked.suggestionApprove).toHaveBeenCalledWith(DAY, standupIdea.id));
+        expect(screen.queryByRole("form")).not.toBeInTheDocument();
+      });
 
-    it("records every suggestion of the rule with ⌥↵ on the focused suggestion", async () => {
-      mocked.suggestionsAcceptRule.mockResolvedValue([recording({ id: "r1" })]);
-      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
-      (await suggestionEl()).focus();
-      await userEvent.keyboard("{Alt>}{Enter}{/Alt}");
-      await vi.waitFor(() => expect(mocked.suggestionsAcceptRule).toHaveBeenCalledWith(DAY, "rule-slack"));
-      expect(mocked.suggestionAccept).not.toHaveBeenCalled();
-      expect(await screen.findByText("Recorded 1 suggestion")).toBeInTheDocument();
-    });
+      it("opens it in the editor with E", async () => {
+        renderDay(withSuggestions(), withProject);
+        await focusCard(standupCard());
+        await userEvent.keyboard("e");
+        expect(await editorForm("Edit suggestion")).toBeInTheDocument();
+      });
 
-    it("records the focused suggestion with ↵ even while a selection exists, without opening the editor", async () => {
-      mocked.suggestionAccept.mockResolvedValue({ recording: recording({ start: at("09:00"), end: at("09:45") }), durationMs: 45 * MINUTE_MS });
-      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
-      await blockEl("Safari: Docs");
-      await userEvent.keyboard("jv");
-      await screen.findByLabelText("Selection");
-      (await suggestionEl()).focus();
-      await userEvent.keyboard("{Enter}");
-      await vi.waitFor(() => expect(mocked.suggestionAccept).toHaveBeenCalledWith(DAY, proposed.id));
-      expect(mocked.suggestionsAcceptRule).not.toHaveBeenCalled();
-      expect(screen.queryByRole("form")).not.toBeInTheDocument();
+      it("dismisses it with ⌫", async () => {
+        renderDay(withSuggestions(), withProject);
+        await focusCard(standupCard());
+        await userEvent.keyboard("{Backspace}");
+        await vi.waitFor(() => expect(mocked.suggestionsDismiss).toHaveBeenCalledWith(DAY, [standupIdea.id]));
+      });
+
+      it("moves the focus to the next suggestion once it is approved", async () => {
+        renderDay(withSuggestions(), withProject);
+        await focusCard(standupCard());
+        await userEvent.keyboard("{Enter}");
+        await vi.waitFor(() => expect(useStore.getState().focusedSuggestion).toBe(mailIdea.id));
+      });
+
+      it("moves the focus to the next suggestion once it is dismissed", async () => {
+        renderDay(withSuggestions(), withProject);
+        await focusCard(standupCard());
+        await userEvent.keyboard("{Backspace}");
+        await vi.waitFor(() => expect(useStore.getState().focusedSuggestion).toBe(mailIdea.id));
+      });
+
+      it("reaches suggestions and recordings alike with ]", async () => {
+        renderDay(withSuggestions(), withProject);
+        await standupCard();
+        await userEvent.keyboard("]");
+        expect(useStore.getState().focusedSuggestion).toBe(standupIdea.id);
+        await userEvent.keyboard("]");
+        expect(useStore.getState().focusedRecording).toBe("c1");
+        await userEvent.keyboard("]");
+        expect(useStore.getState().focusedSuggestion).toBe(mailIdea.id);
+      });
+
+      it("clears the focus with Escape", async () => {
+        renderDay(withSuggestions(), withProject);
+        await focusCard(standupCard());
+        await userEvent.keyboard("{Escape}");
+        expect(useStore.getState().focusedSuggestion).toBeNull();
+      });
     });
   });
 
   describe("keyboard", () => {
     const review = recordingBlock({ id: "r2", projectId: "p-site", projectName: "Website", note: "review", start: at("13:00"), end: at("13:30") });
-    const twoRecordings = () => dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [review, meeting] });
+    const twoRecordings = () => withTimesheet(dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [review, meeting] }));
     const focusedIn = (labels: string[]) => labels.filter((label) => screen.queryByLabelText(label)?.classList.contains("focused"));
     const focusedBlocks = () => focusedIn(["Safari: Docs", "Notes: Todo", "Planner: Standup"]);
     const focusedRecordings = () => focusedIn(["Website: standup", "Website: review"]);
@@ -1579,8 +1713,8 @@ describe("DayPage", () => {
           ["Select block", "V"],
           ["Extend selection to the next block", "⇧J"],
           ["Extend selection to the previous block", "⇧K"],
-          ["Next recording", "]"],
-          ["Previous recording", "["],
+          ["Next recording or suggestion", "]"],
+          ["Previous recording or suggestion", "["],
           ["Move recording to the previous day", "⌥←"],
           ["Move recording to the next day", "⌥→"],
           ["Copy recording to the previous day", "⌥⇧←"],

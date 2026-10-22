@@ -1,4 +1,5 @@
 import { api, toAppError, type AppError, type DayView } from "../../api";
+import { focusCleared } from "../focus";
 import type { Slice } from "../store";
 
 export interface DaySlice {
@@ -35,14 +36,14 @@ export const daySlice: Slice<DaySlice> = {
         const view = await api.dayView(day);
         if (request !== latest) return;
         const otherDay = get().dayView?.day !== view.day;
-        set({ dayView: view, dayError: null, ...(otherDay && { focusedBlock: null, detailsBlock: null, selection: null, focusedRecording: null }) });
+        set({ dayView: view, dayError: null, ...(otherDay && focusCleared("day")) });
       } catch (e) {
         if (request === latest) set({ dayError: toAppError(e) });
       }
     },
 
     focusBlock(id) {
-      set({ focusedBlock: id, detailsBlock: null });
+      set({ focusedBlock: id, detailsBlock: null, ...(id !== null && focusCleared("other")) });
     },
 
     toggleDetails() {

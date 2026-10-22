@@ -32,6 +32,28 @@
 .sheet-card.hovered { box-shadow: 0 0 0 2px var(--block-meta); }
 .sheet-card.focused, .sheet-card:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
 
+/* A suggestion: a ghost of the card it would become, dashed and faint until approved. */
+.suggestion-card {
+  background: color-mix(in oklab, var(--block-fill) 22%, var(--bg-quiet)); box-shadow: none;
+  outline: 1.5px dashed var(--block-meta); outline-offset: -1.5px; cursor: pointer;
+}
+.suggestion-card:hover { background: color-mix(in oklab, var(--block-fill) 45%, var(--bg-quiet)); }
+.suggestion-card .card-title, .suggestion-card .card-subtitle { padding-right: 4.2rem; }
+.suggestion-card-rule { overflow: hidden; text-overflow: ellipsis; }
+.suggestion-card-actions { position: absolute; top: var(--space-2); right: var(--space-2); display: flex; gap: var(--space-1); }
+.suggestion-card-action {
+  display: inline-flex; align-items: center; justify-content: center; width: 1.846rem; height: 1.846rem; padding: 0;
+  border: none; border-radius: 50%; background: color-mix(in oklab, var(--block-fill) 70%, var(--bg)); color: var(--block-text); cursor: pointer;
+}
+.suggestion-card-action:hover { background: var(--block-text); color: var(--block-fill); }
+.suggestion-card-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.timesheet-review {
+  flex: none; display: flex; align-items: center; gap: var(--space-1); margin: 0 var(--space-4) var(--space-2); padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border-radius: var(--radius-card); background: var(--sel); font-size: var(--fs-meta);
+}
+.timesheet-review-count { flex: 1; font-weight: 600; color: var(--accent-text); }
+.timesheet-review-action { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); font-size: var(--fs-meta); }
+
 /* ---------- timeline: hour axis, time column, then the lanes ---------- */
 .timeline-frame { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 .timeline { flex: 1; overflow: auto; position: relative; }
@@ -101,6 +123,7 @@
 }
 .recording-editor-sheet { width: min(26rem, 92vw); padding: 0; }
 .recording-editor-sheet .recording-editor { box-shadow: none; }
+.editor-suggested { display: flex; align-items: center; gap: var(--space-1); margin: 0; color: var(--o2); font-size: var(--fs-meta); }
 .editor-warning { margin: 0; padding: 0.462rem var(--space-2); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); line-height: 1.4; }
 .editor-note { display: flex; flex-direction: column; gap: 2px; }
 .editor-note .input { font-size: 1.077rem; font-weight: 600; border-color: transparent; background: transparent; padding-left: 0; }

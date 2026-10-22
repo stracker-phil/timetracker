@@ -43,7 +43,7 @@ These rules hold everywhere in the code. Keep them when you change things.
 7. **Panics unwind** ([ADR 0014](adr/0014-panic-unwind.md)). A bug fails one command, not the app. Locks
    are taken with the poison-tolerant helpers in `lock.rs`.
 8. **No color literal outside `src/styles/palettes/`** ([ADR 0016](adr/0016-color-schemes.md),
-   [ADR 0021](adr/0021-appearance-modes-and-schemes.md)). Palettes are complete token sets; a Vitest scan
+   [ADR 0021](adr/0021-appearance-modes-and-schemes.md), [ADR 0022](adr/0022-a-scheme-per-system-mode.md)). Palettes are complete token sets; a Vitest scan
    enforces it.
 
 Time is UTC milliseconds (`i64`) in storage and IPC; a day is a local calendar day `YYYY-MM-DD`, resolved
@@ -97,11 +97,16 @@ Recording an hour of activity:
 ## A suggestion, end to end
 
 1. `day::load` builds the day's view, then `rules::day_suggestions` runs the active rules over its
-   blocks: first matching rule per block, runs across short gaps, recorded time cut away.
-2. The Day view draws each `Suggestion` dashed in the recordings column. A click sends `suggestion_accept`
-   with its id; Rust rebuilds the suggestions, finds the id and creates the recording through the recordings
-   service (undoable). ⌥-click sends `suggestions_accept_rule` for all of the rule's on that day, one undo.
-3. `data_changed` reloads the day; the accepted time is now recorded, so its suggestion is gone.
+   blocks: first matching rule per block, runs across short gaps, recorded and dismissed time cut away, each
+   placed among the timesheet's cards (`nextCard`).
+2. The Day view shows each `Suggestion` as a ghost card in the timesheet and hatched in the time column; it
+   is not a recording until the owner approves it. ✓ (or ↵) sends `suggestion_approve`; Rust rebuilds the
+   suggestions, finds the id and creates the recording through the recordings service (undoable). Edit opens
+   the inline editor prefilled; its Approve sends `suggestion_approve_edited`. ✕ (or ⌫) sends
+   `suggestions_dismiss`, which stores the span in `dismissed_suggestions` as an undoable `Op::Dismiss`.
+   Approve all (`suggestions_approve`) and Dismiss all send the shown ids.
+3. `data_changed` reloads the day; the approved time is now recorded and the dismissed time is cut away, so
+   the suggestion is gone.
 
 ## Process model
 

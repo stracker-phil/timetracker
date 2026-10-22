@@ -1,6 +1,23 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const system = vi.hoisted(() => {
+  const state = { dark: false };
+  window.matchMedia = ((query: string) => ({
+    get matches() {
+      return state.dark;
+    },
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  }));
+  return state;
+});
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
@@ -37,20 +54,64 @@ describe("SettingsDialog", () => {
   });
 
   describe("Appearance", () => {
-    it.each([
-      ["Light", "light"],
-      ["Dark", "dark"],
-    ])("saves the %s scheme of the clicked tile", async (name, scheme) => {
-      renderDialog();
-      await userEvent.click(within(screen.getByRole("group", { name: "Scheme" })).getByRole("button", { name }));
-      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ scheme }));
+    const modeGroup = () => within(screen.getByRole("group", { name: "Mode" }));
+
+    afterEach(() => {
+      system.dark = false;
     });
 
-    it("marks the current scheme tile as pressed", () => {
-      renderDialog({ settings: settings({ scheme: "dark" }) });
-      const group = within(screen.getByRole("group", { name: "Scheme" }));
-      expect(group.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
-      expect(group.getByRole("button", { name: "Default" })).toHaveAttribute("aria-pressed", "false");
+    it("explains that a scheme is picked for each macOS mode", () => {
+      renderDialog();
+      expect(screen.getByText("Pick a scheme for each macOS mode.")).toBeInTheDocument();
+    });
+
+    it("offers Light and Dark modes only", () => {
+      renderDialog();
+      expect(modeGroup().getAllByRole("button").map((b) => b.textContent)).toEqual(["Light", "Dark"]);
+    });
+
+    it("starts on Light and its scheme picker while macOS is light", () => {
+      renderDialog();
+      expect(modeGroup().getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "true");
+      expect(modeGroup().getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByRole("group", { name: "Light mode scheme" })).toBeInTheDocument();
+      expect(screen.queryByRole("group", { name: "Dark mode scheme" })).not.toBeInTheDocument();
+    });
+
+    it("starts on Dark and its scheme picker while macOS is dark", () => {
+      system.dark = true;
+      renderDialog();
+      expect(modeGroup().getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("group", { name: "Dark mode scheme" })).toBeInTheDocument();
+    });
+
+    it("switches the picker and its pressed tile when the mode tab changes", async () => {
+      renderDialog({ settings: settings({ lightScheme: "light", darkScheme: "default" }) });
+      expect(within(screen.getByRole("group", { name: "Light mode scheme" })).getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "true");
+      await userEvent.click(modeGroup().getByRole("button", { name: "Dark" }));
+      const dark = within(screen.getByRole("group", { name: "Dark mode scheme" }));
+      expect(screen.queryByRole("group", { name: "Light mode scheme" })).not.toBeInTheDocument();
+      expect(dark.getByRole("button", { name: "Default" })).toHaveAttribute("aria-pressed", "true");
+      expect(dark.getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("saves the clicked tile as the light scheme and leaves the dark one unchanged", async () => {
+      renderDialog({ settings: settings({ lightScheme: "default", darkScheme: "dark" }) });
+      await userEvent.click(within(screen.getByRole("group", { name: "Light mode scheme" })).getByRole("button", { name: "Dark" }));
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ lightScheme: "dark", darkScheme: "dark" }));
+    });
+
+    it("saves the clicked tile as the dark scheme and leaves the light one unchanged", async () => {
+      renderDialog({ settings: settings({ lightScheme: "default", darkScheme: "dark" }) });
+      await userEvent.click(modeGroup().getByRole("button", { name: "Dark" }));
+      await userEvent.click(within(screen.getByRole("group", { name: "Dark mode scheme" })).getByRole("button", { name: "Light" }));
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ lightScheme: "default", darkScheme: "light" }));
+    });
+
+    it("does not save anything when only the mode tab changes", async () => {
+      renderDialog();
+      await userEvent.click(modeGroup().getByRole("button", { name: "Dark" }));
+      expect(mocked.updateSettings).not.toHaveBeenCalled();
     });
 
     it("saves the accent of the clicked swatch", async () => {
@@ -63,16 +124,6 @@ describe("SettingsDialog", () => {
       renderDialog();
       expect(screen.getByRole("button", { name: "Accent orange" })).toHaveAttribute("aria-pressed", "true");
       expect(screen.getByRole("button", { name: "Accent teal" })).toHaveAttribute("aria-pressed", "false");
-    });
-
-    it.each([
-      ["Light", "light"],
-      ["Dark", "dark"],
-      ["System", "system"],
-    ])("saves the %s mode", async (name, mode) => {
-      renderDialog({ settings: settings({ mode: mode === "light" ? "dark" : "light" }) });
-      await userEvent.click(within(screen.getByRole("group", { name: "Mode" })).getByRole("button", { name }));
-      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ mode }));
     });
 
     it("saves a typed text size on blur, not per keystroke", async () => {

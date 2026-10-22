@@ -9,6 +9,7 @@ mod draft;
 pub mod ops;
 mod overlaps;
 mod proposal;
+mod review;
 mod snap;
 mod spans;
 #[cfg(test)]
@@ -30,6 +31,7 @@ use crate::error::AppResult;
 use checks::{check_tag, checked_note, require_finished, snapped_spans, usable_project};
 use ops::Op;
 use overlaps::{claimed, clearing, in_the_way};
+pub use review::suggestions_label;
 pub use snap::{
     NEW_RECORDING_MINUTES, SnapEdge, default_span, grid_step, snap, snap_moving, snap_span,
 };
@@ -110,6 +112,7 @@ fn days_touched(op: &Op, now: Ms) -> Vec<Day> {
         .iter()
         .flat_map(|r| &r.spans)
         .flat_map(|s| days_of(s.start, s.end.unwrap_or(now)))
+        .chain(op.dismissal_days())
         .collect();
     days.sort();
     days.dedup();
@@ -172,6 +175,16 @@ impl Recordings<'_> {
         input: RecordingInput,
         overlap: Overlap,
     ) -> AppResult<Change<Recording>> {
+        self.create_with(input, overlap, Vec::new()).await
+    }
+
+    /// `create`, with `also` applied in the same undoable change.
+    async fn create_with(
+        &self,
+        input: RecordingInput,
+        overlap: Overlap,
+        also: Vec<Op>,
+    ) -> AppResult<Change<Recording>> {
         let mut undo = self.undo.lock().await;
         let (recording, project) = self.new_recording(input).await?;
         let label = format!(
@@ -182,7 +195,14 @@ impl Recordings<'_> {
         let base = Op::Create {
             recording: recording.clone(),
         };
-        let op = clearing(self.db, base, &recording, overlap, &label).await?;
+        let mut op = clearing(self.db, base, &recording, overlap, &label).await?;
+        if !also.is_empty() {
+            let ops = std::iter::once(op).chain(also).collect();
+            op = Op::Batch {
+                label: label.clone(),
+                ops,
+            };
+        }
         self.commit(&mut undo, label, op, &recording.id).await
     }
 
@@ -284,41 +304,6 @@ impl Recordings<'_> {
             )
             .await?;
         Ok(Change { value: (), days })
-    }
-
-    /// The undone change's label; `None` when there is nothing to undo. A change that would now overlap
-    /// another recording is refused and stays undoable.
-    pub async fn undo(&self) -> AppResult<Change<Option<String>>> {
-        let mut undo = self.undo.lock().await;
-        let Some(entry) = undo.last_done().cloned() else {
-            return Ok(Change {
-                value: None,
-                days: Vec::new(),
-            });
-        };
-        let inverse = entry.op.inverse();
-        ops::apply(self.db, &inverse).await?;
-        undo.mark_undone();
-        Ok(Change {
-            value: Some(entry.label),
-            days: days_touched(&inverse, now_ms()),
-        })
-    }
-
-    pub async fn redo(&self) -> AppResult<Change<Option<String>>> {
-        let mut undo = self.undo.lock().await;
-        let Some(entry) = undo.last_undone().cloned() else {
-            return Ok(Change {
-                value: None,
-                days: Vec::new(),
-            });
-        };
-        ops::apply(self.db, &entry.op).await?;
-        undo.mark_redone();
-        Ok(Change {
-            value: Some(entry.label),
-            days: days_touched(&entry.op, now_ms()),
-        })
     }
 
     /// Writes `after` over `before`, clearing its spans of other recordings per `overlap`.

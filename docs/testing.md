@@ -85,7 +85,7 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 | `scripts/dev/launch.sh [cli args]` | kills a running `timetracker` and starts the debug build next to the terminal window, without focus. The log goes to `$TMPDIR/timetracker-dev.log`. The terminal app is set by `TIMETRACKER_DEV_TERMINAL` (default `Terminal`) |
 | `scripts/dev/js.sh '<js>'` | runs JavaScript in the running debug app over the IPC socket. Fire-and-forget: no return value, and top-level `const` declarations collide across calls, so wrap them in an IIFE |
 | `scripts/dev/screenshot.sh out.png` | captures the TimeTracker window, also while it is in the background |
-| `scripts/dev/screenshot-looks.sh <dir> [view]` | captures a view (default `day`) in all six Mode × Scheme combinations as `<scheme>-<mode>-<view>.png`, then restores the settings ([ux.md](ux.md#scheme-audit)) |
+| `scripts/dev/screenshot-looks.sh <dir> [view]` | captures a view (default `day`) in each scheme of the current macOS mode as `<scheme>-<mode>-<view>.png`, then restores the settings; switch the system appearance and run it again for the other mode ([ux.md](ux.md#scheme-audit)) |
 | `bun run app` | builds and `open`s the app; this takes focus |
 | `bun run release` | builds the release `.app` and `.dmg` (`src-tauri/target/release/bundle/`), signed ad hoc |
 

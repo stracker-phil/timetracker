@@ -7,7 +7,7 @@ export function useEditorSave() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   async function save() {
-    const { draft, editing, createRecording, updateRecording, closeEditor } = useStore.getState();
+    const { editor, draft, editing, createRecording, updateRecording, closeEditor } = useStore.getState();
     if (!draft) return;
     if (!draft.projectId) {
       setErrors({ projectId: "Pick a project" });
@@ -18,7 +18,8 @@ export function useEditorSave() {
     // The running timer's spans are Rust's to end.
     const running = !!editing?.spans.some((s) => s.end === null);
     try {
-      const saved = editing ? await updateRecording(editing.id, running ? fields : { ...fields, spans: draft.spans }) : await createRecording({ ...fields, spans: draft.spans });
+      const suggestionId = editor?.mode === "create" ? editor.suggestion?.id : undefined;
+      const saved = editing ? await updateRecording(editing.id, running ? fields : { ...fields, spans: draft.spans }) : await createRecording({ ...fields, spans: draft.spans }, suggestionId);
       if (saved) closeEditor();
     } catch (e) {
       const field = toAppError(e).field;

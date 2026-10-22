@@ -51,7 +51,7 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
 ### Settings side effects
 
 `update_settings` and startup both call `commands::apply_settings(app, previous, saved)`. The decision is the
-pure `settings_effects(previous, saved, log_override) -> SettingsEffects { mode, log_level, launch_at_login }`:
+pure `settings_effects(previous, saved, log_override) -> SettingsEffects { log_level, launch_at_login }`:
 without `previous` everything applies; otherwise only what changed. A CLI `--log-level` wins for the app's
 lifetime, so a settings change never resets it. `launch_at_login` goes to `autostart::apply` (below), which
 changes the LaunchAgent only when its state differs; at startup this reconciles a LaunchAgent that went
@@ -89,8 +89,8 @@ the `sidebar` vibrancy effect. The away prompt (`away_prompt/window.rs`) and the
 | `timetracker --hidden` (launch at login) | first instance: the window is never shown; running instance: nothing |
 | ⌘Q (`app.quit`), tray "Quit TimeTracker", `quit_app` | `app.exit(0)` |
 
-`window.rs` also has `apply_window_mode` (the window's native appearance follows the `mode` setting, so
-native controls match the content; the page draws every surface opaquely) and `bring_to_front`, which does nothing with `TIMETRACKER_BACKGROUND=1` in debug builds.
+`window.rs` never sets the window theme, so its native appearance follows macOS (the page draws every surface
+opaquely). It also has `bring_to_front`, which does nothing with `TIMETRACKER_BACKGROUND=1` in debug builds.
 
 ## AppState
 
@@ -167,8 +167,12 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `rule_set_enabled` | `id, enabled: bool` | `Rule` | `not_found` |
 | `rule_preview` | `input: RuleInput, days: u32` | `RulePreview { hits: PreviewHit[] { block, day }, totalMs, days }`: what the conditions alone match over the last `days` days, today included (see [Rules and suggestions](#rules-and-suggestions)) | `invalid_input` (`field: conditions`), `db` |
 | `suggestions` | `day: Day` | `Suggestion[]` (the same as in `DayView`) | `db` |
-| `suggestion_accept` | `day: Day, id` | `SuggestionAccepted { recording, durationMs }`: the recording, created like `recording_create` with `overlap: cancel` (undoable), and its length for the toast | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
-| `suggestions_accept_rule` | `day: Day, ruleId` | `Recording[]`: every suggestion of the rule on the day, one undo entry (`Recordings::create_all`; one that would overlap is left out) | `not_found` (no suggestions), `db` |
+| `suggestion_approve` | `day: Day, id` | `SuggestionApproved { recording, durationMs }`: the recording, created like `recording_create` with `overlap: cancel` (undoable), and its length for the toast | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
+| `suggestion_approve_rule` | `day: Day, ruleId` | `Recording[]`: every suggestion of the rule on the day, one undo entry `Approve suggestion` / `Approve n suggestions` (`Recordings::create_all`; one that would overlap is left out) | `not_found` (no suggestions), `db` |
+| `suggestions_approve` | `day: Day, ids: string[]` | `Recording[]`: the suggestions `ids` still on the day (the shown ones; others are not touched), one undo entry `Approve suggestion` / `Approve n suggestions` | `not_found` (none of them left), `db` |
+| `suggestion_approve_edited` | `day: Day, id, input: RecordingInput, overlap` | `Recording`: `input` (the editor's fields) created and the suggestion's whole span dismissed, one undo entry (`Recordings::create_settling`) | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
+| `suggestions_dismiss` | `day: Day, ids: string[]` | `number` dismissed: each one's rule, day and span stored in `dismissed_suggestions`, one undo entry `Dismiss suggestion` / `Dismiss n suggestions` | `not_found` (none of them left), `db` |
+| `rules_today` | – | `RuleDay[] { ruleId, matchedMs, pending, pendingMs }` for each active rule today (`rules::day_of_rules`): the activity it matched (first match wins) and its suggestions waiting for review; the Rules screen | `db` |
 | `app_settings_set` (`commands.rs`) | `bundleId: String` (the app key: bundle id, else the app name), `patch: AppSettingPatch { groupByApp?, titles?, ownLane?, hidden? }` (`null` returns `groupByApp`/`titles` to the timeline's setting) | `Settings`; applied under the settings store's lock (`SettingsStore::update_app`), so concurrent changes never undo each other; an override that ends up default is removed (`Settings::with_app`) | `invalid_input` (blank key), `io` |
 | `apps_list` (`day/commands.rs`) | – | `KnownApp[] { appKey, app, totalMs, lastSeen }` (`day::apps::known_apps`): every tracker app and every app with an override, by name | `db` |
 | `recording_create` (`recordings/commands.rs`) | `input: RecordingInput { projectId, spans: Span[], note, tagId }, overlap: Overlap` | `Recording` (snapped) | `invalid_input` (`field`: `spans` empty or overlapping each other, `end`, `note`, …), `overlap` (`details`: the recordings in the way), `not_found`, `db` |
@@ -343,15 +347,18 @@ clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `co
   recording (the Day view's menu commands): every span moves by the days between its first span's day and the
   target day, each at its own local time and length. A copy is a new recording.
 - **Operations** (`ops.rs`): `Op::Create | Update { before, after } | Delete | Batch` on whole recordings with
-  their spans; `inverse()` swaps them (a batch reversed). `apply` runs the op in one transaction through
+  their spans, and `Op::Dismiss | Undismiss` on a dismissed suggestion (so undo covers reviewing); `inverse()`
+  swaps them (a batch reversed). `dismissal_days` adds a dismissal's day to the days a change touched. `apply` runs the op in one transaction through
   `db::recordings::put_on` (the row and all its spans exactly as given, timestamps, tag and span ids included)
   and `remove_on`, then refuses with `overlap` if any span it wrote shares time with another recording's;
   then nothing is written.
 - **Undo** (`undo.rs`): `UndoStack` keeps the last 100 changes of this run with their labels (`Record 45 min
   for Acme`, `Move recording`, `Resize recording`, `Edit recording`, `Delete recording`, `Add span`, `Remove
-  span`, `Split span`, `Merge recordings`); a new change clears
+  span`, `Split span`, `Merge recordings`, `Approve suggestion`, `Approve n suggestions`, `Dismiss suggestion`, `Dismiss n suggestions`, from
+  `recordings::suggestions_label`); a new change clears
   the redo list. `undo` applies the inverse, `redo` the op again; one that would now overlap is refused and
-  the stack stays as it was.
+  the stack stays as it was. `Recordings::undo`/`redo` live in `undo.rs`; `record_dismissals` (one `Op::Batch` of
+  `Op::Dismiss`) and `create_settling` in `review.rs`.
 
 The Day view gets the day's recordings too (`day::load` reads them with the projects, clients and
 tags): `DayView.recordings` (`RecordingBlock`, one per span on the day: the recording's `id`, `spanId`,
@@ -447,7 +454,8 @@ suggestions (`day::view_of`).
 ## Rules and suggestions
 
 `rules/`: a rule says "activity like this belongs to project X"; it never writes a recording. Its suggestions
-fill `DayView.suggestions`, and accepting one is an ordinary undoable create.
+fill `DayView.suggestions` and wait for the owner's review: approving one is an ordinary undoable create,
+dismissing one keeps its time from that rule for good.
 
 - `store.rs`: `rules` and `rule_conditions` (migration `0005_rules.sql`), in position order. `validated`
   checks the name, note, project (existing, not archived), tag (`tagId`, one or `null`) and conditions (at least one; a value
@@ -461,10 +469,23 @@ fill `DayView.suggestions`, and accepting one is an ordinary undoable create.
   noise; not the summary lane) goes to its first matching rule. A rule's blocks join into runs while the gap
   to the next is shorter than the continuity threshold and no sleep, lock or pause lies in it. Matched time
   belongs to its rule first; a run's bridged gaps only take time no rule matched (earlier rules first), so
-  suggestions never overlap. Recorded time is cut away; pieces under `MIN_SUGGESTION_MS` (5 min) are
-  dropped. Ids are `<rule id>:<start>:<end>`, so a suggestion keeps its id across reloads; `accept` and
-  `accept_rule` (`rules/mod.rs`) rebuild the day's suggestions and find it again. A tag deleted since the
-  rule was saved is left out.
+  suggestions never overlap. Recorded time, and each rule's own dismissed time (`dismissed`, read by
+  `day::load` with `db::dismissed::list_for_day`), is cut away; pieces under `MIN_SUGGESTION_MS` (5 min) are
+  dropped. Ids are `<rule id>:<start>:<end>`, so a suggestion keeps its id across reloads. A tag deleted since
+  the rule was saved is left out; `tag` carries the tag's name, `clientName` the project's client.
+  `rules::day_suggestions` sets each suggestion's `nextCard` (`next_card`: the first timesheet card starting
+  after it), which the page puts it before, and `durationMs`.
+- `review.rs` (re-exported from `rules/mod.rs`): `approve`, `approve_all(ids)`, `approve_rule`, `approve_edited`
+  and `dismiss(ids)` rebuild the day's suggestions and find them again through one lookup (`find_where`; a
+  stale id is `not_found`: "The suggestion is gone", "The suggestions are gone", or "The rule has no
+  suggestions on this day"), then
+  write through the recordings service, so each is one undo entry. A dismissal (`db::dismissed::Dismissal
+  { rule_id, day, start, end }`) is an `Op::Dismiss`; its time stays the rule's even after the rule is edited
+  or a recording over it is deleted. `approve_edited` creates the edited recording and dismisses the
+  suggestion's span in one `Op::Batch` (`Recordings::create_settling`), so what the edit left out does not
+  come back.
+- `day_of_rules` (`rules_today`): per active rule, the matched time (`suggest::matched_ms`) and the day's
+  pending suggestions.
 - `preview` builds the views of the last days (`day::view_of`, without suggestions) and lists the
   blocks the input's conditions match on their own, most recent first (`PREVIEW_HITS`, 200), with the time
   of every hit and the number of days with one.
@@ -750,16 +771,18 @@ save leaves memory unchanged. `JsonStore::open_with` normalizes the loaded value
 
 | File | Contents |
 |---|---|
-| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets an unknown accent (`ACCENTS`) to `orange` (an unknown `mode` or `scheme` falls back to `system` or `default` through `lenient`); turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline` or `apps` emits `data_changed { kind: settings, day: null }`, so every open day reloads. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
+| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` clamps on load and on update: `uiFontSize` 10..=24, `dataFontSize` 9..=28, `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `tracker.pollSeconds` 1..=10, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets an unknown accent (`ACCENTS`) to `orange` (an unknown `lightScheme` or `darkScheme` falls back to `default` or `dark` through `lenient`) and moves a 0021 file's `scheme` into `lightScheme`; turns blank `fontUi`, `fontMono` and `dataDir` into `null`; a blank `timerShortcut` becomes `Mod+Shift+T`. `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline` or `apps` emits `data_changed { kind: settings, day: null }`, so every open day reloads. `apps` maps an app key to its `AppOverride { groupByApp?, titles?, hidden, ownLane }`. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed. A trailing `++` is the `+` key |
 | `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `lastDay`, `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id), `dayMode`, `onboardingDone` (default `false`: the welcome sheet shows) |
 | `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere (written only by `data_move`) |
 | `timetracker.sock`, `timetracker.lock` | single instance |
 
 `src/api/types.ts` mirrors the constants the page needs (`ACCENTS`, `SETTINGS_LIMITS`, `TEXT_SIZES`); a Rust
-test compares `ACCENTS` with it. Appearance is `mode` (`Mode`: system, light, dark) and `scheme` (`Scheme`:
-default, light, dark; [ADR 0021](adr/0021-appearance-modes-and-schemes.md)); a part 1 file's `theme`,
-`lightScheme` and `darkScheme` are no longer read, so it loads as System and Default.
+test compares `ACCENTS` with it. Appearance is `lightScheme` and `darkScheme` (`Scheme`: default, light,
+dark; defaults Default and Dark; [ADR 0022](adr/0022-a-scheme-per-system-mode.md)), the look for each macOS
+mode. A 0021 file's `scheme` is read into the private `legacy_scheme` (`#[serde(rename = "scheme",
+skip_serializing)]`) and `sanitized()` moves it to `lightScheme`; its `mode` is ignored. A part 1 file's
+`theme` is ignored and its editor scheme names load as the defaults. The old keys are dropped on the next save.
 
 **Adding a setting:**
 1. Add the field to `Settings` (or its nested struct) in `store/settings/` (`mod.rs`; nested structs and enums in `types.rs`), with a default.

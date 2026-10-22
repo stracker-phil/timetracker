@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api, type Rule, type RuleInput } from "../../api";
-import { recording } from "../../test/recordingFixtures";
-import { rule, suggestion } from "../../test/ruleFixtures";
+import { rule, ruleDay } from "../../test/ruleFixtures";
 import { resetStore, useStore } from "../store";
 
 const mocked = vi.mocked(api, true);
@@ -145,49 +144,21 @@ describe("rules slice", () => {
     });
   });
 
-  describe("acceptSuggestion", () => {
-    it("accepts the suggestion on the shown day and offers Undo", async () => {
-      const s = suggestion({ projectName: "Website" });
-      mocked.suggestionAccept.mockResolvedValueOnce({ recording: recording(), durationMs: 45 * 60_000 });
-      await state().acceptSuggestion(s);
-      expect(mocked.suggestionAccept).toHaveBeenCalledWith("2026-03-10", s.id);
-      expect(toastMessages()).toEqual(["Recorded 45 min for Website"]);
-      expect(state().toasts[0].action?.label).toBe("Undo");
+  describe("today of the rules", () => {
+    it("loads the rules' day along with the rules", async () => {
+      mocked.rulesList.mockResolvedValueOnce([a]);
+      mocked.rulesToday.mockResolvedValueOnce([ruleDay({ ruleId: "a", matchedMs: 80 * 60_000, pending: 2 })]);
+      await state().loadRules();
+      expect(state().rulesToday).toEqual([ruleDay({ ruleId: "a", matchedMs: 80 * 60_000, pending: 2 })]);
     });
 
-    it("runs the Undo action of the toast through the api", async () => {
-      mocked.undo.mockResolvedValueOnce("Record 45 min for Website");
-      await state().acceptSuggestion(suggestion());
-      state().toasts[0].action?.run();
-      await vi.waitFor(() => expect(toastMessages()).toContain("Undid “Record 45 min for Website”"));
-    });
-
-    it("toasts the error and offers no Undo when the suggestion is gone", async () => {
-      mocked.suggestionAccept.mockRejectedValueOnce({ kind: "not_found", message: "Suggestion is gone", code: null });
-      await state().acceptSuggestion(suggestion());
-      expect(toastMessages()).toEqual(["Could not accept the suggestion: Suggestion is gone"]);
-      expect(state().toasts[0].action).toBeUndefined();
-    });
-  });
-
-  describe("acceptRuleSuggestions", () => {
-    it("accepts every suggestion of the rule on the shown day", async () => {
-      mocked.suggestionsAcceptRule.mockResolvedValueOnce([recording({ id: "r1" }), recording({ id: "r2" })]);
-      await state().acceptRuleSuggestions("rule-1");
-      expect(mocked.suggestionsAcceptRule).toHaveBeenCalledWith("2026-03-10", "rule-1");
-      expect(toastMessages()).toEqual(["Recorded 2 suggestions"]);
-    });
-
-    it("says 1 suggestion for a single recording", async () => {
-      mocked.suggestionsAcceptRule.mockResolvedValueOnce([recording()]);
-      await state().acceptRuleSuggestions("rule-1");
-      expect(toastMessages()).toEqual(["Recorded 1 suggestion"]);
-    });
-
-    it("toasts the error", async () => {
-      mocked.suggestionsAcceptRule.mockRejectedValueOnce({ kind: "db", message: "Locked", code: null });
-      await state().acceptRuleSuggestions("rule-1");
-      expect(toastMessages()).toEqual(["Could not accept the suggestions: Locked"]);
+    it("keeps the rules and shows no day when the day cannot be read", async () => {
+      mocked.rulesList.mockResolvedValueOnce([a]);
+      mocked.rulesToday.mockRejectedValueOnce({ kind: "db", message: "Locked", code: null });
+      await state().loadRules();
+      expect(ids()).toEqual(["a"]);
+      expect(state().rulesToday).toEqual([]);
+      expect(toastMessages()).toEqual([]);
     });
   });
 });

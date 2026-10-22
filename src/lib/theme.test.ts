@@ -1,62 +1,105 @@
-import { describe, expect, it } from "vitest";
-import { applyAppearance, applyInitialLook, lightModeLook, resolveLook } from "./theme";
-import { settings } from "../test/settings";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-type Mode = "light" | "dark" | "system";
-type Scheme = "default" | "light" | "dark";
-
-describe("resolveLook", () => {
-  it.each<[Mode, Scheme, boolean, string, string]>([
-    ["light", "default", false, "light", "dark"],
-    ["light", "light", false, "light", "light"],
-    ["light", "dark", false, "dark", "dark"],
-    ["dark", "default", false, "dark", "dark"],
-    ["dark", "light", false, "dark", "dark"],
-    ["dark", "dark", false, "dark", "dark"],
-    ["system", "default", true, "dark", "dark"],
-    ["system", "light", true, "dark", "dark"],
-    ["system", "dark", true, "dark", "dark"],
-    ["system", "default", false, "light", "dark"],
-    ["system", "light", false, "light", "light"],
-    ["system", "dark", false, "dark", "dark"],
-  ])("mode %s with scheme %s (system dark: %s) gives %s content and a %s sidebar", (mode, scheme, systemDark, content, sidebar) => {
-    expect(resolveLook({ mode, scheme }, systemDark)).toEqual({ content, sidebar });
-  });
+const system = vi.hoisted(() => {
+  const state = { dark: false };
+  window.matchMedia = ((query: string) => ({
+    get matches() {
+      return state.dark;
+    },
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  }));
+  return state;
 });
 
-describe("lightModeLook", () => {
+import { applyAppearance, applyInitialLook, resolveLook, schemeLook } from "./theme";
+import { settings } from "../test/settings";
+
+type Scheme = "default" | "light" | "dark";
+
+describe("schemeLook", () => {
   it.each<[Scheme, string, string]>([
     ["default", "light", "dark"],
     ["light", "light", "light"],
     ["dark", "dark", "dark"],
   ])("gives the %s scheme %s content and a %s sidebar", (scheme, content, sidebar) => {
-    expect(lightModeLook(scheme)).toEqual({ content, sidebar });
+    expect(schemeLook(scheme)).toEqual({ content, sidebar });
+  });
+});
+
+describe("resolveLook", () => {
+  it.each<[Scheme, Scheme, boolean, string, string]>([
+    ["default", "dark", false, "light", "dark"],
+    ["default", "dark", true, "dark", "dark"],
+    ["light", "light", false, "light", "light"],
+    ["light", "light", true, "light", "light"],
+    ["dark", "default", false, "dark", "dark"],
+    ["dark", "default", true, "light", "dark"],
+    ["default", "default", false, "light", "dark"],
+    ["default", "default", true, "light", "dark"],
+    ["dark", "dark", false, "dark", "dark"],
+    ["light", "dark", false, "light", "light"],
+    ["light", "dark", true, "dark", "dark"],
+    ["dark", "light", false, "dark", "dark"],
+    ["dark", "light", true, "light", "light"],
+  ])("light %s and dark %s (system dark: %s) give %s content and a %s sidebar", (lightScheme, darkScheme, systemDark, content, sidebar) => {
+    expect(resolveLook({ lightScheme, darkScheme }, systemDark)).toEqual({ content, sidebar });
   });
 });
 
 describe("applyAppearance", () => {
-  it("sets the content and sidebar tones on the root element", () => {
-    applyAppearance(settings({ mode: "light", scheme: "default" }), false);
-    expect(document.documentElement.dataset.content).toBe("light");
-    expect(document.documentElement.dataset.sidebar).toBe("dark");
+  const root = document.documentElement;
 
-    applyAppearance(settings({ mode: "dark", scheme: "light" }), false);
-    expect(document.documentElement.dataset.content).toBe("dark");
-    expect(document.documentElement.dataset.sidebar).toBe("dark");
+  it("sets the tones of the light mode scheme while macOS is light", () => {
+    applyAppearance(settings({ lightScheme: "default", darkScheme: "light" }), false);
+    expect(root.dataset.content).toBe("light");
+    expect(root.dataset.sidebar).toBe("dark");
   });
 
-  it("follows the system appearance in system mode", () => {
-    applyAppearance(settings({ mode: "system", scheme: "light" }), true);
-    expect(document.documentElement.dataset.content).toBe("dark");
+  it("sets the tones of the dark mode scheme while macOS is dark", () => {
+    applyAppearance(settings({ lightScheme: "default", darkScheme: "light" }), true);
+    expect(root.dataset.content).toBe("light");
+    expect(root.dataset.sidebar).toBe("light");
+  });
+
+  it("makes everything dark when the light mode scheme is Dark", () => {
+    applyAppearance(settings({ lightScheme: "dark" }), false);
+    expect(root.dataset.content).toBe("dark");
+    expect(root.dataset.sidebar).toBe("dark");
+  });
+
+  it("sets the accent", () => {
+    applyAppearance(settings({ accent: "teal" }), false);
+    expect(root.dataset.accent).toBe("teal");
   });
 });
 
 describe("applyInitialLook", () => {
-  it("sets both tones before settings are loaded", () => {
-    delete document.documentElement.dataset.content;
-    delete document.documentElement.dataset.sidebar;
+  const root = document.documentElement;
+  afterEach(() => {
+    system.dark = false;
+  });
+
+  it("uses the Default scheme while macOS is light", () => {
+    system.dark = false;
+    delete root.dataset.content;
+    delete root.dataset.sidebar;
     applyInitialLook();
-    expect(document.documentElement.dataset.content).toMatch(/^(light|dark)$/);
-    expect(document.documentElement.dataset.sidebar).toBe("dark");
+    expect(root.dataset.content).toBe("light");
+    expect(root.dataset.sidebar).toBe("dark");
+  });
+
+  it("uses the Dark scheme while macOS is dark", () => {
+    system.dark = true;
+    delete root.dataset.content;
+    delete root.dataset.sidebar;
+    applyInitialLook();
+    expect(root.dataset.content).toBe("dark");
+    expect(root.dataset.sidebar).toBe("dark");
   });
 });

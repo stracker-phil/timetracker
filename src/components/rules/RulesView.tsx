@@ -17,6 +17,7 @@ function moved(ids: string[], from: number, to: number): string[] {
 /** The rules in the order they are tried: the first that matches an activity suggests its project. */
 export function RulesView() {
   const rules = useStore((s) => s.rules);
+  const today = useStore((s) => s.rulesToday);
   const [drag, setDrag] = useState<{ id: string; dy: number } | null>(null);
 
   useEffect(() => {
@@ -46,19 +47,21 @@ export function RulesView() {
 
   return (
     <section className="rules-page" aria-label="Rules">
-      <header className="projects-head">
+      <header className="rules-head">
         <h1>Rules</h1>
         <button type="button" className="btn" onClick={() => useStore.getState().openDialog({ type: "rule" })}>
           <Plus size="1.077rem" /> New rule
         </button>
       </header>
-      <p className="o2">Rules suggest recordings for activity they match; the first matching rule wins. ⌥-drag an activity block onto a project to make one.</p>
+      <p className="rules-intro">
+        Rules suggest recordings for activity they match; the first matching rule wins. Suggestions wait in the Day view until you approve or dismiss them. ⌥-drag an activity block onto a project to make a rule.
+      </p>
       {rules.length === 0 ? (
-        <p className="o3">No rules yet.</p>
+        <p className="rules-empty">No rules yet.</p>
       ) : (
         <ul className="rule-rows" aria-label="Rules in order">
           {rules.map((rule, index) => (
-            <RuleRow key={rule.id} rule={rule} offset={drag?.id === rule.id ? drag.dy : 0} onGrip={grip(index)} />
+            <RuleRow key={rule.id} rule={rule} today={today.find((t) => t.ruleId === rule.id)} offset={drag?.id === rule.id ? drag.dy : 0} onGrip={grip(index)} />
           ))}
         </ul>
       )}

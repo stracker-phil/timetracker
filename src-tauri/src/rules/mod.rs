@@ -1,8 +1,10 @@
 //! Rules ("activity like this belongs to project X") and the suggested recordings they produce. Rules never
-//! write recordings; accepting a suggestion is an ordinary, undoable create.
+//! write recordings; the owner reviews each suggestion: approving it is an ordinary, undoable create,
+//! dismissing it keeps its time from being suggested again.
 
 pub mod commands;
 pub mod matching;
+mod review;
 pub mod store;
 pub mod suggest;
 #[cfg(test)]
@@ -10,15 +12,15 @@ pub(crate) mod testing;
 pub mod types;
 
 use crate::day::transform::{breaks_continuity, continuity_ms};
-use crate::day::{ActivityBlock, DayView, LaneKind, Names};
+use crate::day::{ActivityBlock, DayView, LaneKind, Names, TimesheetCard};
 use crate::db::Db;
-use crate::db::recordings::Recording;
+use crate::db::dismissed::Dismissal;
 use crate::db::time::{Day, Ms, now_ms};
-use crate::error::{AppError, AppResult};
-use crate::recordings::{Change, Overlap, RecordingInput, Recordings, Span};
+use crate::error::AppResult;
 use crate::store::settings::Settings;
-use matching::{Compiled, matches};
-use types::{PreviewHit, RuleInput, RulePreview, Suggestion};
+use matching::{Compiled, compile, matches};
+pub use review::{approve, approve_all, approve_edited, approve_rule, dismiss};
+use types::{PreviewHit, RuleDay, RuleInput, RulePreview, Suggestion};
 
 /// Keeps the preview's reply small; its total still counts every hit.
 pub const PREVIEW_HITS: usize = 200;
@@ -35,12 +37,14 @@ pub(crate) fn candidates(view: &DayView) -> Vec<&ActivityBlock> {
     blocks
 }
 
-/// The view's suggestions under `rules` (compiled, in order).
+/// The view's suggestions under `rules` (compiled, in order), without the `dismissed` time, each placed
+/// among the timesheet's cards.
 pub fn day_suggestions(
     view: &DayView,
     rules: &[Compiled],
     names: &Names,
     settings: &Settings,
+    dismissed: &[Dismissal],
 ) -> Vec<Suggestion> {
     if rules.is_empty() {
         return Vec::new();
@@ -51,20 +55,57 @@ pub fn day_suggestions(
         .filter(|a| breaks_continuity(a.reason))
         .map(|a| (a.start, a.end))
         .collect();
-    suggest::suggest(
+    let mut suggestions = suggest::suggest(
         &candidates(view),
         &view.recordings,
         &barriers,
         rules,
         names,
         continuity_ms(settings.timeline.continuity),
-    )
+        dismissed,
+    );
+    for suggestion in &mut suggestions {
+        suggestion.next_card = next_card(&view.timesheet, suggestion.start);
+    }
+    suggestions
+}
+
+/// The first card starting after `start`, which a suggestion at `start` goes before.
+fn next_card(timesheet: &[TimesheetCard], start: Ms) -> Option<String> {
+    timesheet
+        .iter()
+        .find(|card| card.start > start)
+        .map(|card| card.id.clone())
 }
 
 pub async fn suggestions_of(db: &Db, day: Day, settings: &Settings) -> AppResult<Vec<Suggestion>> {
     Ok(crate::day::load(db, day, settings, now_ms())
         .await?
         .suggestions)
+}
+
+/// Each active rule's `day`, in position order.
+pub async fn day_of_rules(db: &Db, day: Day, settings: &Settings) -> AppResult<Vec<RuleDay>> {
+    let view = crate::day::load(db, day, settings, now_ms()).await?;
+    let rules = compile(&store::active(db).await?);
+    let matched = suggest::matched_ms(&candidates(&view), &rules);
+    Ok(rules
+        .iter()
+        .zip(matched)
+        .map(|(rule, matched_ms)| {
+            let pending: Vec<&Suggestion> = view
+                .suggestions
+                .iter()
+                .filter(|s| s.rule_id == rule.rule_id)
+                .collect();
+            RuleDay {
+                rule_id: rule.rule_id.clone(),
+                matched_ms,
+                pending: pending.len() as u32,
+                pending_ms: pending.iter().map(|s| s.end - s.start).sum(),
+            }
+        })
+        .collect())
 }
 
 /// The blocks of the last `days` days up to `today` that `input`'s conditions match, on their own.
@@ -106,57 +147,6 @@ pub async fn preview(
     })
 }
 
-fn input_of(suggestion: Suggestion) -> RecordingInput {
-    RecordingInput {
-        project_id: suggestion.project_id,
-        spans: vec![Span {
-            start: suggestion.start,
-            end: suggestion.end,
-        }],
-        note: suggestion.note,
-        tag_id: suggestion.tag_id,
-    }
-}
-
-/// Records the suggestion `id` of `day` (`not_found` once it is gone); refused with `overlap` when a
-/// recording took part of its time.
-pub async fn accept(
-    service: &Recordings<'_>,
-    settings: &Settings,
-    day: Day,
-    id: &str,
-) -> AppResult<Change<Recording>> {
-    let suggestion = suggestions_of(service.db, day, settings)
-        .await?
-        .into_iter()
-        .find(|s| s.id == id)
-        .ok_or_else(|| AppError::NotFound("The suggestion is gone".into()))?;
-    service.create(input_of(suggestion), Overlap::Cancel).await
-}
-
-/// Records every suggestion of the rule on `day` as one undoable change.
-pub async fn accept_rule(
-    service: &Recordings<'_>,
-    settings: &Settings,
-    day: Day,
-    rule_id: &str,
-) -> AppResult<Change<Vec<Recording>>> {
-    let found: Vec<Suggestion> = suggestions_of(service.db, day, settings)
-        .await?
-        .into_iter()
-        .filter(|s| s.rule_id == rule_id)
-        .collect();
-    let Some(first) = found.first() else {
-        return Err(AppError::NotFound(
-            "The rule has no suggestions on this day".into(),
-        ));
-    };
-    let label = format!("Accept suggestions of {}", first.rule_name);
-    service
-        .create_all(found.into_iter().map(input_of).collect(), label)
-        .await
-}
-
 #[cfg(test)]
 mod tests {
     use tokio::sync::Mutex;
@@ -165,11 +155,14 @@ mod tests {
     use super::types::RuleField::*;
     use super::types::{Rule, RuleOp};
     use super::*;
-    use crate::db::projects::Project;
+    use crate::db::clients::{self, ClientInput};
+    use crate::db::projects::{self, Project, ProjectInput};
     use crate::db::recordings as stored;
+    use crate::db::recordings::Recording;
     use crate::db::tags;
     use crate::error::ErrorKind;
     use crate::recordings::undo::UndoStack;
+    use crate::recordings::{Overlap, RecordingInput, Recordings, Span};
     use crate::store::settings::Continuity;
     use crate::test_support::{activity, project};
 
@@ -221,6 +214,18 @@ mod tests {
             activity(&self.db, start, Some(end), app, "").await;
         }
 
+        fn input_on(&self, day: Day, from: (i64, i64), to: (i64, i64)) -> RecordingInput {
+            RecordingInput {
+                project_id: self.project.id.clone(),
+                spans: vec![Span {
+                    start: on(day, from.0, from.1),
+                    end: on(day, to.0, to.1),
+                }],
+                note: String::new(),
+                tag_id: None,
+            }
+        }
+
         async fn suggestions(&self, day: Day) -> Vec<Suggestion> {
             suggestions_of(&self.db, day, &self.settings).await.unwrap()
         }
@@ -240,7 +245,7 @@ mod tests {
         w.work(today, "Slack", (9, 0), (10, 0)).await;
         let suggestion = w.suggestions(today).await.remove(0);
 
-        let change = accept(&w.service(), &w.settings, today, &suggestion.id)
+        let change = approve(&w.service(), &w.settings, today, &suggestion.id)
             .await
             .unwrap();
 
@@ -275,9 +280,11 @@ mod tests {
         w.work(today, "Slack", (9, 0), (10, 15)).await;
         let id = w.suggestions(today).await.remove(0).id;
 
-        let change = accept(&w.service(), &w.settings, today, &id).await.unwrap();
+        let change = approve(&w.service(), &w.settings, today, &id)
+            .await
+            .unwrap();
 
-        let accepted = commands::SuggestionAccepted {
+        let accepted = commands::SuggestionApproved {
             duration_ms: change.value.duration(on(today, 23, 0)),
             recording: change.value,
         };
@@ -293,12 +300,14 @@ mod tests {
         w.app_rule("Slack").await;
         w.work(today, "Slack", (9, 0), (10, 0)).await;
         let id = w.suggestions(today).await.remove(0).id;
-        accept(&w.service(), &w.settings, today, &id).await.unwrap();
+        approve(&w.service(), &w.settings, today, &id)
+            .await
+            .unwrap();
 
-        let again = accept(&w.service(), &w.settings, today, &id)
+        let again = approve(&w.service(), &w.settings, today, &id)
             .await
             .unwrap_err();
-        let unknown = accept(&w.service(), &w.settings, today, "nope")
+        let unknown = approve(&w.service(), &w.settings, today, "nope")
             .await
             .unwrap_err();
 
@@ -315,7 +324,9 @@ mod tests {
         w.app_rule("Slack").await;
         w.work(today, "Slack", (9, 0), (10, 0)).await;
         let id = w.suggestions(today).await.remove(0).id;
-        accept(&w.service(), &w.settings, today, &id).await.unwrap();
+        approve(&w.service(), &w.settings, today, &id)
+            .await
+            .unwrap();
 
         w.service().undo().await.unwrap();
 
@@ -333,7 +344,7 @@ mod tests {
         w.work(today, "Code", (11, 0), (12, 0)).await;
         w.work(today, "Slack", (13, 0), (14, 0)).await;
 
-        let change = accept_rule(&w.service(), &w.settings, today, &slack.id)
+        let change = approve_rule(&w.service(), &w.settings, today, &slack.id)
             .await
             .unwrap();
 
@@ -360,7 +371,7 @@ mod tests {
 
         let undone = w.service().undo().await.unwrap();
 
-        assert_eq!(undone.value.as_deref(), Some("Accept suggestions of Slack"));
+        assert_eq!(undone.value.as_deref(), Some("Approve 2 suggestions"));
         assert!(w.recordings().await.is_empty());
         assert_eq!(w.suggestions(today).await.len(), 3);
     }
@@ -371,16 +382,430 @@ mod tests {
         let today = day("2026-01-05");
         let slack = w.app_rule("Slack").await;
 
-        let none = accept_rule(&w.service(), &w.settings, today, &slack.id)
+        let none = approve_rule(&w.service(), &w.settings, today, &slack.id)
             .await
             .unwrap_err();
-        let unknown = accept_rule(&w.service(), &w.settings, today, "nope")
+        let unknown = approve_rule(&w.service(), &w.settings, today, "nope")
             .await
             .unwrap_err();
 
         assert_eq!(none.kind(), ErrorKind::NotFound);
         assert_eq!(unknown.kind(), ErrorKind::NotFound);
         assert!(w.recordings().await.is_empty());
+    }
+
+    /// Slack at 9, Code at 11 and Slack at 13, an hour each, with a rule for each app.
+    async fn three_suggestions(w: &World, today: Day) -> Vec<Suggestion> {
+        w.app_rule("Slack").await;
+        w.app_rule("Code").await;
+        w.work(today, "Slack", (9, 0), (10, 0)).await;
+        w.work(today, "Code", (11, 0), (12, 0)).await;
+        w.work(today, "Slack", (13, 0), (14, 0)).await;
+        w.suggestions(today).await
+    }
+
+    fn ids_of(suggestions: &[Suggestion]) -> Vec<String> {
+        suggestions.iter().map(|s| s.id.clone()).collect()
+    }
+
+    #[tokio::test]
+    async fn approving_listed_suggestions_records_only_those_in_one_undo_step() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let all = three_suggestions(&w, today).await;
+        let ids = vec![all[0].id.clone(), "gone".to_string(), all[2].id.clone()];
+
+        let change = approve_all(&w.service(), &w.settings, today, &ids)
+            .await
+            .unwrap();
+
+        let times: Vec<(Ms, Option<Ms>)> =
+            change.value.iter().map(|r| (r.start(), r.end())).collect();
+        assert_eq!(
+            times,
+            [
+                (on(today, 9, 0), Some(on(today, 10, 0))),
+                (on(today, 13, 0), Some(on(today, 14, 0))),
+            ]
+        );
+        assert_eq!(w.recordings().await, change.value);
+        assert_eq!(ids_of(&w.suggestions(today).await), [all[1].id.clone()]);
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Approve 2 suggestions"));
+        assert!(w.recordings().await.is_empty());
+        assert_eq!(w.suggestions(today).await, all);
+        assert_eq!(w.service().undo().await.unwrap().value, None);
+
+        w.service().redo().await.unwrap();
+
+        assert_eq!(w.recordings().await, change.value);
+    }
+
+    #[tokio::test]
+    async fn approving_one_suggestion_of_a_list_is_labelled_in_the_singular() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let all = three_suggestions(&w, today).await;
+
+        approve_all(&w.service(), &w.settings, today, &[all[1].id.clone()])
+            .await
+            .unwrap();
+
+        let undone = w.service().undo().await.unwrap();
+        assert_eq!(undone.value.as_deref(), Some("Approve suggestion"));
+    }
+
+    #[tokio::test]
+    async fn approving_only_unknown_suggestions_is_not_found_and_records_nothing() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        three_suggestions(&w, today).await;
+
+        let err = approve_all(&w.service(), &w.settings, today, &["gone".into()])
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+        assert!(w.recordings().await.is_empty());
+        assert_eq!(w.service().undo().await.unwrap().value, None);
+    }
+
+    #[tokio::test]
+    async fn approving_an_edited_suggestion_records_the_edit_and_does_not_suggest_the_rest() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.app_rule("Slack").await;
+        w.work(today, "Slack", (9, 0), (10, 0)).await;
+        let suggestion = w.suggestions(today).await.remove(0);
+        let edited = RecordingInput {
+            note: "edited".into(),
+            tag_id: None,
+            ..w.input_on(today, (9, 0), (9, 30))
+        };
+
+        let change = approve_edited(
+            &w.service(),
+            &w.settings,
+            today,
+            &suggestion.id,
+            edited,
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap();
+
+        let recording = change.value;
+        assert_eq!(
+            (
+                recording.note.as_str(),
+                recording.tag_id.clone(),
+                recording.start(),
+                recording.end()
+            ),
+            ("edited", None, on(today, 9, 0), Some(on(today, 9, 30)))
+        );
+        assert!(change.days.contains(&today));
+        assert_eq!(w.recordings().await, [recording.clone()]);
+        assert!(w.suggestions(today).await.is_empty());
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Record 30 min for Portal"));
+        assert!(w.recordings().await.is_empty());
+        assert_eq!(w.suggestions(today).await, [suggestion]);
+        assert_eq!(w.service().undo().await.unwrap().value, None);
+
+        w.service().redo().await.unwrap();
+
+        assert_eq!(w.recordings().await, [recording]);
+        assert!(w.suggestions(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn approving_an_edited_suggestion_that_is_gone_is_not_found() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+
+        let err = approve_edited(
+            &w.service(),
+            &w.settings,
+            today,
+            "gone",
+            w.input_on(today, (9, 0), (9, 30)),
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+        assert!(w.recordings().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn dismissing_returns_how_many_and_skips_unknown_ids() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let all = three_suggestions(&w, today).await;
+        let ids = vec![all[0].id.clone(), "gone".to_string(), all[2].id.clone()];
+
+        let change = dismiss(&w.service(), &w.settings, today, &ids)
+            .await
+            .unwrap();
+
+        assert_eq!(change.value, 2);
+        assert_eq!(change.days, [today]);
+        assert_eq!(ids_of(&w.suggestions(today).await), [all[1].id.clone()]);
+        assert!(w.recordings().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn dismissing_only_unknown_suggestions_is_not_found_and_not_undoable() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let all = three_suggestions(&w, today).await;
+
+        let err = dismiss(&w.service(), &w.settings, today, &["gone".into()])
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+        assert_eq!(w.suggestions(today).await, all);
+        assert_eq!(w.service().undo().await.unwrap().value, None);
+    }
+
+    #[tokio::test]
+    async fn undoing_a_dismissal_brings_the_suggestions_back_and_redoing_removes_them_again() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let all = three_suggestions(&w, today).await;
+        let ids = vec![all[0].id.clone(), all[2].id.clone()];
+        dismiss(&w.service(), &w.settings, today, &ids)
+            .await
+            .unwrap();
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Dismiss 2 suggestions"));
+        assert_eq!(undone.days, [today]);
+        assert_eq!(w.suggestions(today).await, all);
+
+        let redone = w.service().redo().await.unwrap();
+
+        assert_eq!(redone.value.as_deref(), Some("Dismiss 2 suggestions"));
+        assert_eq!(redone.days, [today]);
+        assert_eq!(ids_of(&w.suggestions(today).await), [all[1].id.clone()]);
+    }
+
+    #[tokio::test]
+    async fn dismissing_one_suggestion_is_labelled_in_the_singular() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let all = three_suggestions(&w, today).await;
+        dismiss(&w.service(), &w.settings, today, &[all[0].id.clone()])
+            .await
+            .unwrap();
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Dismiss suggestion"));
+        assert_eq!(w.suggestions(today).await, all);
+    }
+
+    #[tokio::test]
+    async fn a_dismissed_suggestion_stays_gone_after_the_rule_is_edited() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let rule = w.app_rule("Slack").await;
+        w.work(today, "Slack", (9, 0), (10, 0)).await;
+        let id = w.suggestions(today).await.remove(0).id;
+        dismiss(&w.service(), &w.settings, today, &[id])
+            .await
+            .unwrap();
+        assert!(w.suggestions(today).await.is_empty());
+
+        let edited = RuleInput {
+            note: "changed".into(),
+            tag_id: None,
+            ..rule_input(
+                "Slack renamed",
+                &w.project.id,
+                &[(App, RuleOp::Is, "Slack")],
+            )
+        };
+        store::save(&w.db, Some(&rule.id), &edited).await.unwrap();
+
+        assert!(w.suggestions(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_dismissed_suggestion_stays_gone_after_a_recording_over_part_of_it_is_deleted() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.app_rule("Slack").await;
+        w.work(today, "Slack", (9, 0), (10, 0)).await;
+        let id = w.suggestions(today).await.remove(0).id;
+        dismiss(&w.service(), &w.settings, today, &[id])
+            .await
+            .unwrap();
+        let created = w
+            .service()
+            .create(w.input_on(today, (9, 20), (9, 40)), Overlap::Cancel)
+            .await
+            .unwrap()
+            .value;
+        assert!(w.suggestions(today).await.is_empty());
+
+        w.service().delete(&created.id).await.unwrap();
+
+        assert!(w.suggestions(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn activity_added_after_a_dismissed_span_is_still_suggested() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.app_rule("Slack").await;
+        w.work(today, "Slack", (9, 0), (10, 0)).await;
+        let id = w.suggestions(today).await.remove(0).id;
+        dismiss(&w.service(), &w.settings, today, &[id])
+            .await
+            .unwrap();
+
+        w.work(today, "Slack", (10, 0), (11, 0)).await;
+
+        let spans: Vec<(Ms, Ms)> = w
+            .suggestions(today)
+            .await
+            .iter()
+            .map(|s| (s.start, s.end))
+            .collect();
+        assert_eq!(spans, [(on(today, 10, 0), on(today, 11, 0))]);
+    }
+
+    #[tokio::test]
+    async fn a_suggestion_points_at_the_first_card_that_starts_after_it() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.app_rule("Slack").await;
+        w.work(today, "Slack", (9, 0), (10, 0)).await;
+        w.work(today, "Slack", (13, 0), (14, 0)).await;
+        w.service()
+            .create(w.input_on(today, (8, 0), (8, 30)), Overlap::Cancel)
+            .await
+            .unwrap();
+        let later = w
+            .service()
+            .create(w.input_on(today, (11, 0), (12, 0)), Overlap::Cancel)
+            .await
+            .unwrap()
+            .value;
+
+        let next_cards: Vec<Option<String>> = w
+            .suggestions(today)
+            .await
+            .into_iter()
+            .map(|s| s.next_card)
+            .collect();
+
+        assert_eq!(next_cards, [Some(later.id), None]);
+    }
+
+    #[tokio::test]
+    async fn a_suggestion_carries_the_clients_name_and_the_tags_name() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let client = clients::insert(
+            &w.db,
+            ClientInput {
+                name: "Initech".into(),
+                color: String::new(),
+            },
+        )
+        .await
+        .unwrap();
+        projects::update(
+            &w.db,
+            &w.project.id,
+            ProjectInput {
+                client_id: Some(client.id),
+                name: w.project.name.clone(),
+                color: w.project.color.clone(),
+                shade: None,
+                billable: false,
+            },
+        )
+        .await
+        .unwrap();
+        w.app_rule("Slack").await;
+        w.work(today, "Slack", (9, 0), (10, 0)).await;
+
+        let suggestion = w.suggestions(today).await.remove(0);
+
+        assert_eq!(
+            (
+                suggestion.client_name.as_deref(),
+                suggestion.tag_id.as_ref(),
+                suggestion.tag.as_deref()
+            ),
+            (Some("Initech"), Some(&w.tag_id), Some("billing"))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_rules_day_counts_matched_time_under_first_match_and_its_pending_suggestions() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let pid = &w.project.id;
+        let broad = save_rule(&w.db, "Broad", pid, &[(App, RuleOp::Contains, "Cod")]).await;
+        let exact = save_rule(&w.db, "Exact", pid, &[(App, RuleOp::Is, "Code")]).await;
+        let brief = save_rule(&w.db, "Brief", pid, &[(App, RuleOp::Is, "Slack")]).await;
+        w.work(today, "Code", (11, 0), (12, 0)).await;
+        w.work(today, "Slack", (9, 0), (9, 3)).await;
+
+        let days = day_of_rules(&w.db, today, &w.settings).await.unwrap();
+
+        assert_eq!(
+            days,
+            [
+                RuleDay {
+                    rule_id: broad.id.clone(),
+                    matched_ms: 60 * MIN,
+                    pending: 1,
+                    pending_ms: 60 * MIN,
+                },
+                RuleDay {
+                    rule_id: exact.id,
+                    matched_ms: 0,
+                    pending: 0,
+                    pending_ms: 0,
+                },
+                RuleDay {
+                    rule_id: brief.id,
+                    matched_ms: 3 * MIN,
+                    pending: 0,
+                    pending_ms: 0,
+                },
+            ]
+        );
+
+        let id = w.suggestions(today).await.remove(0).id;
+        dismiss(&w.service(), &w.settings, today, &[id])
+            .await
+            .unwrap();
+
+        let after = day_of_rules(&w.db, today, &w.settings).await.unwrap();
+
+        assert_eq!(
+            after[0],
+            RuleDay {
+                rule_id: broad.id,
+                matched_ms: 60 * MIN,
+                pending: 0,
+                pending_ms: 0,
+            }
+        );
     }
 
     #[tokio::test]

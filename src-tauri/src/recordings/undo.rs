@@ -5,7 +5,10 @@ use std::collections::VecDeque;
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::ops::Op;
+use super::ops::{self, Op};
+use super::{Change, Recordings, days_touched};
+use crate::db::time::now_ms;
+use crate::error::AppResult;
 
 const LIMIT: usize = 100;
 
@@ -66,6 +69,45 @@ impl UndoStack {
             undo_label: self.last_done().map(|e| e.label.clone()),
             redo_label: self.last_undone().map(|e| e.label.clone()),
         }
+    }
+}
+
+/// Nothing was undone or redone.
+fn nothing() -> AppResult<Change<Option<String>>> {
+    Ok(Change {
+        value: None,
+        days: Vec::new(),
+    })
+}
+
+impl Recordings<'_> {
+    /// The undone change's label; `None` when there is nothing to undo. A change that would now overlap
+    /// another recording is refused and stays undoable.
+    pub async fn undo(&self) -> AppResult<Change<Option<String>>> {
+        let mut undo = self.undo.lock().await;
+        let Some(entry) = undo.last_done().cloned() else {
+            return nothing();
+        };
+        let inverse = entry.op.inverse();
+        ops::apply(self.db, &inverse).await?;
+        undo.mark_undone();
+        Ok(Change {
+            value: Some(entry.label),
+            days: days_touched(&inverse, now_ms()),
+        })
+    }
+
+    pub async fn redo(&self) -> AppResult<Change<Option<String>>> {
+        let mut undo = self.undo.lock().await;
+        let Some(entry) = undo.last_undone().cloned() else {
+            return nothing();
+        };
+        ops::apply(self.db, &entry.op).await?;
+        undo.mark_redone();
+        Ok(Change {
+            value: Some(entry.label),
+            days: days_touched(&entry.op, now_ms()),
+        })
     }
 }
 

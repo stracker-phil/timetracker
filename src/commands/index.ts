@@ -1,13 +1,15 @@
-import { api, TEXT_SIZES, type Settings, type Suggestion } from "../api";
+import { api, TEXT_SIZES, type Settings } from "../api";
 import { exportBackup, revealDataFolder, showWelcomeAgain } from "../components/settings/actions";
 import { copyReport, copyReportNotes, promptDeleteSavedReport, promptRenameSavedReport, promptSaveReport } from "../components/reports/actions";
 import { VIEWS } from "../components/views";
 import { stepBlock, stepLane } from "../lib/blockFocus";
 import { addDays } from "../lib/day";
+import { sheetEntries } from "../lib/sheet";
 import { fail } from "../state/requests";
 import { TIMELINE_ZOOM, useStore, type View } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, isTextInput, registerCommands, resolveKeydown, setOverrides, type Command } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
+import { registerSuggestionScope, SUGGESTION_COMMANDS } from "./suggestions";
 
 /** The views with a period, which the sidebar's date navigator and P, N, O step. */
 const DATED_VIEWS: View[] = ["day", "week", "month", "reports"];
@@ -23,6 +25,7 @@ export function registerCoreScopes() {
     const parent = DATED_VIEWS.includes(id) ? "dated" : "global";
     registerScope({ id, parent, label, isActive: () => useStore.getState().view === id });
   }
+  registerSuggestionScope();
 }
 
 function saveTextSizes(sizes: (current: Settings) => Pick<Settings, "uiFontSize" | "dataFontSize">) {
@@ -92,23 +95,26 @@ function extendToBlock(by: 1 | -1) {
   s.focusBlock(next);
 }
 
-/** Focuses the next (1) or previous (-1) recording of the shown day by start; from none, the first or last. */
-function stepRecording(by: 1 | -1) {
+/** Focuses the next (1) or previous (-1) timesheet entry of the shown day, a recording or a suggestion; from none, the first or last. */
+function stepEntry(by: 1 | -1) {
   const s = useStore.getState();
   if (s.dayView?.day !== s.day) return;
-  const ids = [...new Set([...s.dayView.recordings].sort((a, b) => a.start - b.start).map((r) => r.id))];
-  if (ids.length === 0) return;
-  const at = s.focusedRecording === null ? -1 : ids.indexOf(s.focusedRecording);
-  const next = at === -1 ? (by === 1 ? ids[0] : ids[ids.length - 1]) : ids[Math.max(0, Math.min(ids.length - 1, at + by))];
+  const entries = sheetEntries(s.dayView);
+  if (entries.length === 0) return;
+  const current = s.focusedRecording ?? s.focusedSuggestion;
+  const at = current === null ? -1 : entries.findIndex((e) => e.id === current);
+  const next = at === -1 ? (by === 1 ? entries[0] : entries[entries.length - 1]) : entries[Math.max(0, Math.min(entries.length - 1, at + by))];
   releaseControlFocus();
   s.focusBlock(null);
   s.setSelection(null);
-  s.focusRecording(next);
+  if (next.kind === "card") s.focusRecording(next.id);
+  else s.focusSuggestion(next.id);
 }
 
 const hasFocusedBlock = () => timelineShown() && useStore.getState().focusedBlock !== null;
 const hasSelection = () => timelineShown() && useStore.getState().selection !== null;
 const hasFocusedRecording = () => timelineShown() && useStore.getState().focusedRecording !== null;
+const hasFocusedSuggestion = () => useStore.getState().focusedSuggestion !== null;
 
 function toggleList() {
   const s = useStore.getState();
@@ -129,21 +135,6 @@ async function newRecording() {
   }
 }
 
-/** The suggestion whose button has the keyboard focus. */
-function focusedSuggestion(): Suggestion | null {
-  const el = document.activeElement;
-  const id = el instanceof HTMLElement ? el.closest<HTMLElement>("[data-suggestion-id]")?.dataset.suggestionId : undefined;
-  if (!id) return null;
-  return shownDayView()?.suggestions.find((s) => s.id === id) ?? null;
-}
-
-function acceptFocusedSuggestion(allOfRule: boolean) {
-  const suggestion = focusedSuggestion();
-  if (!suggestion) return;
-  const s = useStore.getState();
-  void (allOfRule ? s.acceptRuleSuggestions(suggestion.ruleId) : s.acceptSuggestion(suggestion));
-}
-
 /** Edits the focused recording, else opens the editor for the selection. */
 function openRecording() {
   const s = useStore.getState();
@@ -156,6 +147,7 @@ function clearDayFocus() {
   s.focusBlock(null);
   s.setSelection(null);
   s.focusRecording(null);
+  s.focusSuggestion(null);
 }
 
 /** Moves the start and end of the focused recording's first span of the day by whole snap steps; Rust knows the step. */
@@ -267,9 +259,9 @@ const APP_COMMANDS: Command[] = [
   { id: "day.settings", title: "Timeline settings", scope: "day", menu: true, run: () => useStore.getState().openDialog({ type: "timelineSettings" }) },
   { id: "activity.deleteDay", title: "Delete activity for this day…", scope: "day", menu: true, when: () => !!shownDayView(), run: () => openDeleteActivity(false) },
   { id: "activity.deleteRange", title: "Delete activity in a range…", scope: "day", menu: true, when: () => !!shownDayView(), run: () => openDeleteActivity(true) },
-  { id: "day.clearFocus", title: "Clear selection", scope: "day", defaultBinding: "Escape", when: () => hasFocusedBlock() || hasSelection() || hasFocusedRecording(), run: clearDayFocus },
-  { id: "recording.next", title: "Next recording", scope: "day", defaultBinding: "]", menu: true, when: timelineShown, run: () => stepRecording(1) },
-  { id: "recording.prev", title: "Previous recording", scope: "day", defaultBinding: "[", menu: true, when: timelineShown, run: () => stepRecording(-1) },
+  { id: "day.clearFocus", title: "Clear selection", scope: "day", defaultBinding: "Escape", when: () => hasFocusedBlock() || hasSelection() || hasFocusedRecording() || hasFocusedSuggestion(), run: clearDayFocus },
+  { id: "recording.next", title: "Next recording or suggestion", scope: "day", defaultBinding: "]", menu: true, when: timelineShown, run: () => stepEntry(1) },
+  { id: "recording.prev", title: "Previous recording or suggestion", scope: "day", defaultBinding: "[", menu: true, when: timelineShown, run: () => stepEntry(-1) },
   { id: "recording.open", title: "Record selection or edit recording", scope: "day", defaultBinding: "Enter", when: () => hasSelection() || hasFocusedRecording(), run: openRecording },
   { id: "recording.new", title: "New recording…", scope: "global", menu: true, run: newRecording },
   { id: "recording.create", title: "Record selection", scope: "day", menu: true, when: hasSelection, run: () => (useStore.getState().focusRecording(null), openRecording()) },
@@ -285,8 +277,7 @@ const APP_COMMANDS: Command[] = [
   { id: "recording.copyToNextDay", title: "Copy recording to the next day", scope: "day", defaultBinding: "Alt+Shift+ArrowRight", menu: true, when: hasFocusedRecording, run: () => recordingToDay(1, true) },
   { id: "timer.start", title: "Start timer…", scope: "global", defaultBinding: "Mod+T", menu: true, run: () => void api.timerPickerOpen() },
   { id: "timer.stop", title: "Stop timer", scope: "global", defaultBinding: "Mod+Shift+.", menu: true, when: timerRuns, run: () => void useStore.getState().stopTimer() },
-  { id: "suggestion.accept", title: "Accept suggestion", scope: "day", menu: true, when: () => focusedSuggestion() !== null, run: () => acceptFocusedSuggestion(false) },
-  { id: "suggestion.acceptRule", title: "Accept all suggestions of the rule", scope: "day", menu: true, when: () => focusedSuggestion() !== null, run: () => acceptFocusedSuggestion(true) },
+  ...SUGGESTION_COMMANDS,
   { id: "timer.toggle", title: "Start or stop timer", scope: "global", run: () => (timerRuns() ? void useStore.getState().stopTimer() : void api.timerPickerOpen()) },
   { id: "edit.undo", title: "Undo recording change", scope: "global", defaultBinding: "Mod+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(false) },
   { id: "edit.redo", title: "Redo recording change", scope: "global", defaultBinding: "Mod+Shift+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(true) },

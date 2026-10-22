@@ -6,7 +6,8 @@ import userEvent from "@testing-library/user-event";
 
 import { api } from "../api";
 import { resetStore, useStore } from "../state/store";
-import { at, DAY, dayView, recordingBlock } from "../test/dayFixtures";
+import { at, DAY, dayView, recordingBlock, timesheetCard } from "../test/dayFixtures";
+import { suggestion } from "../test/ruleFixtures";
 import { settings } from "../test/settings";
 import { conflicts, getCommand, handleKeydown, installCommands, runCommand, runMenuCommand } from "./index";
 
@@ -94,7 +95,7 @@ describe("recording commands", () => {
       resetStore({
         view: "day",
         day: DAY,
-        dayView: dayView({ recordings: [recordingBlock({ id: "r2", start: at("11:00"), end: at("12:00") }), recordingBlock({ id: "r1" })] }),
+        dayView: dayView({ timesheet: [timesheetCard({ id: "r1" }), timesheetCard({ id: "r2", start: at("11:00"), end: at("12:00") })] }),
       });
     });
 
@@ -121,6 +122,44 @@ describe("recording commands", () => {
       expect(state().focusedRecording).toBe("r1");
     });
 
+    describe("with suggestions between the recordings", () => {
+      const between = suggestion({ start: at("10:00"), end: at("10:30"), nextCard: "r2" });
+      const last = suggestion({ ruleId: "rule-2", start: at("13:00"), end: at("13:30"), nextCard: null });
+
+      beforeEach(() => {
+        resetStore({
+          view: "day",
+          day: DAY,
+          dayView: dayView({ timesheet: [timesheetCard({ id: "r1" }), timesheetCard({ id: "r2", start: at("11:00"), end: at("12:00") })], suggestions: [between, last] }),
+        });
+      });
+
+      it("] visits recordings and suggestions in the order of the timesheet", async () => {
+        const visited: (string | null)[] = [];
+        for (let i = 0; i < 4; i++) {
+          await press("]");
+          visited.push(state().focusedRecording ?? state().focusedSuggestion);
+        }
+        expect(visited).toEqual(["r1", between.id, "r2", last.id]);
+      });
+
+      it("[ walks back from the last suggestion", async () => {
+        await press("[[");
+        expect(state().focusedSuggestion).toBe(last.id);
+        await press("[[");
+        expect(state().focusedRecording).toBe("r2");
+      });
+
+      it("leaves only one of the two focused", async () => {
+        await press("]]");
+        expect(state().focusedSuggestion).toBe(between.id);
+        expect(state().focusedRecording).toBeNull();
+        await press("]");
+        expect(state().focusedSuggestion).toBeNull();
+        expect(state().focusedRecording).toBe("r2");
+      });
+    });
+
     it("N steps the day and leaves the focused recording alone", async () => {
       state().focusRecording("r1");
       await press("n");
@@ -135,7 +174,8 @@ describe("recording commands", () => {
     const between = recordingBlock({ id: "r2", start: at("11:00"), end: at("12:00") });
 
     beforeEach(() => {
-      resetStore({ view: "day", day: DAY, settings: settings(), dayView: dayView({ recordings: [morning, between, evening] }) });
+      const cards = [timesheetCard({ id: "r1", start: at("09:00"), end: at("13:30") }), timesheetCard({ id: "r2", start: at("11:00"), end: at("12:00") })];
+      resetStore({ view: "day", day: DAY, settings: settings(), dayView: dayView({ recordings: [morning, between, evening], timesheet: cards }) });
     });
 
     async function press(keys: string) {

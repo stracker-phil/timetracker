@@ -81,6 +81,7 @@ A backup is the JSON export below, or a copy of the folder while the app is not 
 | `saved_reports` | `id`, `name`, `filter` (a `ReportFilter` as JSON), `position` |
 | `rules` | `id`, `name`, `project_id`, `position` (the lowest wins), `enabled`, `note`, `tag_id` (as for recordings) |
 | `rule_conditions` | `id`, `rule_id` (deleting the rule deletes them), `position`, `field`, `op`, `value` (the serde names of `RuleField` and `RuleOp`) |
+| `dismissed_suggestions` | time a rule suggests nothing for again: `rule_id` (deleting the rule deletes them), `day` (local `YYYY-MM-DD`), `start`, `"end"`; key `(rule_id, start, "end")`, indexed on `day`. Review state, not in backups |
 
 `end` is a SQL keyword, so queries quote it (`"end"`). `activities` and `away_spans` use AUTOINCREMENT so a
 deleted id is never reused and an undo can restore rows by id.
@@ -262,6 +263,10 @@ as an info toast: "One tag per recording: 3 recordings lost tags (each kept its 
 `0007_recording_spans.sql` ([ADR 0020](adr/0020-recordings-have-spans.md)) adds `recording_spans`, gives every
 recording one span with its `start` and `end` under the recording's own id, and drops `recordings.start`,
 `recordings.end` and the `recordings_start` index. Nothing is lost, so it needs no backup.
+
+`0009_dismissed_suggestions.sql` adds `dismissed_suggestions` (repository `db/dismissed.rs`: `list_for_day`,
+`put_on`, `remove_on`; `put_on` skips a rule that no longer exists, so redoing a dismissal after the rule was
+deleted writes nothing).
 
 ## Tests
 

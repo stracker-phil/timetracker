@@ -18,12 +18,16 @@ pub use types::*;
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
-    /// Settings saved before the mode and scheme split (`theme`, `lightScheme`, `darkScheme`) load with the
-    /// defaults; those keys are dropped on the next save.
+    /// The look while macOS is in light mode; part 1's scheme names (`ayu-light`, …) load as the default.
     #[serde(deserialize_with = "lenient")]
-    pub mode: Mode,
-    #[serde(deserialize_with = "lenient")]
-    pub scheme: Scheme,
+    pub light_scheme: Scheme,
+    /// The look while macOS is in dark mode.
+    #[serde(deserialize_with = "lenient_dark_scheme")]
+    pub dark_scheme: Scheme,
+    /// The single `scheme` of the appearance before a scheme per mode; read as `light_scheme`, never written.
+    #[serde(rename = "scheme", skip_serializing, deserialize_with = "lenient")]
+    #[ts(skip)]
+    pub(crate) legacy_scheme: Option<Scheme>,
     pub accent: String,
     /// Chrome: sidebar, labels, buttons (also scales rem).
     pub ui_font_size: u8,
@@ -59,8 +63,9 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            mode: Mode::System,
-            scheme: Scheme::Default,
+            light_scheme: Scheme::Default,
+            dark_scheme: Scheme::Dark,
+            legacy_scheme: None,
             accent: "orange".into(),
             ui_font_size: 13,
             data_font_size: 12,
@@ -84,6 +89,9 @@ impl Settings {
     /// Clamps every value into a usable range, so a hand-edited file can't break the app.
     pub fn sanitized(mut self) -> Self {
         let d = Settings::default();
+        if let Some(scheme) = self.legacy_scheme.take() {
+            self.light_scheme = scheme;
+        }
         if !is_accent(&self.accent) {
             self.accent = d.accent;
         }
@@ -145,6 +153,13 @@ impl Settings {
         }
         Ok(self)
     }
+}
+
+/// `lenient`, but an unknown value falls back to the dark-mode default, `Dark`.
+fn lenient_dark_scheme<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Scheme, D::Error> {
+    lenient::<D, Option<Scheme>>(deserializer).map(|scheme| scheme.unwrap_or(Scheme::Dark))
 }
 
 /// Trimmed, lower case, without blanks and repeats; `shape` may rewrite or drop an entry.
@@ -616,8 +631,8 @@ mod tests {
     fn known_accent_and_appearance_are_kept() {
         let kept = settings(|s| {
             s.accent = "teal".into();
-            s.mode = Mode::Dark;
-            s.scheme = Scheme::Light;
+            s.light_scheme = Scheme::Light;
+            s.dark_scheme = Scheme::Default;
         });
         assert_eq!(kept.clone().sanitized(), kept);
     }
@@ -663,23 +678,23 @@ mod tests {
     }
 
     #[test]
-    fn mode_and_scheme_round_trip_as_lowercase_camel_case_json() {
-        for (mode, scheme, mode_json, scheme_json) in [
-            (Mode::System, Scheme::Default, "system", "default"),
-            (Mode::Light, Scheme::Light, "light", "light"),
-            (Mode::Dark, Scheme::Dark, "dark", "dark"),
+    fn schemes_round_trip_as_lowercase_camel_case_json() {
+        for (light, dark, light_json, dark_json) in [
+            (Scheme::Default, Scheme::Light, "default", "light"),
+            (Scheme::Light, Scheme::Dark, "light", "dark"),
+            (Scheme::Dark, Scheme::Default, "dark", "default"),
         ] {
             let original = settings(|s| {
-                s.mode = mode;
-                s.scheme = scheme;
+                s.light_scheme = light;
+                s.dark_scheme = dark;
             });
 
             let value = serde_json::to_value(&original).unwrap();
 
-            assert_eq!(value["mode"], json!(mode_json));
-            assert_eq!(value["scheme"], json!(scheme_json));
+            assert_eq!(value["lightScheme"], json!(light_json));
+            assert_eq!(value["darkScheme"], json!(dark_json));
             let back: Settings = serde_json::from_value(value).unwrap();
-            assert_eq!(back, original, "{mode_json}/{scheme_json}");
+            assert_eq!(back, original, "{light_json}/{dark_json}");
         }
     }
 
@@ -694,8 +709,8 @@ mod tests {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
             json!({
-                "mode": "system",
-                "scheme": "default",
+                "lightScheme": "default",
+                "darkScheme": "dark",
                 "accent": "orange",
                 "uiFontSize": 13,
                 "dataFontSize": 12,

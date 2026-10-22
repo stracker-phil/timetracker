@@ -1,11 +1,14 @@
-//! Every change to recordings is an `Op` with an exact inverse, applied in one transaction (ADR 0010).
+//! Every change to recordings, and to the dismissed suggestions, is an `Op` with an exact inverse, applied in
+//! one transaction (ADR 0010).
 
 use std::collections::HashSet;
 
 use sqlx::SqliteConnection;
 
 use crate::db::Db;
+use crate::db::dismissed::{self, Dismissal};
 use crate::db::recordings::{self, Recording};
+use crate::db::time::Day;
 use crate::error::{AppError, AppResult};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,6 +22,12 @@ pub enum Op {
     },
     Delete {
         recording: Recording,
+    },
+    Dismiss {
+        dismissal: Dismissal,
+    },
+    Undismiss {
+        dismissal: Dismissal,
     },
     /// Applied in order; a replace is trims and deletes followed by the new recording.
     Batch {
@@ -40,6 +49,12 @@ impl Op {
                 before: after.clone(),
                 after: before.clone(),
             },
+            Op::Dismiss { dismissal } => Op::Undismiss {
+                dismissal: dismissal.clone(),
+            },
+            Op::Undismiss { dismissal } => Op::Dismiss {
+                dismissal: dismissal.clone(),
+            },
             Op::Batch { label, ops } => Op::Batch {
                 label: label.clone(),
                 ops: ops.iter().rev().map(Op::inverse).collect(),
@@ -52,7 +67,7 @@ impl Op {
         match self {
             Op::Create { recording } => vec![recording],
             Op::Update { after, .. } => vec![after],
-            Op::Delete { .. } => Vec::new(),
+            Op::Delete { .. } | Op::Dismiss { .. } | Op::Undismiss { .. } => Vec::new(),
             Op::Batch { ops, .. } => ops.iter().flat_map(Op::written).collect(),
         }
     }
@@ -62,7 +77,17 @@ impl Op {
         match self {
             Op::Create { recording } | Op::Delete { recording } => vec![recording],
             Op::Update { before, after } => vec![before, after],
+            Op::Dismiss { .. } | Op::Undismiss { .. } => Vec::new(),
             Op::Batch { ops, .. } => ops.iter().flat_map(Op::recordings).collect(),
+        }
+    }
+
+    /// The days whose dismissed suggestions the op changes.
+    pub fn dismissal_days(&self) -> Vec<Day> {
+        match self {
+            Op::Dismiss { dismissal } | Op::Undismiss { dismissal } => vec![dismissal.day],
+            Op::Batch { ops, .. } => ops.iter().flat_map(Op::dismissal_days).collect(),
+            _ => Vec::new(),
         }
     }
 }
@@ -84,6 +109,8 @@ async fn run(conn: &mut SqliteConnection, op: &Op) -> AppResult<()> {
             after: recording, ..
         } => recordings::put_on(conn, recording).await,
         Op::Delete { recording } => recordings::remove_on(conn, &recording.id).await,
+        Op::Dismiss { dismissal } => dismissed::put_on(conn, dismissal).await,
+        Op::Undismiss { dismissal } => dismissed::remove_on(conn, dismissal).await,
         Op::Batch { ops, .. } => {
             for op in ops {
                 Box::pin(run(conn, op)).await?;
@@ -129,6 +156,8 @@ mod tests {
     use crate::db::recordings::{NewRecording, RecordingSpan};
     use crate::error::ErrorKind;
     use crate::recordings::testing::*;
+    use crate::rules::testing::save_rule;
+    use crate::rules::types::{RuleField, RuleOp};
     use crate::test_support;
 
     fn create(recording: &Recording) -> Op {
@@ -147,6 +176,27 @@ mod tests {
         Op::Update {
             before: before.clone(),
             after: after.clone(),
+        }
+    }
+
+    fn dismissal(rule_id: &str, start: i64, end: i64) -> Dismissal {
+        Dismissal {
+            rule_id: rule_id.into(),
+            day: Day::of(at(12, 0)),
+            start,
+            end,
+        }
+    }
+
+    fn dismiss(dismissal: &Dismissal) -> Op {
+        Op::Dismiss {
+            dismissal: dismissal.clone(),
+        }
+    }
+
+    fn undismiss(dismissal: &Dismissal) -> Op {
+        Op::Undismiss {
+            dismissal: dismissal.clone(),
         }
     }
 
@@ -201,6 +251,7 @@ mod tests {
     #[test]
     fn the_inverse_of_each_op_undoes_it() {
         let (a, b, c) = (row("a", 0, 10), row("b", 20, 30), row("c", 40, 50));
+        let d = dismissal("rule", 60, 70);
         let moved = Recording {
             updated_at: 3_000,
             ..retimed(&a, 5, 10)
@@ -209,10 +260,17 @@ mod tests {
             ("create", create(&a), delete(&a)),
             ("delete", delete(&a), create(&a)),
             ("update", update(&a, &moved), update(&moved, &a)),
+            ("dismiss", dismiss(&d), undismiss(&d)),
+            ("undismiss", undismiss(&d), dismiss(&d)),
             (
                 "batch",
                 batch(vec![delete(&b), update(&a, &moved), create(&c)]),
                 batch(vec![delete(&c), update(&moved, &a), create(&b)]),
+            ),
+            (
+                "batch with a dismissal",
+                batch(vec![create(&c), dismiss(&d)]),
+                batch(vec![undismiss(&d), delete(&c)]),
             ),
         ];
         for (name, op, inverse) in cases {
@@ -315,6 +373,36 @@ mod tests {
 
         apply(&w.db, &op.inverse()).await.unwrap();
         assert_eq!(w.rows().await, before);
+    }
+
+    #[tokio::test]
+    async fn applying_a_dismissal_and_then_its_inverse_leaves_no_trace() {
+        let w = World::new().await;
+        let conditions = [(RuleField::App, RuleOp::Is, "Slack")];
+        let rule = save_rule(&w.db, "Slack", &w.project.id, &conditions).await;
+        let d = dismissal(&rule.id, at(9, 0), at(10, 0));
+        let listed = || dismissed::list_for_day(&w.db, d.day);
+
+        apply(&w.db, &dismiss(&d)).await.unwrap();
+        assert_eq!(listed().await.unwrap(), [d.clone()]);
+
+        apply(&w.db, &dismiss(&d).inverse()).await.unwrap();
+        assert!(listed().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn dismissing_for_a_rule_that_is_gone_applies_without_writing() {
+        let w = World::new().await;
+        let d = dismissal("gone", at(9, 0), at(10, 0));
+
+        apply(&w.db, &dismiss(&d)).await.unwrap();
+
+        assert!(
+            dismissed::list_for_day(&w.db, d.day)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]

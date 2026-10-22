@@ -24,7 +24,7 @@ export function syncMenu() {
   api.menuSync(state).catch(() => (sent = ""));
 }
 
-/** Keeps the menu in step with the store and with the keyboard focus (a focused suggestion, a text field). */
+/** Keeps the menu in step with the store and with the keyboard focus (a text field). */
 export function installMenuSync(): () => void {
   sent = "";
   const onFocus = () => queueMicrotask(syncMenu);

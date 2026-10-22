@@ -3,19 +3,8 @@ use ts_rs::TS;
 
 use super::serde_helpers::{lenient, present};
 
-/// Light or dark; `System` follows macOS.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "lowercase")]
-pub enum Mode {
-    #[default]
-    System,
-    Light,
-    Dark,
-}
-
-/// The light-mode look: `Default` has a dark sidebar beside light content, `Light` is all light, `Dark`
-/// is all dark. In dark mode the window is dark whatever the scheme.
+/// A look for one macOS mode: `Default` has a dark sidebar beside light content, `Light` is all light,
+/// `Dark` is all dark.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "lowercase")]

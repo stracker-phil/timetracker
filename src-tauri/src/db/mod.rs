@@ -6,6 +6,7 @@ pub mod away;
 pub mod backup;
 pub mod clients;
 pub mod commands;
+pub mod dismissed;
 pub mod one_tag;
 pub mod projects;
 pub mod recordings;

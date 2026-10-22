@@ -20,13 +20,6 @@ const checked = () => menuState().checked;
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function focusSuggestion(id: string) {
-  const button = document.body.appendChild(document.createElement("button"));
-  button.dataset.suggestionId = id;
-  button.focus();
-  return button;
-}
-
 describe("the native menu list", () => {
   const source = readFileSync("src-tauri/src/menu/items.rs", "utf8");
   const list = source.slice(source.indexOf("pub const MENU_ITEMS"), source.indexOf("];", source.indexOf("pub const MENU_ITEMS")));
@@ -174,15 +167,39 @@ describe("menuState", () => {
 
     beforeEach(() => resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed] }) }));
 
-    it("enables the accept items while a suggestion's button has the focus", () => {
-      expect(enabled()).not.toContain("suggestion.accept");
-      focusSuggestion(proposed.id);
-      expect(enabled()).toEqual(expect.arrayContaining(["suggestion.accept", "suggestion.acceptRule"]));
+    const FOCUSED = ["suggestion.approve", "suggestion.edit", "suggestion.dismiss", "suggestion.approveRule"];
+    const ALL = ["suggestion.approveAll", "suggestion.dismissAll"];
+
+    it("enables the items of one suggestion only while that suggestion is focused", () => {
+      expect(enabled().filter((id) => FOCUSED.includes(id))).toEqual([]);
+      state().focusSuggestion(proposed.id);
+      expect(enabled()).toEqual(expect.arrayContaining(FOCUSED));
     });
 
-    it("keeps them disabled for a focused button of a suggestion the day does not hold", () => {
-      focusSuggestion("other:1:2");
-      expect(enabled()).not.toContain("suggestion.accept");
+    it("keeps them disabled for a focused suggestion the day does not hold", () => {
+      state().focusSuggestion("other:1:2");
+      expect(enabled().filter((id) => FOCUSED.includes(id))).toEqual([]);
+    });
+
+    it("keeps them disabled once a selection takes the focus", () => {
+      state().focusSuggestion(proposed.id);
+      state().setSelection({ start: at("09:00"), end: at("10:00"), blockIds: [] });
+      expect(enabled().filter((id) => FOCUSED.includes(id))).toEqual([]);
+    });
+
+    it("enables Approve all and Dismiss all while the day has suggestions, focused or not", () => {
+      expect(enabled()).toEqual(expect.arrayContaining(ALL));
+    });
+
+    it("disables Approve all and Dismiss all on a day without suggestions", () => {
+      resetStore({ view: "day", day: DAY, dayView: dayView() });
+      expect(enabled().filter((id) => ALL.includes(id))).toEqual([]);
+    });
+
+    it("disables all of them outside the Day view", () => {
+      state().focusSuggestion(proposed.id);
+      state().setView("week");
+      expect(enabled().filter((id) => id.startsWith("suggestion."))).toEqual([]);
     });
   });
 });
@@ -233,17 +250,15 @@ describe("menu sync", () => {
     expect(mocked.menuSync).toHaveBeenCalledWith(expect.objectContaining({ enabled: expect.arrayContaining(["projects.new"]) }));
   });
 
-  it("follows the keyboard focus onto and off a suggestion", async () => {
+  it("follows the focus onto and off a suggestion", () => {
     const proposed = suggestion();
     resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed] }) });
     stop = installMenuSync();
     mocked.menuSync.mockClear();
-    const button = focusSuggestion(proposed.id);
-    await flush();
-    expect(mocked.menuSync).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: expect.arrayContaining(["suggestion.accept"]) }));
-    button.blur();
-    await flush();
-    expect(mocked.menuSync.mock.lastCall?.[0].enabled).not.toContain("suggestion.accept");
+    state().focusSuggestion(proposed.id);
+    expect(mocked.menuSync).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: expect.arrayContaining(["suggestion.approve"]) }));
+    state().focusSuggestion(null);
+    expect(mocked.menuSync.mock.lastCall?.[0].enabled).not.toContain("suggestion.approve");
   });
 
   it("stops following once uninstalled", () => {

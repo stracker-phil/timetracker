@@ -8,7 +8,7 @@ import { dataInfo } from "../test/data";
 import { at, DAY, dayView } from "../test/dayFixtures";
 import { suggestion } from "../test/ruleFixtures";
 import { settings } from "../test/settings";
-import { allCommands, installCommands, runCommand, runMenuCommand } from "./index";
+import { allCommands, conflicts, installCommands, runCommand, runMenuCommand } from "./index";
 import { menuState } from "./menu";
 
 const mocked = vi.mocked(api, true);
@@ -94,32 +94,55 @@ describe("suggestion commands", () => {
     installCommands();
   });
 
-  afterEach(() => {
-    document.body.innerHTML = "";
+  it("suggestion.approve records the focused suggestion on the shown day", async () => {
+    state().focusSuggestion(proposed.id);
+    expect(runMenuCommand("suggestion.approve")).toBe(true);
+    await vi.waitFor(() => expect(mocked.suggestionApprove).toHaveBeenCalledWith(DAY, proposed.id));
+    expect(mocked.suggestionApproveRule).not.toHaveBeenCalled();
   });
 
-  function focusSuggestion() {
-    const button = document.body.appendChild(document.createElement("button"));
-    button.dataset.suggestionId = proposed.id;
-    button.focus();
-  }
-
-  it("suggestion.accept records the focused suggestion on the shown day", async () => {
-    focusSuggestion();
-    expect(runMenuCommand("suggestion.accept")).toBe(true);
-    await vi.waitFor(() => expect(mocked.suggestionAccept).toHaveBeenCalledWith(DAY, proposed.id));
-    expect(mocked.suggestionsAcceptRule).not.toHaveBeenCalled();
+  it("suggestion.approveRule records every suggestion of the focused one's rule", async () => {
+    state().focusSuggestion(proposed.id);
+    expect(runMenuCommand("suggestion.approveRule")).toBe(true);
+    await vi.waitFor(() => expect(mocked.suggestionApproveRule).toHaveBeenCalledWith(DAY, "rule-slack"));
+    expect(mocked.suggestionApprove).not.toHaveBeenCalled();
   });
 
-  it("suggestion.acceptRule records every suggestion of the focused one's rule", async () => {
-    focusSuggestion();
-    expect(runMenuCommand("suggestion.acceptRule")).toBe(true);
-    await vi.waitFor(() => expect(mocked.suggestionsAcceptRule).toHaveBeenCalledWith(DAY, "rule-slack"));
-    expect(mocked.suggestionAccept).not.toHaveBeenCalled();
+  it("suggestion.edit opens the editor on the focused suggestion", () => {
+    state().focusSuggestion(proposed.id);
+    expect(runMenuCommand("suggestion.edit")).toBe(true);
+    expect(state().editor).toMatchObject({ mode: "create", suggestion: { id: proposed.id, ruleName: proposed.ruleName } });
   });
 
-  it.each(["suggestion.accept", "suggestion.acceptRule"])("%s does not run without a focused suggestion", (id) => {
+  it("suggestion.dismiss dismisses the focused suggestion", async () => {
+    state().focusSuggestion(proposed.id);
+    expect(runMenuCommand("suggestion.dismiss")).toBe(true);
+    await vi.waitFor(() => expect(mocked.suggestionsDismiss).toHaveBeenCalledWith(DAY, [proposed.id]));
+  });
+
+  it("suggestion.approveAll approves every suggestion of the shown day without a focus", async () => {
+    const other = suggestion({ ruleId: "rule-other", start: at("11:00"), end: at("11:30") });
+    resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed, other] }) });
+    expect(runMenuCommand("suggestion.approveAll")).toBe(true);
+    await vi.waitFor(() => expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [proposed.id, other.id]));
+  });
+
+  it("suggestion.dismissAll dismisses every suggestion of the shown day", async () => {
+    expect(runMenuCommand("suggestion.dismissAll")).toBe(true);
+    await vi.waitFor(() => expect(mocked.suggestionsDismiss).toHaveBeenCalledWith(DAY, [proposed.id]));
+  });
+
+  it.each(["suggestion.approve", "suggestion.edit", "suggestion.dismiss", "suggestion.approveRule"])("%s does not run without a focused suggestion", (id) => {
     expect(runMenuCommand(id)).toBe(false);
+  });
+
+  it.each(["suggestion.approveAll", "suggestion.dismissAll"])("%s does not run on a day without suggestions", (id) => {
+    resetStore({ view: "day", day: DAY, dayView: dayView() });
+    expect(runMenuCommand(id)).toBe(false);
+  });
+
+  it("shares no default binding with the commands of overlapping scopes", () => {
+    expect(conflicts().map((c) => [c.binding, c.a.id, c.b.id])).toEqual([]);
   });
 });
 

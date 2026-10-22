@@ -1,5 +1,5 @@
 // Must not import the store or "../api" at runtime: apiMock.ts imports this file while the api module is mocked.
-import type { Condition, Rule, RulePreview, Suggestion } from "../api/types";
+import type { Condition, Rule, RuleDay, RulePreview, Suggestion } from "../api/types";
 import { at, block } from "./dayFixtures";
 
 /** An enabled rule `app is Slack` for the default project; `patch` overrides fields. */
@@ -20,14 +20,23 @@ export function suggestion(patch: Partial<Suggestion> = {}): Suggestion {
     ruleName: "Slack",
     projectId: "project-1",
     projectName: "Website",
+    clientName: null,
     color: "blue",
     shade: 0,
     start,
     end,
+    durationMs: end - start,
     note: "",
     tagId: null,
+    tag: null,
+    nextCard: null,
     ...patch,
   };
+}
+
+/** Today of the default rule without matches; `patch` overrides fields. */
+export function ruleDay(patch: Partial<RuleDay> = {}): RuleDay {
+  return { ruleId: "rule-1", matchedMs: 0, pending: 0, pendingMs: 0, ...patch };
 }
 
 /** A preview without hits; `patch` overrides fields. */

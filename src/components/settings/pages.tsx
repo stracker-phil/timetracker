@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api, BUNDLED_FONTS, LOG_LEVELS, TEXT_SIZES, toAppError, type DataInfo, type LogLevel, type Scheme } from "../../api";
 import { copyText } from "../../lib/clipboard";
 import { capitalize, formatBytes, formatCount, formatDay } from "../../lib/format";
-import { lightModeLook } from "../../lib/theme";
+import { schemeLook, systemIsDark, type Tone } from "../../lib/theme";
 import { useApiResult } from "../../lib/useApiResult";
 import { registerSettingsPage, type SettingsPageProps } from "../../registry/settingsPages";
 import { fail } from "../../state/requests";
@@ -20,12 +20,12 @@ import { TimelinePage } from "./TimelinePage";
 
 const SCHEME_LABELS: Record<Scheme, string> = { default: "Default", light: "Light", dark: "Dark" };
 
-/** One tile per scheme: a miniature window in the scheme's light-mode look. */
-function SchemePicker({ value, onChange }: { value: Scheme; onChange: (scheme: Scheme) => void }) {
+/** One tile per scheme: a miniature window in the scheme's look. */
+function SchemePicker({ label, value, onChange }: { label: string; value: Scheme; onChange: (scheme: Scheme) => void }) {
   return (
-    <div className="scheme-picker" role="group" aria-label="Scheme">
+    <div className="scheme-picker" role="group" aria-label={label}>
       {(Object.keys(SCHEME_LABELS) as Scheme[]).map((id) => {
-        const look = lightModeLook(id);
+        const look = schemeLook(id);
         return (
           <button key={id} type="button" className="scheme-option" aria-pressed={value === id} onClick={() => onChange(id)}>
             <span className="scheme-tile" data-content={look.content} data-sidebar={look.sidebar} aria-hidden="true">
@@ -44,13 +44,17 @@ function SchemePicker({ value, onChange }: { value: Scheme; onChange: (scheme: S
   );
 }
 
+const SCHEME_KEYS = { light: "lightScheme", dark: "darkScheme" } as const;
+
 function AppearancePage({ s, set }: SettingsPageProps) {
+  const [mode, setMode] = useState<Tone>(() => (systemIsDark() ? "dark" : "light"));
+  const key = SCHEME_KEYS[mode];
   return (
     <>
       <Group title="Look">
-        <Segmented label="Mode" description="System follows macOS." options={["light", "dark", "system"] as const} value={s.mode} onChange={(mode) => set({ mode })} />
-        <Row label="Scheme" description="The light-mode look. In dark mode the whole window is dark." stacked>
-          <SchemePicker value={s.scheme} onChange={(scheme) => set({ scheme })} />
+        <Segmented label="Mode" description="Pick a scheme for each macOS mode." options={["light", "dark"] as const} value={mode} onChange={setMode} />
+        <Row label="Scheme" description={`Used while macOS is in ${mode} mode.`} stacked>
+          <SchemePicker label={`${capitalize(mode)} mode scheme`} value={s[key]} onChange={(scheme) => set({ [key]: scheme })} />
         </Row>
         <Row label="Accent" description="Buttons, links, selection and focus.">
           <AccentSwatches value={s.accent} onChange={(accent) => set({ accent })} />

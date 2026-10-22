@@ -6,6 +6,9 @@ Accepted (2026-10-22), implemented. Supersedes in part [0016](0016-color-schemes
 schemes and the light and dark scheme settings. 0016's rule that palettes are complete token sets and that
 no color literal appears outside them stays.
 
+Superseded in part by [0022](0022-a-scheme-per-system-mode.md): the Mode setting, the single scheme and the
+dark-mode rule.
+
 ## Context
 
 Part 1 copied DataBee's eight code-editor schemes (Ayu, Monokai, Nord, Solarized, …) with one setting for

@@ -1,6 +1,7 @@
 import { api, toAppError, type Overlap, type Recording, type RecordingInput, type RecordingPatch, type SnapEdge, type Span, type UndoStatus } from "../../api";
 import { formatDuration } from "../../lib/format";
 import { recordedMs } from "../../lib/recordings";
+import { focusCleared } from "../focus";
 import { fail } from "../requests";
 import type { Slice, Store } from "../store";
 
@@ -31,8 +32,11 @@ export interface RecordingsSlice {
   hoverRecording: (id: string | null) => void;
   undoStatus: UndoStatus;
   loadUndoStatus: () => Promise<void>;
-  /** Saves; an overlap asks first whether to replace. Rejects with the error when a form field shows it. */
-  createRecording: (input: RecordingInput) => Promise<Recording | null>;
+  /**
+   * Saves; an overlap asks first whether to replace. Rejects with the error when a form field shows it. With
+   * `suggestionId`, the recording approves that suggestion of the shown day as edited.
+   */
+  createRecording: (input: RecordingInput, suggestionId?: string) => Promise<Recording | null>;
   updateRecording: (id: string, patch: RecordingPatch) => Promise<Recording | null>;
   /** New times for one span of the recording as a drag left them; Rust snaps them with `moving` as the dragged end. */
   updateSpan: (id: string, spanId: string, span: Span, moving?: SnapEdge | null) => Promise<Recording | null>;
@@ -113,7 +117,7 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
       undoStatus: NOTHING_TO_UNDO,
 
       setSelection(selection) {
-        set(selection ? { selection } : { selection, selectionSnap: null });
+        set(selection ? { selection, ...focusCleared("other") } : { selection, selectionSnap: null });
       },
 
       setSelectionSnap(selectionSnap) {
@@ -144,7 +148,7 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
       },
 
       focusRecording(id) {
-        set({ focusedRecording: id });
+        set({ focusedRecording: id, ...(id !== null && focusCleared("other")) });
       },
 
       hoverRecording(id) {
@@ -159,8 +163,11 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
         }
       },
 
-      async createRecording(input) {
-        const saved = await writing("Could not save the recording", (overlap) => api.recordingCreate(input, overlap));
+      async createRecording(input, suggestionId) {
+        const day = get().day;
+        const saved = await writing("Could not save the recording", (overlap) =>
+          suggestionId ? api.suggestionApproveEdited(day, suggestionId, input, overlap) : api.recordingCreate(input, overlap),
+        );
         if (saved) {
           const project = get().projects.find((p) => p.project.id === saved.projectId)?.project.name ?? "the project";
           undoToast(`Recorded ${formatDuration(recordedMs(saved))} for ${project}`);

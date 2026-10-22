@@ -2,13 +2,20 @@ import { api, type DraftSpans, type Recording, type Span } from "../../api";
 import { fail } from "../requests";
 import type { Slice } from "../store";
 
+/** The suggestion a new recording approves once saved. */
+export interface EditedSuggestion {
+  id: string;
+  ruleName: string;
+}
+
 /**
- * `projectId`: preselected for a new recording; `warning`: shown above the fields.
+ * `projectId`, `note`, `tagId`: prefilled for a new recording; `warning`: shown above the fields; `suggestion`: the
+ * suggestion its Save approves.
  * `at`: a span of the recording, to find it by; the shown day's block when absent.
  * `spanId`: the span the editor scrolls to; the first one when absent.
  */
 export type Editor =
-  | { mode: "create"; start: number; end: number; projectId?: string; warning?: string }
+  | { mode: "create"; start: number; end: number; projectId?: string; note?: string; tagId?: string | null; warning?: string; suggestion?: EditedSuggestion }
   | { mode: "edit"; id: string; at?: { start: number; end: number }; spanId?: string };
 
 export interface Draft {
@@ -104,7 +111,9 @@ export const editorSlice: Slice<EditorSlice> = {
         get().editorOverlap?.resolve(false);
         set({ editor, draft: null, editing: null, editorOverlap: null });
         const opened =
-          editor.mode === "create" ? fill(editor, { projectId: editor.projectId ?? null, note: "", tagId: null }, [{ start: editor.start, end: editor.end }]) : load(editor);
+          editor.mode === "create"
+            ? fill(editor, { projectId: editor.projectId ?? null, note: editor.note ?? "", tagId: editor.tagId ?? null }, [{ start: editor.start, end: editor.end }])
+            : load(editor);
         opened.catch((e: unknown) => fail(e, "Could not open the recording"));
       },
 

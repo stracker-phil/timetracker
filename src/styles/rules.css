@@ -6,17 +6,31 @@
 .rule-drop { display: flex; align-items: center; gap: 0.462rem; padding: var(--space-1) 0.462rem; border-radius: 4px; border: 1px dashed transparent; }
 .rule-drop.over { border-color: var(--accent); background: var(--row-hover); }
 
-/* Rules screen */
-.rules-page { flex: 1; overflow: auto; padding: var(--space-4) var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
-.rules-page > p { margin: 0; }
-.rule-rows { list-style: none; margin: 0; padding: 0; }
-.rule-row { background: var(--bg); }
-.rule-row.dragging { position: relative; z-index: 2; box-shadow: var(--shadow); }
+/* Rules screen: one card per rule, in priority order. */
+.rules-page { flex: 1; overflow: auto; padding: var(--space-5) var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+.rules-head { display: flex; align-items: center; gap: var(--space-2); }
+.rules-head h1 { margin: 0 auto 0 0; font-size: var(--fs-title); font-weight: 600; }
+.rules-intro { margin: 0; max-width: 42rem; line-height: 1.5; color: var(--o2); }
+.rules-empty { margin: 0; color: var(--o3); }
+.rule-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); max-width: 52rem; }
+.rule-card {
+  display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4) var(--space-3) var(--space-2);
+  background: var(--pop); border-radius: var(--radius-card); box-shadow: var(--shadow-small);
+}
+.rule-card:hover { box-shadow: 0 0 0 1px var(--line), var(--shadow-small); }
+.rule-card:focus-within { box-shadow: 0 0 0 2px var(--accent), var(--shadow-small); }
+.rule-card.dimmed .rule-open { opacity: 0.55; }
+.rule-card.dragging { position: relative; z-index: 2; box-shadow: var(--shadow); }
 .rule-grip { display: flex; color: var(--o3); cursor: grab; touch-action: none; }
-.rule-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-3); border: none; background: none; padding: 0; font: inherit; color: var(--text); text-align: left; }
-.rule-name { font-weight: 500; white-space: nowrap; }
-.rule-project { display: flex; align-items: center; gap: 0.462rem; white-space: nowrap; }
-.rule-summary { font-size: var(--data-font-size); }
+.rule-open { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); border: none; background: none; padding: 0; font: inherit; color: var(--text); text-align: left; cursor: pointer; }
+.rule-open:focus-visible { outline: none; }
+.rule-line { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.rule-name { font-size: 1.077rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rule-today { margin-left: auto; flex: none; font-size: var(--fs-meta); color: var(--o2); font-variant-numeric: tabular-nums; }
+.rule-today.pending { color: var(--accent-text); font-weight: 600; }
+.rule-chip { flex: none; border: none; font-size: var(--fs-meta); }
+.rule-chip:hover { border-color: transparent; }
+.rule-summary { min-width: 0; font-size: var(--fs-meta); color: var(--o2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Rule sheet: the form, and the activity it matches beside it. */
 .rule-sheet { width: min(56rem, 94vw); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 20rem); gap: var(--space-4); }

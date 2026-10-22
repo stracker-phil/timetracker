@@ -8,7 +8,7 @@ import { api } from "../../api";
 import { handleKeydown, installCommands } from "../../commands";
 import { resetStore, useStore } from "../../state/store";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
-import { rule } from "../../test/ruleFixtures";
+import { rule, ruleDay } from "../../test/ruleFixtures";
 import { Dialogs } from "../Dialogs";
 import { RulesView } from "./RulesView";
 
@@ -52,7 +52,10 @@ function dragGrip(name: string, dy: number) {
 }
 
 describe("RulesView", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocked.rulesToday.mockResolvedValue([]);
+  });
 
   describe("listing", () => {
     it("lists the rules in order with their project and conditions", async () => {
@@ -81,6 +84,48 @@ describe("RulesView", () => {
       resetStore(projectsStore({ projects: [website] }));
       render(<RulesView />);
       expect(await screen.findByText("Slack")).toBeInTheDocument();
+    });
+
+    it("explains that suggestions wait in the Day view until they are approved or dismissed", async () => {
+      await renderView();
+      expect(screen.getByText(/the first matching rule wins\. Suggestions wait in the Day view until you approve or dismiss them/)).toBeInTheDocument();
+    });
+  });
+
+  describe("today", () => {
+    const rowOf = (name: string) => within(screen.getByText(name).closest("li") as HTMLElement);
+
+    it("tells the matched time and the suggestions to review of an enabled rule", async () => {
+      mocked.rulesToday.mockResolvedValue([ruleDay({ ruleId: "r-slack", matchedMs: 80 * 60_000, pending: 2, pendingMs: 30 * 60_000 })]);
+      await renderView();
+      expect(await rowOf("Slack").findByText("1h 20m today · 2 to review")).toBeInTheDocument();
+    });
+
+    it("leaves out the review count when nothing waits", async () => {
+      mocked.rulesToday.mockResolvedValue([ruleDay({ ruleId: "r-slack", matchedMs: 45 * 60_000 })]);
+      await renderView();
+      expect(await rowOf("Slack").findByText("45m today")).toBeInTheDocument();
+    });
+
+    it("says Nothing today for an enabled rule without matches", async () => {
+      mocked.rulesToday.mockResolvedValue([ruleDay({ ruleId: "r-slack", matchedMs: 45 * 60_000 })]);
+      await renderView();
+      await rowOf("Slack").findByText("45m today");
+      expect(rowOf("Standup").getByText("Nothing today")).toBeInTheDocument();
+    });
+
+    it("says Off for a disabled rule, whatever it matched", async () => {
+      mocked.rulesToday.mockResolvedValue([ruleDay({ ruleId: "r-docs", matchedMs: 45 * 60_000, pending: 1 })]);
+      await renderView();
+      expect(rowOf("Docs").getByText("Off")).toBeInTheDocument();
+      expect(rowOf("Docs").queryByText(/today/)).not.toBeInTheDocument();
+    });
+
+    it("still lists the rules when the day cannot be read", async () => {
+      mocked.rulesToday.mockRejectedValue({ kind: "db", message: "Locked", code: null });
+      await renderView();
+      expect(rowOf("Slack").getByText("Nothing today")).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
   });
 

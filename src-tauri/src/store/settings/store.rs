@@ -96,7 +96,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_part_1_appearance_loads_as_system_and_default_and_loses_its_keys_on_save() {
+    async fn a_part_1_appearance_loads_the_default_schemes_and_loses_its_keys_on_save() {
         let dir = temp_config_dir();
         write_settings(
             dir.path(),
@@ -106,38 +106,113 @@ mod tests {
 
         let loaded = store.get();
 
-        assert_eq!(loaded.mode, Mode::System);
-        assert_eq!(loaded.scheme, Scheme::Default);
+        assert_eq!(loaded.light_scheme, Scheme::Default);
+        assert_eq!(loaded.dark_scheme, Scheme::Dark);
         assert_eq!(loaded.accent, "teal");
 
         store.update(loaded).await.unwrap();
         let written: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(dir.path().join(FILE_NAME)).unwrap())
                 .unwrap();
-        for key in ["theme", "lightScheme", "darkScheme"] {
-            assert!(written.get(key).is_none(), "{key}");
-        }
-        assert_eq!(written["mode"], "system");
-        assert_eq!(written["scheme"], "default");
+        assert!(written.get("theme").is_none());
+        assert_eq!(written["lightScheme"], "default");
+        assert_eq!(written["darkScheme"], "dark");
+    }
+
+    #[tokio::test]
+    async fn a_step_07_appearance_moves_its_scheme_to_light_and_drops_mode_and_scheme_on_save() {
+        let dir = temp_config_dir();
+        write_settings(dir.path(), r#"{"mode": "dark", "scheme": "light"}"#);
+        let store = SettingsStore::open(dir.path());
+
+        let loaded = store.get();
+
+        assert_eq!(loaded.light_scheme, Scheme::Light);
+        assert_eq!(loaded.dark_scheme, Scheme::Dark);
+
+        store.update(loaded).await.unwrap();
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join(FILE_NAME)).unwrap())
+                .unwrap();
+        assert!(written.get("mode").is_none());
+        assert!(written.get("scheme").is_none());
+        assert_eq!(written["lightScheme"], "light");
+        let reopened = SettingsStore::open(dir.path()).get();
+        assert_eq!(reopened.light_scheme, Scheme::Light);
+        assert_eq!(reopened.dark_scheme, Scheme::Dark);
     }
 
     #[test]
-    fn an_unknown_mode_or_scheme_alone_falls_back_without_failing_the_file() {
-        for (raw, mode, scheme) in [
+    fn the_legacy_scheme_wins_over_a_light_scheme_in_the_same_file() {
+        let dir = temp_config_dir();
+        write_settings(dir.path(), r#"{"scheme": "dark", "lightScheme": "light"}"#);
+
+        assert_eq!(Settings::peek(dir.path()).light_scheme, Scheme::Dark);
+    }
+
+    #[test]
+    fn an_invalid_legacy_scheme_leaves_the_light_scheme_at_its_default() {
+        let dir = temp_config_dir();
+        write_settings(dir.path(), r#"{"scheme": "solarized"}"#);
+
+        assert_eq!(Settings::peek(dir.path()).light_scheme, Scheme::Default);
+    }
+
+    #[tokio::test]
+    async fn saving_through_update_never_writes_the_legacy_scheme() {
+        let dir = temp_config_dir();
+        let store = SettingsStore::open(dir.path());
+        let mut next = settings(|s| s.light_scheme = Scheme::Light);
+        next.legacy_scheme = Some(Scheme::Dark);
+
+        let (_, saved) = store.update(next).await.unwrap();
+
+        assert_eq!(saved.light_scheme, Scheme::Dark);
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join(FILE_NAME)).unwrap())
+                .unwrap();
+        assert!(written.get("scheme").is_none());
+        assert_eq!(written["lightScheme"], "dark");
+    }
+
+    #[test]
+    fn a_missing_null_or_invalid_dark_scheme_loads_as_dark_and_keeps_the_light_scheme() {
+        for raw in [
+            r#"{"lightScheme": "light"}"#,
+            r#"{"lightScheme": "light", "darkScheme": null}"#,
+            r#"{"lightScheme": "light", "darkScheme": "nord"}"#,
+            r#"{"lightScheme": "light", "darkScheme": 7}"#,
+        ] {
+            let dir = temp_config_dir();
+            write_settings(dir.path(), raw);
+
+            let loaded = Settings::peek(dir.path());
+
+            assert_eq!(
+                (loaded.light_scheme, loaded.dark_scheme),
+                (Scheme::Light, Scheme::Dark),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_scheme_alone_falls_back_without_failing_the_file() {
+        for (raw, light, dark) in [
             (
-                r#"{"mode": "neon", "scheme": "dark"}"#,
-                Mode::System,
+                r#"{"lightScheme": "neon", "darkScheme": "light"}"#,
+                Scheme::Default,
+                Scheme::Light,
+            ),
+            (
+                r#"{"lightScheme": "dark", "darkScheme": "nord"}"#,
+                Scheme::Dark,
                 Scheme::Dark,
             ),
             (
-                r#"{"mode": "light", "scheme": "nord"}"#,
-                Mode::Light,
+                r#"{"lightScheme": 3, "darkScheme": null, "scheme": "nope"}"#,
                 Scheme::Default,
-            ),
-            (
-                r#"{"mode": 3, "scheme": null}"#,
-                Mode::System,
-                Scheme::Default,
+                Scheme::Dark,
             ),
         ] {
             let dir = temp_config_dir();
@@ -145,7 +220,11 @@ mod tests {
 
             let loaded = Settings::peek(dir.path());
 
-            assert_eq!((loaded.mode, loaded.scheme), (mode, scheme), "{raw}");
+            assert_eq!(
+                (loaded.light_scheme, loaded.dark_scheme),
+                (light, dark),
+                "{raw}"
+            );
         }
     }
 
@@ -153,8 +232,8 @@ mod tests {
     fn unknown_enum_values_fall_back_to_defaults_without_quarantining_the_file() {
         let dir = temp_config_dir();
         let raw = r#"{
-            "mode": "neon",
-            "scheme": "ayu-mirage",
+            "lightScheme": "neon",
+            "darkScheme": "ayu-mirage",
             "logLevel": "verbose",
             "uiFontSize": 16,
             "timeline": {"continuity": "forever", "noise": "loud", "titles": "all", "zoom": 2.0, "compact": true},
@@ -295,7 +374,7 @@ mod tests {
 
         let (previous, saved) = store
             .update(settings(|s| {
-                s.mode = Mode::Dark;
+                s.dark_scheme = Scheme::Light;
                 s.ui_font_size = 99;
             }))
             .await
@@ -305,7 +384,7 @@ mod tests {
         assert_eq!(
             saved,
             settings(|s| {
-                s.mode = Mode::Dark;
+                s.dark_scheme = Scheme::Light;
                 s.ui_font_size = 24;
             })
         );

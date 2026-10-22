@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::{DayInput, DayTotals, DayView, Names, ProjectRef, ViewSettings, totals, view};
 use crate::db::time::{Day, Ms};
-use crate::db::{Db, activities, away, clients, projects, recordings, tags};
+use crate::db::{Db, activities, away, clients, dismissed, projects, recordings, tags};
 use crate::error::AppResult;
 use crate::rules::{self, matching::compile};
 use crate::store::settings::Settings;
@@ -14,7 +14,9 @@ pub async fn load(db: &Db, day: Day, settings: &Settings, now: Ms) -> AppResult<
     let names = names(db).await?;
     let mut view = build(db, day, settings, now, names.clone()).await?;
     let rules = rules::store::active(db).await?;
-    view.suggestions = rules::day_suggestions(&view, &compile(&rules), &names, settings);
+    let dismissed = dismissed::list_for_day(db, day).await?;
+    view.suggestions =
+        rules::day_suggestions(&view, &compile(&rules), &names, settings, &dismissed);
     Ok(view)
 }
 

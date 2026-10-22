@@ -2,7 +2,8 @@
 
 The reference for how TimeTracker looks and behaves. Update this page with every change that builds or
 changes an item. Decisions: [ADR 0016](adr/0016-color-schemes.md) (token sets, no literals),
-[ADR 0021](adr/0021-appearance-modes-and-schemes.md) (modes and schemes),
+[ADR 0021](adr/0021-appearance-modes-and-schemes.md) (schemes and palettes),
+[ADR 0022](adr/0022-a-scheme-per-system-mode.md) (a scheme per macOS mode),
 [ADR 0018](adr/0018-one-line-notes-tags-copyable-reports.md) (notes, tags, reports). Implementation (files,
 registries, CSS structure): [frontend.md](frontend.md#styling).
 
@@ -64,19 +65,21 @@ One place for views and one place for dates: the sidebar.
 
 ## Appearance and tokens
 
-Settings → Appearance has **Mode** (Light, Dark, System; System follows macOS and is the default) and
-**Scheme** (three tiles: Default, a dark sidebar beside light content, the default; Light, all light; Dark,
-all dark). In dark mode the whole window is dark whatever the scheme, the sidebar a shade darker than the
-content; the scheme decides the light-mode look ([ADR 0021](adr/0021-appearance-modes-and-schemes.md)).
+The app always follows the macOS appearance; there is no app mode. Settings → Appearance picks a **scheme
+per macOS mode**: a Light | Dark segmented control ("Pick a scheme for each macOS mode."), starting on the
+current mode, switches which mode's three scheme tiles show below it, and a tile sets that mode's scheme
+(`lightScheme`, `darkScheme`). The look is the scheme of the current mode, so dark mode with the Light scheme
+is all light ([ADR 0022](adr/0022-a-scheme-per-system-mode.md)). The accent is one setting for both modes.
 
-| Mode → | Light | Dark |
-|---|---|---|
-| Default | dark sidebar, light content | dark sidebar, dark content |
-| Light | light sidebar, light content | dark sidebar, dark content |
-| Dark | dark sidebar, dark content | dark sidebar, dark content |
+| Scheme | Sidebar | Content | Default for |
+|---|---|---|---|
+| Default | dark | light | light mode |
+| Light | light | light | |
+| Dark | dark (a shade darker than the content) | dark | dark mode |
 
-`resolveLook` (`lib/theme.ts`) turns mode and scheme into a content tone and a sidebar tone and sets
-`data-content` and `data-sidebar` on `<html>` (Settings' scheme tiles set them on their own element). Four
+`resolveLook` (`lib/theme.ts`) picks the current mode's scheme, `schemeLook` turns it into a content tone and
+a sidebar tone, and `applyAppearance` sets `data-content` and `data-sidebar` on `<html>` (Settings' scheme
+tiles set them on their own element). Four
 palettes in `src/styles/palettes/` answer them, warm-grey neutrals designed for this app: `content-light`,
 `content-dark`, `sidebar-light`, `sidebar-dark`. Palettes of a kind define the same tokens; no color literal
 appears outside them (`src/styles/colors.test.ts`).
@@ -388,16 +391,31 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 
 ## Rules and suggestions
 
-- **Suggestions** sit in the time column under the recordings: a card outlined dashed in
-  `--block-meta` on a half-strength `--block-fill` (full once hovered), a "+" top right, the project (500)
-  and the rule's name, the duration bottom right. The cursor is `copy`. A click records it; ⌥-click records every suggestion of that rule on the
-  day. Each is a button, so Tab reaches it, ↵ accepts it and ⌥↵ every suggestion of its rule. The tooltip names the rule, project, span and note.
+- **Suggestions to review**: a rule's match is a suggestion, a largely prefilled recording (the rule's project,
+  note and tag) that becomes a recording only once approved. Over the timesheet's cards a line in `--sel`
+  reads "3 suggestions · Approve all · Dismiss all" while the day has any (both act on the shown ones).
+- **Ghost cards** in the timesheet, in time order among the recordings' cards (Rust places each before the
+  first card starting after it, `Suggestion.nextCard`): a card outlined dashed in `--block-meta` on a faint
+  `--block-fill` (22% over `--bg-quiet`), the note as title (else the project), project and client, "Suggested
+  by <rule>" with a sparkle, the tag and the duration; ✓ (Approve) and ✕ (Dismiss) round buttons top right.
+  A click opens the inline editor prefilled with it ("Suggested by <rule>. Approve records it.", the primary
+  button reads Approve): saving records it as edited and dismisses the rest of its time, one undo step.
+- **Hatched blocks** in the time column: diagonal stripes of the project's fill, dashed outline, project, rule
+  and duration; a click opens the editor on it like its card. The suggestion being edited gives way to the
+  editor's draft spans.
+- **Focus and keys**: ] and [ step through the timesheet, recordings and suggestions alike; Tab reaches a ghost
+  card. A focused suggestion (accent ring on card and block) takes ↵ approve, E edit, ⌫ dismiss; after
+  approving or dismissing, the focus moves to the next suggestion. Approve and dismiss each toast with Undo.
+- **Dismissed stays dismissed**: a dismissed suggestion's time is never suggested again by that rule on that
+  day, also after the rule is edited or a recording over it is deleted; only Undo brings it back.
 - **Drop strip**: ⌥-dragging an activity block (while no recording editor is open) shows the recent projects on `--pop` over the top of the
   recordings column; the one under the pointer gets a dashed accent outline. Dropping opens the rule sheet,
   filled in; nothing is saved before Save. From the keyboard, the block menu's Make a rule… (⌃↵) opens the
   sheet with the block's conditions and no project.
-- **Rules screen**: rows with a grip, the enable switch, the name, the project's dot and name and the
-  conditions in `--o2`; a disabled rule is dimmed. The order is the priority; drag the grip, or ⌥↑ ⌥↓ with the focus in a row.
+- **Rules screen**: one card per rule (`--pop`, small shadow, at most 52rem wide): a grip, the enable switch,
+  the name (600) with today's matches on the right ("1h 20m today · 2 to review" in the accent while
+  suggestions wait, "Nothing today", "Off" when disabled), then the project as a filled chip and the
+  conditions in `--o2`; a disabled rule's text is dimmed. The order is the priority; drag the grip, or ⌥↑ ⌥↓ with the focus in a row.
 - **Rule sheet**: the form on the left, "Last 7 days" on the right with the matching time and the hits
   (day and time in mono `--o2`, the app, the title). Below 720px the preview moves under the form.
 
@@ -498,7 +516,9 @@ Rules of the keys (`handleKeydown`):
 
 Scopes are the registry's (`src/commands/scopes.ts`): `global`; `dated` under it, active in Day, Week, Month
 and Reports; and one scope per view (`day`, `week`, `month`, `reports` under `dated`; `projects`, `rules`
-under `global`), active while that view shows.
+under `global`), active while that view shows. `suggestion` (under `dated`, beside `day`) is active while the
+Day view has a focused suggestion and no selection or focused recording, so its ↵ and ⌫ never clash with the
+recording commands'.
 
 | Command | Label | Default key | Scope |
 |---|---|---|---|
@@ -554,14 +574,16 @@ under `global`), active while that view shows.
 | `clients.new` | New client… | menu | projects |
 | `rules.new` | New rule… | ⌘N | rules |
 | `rules.moveUp` / `rules.moveDown` | Move rule up / down (the rule whose row has the focus) | ⌥↑ / ⌥↓ | rules |
-| `suggestion.accept` / `suggestion.acceptRule` | Accept suggestion / all suggestions of its rule (the suggestion with the focus) | menu | day |
+| `suggestion.approve` / `suggestion.edit` / `suggestion.dismiss` | Approve / Edit / Dismiss the focused suggestion | ↵ / E / ⌫ | suggestion |
+| `suggestion.approveRule` | Approve all suggestions of the focused one's rule | menu | suggestion |
+| `suggestion.approveAll` / `suggestion.dismissAll` | Approve / Dismiss all the shown day's suggestions | menu | day |
 
 Keys of controls, not commands (they act on the focused control and are not rebindable):
 
 | Where | Keys |
 |---|---|
 | List mode | `/` search, ↑↓ rows, ↵ record the row (pick the project), Space show it on the timeline; Tab to a project chip and ↵ records the focused row |
-| Suggestion (Tab reaches it) | ↵ records it, ⌥↵ records every suggestion of its rule on the day |
+| Ghost card (Tab reaches it) | focuses the suggestion: ↵ approve, E edit, ⌫ dismiss (the `suggestion` scope); ✓ and ✕ inside it |
 | Recording editor, away prompt, timer picker | project picker: type, ↑↓, ↵ picks (the last option creates a project); From and To: type `HH:MM` or ↑↓ by one snap step; ↵ saves, records or starts; in the editor also ⌘↵, and ⌘⌫ deletes; Escape cancels or skips |
 | Timeline, pointer | drag or click opens the editor; ⇧-click extends, ⌘-click gathers blocks (the editor opens when ⌘ is released), ⌥-drag or ⌥-click adds a span to the open editor's recording |
 | Context menu (⌃↵ on a block) | ↑↓ items, ↵ runs, Escape closes |
@@ -595,7 +617,7 @@ From any view, with the documented default keys only:
 7. The new recording has the focus: ⌥↑ ⌥↓ move it, ⌥⇧↓ ⌥⇧↑ change its end, ↵ edits it again, ⌫ deletes it,
    ⌘Z undoes the last change. ] and [ step through the day's recordings.
 8. Back to step 2 for the next stretch (J moves on from the last focused block). Rule suggestions are
-   buttons in the recordings column: Tab to one, ↵ records it.
+   ghost cards in the timesheet: ] or [ to one, ↵ approves, E edits, ⌫ dismisses.
 9. P and N step to other days. ⌘2 shows the week (P N by week; Tab to a day head and ↵ opens it), ⌘3
    the month (by month; Tab to a day and ↵ opens it).
 10. ⌘4 shows Reports (P N step its period, O goes back to the current one): Tab to the Period presets, on
@@ -622,12 +644,14 @@ from every text field. The page's key handler runs them, with the rules above.
 | File | New Recording… (`recording.new`); Start Timer… (`timer.start`; ⌘T), Stop Timer (`timer.stop`; ⌘⇧.); New Project… (`projects.new`; ⌘N), New Client… (`clients.new`), New Rule… (`rules.new`; ⌘N); Export Backup… (`data.exportBackup`); Close Window (`window.hide`; ⌘W) |
 | Edit | Undo (`edit.undo`; ⌘Z), Redo (`edit.redo`; ⌘⇧Z); Cut, Copy, Paste, Select All (native); Delete Recording (`recording.delete`; ⌫); Copy Report as Text (`reports.copyText`; ⌘⇧C), Copy Report Notes (`reports.copyNotes`; ⌥⌘C) |
 | View | Day … Rules (`view.day` … `view.rules`; ⌘1 … ⌘6, the active view checked); Show as List (`day.toggleList`; ⌘⇧L, checked in List mode); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); Timeline Settings… (`day.settings`); Enter Full Screen (native) |
-| Go | Previous (`nav.prev`; P), Next (`nav.next`; N), Today (`nav.today`; O), Go to Date… (`nav.goToDate`); Next Block (`day.nextBlock`; J), Previous Block (`day.prevBlock`; K); Next Recording (`recording.next`; ]), Previous Recording (`recording.prev`; [) |
-| Day | Record Selection (`recording.create`; ↵, the key of `recording.open`), Edit Recording… (`recording.edit`); Move Recording to Previous / Next Day (⌥← / ⌥→), Copy Recording to Previous / Next Day (⌥⇧← / ⌥⇧→); Accept Suggestion, Accept All Suggestions of Rule (`suggestion.*`); Delete Activity for This Day…, Delete Activity in a Range… (`activity.*`) |
+| Go | Previous (`nav.prev`; P), Next (`nav.next`; N), Today (`nav.today`; O), Go to Date… (`nav.goToDate`); Next Block (`day.nextBlock`; J), Previous Block (`day.prevBlock`; K); Next Recording (`recording.next`; ], recordings and suggestions), Previous Recording (`recording.prev`; [) |
+| Day | Record Selection (`recording.create`; ↵, the key of `recording.open`), Edit Recording… (`recording.edit`); Move Recording to Previous / Next Day (⌥← / ⌥→), Copy Recording to Previous / Next Day (⌥⇧← / ⌥⇧→); Approve Suggestion (↵), Edit Suggestion… (E), Dismiss Suggestion (⌫), Approve All Suggestions of Rule, Approve All Suggestions, Dismiss All Suggestions (`suggestion.*`); Delete Activity for This Day…, Delete Activity in a Range… (`activity.*`) |
 | Window | Minimize, Zoom, Bring All to Front (native) |
 | Help | Keyboard Shortcuts (`shortcuts.show`; ⇧?), Command Palette… (`palette.toggle`; ⌘K); Open Log Folder (`logs.open`), Show Data Folder (`data.reveal`), README (`help.readme`) |
 
-New Project and New Rule share ⌘N: only one of them is enabled at a time (Projects or Rules).
+New Project and New Rule share ⌘N: only one of them is enabled at a time (Projects or Rules). Record Selection
+and Approve Suggestion share ↵, Delete Recording and Dismiss Suggestion share ⌫: a focused suggestion clears the
+selection and the recording focus, so only one of each pair is enabled.
 
 Commands left out of the menu, with keys and the palette only:
 
@@ -645,9 +669,11 @@ Commands left out of the menu, with keys and the palette only:
 
 The three schemes in both modes are checked on the Day view, List view, Week, Reports and Settings
 (`docs/screens/<scheme>-<mode>-<view>.png`, captured by `scripts/dev/screenshot-looks.sh <dir> [view]`, which
-switches all six combinations through `scripts/dev/js.sh` and restores the settings; only the Default scheme's
-light and dark Day view are committed). The six combinations give three distinct looks (ADR 0021). Fixes
-live in `src/styles/palettes/` only.
+sets the current macOS mode's scheme to each of the three through `scripts/dev/js.sh` and restores the
+settings; the app follows macOS, so switch the system appearance and run it again for the other mode). Only
+the default look of each mode is committed: `default-light-day.png` and `dark-dark-day.png`. Each scheme is
+one look in either mode; the mode changes only the native window chrome. Fixes live in
+`src/styles/palettes/` only.
 
 Targets, computed by `src/styles/contrast.ts` (WCAG contrast; OKLCH as the CSS computes it):
 - `--text` at least 7:1, `--o2` at least 4.5:1 and `--o3` at least 3:1 on `--bg`; `--line` at least 1.3:1

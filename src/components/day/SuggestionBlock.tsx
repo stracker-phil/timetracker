@@ -1,5 +1,4 @@
 import type { CSSProperties } from "react";
-import { Plus } from "lucide-react";
 import type { Suggestion } from "../../api";
 import { formatClock, formatHm } from "../../lib/format";
 import { useStore } from "../../state/store";
@@ -8,39 +7,29 @@ import { shadeColor } from "../Accent";
 interface Props {
   suggestion: Suggestion;
   y: (ms: number) => number;
+  focused: boolean;
 }
 
-/** A rule's proposal in the recordings column. */
-export function SuggestionBlock({ suggestion: s, y }: Props) {
+/** A rule's suggestion in the time column, hatched: not a recording until approved. A click opens it in the editor. */
+export function SuggestionBlock({ suggestion: s, y, focused }: Props) {
   const top = y(s.start);
   const height = Math.max(2, y(s.end) - top);
   const span = `${formatClock(s.start)}–${formatClock(s.end)}`;
-  const accept = (allOfRule: boolean) => {
-    const { acceptSuggestion, acceptRuleSuggestions } = useStore.getState();
-    void (allOfRule ? acceptRuleSuggestions(s.ruleId) : acceptSuggestion(s));
-  };
-  const title = [`${s.ruleName} → ${s.projectName}`, span, s.note, "Click or ↵ to record, ⌥-click or ⌥↵ to record all of this rule"].filter(Boolean).join("\n");
   return (
-    <button
-      type="button"
-      className="suggestion"
+    <div
+      role="button"
+      className={focused ? "suggestion focused" : "suggestion"}
       data-suggestion-id={s.id}
-      aria-label={`Record ${s.projectName} ${span}, suggested by ${s.ruleName}`}
-      title={title}
+      aria-label={`Suggested: ${s.projectName} ${span}, by ${s.ruleName}`}
+      title={[`Suggested by ${s.ruleName}: ${s.projectName}`, span, s.note].filter(Boolean).join("\n")}
       style={{ top, height, "--rec": shadeColor(s.color, s.shade) } as CSSProperties}
-      // A press here accepts; it must not start a selection drag on the column.
+      // A press here is the suggestion's; it must not start a selection drag on the column.
       onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => accept(e.altKey)}
-      onKeyDown={(e) => {
-        if (e.key !== "Enter" || !e.altKey) return;
-        e.preventDefault();
-        accept(true);
-      }}
+      onClick={() => useStore.getState().editSuggestion(s)}
     >
-      <Plus size="0.846rem" aria-hidden="true" />
       <span className="suggestion-project">{s.projectName}</span>
       <span className="suggestion-rule">{s.ruleName}</span>
-      <span className="recording-duration mono">{formatHm(s.end - s.start)}</span>
-    </button>
+      <span className="recording-duration">{formatHm(s.durationMs)}</span>
+    </div>
   );
 }

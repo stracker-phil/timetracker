@@ -1,24 +1,6 @@
 use tauri::{AppHandle, Manager};
 
-use crate::store::settings::Mode;
-
 const MAIN: &str = "main";
-
-/// Gives the window the app's mode, so native controls (menus, pickers) match the content; `System`
-/// follows macOS. The page draws every surface opaquely, including the sidebar under the title bar.
-pub fn apply_window_mode(app: &AppHandle, mode: Mode) {
-    let Some(window) = app.get_webview_window(MAIN) else {
-        return;
-    };
-    let theme = match mode {
-        Mode::System => None,
-        Mode::Light => Some(tauri::Theme::Light),
-        Mode::Dark => Some(tauri::Theme::Dark),
-    };
-    if let Err(e) = window.set_theme(theme) {
-        log::warn!("Couldn't set the window theme: {e}");
-    }
-}
 
 /// Skipped with `TIMETRACKER_BACKGROUND=1` in debug builds so scripts/dev never steal focus.
 pub fn bring_to_front(app: &AppHandle) {

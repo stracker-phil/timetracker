@@ -1,6 +1,7 @@
 import type { PointerEvent, Ref } from "react";
 import type { RecordingBlock as Block, Span, Suggestion } from "../../api";
 import { formatClock } from "../../lib/format";
+import type { Draft, Editor } from "../../state/slices/editor";
 import { useStore } from "../../state/store";
 import { RecordingBlock } from "./RecordingBlock";
 import { SuggestionBlock } from "./SuggestionBlock";
@@ -24,6 +25,12 @@ function drawnParts(spans: Span[], [first, last]: [number, number]): Span[] {
   return spans.filter((s) => s.end > first && s.start < last).map((s) => ({ start: Math.max(s.start, first), end: Math.min(s.end, last) }));
 }
 
+/** The recording or suggestion the open editor edits, whose own blocks give way to its draft spans. */
+function editedEntryId(draft: Draft | null, editor: Editor | null): string | null {
+  if (!draft || !editor) return null;
+  return editor.mode === "edit" ? editor.id : (editor.suggestion?.id ?? null);
+}
+
 /** A press on a recording or a suggestion is theirs. */
 const onEmptyTime = (target: EventTarget) => target instanceof Element && !target.closest(".recording, [data-suggestion-id], button");
 
@@ -33,11 +40,11 @@ const onEmptyTime = (target: EventTarget) => target instanceof Element && !targe
  */
 export function RecordingsColumn({ ref, recordings, suggestions, y, bounds, pxPerMinute, selection, onPress }: Props) {
   const focused = useStore((s) => s.focusedRecording);
+  const focusedSuggestion = useStore((s) => s.focusedSuggestion);
   const hovered = useStore((s) => s.hoveredRecording);
   const draft = useStore((s) => s.draft);
   const editor = useStore((s) => s.editor);
-  // The edited recording's own blocks give way to its draft spans.
-  const edited = editor?.mode === "edit" && draft ? editor.id : null;
+  const edited = editedEntryId(draft, editor);
   const drafts = drawnParts(draft?.spans ?? [], bounds);
   const press = (e: PointerEvent<HTMLDivElement>) => {
     if (onEmptyTime(e.target)) onPress(e);
@@ -45,9 +52,11 @@ export function RecordingsColumn({ ref, recordings, suggestions, y, bounds, pxPe
   return (
     <div ref={ref} className="recordings-col" aria-label="Recordings" onPointerDown={press}>
       {selection && <div className="recording-drop" style={{ top: y(selection.start), height: y(selection.end) - y(selection.start) }} aria-hidden="true" />}
-      {suggestions.map((s) => (
-        <SuggestionBlock key={s.id} suggestion={s} y={y} />
-      ))}
+      {suggestions
+        .filter((s) => s.id !== edited)
+        .map((s) => (
+          <SuggestionBlock key={s.id} suggestion={s} y={y} focused={s.id === focusedSuggestion} />
+        ))}
       {recordings
         .filter((r) => r.id !== edited || r.running)
         .map((r) => (

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, Billable, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleInput, RulePreview, SuggestionAccepted, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, DraftSpans, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, Billable, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, DraftSpans, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -178,12 +178,20 @@ export const api = {
   /** `ids`: every rule, in the new order. */
   rulesReorder: (ids: string[]) => invoke<Rule[]>("rules_reorder", { ids }),
   ruleSetEnabled: (id: string, enabled: boolean) => invoke<Rule>("rule_set_enabled", { id, enabled }),
+  /** Today's matched activity and pending suggestions of each active rule. */
+  rulesToday: () => invoke<RuleDay[]>("rules_today"),
   /** What the input's conditions match over the last `days` days, today included. */
   rulePreview: (input: RuleInput, days: number) => invoke<RulePreview>("rule_preview", { input, days }),
   /** Records a suggestion of the day's view; `not_found` once it is gone, `overlap` when a recording took its time. */
-  suggestionAccept: (day: string, id: string) => invoke<SuggestionAccepted>("suggestion_accept", { day, id }),
+  suggestionApprove: (day: string, id: string) => invoke<SuggestionApproved>("suggestion_approve", { day, id }),
   /** Records every suggestion of the rule on the day as one undoable change. */
-  suggestionsAcceptRule: (day: string, ruleId: string) => invoke<Recording[]>("suggestions_accept_rule", { day, ruleId }),
+  suggestionApproveRule: (day: string, ruleId: string) => invoke<Recording[]>("suggestion_approve_rule", { day, ruleId }),
+  /** Records the suggestions `ids` of the day (the shown ones) as one undoable change; `not_found` when none is left. */
+  suggestionsApprove: (day: string, ids: string[]) => invoke<Recording[]>("suggestions_approve", { day, ids }),
+  /** Records the suggestion as the editor changed it and dismisses the rest of it, as one undoable change. */
+  suggestionApproveEdited: (day: string, id: string, input: RecordingInput, overlap: Overlap) => invoke<Recording>("suggestion_approve_edited", { day, id, input, overlap }),
+  /** Dismisses the suggestions `ids` of the day as one undoable change: their rules suggest nothing there again. Returns how many. */
+  suggestionsDismiss: (day: string, ids: string[]) => invoke<number>("suggestions_dismiss", { day, ids }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   /** Native menu and tray items emit the id of the command they run. */

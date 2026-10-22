@@ -24,11 +24,11 @@ describe("ShortcutsDialog", () => {
     expect(within(row(group, "Go to today")).getByText("O")).toBeInTheDocument();
   });
 
-  it("lists ] and [ for recordings in the Day group", () => {
+  it("lists ] and [ for recordings and suggestions in the Day group", () => {
     render(<ShortcutsDialog scopes={["day", "dated", "global"]} />);
     const group = screen.getByRole("region", { name: "Day" });
-    expect(within(row(group, "Next recording")).getByText("]")).toBeInTheDocument();
-    expect(within(row(group, "Previous recording")).getByText("[")).toBeInTheDocument();
+    expect(within(row(group, "Next recording or suggestion")).getByText("]")).toBeInTheDocument();
+    expect(within(row(group, "Previous recording or suggestion")).getByText("[")).toBeInTheDocument();
   });
 
   it("omits the date navigation group where the view has no period", () => {

@@ -1,11 +1,13 @@
-import { api, toAppError, type Rule, type RuleInput, type Suggestion } from "../../api";
-import { formatDuration } from "../../lib/format";
+import { api, toAppError, type Rule, type RuleDay, type RuleInput } from "../../api";
 import { fail } from "../requests";
 import type { Slice } from "../store";
 
 export interface RulesSlice {
   /** In position order. */
   rules: Rule[];
+  /** Today's matched time and pending suggestions of each active rule. */
+  rulesToday: RuleDay[];
+  /** The rules, then their day. */
   loadRules: () => Promise<void>;
   /** `id: null` creates. Rejects on failure, so a form can show the field error; other errors are toasted. */
   saveRule: (id: string | null, input: RuleInput) => Promise<Rule>;
@@ -15,23 +17,25 @@ export interface RulesSlice {
   /** One place up (-1) or down (1); at either end nothing happens. */
   moveRule: (id: string, by: 1 | -1) => Promise<void>;
   setRuleEnabled: (id: string, enabled: boolean) => Promise<void>;
-  /** Records the suggestion on the shown day. */
-  acceptSuggestion: (suggestion: Suggestion) => Promise<void>;
-  /** Records every suggestion of the rule on the shown day. */
-  acceptRuleSuggestions: (ruleId: string) => Promise<void>;
 }
 
 export const rulesSlice: Slice<RulesSlice> = {
   create: (set, get) => {
-    const undoToast = (message: string) => get().toast("success", message, { label: "Undo", run: () => void get().undo() });
     return {
       rules: [],
+      rulesToday: [],
 
       async loadRules() {
         try {
           set({ rules: await api.rulesList() });
         } catch (e) {
           fail(e, "Could not load the rules");
+          return;
+        }
+        try {
+          set({ rulesToday: await api.rulesToday() });
+        } catch {
+          set({ rulesToday: [] });
         }
       },
 
@@ -83,24 +87,6 @@ export const rulesSlice: Slice<RulesSlice> = {
           set((s) => ({ rules: s.rules.map((r) => (r.id === id ? rule : r)) }));
         } catch (e) {
           fail(e, "Could not change the rule");
-        }
-      },
-
-      async acceptSuggestion(suggestion) {
-        try {
-          const { durationMs } = await api.suggestionAccept(get().day, suggestion.id);
-          undoToast(`Recorded ${formatDuration(durationMs)} for ${suggestion.projectName}`);
-        } catch (e) {
-          fail(e, "Could not accept the suggestion");
-        }
-      },
-
-      async acceptRuleSuggestions(ruleId) {
-        try {
-          const recorded = await api.suggestionsAcceptRule(get().day, ruleId);
-          undoToast(recorded.length === 1 ? "Recorded 1 suggestion" : `Recorded ${recorded.length} suggestions`);
-        } catch (e) {
-          fail(e, "Could not accept the suggestions");
         }
       },
     };

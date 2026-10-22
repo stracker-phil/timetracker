@@ -381,11 +381,6 @@ exposeActivity: boolean, };
  */
 export type MenuState = { enabled: Array<string>, checked: Array<string>, };
 
-/**
- * Light or dark; `System` follows macOS.
- */
-export type Mode = "system" | "light" | "dark";
-
 export type MonthDay = { day: Day, inMonth: boolean, isToday: boolean, recordedMs: number, 
 /**
  * The projects with the most time that day, most first.
@@ -669,6 +664,15 @@ export type Rule = { id: string, name: string, projectId: string,
 position: number, enabled: boolean, note: string, tagId: string | null, conditions: Array<Condition>, };
 
 /**
+ * An active rule's day: the activity it matched and its suggestions waiting for review.
+ */
+export type RuleDay = { ruleId: string, 
+/**
+ * Matched activity, the first matching rule taking a block.
+ */
+matchedMs: number, pending: number, pendingMs: number, };
+
+/**
  * What part of an activity block a condition reads.
  */
 export type RuleField = "app" | "title" | "url" | "domain" | "path" | "source";
@@ -696,17 +700,20 @@ export type RunningTimer = { recording: Recording, projectName: string, color: s
 export type SavedReport = { id: string, name: string, filter: ReportFilter, position: number, };
 
 /**
- * The light-mode look: `Default` has a dark sidebar beside light content, `Light` is all light, `Dark`
- * is all dark. In dark mode the window is dark whatever the scheme.
+ * A look for one macOS mode: `Default` has a dark sidebar beside light content, `Light` is all light,
+ * `Dark` is all dark.
  */
 export type Scheme = "default" | "light" | "dark";
 
 export type Settings = { 
 /**
- * Settings saved before the mode and scheme split (`theme`, `lightScheme`, `darkScheme`) load with the
- * defaults; those keys are dropped on the next save.
+ * The look while macOS is in light mode; part 1's scheme names (`ayu-light`, …) load as the default.
  */
-mode: Mode, scheme: Scheme, accent: string, 
+lightScheme: Scheme, 
+/**
+ * The look while macOS is in dark mode.
+ */
+darkScheme: Scheme, accent: string, 
 /**
  * Chrome: sidebar, labels, buttons (also scales rem).
  */
@@ -744,18 +751,26 @@ export type Span = { start: number, end: number, };
 export type StatusReport = { version: string, tracker: TrackerStatus | null, timer: RunningTimer | null, billable: Billable | null, windowVisible: boolean, };
 
 /**
- * A recording a rule proposes for time no recording covers yet.
+ * A recording a rule proposes for time no recording covers yet; it becomes one only once approved.
  */
 export type Suggestion = { 
 /**
  * `<rule id>:<start>:<end>`: the same after a reload.
  */
-id: string, ruleId: string, ruleName: string, projectId: string, projectName: string, color: string, shade: number, start: number, end: number, note: string, tagId: string | null, };
+id: string, ruleId: string, ruleName: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, start: number, end: number, durationMs: number, note: string, tagId: string | null, 
+/**
+ * The tag's name.
+ */
+tag: string | null, 
+/**
+ * The first timesheet card that starts after it, which its card goes before; none puts it last.
+ */
+nextCard: string | null, };
 
 /**
- * An accepted suggestion: the new recording and how long it is, for the page's toast.
+ * An approved suggestion: the new recording and how long it is, for the page's toast.
  */
-export type SuggestionAccepted = { recording: Recording, durationMs: number, };
+export type SuggestionApproved = { recording: Recording, durationMs: number, };
 
 export type Tag = { id: string, 
 /**

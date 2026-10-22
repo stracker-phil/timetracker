@@ -103,12 +103,16 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
         "Copy Recording to Next Day",
         "Alt+Shift+ArrowRight",
     ),
-    item("suggestion.accept", "Accept Suggestion", ""),
+    item("suggestion.approve", "Approve Suggestion", "Enter"),
+    item("suggestion.edit", "Edit Suggestion…", "E"),
+    item("suggestion.dismiss", "Dismiss Suggestion", "Backspace"),
     item(
-        "suggestion.acceptRule",
-        "Accept All Suggestions of Rule",
+        "suggestion.approveRule",
+        "Approve All Suggestions of Rule",
         "",
     ),
+    item("suggestion.approveAll", "Approve All Suggestions", ""),
+    item("suggestion.dismissAll", "Dismiss All Suggestions", ""),
     item("activity.deleteDay", "Delete Activity for This Day…", ""),
     item("activity.deleteRange", "Delete Activity in a Range…", ""),
     // Help
@@ -119,10 +123,14 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("help.readme", "README", ""),
 ];
 
-/// Items that share a default accelerator. Their commands' scopes exclude each other, so at most one
-/// of them is enabled and macOS gives the key to that one.
+/// Items that share a default accelerator. Their commands' scopes, or the focus they need, exclude each
+/// other, so at most one of them is enabled and macOS gives the key to that one.
 #[cfg(test)]
-pub const SHARED_ACCELERATORS: &[&[&str]] = &[&["projects.new", "rules.new"]];
+pub const SHARED_ACCELERATORS: &[&[&str]] = &[
+    &["projects.new", "rules.new"],
+    &["recording.create", "suggestion.approve"],
+    &["recording.delete", "suggestion.dismiss"],
+];
 
 pub fn menu_item(id: &str) -> Option<&'static MenuItemDef> {
     MENU_ITEMS.iter().find(|def| def.id == id)
@@ -195,8 +203,12 @@ mod tests {
         "recording.moveToNextDay",
         "recording.copyToPrevDay",
         "recording.copyToNextDay",
-        "suggestion.accept",
-        "suggestion.acceptRule",
+        "suggestion.approve",
+        "suggestion.edit",
+        "suggestion.dismiss",
+        "suggestion.approveRule",
+        "suggestion.approveAll",
+        "suggestion.dismissAll",
         "activity.deleteDay",
         "activity.deleteRange",
         "shortcuts.show",
@@ -263,6 +275,49 @@ mod tests {
                 .collect();
             assert!(bindings.iter().all(|b| *b == bindings[0]), "{group:?}");
         }
+    }
+
+    #[test]
+    fn the_suggestion_keys_share_their_accelerators_with_the_recording_keys() {
+        let groups: Vec<Vec<&str>> = SHARED_ACCELERATORS.iter().map(|g| g.to_vec()).collect();
+
+        assert!(groups.contains(&vec!["recording.create", "suggestion.approve"]));
+        assert!(groups.contains(&vec!["recording.delete", "suggestion.dismiss"]));
+        assert_eq!(groups.len(), 3);
+    }
+
+    #[test]
+    fn the_suggestion_items_are_labelled_and_bound_for_review() {
+        let items: Vec<(&str, &str, &str)> = [
+            "suggestion.approve",
+            "suggestion.edit",
+            "suggestion.dismiss",
+            "suggestion.approveRule",
+            "suggestion.approveAll",
+            "suggestion.dismissAll",
+        ]
+        .iter()
+        .map(|id| {
+            let def = menu_item(id).expect(id);
+            (def.id, def.label, def.default_binding)
+        })
+        .collect();
+
+        assert_eq!(
+            items,
+            [
+                ("suggestion.approve", "Approve Suggestion", "Enter"),
+                ("suggestion.edit", "Edit Suggestion…", "E"),
+                ("suggestion.dismiss", "Dismiss Suggestion", "Backspace"),
+                (
+                    "suggestion.approveRule",
+                    "Approve All Suggestions of Rule",
+                    ""
+                ),
+                ("suggestion.approveAll", "Approve All Suggestions", ""),
+                ("suggestion.dismissAll", "Dismiss All Suggestions", ""),
+            ]
+        );
     }
 
     #[test]

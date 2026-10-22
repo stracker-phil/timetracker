@@ -15,9 +15,9 @@ export function useSystemDark(): boolean {
   return useSyncExternalStore(subscribeToSystemTheme, systemIsDark);
 }
 
-type AppearanceSettings = Pick<Settings, "mode" | "scheme">;
+type AppearanceSettings = Pick<Settings, "lightScheme" | "darkScheme">;
 
-const DEFAULT_APPEARANCE: AppearanceSettings = { mode: "system", scheme: "default" };
+const DEFAULT_APPEARANCE: AppearanceSettings = { lightScheme: "default", darkScheme: "dark" };
 
 export type Tone = "light" | "dark";
 
@@ -27,15 +27,16 @@ export interface Look {
   sidebar: Tone;
 }
 
-/** In dark mode the whole window is dark; in light mode the scheme decides (Default: a dark sidebar). */
-export function resolveLook({ mode, scheme }: AppearanceSettings, systemDark: boolean): Look {
-  const dark = mode === "system" ? systemDark : mode === "dark";
-  if (dark || scheme === "dark") return { content: "dark", sidebar: "dark" };
-  return { content: "light", sidebar: scheme === "light" ? "light" : "dark" };
+/** Default: a dark sidebar beside light content; Light and Dark: one tone for both. */
+export function schemeLook(scheme: Scheme): Look {
+  if (scheme === "default") return { content: "light", sidebar: "dark" };
+  return { content: scheme, sidebar: scheme };
 }
 
-/** The look `scheme` gives in light mode, which is what sets the schemes apart. */
-export const lightModeLook = (scheme: Scheme): Look => resolveLook({ mode: "light", scheme }, false);
+/** The look of the scheme picked for the current macOS mode. */
+export function resolveLook({ lightScheme, darkScheme }: AppearanceSettings, systemDark: boolean): Look {
+  return schemeLook(systemDark ? darkScheme : lightScheme);
+}
 
 function applyLook(look: Look) {
   const { dataset } = document.documentElement;

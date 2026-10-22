@@ -76,7 +76,7 @@ pub struct RuleInput {
     pub conditions: Vec<ConditionInput>,
 }
 
-/// A recording a rule proposes for time no recording covers yet.
+/// A recording a rule proposes for time no recording covers yet; it becomes one only once approved.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -87,12 +87,18 @@ pub struct Suggestion {
     pub rule_name: String,
     pub project_id: String,
     pub project_name: String,
+    pub client_name: Option<String>,
     pub color: String,
     pub shade: u8,
     pub start: Ms,
     pub end: Ms,
+    pub duration_ms: Ms,
     pub note: String,
     pub tag_id: Option<String>,
+    /// The tag's name.
+    pub tag: Option<String>,
+    /// The first timesheet card that starts after it, which its card goes before; none puts it last.
+    pub next_card: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -113,4 +119,16 @@ pub struct RulePreview {
     pub total_ms: i64,
     /// The days with at least one hit.
     pub days: i64,
+}
+
+/// An active rule's day: the activity it matched and its suggestions waiting for review.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct RuleDay {
+    pub rule_id: String,
+    /// Matched activity, the first matching rule taking a block.
+    pub matched_ms: Ms,
+    pub pending: u32,
+    pub pending_ms: Ms,
 }
