@@ -5,6 +5,10 @@ import { pointerDrag } from "../day/pointerDrag";
 import { Toolbar } from "../Toolbar";
 import { RuleRow } from "./RuleRow";
 
+const DRAG_TIP = "Hold ⌥ and drag an activity onto a project to make a rule.";
+
+const newRule = () => useStore.getState().openDialog({ type: "rule" });
+
 /** The row a drag of `dy` px from `index` lands on, within the list. */
 const targetIndex = (index: number, dy: number, rowHeight: number, count: number) => Math.max(0, Math.min(count - 1, index + Math.round(dy / rowHeight)));
 
@@ -49,24 +53,31 @@ export function RulesView() {
   return (
     <section className="view-page" aria-label="Rules">
       <Toolbar title="Rules">
-        <button type="button" className="btn" onClick={() => useStore.getState().openDialog({ type: "rule" })}>
+        <button type="button" className="btn" onClick={newRule}>
           <Plus size="1.154rem" /> New rule
         </button>
       </Toolbar>
-      <div className="rules-page">
-        <p className="rules-intro">
-          Rules suggest recordings for activity they match; the first matching rule wins. Suggestions wait in the Day view until you approve or dismiss them. ⌥-drag an activity block onto a project to make a rule.
-        </p>
-        {rules.length === 0 ? (
-          <p className="rules-empty">No rules yet.</p>
-        ) : (
+      {rules.length === 0 ? (
+        <div className="rules-empty">
+          <p className="rules-empty-title">No rules yet</p>
+          <p className="o2">Rules suggest recordings for activity they match.</p>
+          <p className="o2">{DRAG_TIP}</p>
+          <button type="button" className="btn btn-primary" onClick={newRule}>
+            <Plus size="1.154rem" /> New rule
+          </button>
+        </div>
+      ) : (
+        <div className="rules-page">
+          <p className="rules-intro">
+            Rules suggest recordings for activity they match; the first matching rule wins. Suggestions wait in the Day view until you approve or dismiss them. {DRAG_TIP}
+          </p>
           <ul className="rule-rows" aria-label="Rules in order">
             {rules.map((rule, index) => (
               <RuleRow key={rule.id} rule={rule} today={today.find((t) => t.ruleId === rule.id)} offset={drag?.id === rule.id ? drag.dy : 0} onGrip={grip(index)} />
             ))}
           </ul>
-        )}
-      </div>
+        </div>
+      )}
     </section>
   );
 }

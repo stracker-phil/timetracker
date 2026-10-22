@@ -47,7 +47,8 @@ function renderWeek(week: Week | null = weekView(), patch: Parameters<typeof res
 }
 
 const heads = () => screen.getAllByRole("columnheader");
-const column = (label: string) => screen.getByLabelText(label);
+/** The day's column; an empty day's head carries the same label, so the head (a button) is left out. */
+const column = (label: string) => screen.getAllByLabelText(label).find((el) => el.tagName !== "BUTTON") as HTMLElement;
 const card = (name = "Website: standup") => screen.getByRole("button", { name });
 
 /** Presses the card, moves it `dx` px and releases it over `over` (null: over nothing). */
@@ -92,23 +93,23 @@ describe("WeekView", () => {
   });
 
   describe("day heads", () => {
-    it("shows seven heads with the weekday, the date and the recorded time", async () => {
+    it("shows seven heads with the weekday and date, and the recorded time only on days with recordings", async () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
-      expect(heads().map((h) => h.textContent)).toEqual(["Mon 90m", "Tue 1045m", "Wed 110m", "Thu 120m", "Fri 130m", "Sat 140m", "Sun 150m"]);
+      expect(heads().map((h) => h.textContent)).toEqual(["Mon 9", "Tue 1045m", "Wed 11", "Thu 12", "Fri 13", "Sat 14", "Sun 15"]);
     });
 
-    it("names each head by its day and recorded time", async () => {
+    it("names a head by its day, adding the recorded time only when there is some", async () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
-      expect(screen.getByRole("columnheader", { name: "Mon 9, 0m recorded" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Mon 9" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Tue 10, 45m recorded" })).toBeInTheDocument();
     });
 
     it("reads Today on today's head, which keeps its day in the label", async () => {
       renderWeek(weekView({ today: DAY }));
       await screen.findAllByRole("columnheader");
-      const head = screen.getByRole("columnheader", { name: "Tue 10, 0m recorded" });
+      const head = screen.getByRole("columnheader", { name: "Tue 10" });
       expect(head).toHaveTextContent("Today");
       expect(head).not.toHaveTextContent("Tue 10");
       expect(heads()[0]).toHaveTextContent("Mon 9");
@@ -159,6 +160,23 @@ describe("WeekView", () => {
       await screen.findAllByRole("columnheader");
       const el = within(card());
       for (const text of ["Website", "standup", "support", "2 times", "45m"]) expect(el.getByText(text)).toBeInTheDocument();
+    });
+
+    it.each([
+      [false, false],
+      [true, true],
+    ])("with showNote %s the note is shown: %s", async (showNote, shown) => {
+      renderWeek(recordedWeek([calendarEntry({ id: "r1", note: "standup", showNote })]));
+      await screen.findAllByRole("columnheader");
+      const el = within(card());
+      if (shown) expect(el.getByText("standup")).toBeInTheDocument();
+      else expect(el.queryByText("standup")).not.toBeInTheDocument();
+    });
+
+    it("keeps the note in a card's accessible name when the note is hidden", async () => {
+      renderWeek(recordedWeek([calendarEntry({ id: "r1", note: "standup", heightUnits: 3, showNote: false })]));
+      await screen.findAllByRole("columnheader");
+      expect(card()).toBeInTheDocument();
     });
 
     it("sets a card's height through --units", async () => {
@@ -216,11 +234,11 @@ describe("WeekView", () => {
       }
     });
 
-    it("is the empty variant only on a day without recordings", async () => {
+    it("is there on a day without recordings too", async () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
-      expect(screen.getByRole("button", { name: "New recording on Mon 9" })).toHaveClass("week-add--empty");
-      expect(screen.getByRole("button", { name: "New recording on Tue 10" })).not.toHaveClass("week-add--empty");
+      expect(within(column("Mon 9")).getAllByRole("button")).toHaveLength(1);
+      expect(within(column("Mon 9")).getByRole("button", { name: "New recording on Mon 9" })).toBeInTheDocument();
     });
 
     it("opens a New recording sheet on Rust's default span for that day", async () => {

@@ -15,6 +15,10 @@
 .btn-quiet { background: transparent; box-shadow: none; color: var(--o2); }
 .btn-quiet:hover:not(:disabled) { background: var(--fill); color: var(--text); }
 .btn-quiet:active:not(:disabled) { background: var(--fill-strong); }
+/* A split button: the action, then a chevron that opens its options. */
+.split-btn { display: inline-flex; align-items: center; }
+.split-btn > .btn:first-child { border-start-end-radius: 0; border-end-end-radius: 0; }
+.split-btn > .split-btn-menu { border-start-start-radius: 0; border-end-start-radius: 0; padding: 0 var(--space-1); }
 .icon-btn {
   display: inline-grid; place-items: center; width: var(--control-h); height: var(--control-h); flex: none; padding: 0;
   border: none; border-radius: var(--radius-sm); background: transparent; color: var(--o2);

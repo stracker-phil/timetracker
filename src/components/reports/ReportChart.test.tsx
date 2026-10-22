@@ -50,6 +50,12 @@ describe("ReportChart", () => {
     expect(screen.queryByRole("list", { name: "By client legend" })).not.toBeInTheDocument();
   });
 
+  it("offers Client, Project and Tag in the Chart by select", () => {
+    renderChart();
+    const options = within(screen.getByRole("combobox", { name: "Chart by" })).getAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(["Client", "Project", "Tag"]);
+  });
+
   it("starts with the initial grouping", () => {
     renderChart("tag");
     expect(screen.getByRole("combobox", { name: "Chart by" })).toHaveValue("tag");

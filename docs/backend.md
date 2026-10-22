@@ -180,7 +180,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `recording_merge` | `into, from` | `Recording` `into` with the spans of `from` (which keeps its project, note and tag); `from` is deleted | `invalid_input` (`field`: `from` the same recording; a running one), `not_found`, `db` |
 | `recording_nudge` | `id, spanId, startSteps: i32, endSteps: i32, overlap` | `Recording` whose span's start and end moved by that many snap steps (`timeline.snapMinutes`; ⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓) from their nearest grid marks; an end moved alone stays a step from the other (`snap_moving`), through `update_span` | as `recording_update_span` |
 | `recording_move` / `recording_copy` | `id, from: Day \| null, day: Day, overlap` | `Recording`: moved, or a new copy, to `day` at the same local time (`same_time_on`, DST-safe) with the same lengths (undoable). With `from` the spans touching that day (the Week card's drag; the copy is a new recording of them), shifted by the days between `from` and `day`; without, every span, shifted by the days between the first span's day and `day` | `invalid_input` (the running timer), `overlap`, `not_found`, `db` |
-| `week_view` (`calendar/commands.rs`) | `day: Day` | `WeekView { weekStart, label, days: DayColumn[], totalMs, trackedMs }`; `DayColumn { day, weekday, dayOfMonth, isToday, isWeekend, entries: CalendarEntry[], totalMs, trackedMs }`; `CalendarEntry` is a `TimesheetCard` (one per recording, the day's parts of its spans added up, by start) plus `heightUnits` (the Week card's height, see Week and month) | `invalid_input`, `db` |
+| `week_view` (`calendar/commands.rs`) | `day: Day` | `WeekView { weekStart, label, days: DayColumn[], totalMs, trackedMs }`; `DayColumn { day, weekday, dayOfMonth, isToday, isWeekend, entries: CalendarEntry[], totalMs, trackedMs }`; `CalendarEntry` is a `TimesheetCard` (one per recording, the day's parts of its spans added up, by start) plus `heightUnits` (the Week card's height, see Week and month) and `showNote` (whether the card fits its note) | `invalid_input`, `db` |
 | `month_view` | `day: Day` | `MonthView { monthStart, label, weeks: MonthDay[][], totalMs }` (whole weeks Monday to Sunday; `totalMs` counts the month's own days); `MonthDay { day, weekday, dayOfMonth, inMonth, isToday, isWeekend, recordedMs, entries: CalendarEntry[] }` (every recording of the day, by start) | `invalid_input`, `db` |
 | `calendar_period` (`calendar/commands.rs`) | `unit: PeriodUnit` (`day`, `week`, `month`), `day: Day` | `Period { from, to, holdsToday }`: the day, Monday-to-Sunday week or month holding `day` (`calendar::period::period`); the billable ratio and the date picker's selection | `invalid_input` |
 | `calendar_mini_month` | `shownDay: Day`, `offset: i32` (months from `shownDay`'s, the ‹ › paging), `shown: Shown` (`{ kind: "period", unit, day }` for the Day, Week or Month view, `{ kind: "report", range }`, `{ kind: "none" }`) | `MiniMonth { monthStart, monthName, year, monthSelected, weeks: MiniWeek[] }` (`monthName` short or full by `calendarTitle`), six weeks from the Monday on or before the 1st; `MiniWeek { number (ISO), start, selected, days: MiniDay[] }`; `MiniDay { day, dayOfMonth, inMonth, isToday, hasRecordings, selected }` (see [Week and month](#week-and-month)); the sidebar's calendar | `invalid_input` (a report range that ends before it starts, a month out of range), `db` |
@@ -376,7 +376,8 @@ the Day view's own `day::recording_blocks`, `day::timesheet` and `day::tracked_m
 entry per day it touches with that day's share (`calendar::entries::entries`): a span over midnight counts in
 both days, several spans on one day add up. `entries::height_units` gives a Week card one unit per started
 quarter hour (`CARD_UNIT_MS`), at least `CARD_MIN_UNITS` (a title over the foot) and at most `CARD_MAX_UNITS`
-(six hours); the page multiplies it by its unit size. The Month uses the same entries as equal-height lines.
+(six hours); the page multiplies it by its unit size. `show_note` is set from `NOTE_MIN_UNITS` (4) up, the
+first height that fits the note between the title and the foot. The Month uses the same entries as equal-height lines.
 
 `calendar/titles.rs` formats every date label the page shows, in the order of the macOS region
 (`calendar/locale.rs`: `DateOrder::system()` reads `NSDateFormatter`'s `yMMMd` pattern for the current
@@ -772,7 +773,7 @@ A timer is a recording with an open span, so the overlap rule, undo and reports 
   `start_ticking(app)` (publishes at startup and every minute while a timer runs).
 - `timers/commands.rs`: `timer_start(projectId, note, tagId)`, `timer_stop` (`null` without a timer),
   `timer_status`, `timers_recent`, `timer_picker_open`, `timer_picker_close`; `start_by_name` serves the CLI.
-- `timers/picker.rs`: the `timer` window (`src/windows/timer/index.html`, 380×320, no decorations, transparent,
+- `timers/picker.rs`: the `timer` window (`src/windows/timer/index.html`, 380×380, no decorations, transparent,
   always on top, hidden on blur), under the tray icon or centered; capability `capabilities/timer.json`.
 - `timers/shortcut.rs`: `register(app, binding)` makes `Settings.timerShortcut` (default `Mod+Shift+T`) open
   or close the picker from any app (`tauri-plugin-global-shortcut`). Only a chord with a Tauri key name

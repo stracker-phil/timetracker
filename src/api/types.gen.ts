@@ -132,6 +132,10 @@ export type CalendarEntry = {
  */
 heightUnits: number, 
 /**
+ * Whether the Week card shows the note: it is at least `NOTE_MIN_UNITS` tall.
+ */
+showNote: boolean, 
+/**
  * The recording's id.
  */
 id: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, note: string, tag: string | null, 

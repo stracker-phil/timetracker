@@ -7,6 +7,7 @@ export function calendarEntry(patch: Partial<CalendarEntry> = {}): CalendarEntry
   const id = patch.id ?? "r1";
   return {
     heightUnits: 3,
+    showNote: true,
     id,
     projectId: "p-site",
     projectName: "Website",

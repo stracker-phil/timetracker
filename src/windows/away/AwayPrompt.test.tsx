@@ -186,21 +186,33 @@ describe("AwayPrompt", () => {
       const docs = projectItem({ project: { id: "p-docs", name: "Docs" } });
       mocked.projectsList.mockResolvedValue([website, docs]);
       await renderPrompt();
+      await userEvent.click(screen.getByRole("combobox", { name: "Project" }));
       await userEvent.keyboard("{ArrowDown}");
       await userEvent.click(screen.getAllByRole("option", { name: "Docs" })[0]);
       await userEvent.click(recordButton());
       await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p-docs" })));
     });
 
-    it("shows the last used project in the focused project field without opening its list", async () => {
+    it("asks for Note first, focused and with a prompt, then Project and Tag", async () => {
       await renderPrompt();
-      expect(screen.getByRole("combobox", { name: "Project" })).toHaveFocus();
+      const note = field("Note");
+      const project = screen.getByRole("combobox", { name: "Project" });
+      const tag = screen.getByRole("combobox", { name: "Tag" });
+      expect(note).toHaveFocus();
+      expect(note).toHaveAttribute("placeholder", "What did you work on?");
+      expect(note.compareDocumentPosition(project) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(project.compareDocumentPosition(tag) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("prefills the project with the last used one without opening its list", async () => {
+      await renderPrompt();
       expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("Website");
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     });
 
     it("records with Enter from the project field while its list is closed", async () => {
       await renderPrompt();
+      await userEvent.click(screen.getByRole("combobox", { name: "Project" }));
       await userEvent.keyboard("{Enter}");
       await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p-site" })));
     });

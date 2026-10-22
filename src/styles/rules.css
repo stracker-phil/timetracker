@@ -9,7 +9,11 @@
 /* Rules screen: one inset group of rules, in priority order. */
 .rules-page { flex: 1; overflow: auto; padding: var(--margin); display: flex; flex-direction: column; gap: var(--space-4); }
 .rules-intro { margin: 0; max-width: 42rem; line-height: 1.4; color: var(--o2); }
-.rules-empty { margin: 0; color: var(--o3); }
+/* No rules: a centered message with the way to make one. */
+.rules-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--margin); text-align: center; }
+.rules-empty p { margin: 0; }
+.rules-empty-title { font-size: var(--fs-title); font-weight: 600; color: var(--text-strong); }
+.rules-empty .btn { margin-top: var(--space-2); }
 .rule-rows { list-style: none; margin: 0; padding: 0 var(--space-3) 0 var(--space-1); display: flex; flex-direction: column; max-width: 52rem; }
 .rule-card { display: flex; align-items: center; gap: var(--space-3); min-height: 3.385rem; padding: var(--space-2) 0; }
 .rule-card + .rule-card { box-shadow: inset 0 1px 0 var(--line); }

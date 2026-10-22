@@ -18,11 +18,11 @@ function DayHead({ column }: { column: Column }) {
       type="button"
       className={classes.filter(Boolean).join(" ")}
       role="columnheader"
-      aria-label={`${columnName(column)}, ${formatDuration(column.totalMs)} recorded`}
+      aria-label={column.totalMs > 0 ? `${columnName(column)}, ${formatDuration(column.totalMs)} recorded` : columnName(column)}
       onClick={() => useStore.getState().goToDay(column.day)}
     >
       <span className="week-day-name">{column.isToday ? "Today" : columnName(column)}</span>
-      <span className={column.totalMs > 0 ? "week-day-total" : "week-day-total o3"}>{formatDuration(column.totalMs)}</span>
+      {column.totalMs > 0 && <span className="week-day-total">{formatDuration(column.totalMs)}</span>}
     </button>
   );
 }
@@ -42,7 +42,7 @@ function DayColumn({ column, focused, drag, onDrag }: ColumnProps) {
       {column.entries.map((e) => (
         <WeekCard key={e.id} entry={e} day={column.day} focused={e.id === focused} dragging={drag?.id === e.id && drag.from === column.day} onDrag={onDrag} />
       ))}
-      <button type="button" className={column.entries.length > 0 ? "week-add" : "week-add week-add--empty"} aria-label={`New recording on ${columnName(column)}`} title="New recording" onClick={() => void useStore.getState().openNewRecording(column.day)}>
+      <button type="button" className="week-add" aria-label={`New recording on ${columnName(column)}`} title="New recording" onClick={() => void useStore.getState().openNewRecording(column.day)}>
         <Plus size="1rem" aria-hidden="true" />
         <span>New recording</span>
       </button>

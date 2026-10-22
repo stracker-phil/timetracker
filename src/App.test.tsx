@@ -255,7 +255,7 @@ describe("App", () => {
 
     it("reloads the rules when rules changed", async () => {
       await renderApp({ view: "rules" });
-      await screen.findByText("No rules yet.");
+      await screen.findByText("No rules yet");
       mocked.rulesList.mockResolvedValueOnce([rule({ name: "Chat" })]);
       act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "rules", day: null }));
       expect(await screen.findByText("Chat")).toBeInTheDocument();

@@ -491,8 +491,9 @@ timeline's for every app.
 
 - After away time of at least the set minutes (Settings → Tracker; not after a pause), a small sheet on
   `--pop` with `--radius-lg` opens on top of everything: `You were away 42m` in `--fs-title`,
-  `12:03–12:45 · idle` (asleep, locked), then project (the last used one), From and To side by side with the
-  length beside them (snapped), note, tag, and Record (↵) / Skip (Escape). A failure reads in red on a light
+  `12:03–12:45 · idle` (asleep, locked), then the editor's fields in its order with labels: Note (focused,
+  "What did you work on?"), Project (the last used one), Tag; then From and To side by side with the length
+  beside them (snapped), and Record (↵) / Skip (Escape). A failure reads in red on a light
   red tint above the buttons.
 - A recording in the way reads `A recording already covers 12:10–12:30 (Project)` above the buttons; the
   form stays, so the times can change. The sheet stays open when another app takes focus.
@@ -520,11 +521,14 @@ timeline's for every app.
   recordings column; the one under the pointer gets a dashed accent outline. Dropping opens the rule sheet,
   filled in; nothing is saved before Save. From the keyboard, the block menu's Make a rule… (⌃↵) opens the
   sheet with the block's conditions and no project.
-- **Rules screen**: the toolbar with New rule, the intro, then one inset group of rules (at most 52rem
+- **Rules screen**: the toolbar with New rule, the intro (ending "Hold ⌥ and drag an activity onto a project
+  to make a rule."), then one inset group of rules (at most 52rem
   wide), a row per rule divided by hairlines: a grip, the enable switch, the name (600) with today's matches
   on the right ("1h 20m today · 2 to review" in the accent while suggestions wait, "Nothing today", "Off" when
   disabled), then the project as a dot in its shade with its name and the conditions in `--o2`; a disabled
   rule's text is dimmed. A dragged row lifts onto `--pop` with `--shadow`. The order is the priority; drag the grip, or ⌥↑ ⌥↓ with the focus in a row.
+  Without rules the page shows, centered, "No rules yet", what rules do, the same ⌥ tip and a New rule
+  button.
 - **Rule sheet**: the form on the left, "Last 7 days" on the right with the matching time and the hits
   (day and time in `--o2`, the app, the title). Below 720px the preview moves under the form.
 
@@ -535,22 +539,24 @@ timeline's for every app.
   recorded today continues that recording with a new span. The menu bar item's title reads `⏱ 1h 23m Acme` while it runs, and the
   status bar shows `⏱ Acme 1:23` (a click stops it).
 - The picker (⌘⇧T from any app, ⌘T in the window, Start Timer… in the tray) is a small floating panel on
-  `--pop` with `--radius-lg` under the tray icon: "Start timer", project, note, tag, Start (↵), Cancel
-  (Escape), and below a hairline the "Recent" timers as rows with their project's dot. While a timer runs it
-  shows the project and the elapsed time large, the note, Stop and "Start another…". It hides when it loses
-  focus.
+  `--pop` with `--radius-lg` under the tray icon: "Start Timer", then the labelled fields in the editor's order
+  (Note, focused, "What did you work on?"; Project; Tag), Start (↵), Cancel (Escape), and below a hairline the
+  "Recent" timers as rows with their project's dot. While a timer runs its title is the project's name with
+  its dot, then the elapsed time large, the note, Stop and "Start another…". It hides when it loses focus.
 
 ## Week and Month
 
 - **Week** (Timely's Week view): seven columns, Monday at the left, with no time axis and no empty hours.
   Each head reads `Mon 19` (semibold; today as "Today" in accent text) with the day's recorded hours
-  (`--o2`, tabular) on the right; a click opens the day. Below, the day's recordings as filled `Card`s in
+  (`--o2`, tabular) on the right, none on a day without recordings; a click opens the day. Below, the day's recordings as filled `Card`s in
   start order, a small gap apart: project, note, the tag with its icon, and the day's duration at the bottom
   right. A card grows with its duration, from one line of title over the foot to a cap at six hours (Rust's
-  height units), so a 6 h recording is clearly taller than a 10 min one. A recording with several times that
+  height units), so a 6 h recording is clearly taller than a 10 min one; a card under four units (up to
+  45 min) leaves out the note, which would not fit. A recording with several times that
   day is one card with its total and "n times"; one past midnight shows in both days with each day's share.
-  A "New recording" button (+) follows the last card (in an empty column, a dashed slot at the top); it opens the editor as a
-  sheet on the default span on that day. A click on a card focuses it (accent ring), a double-click or ↵
+  A "New recording" button (+) follows the last card (at the top of an empty column); as in the Month it shows
+  while the column is hovered or the button has the keyboard focus, and it opens the editor as a sheet on the
+  default span on that day. A click on a card focuses it (accent ring), a double-click or ↵
   edits it, ⌫ deletes it. Dragged to another column (the column under the pointer gets an accent ring) the
   recording's time on that day moves there at the same clock times; with ⌥ it is copied. Times are edited in
   the editor or the Day view; the Week has no resize. Today's column has a faint accent tint, Saturday and
@@ -578,9 +584,10 @@ timeline's for every app.
 ## Tags
 
 - A page of its own (⌘6): the toolbar reads `Tags` and `One per recording, for kinds of work across projects.`
+  New tag (⌘N, `tags.new`) in the toolbar asks for a name in a sheet, as Projects and Rules add theirs.
   Below, one inset group with a row per tag (its name, the number of recordings, a pencil to rename, ✕ to
-  delete; a confirm first when recordings carry it), then the New tag field (↵ adds); ⌘N (`tags.new`) asks
-  for a name in a sheet.
+  delete; a confirm first when recordings carry it); the pencil and ✕ show while the row is hovered or holds
+  the focus, and Tab still reaches them. Without tags: `No tags yet.`
 - Rename in place, as in Finder: a double click on the name, ↵ on the focused row (rows are Tab stops) or the
   pencil turns the name into a field with its text selected. ↵ or leaving the field saves, Escape cancels; an
   empty or unchanged name cancels. A name another tag has (ignoring case) keeps the field open with the error
@@ -612,16 +619,18 @@ timeline's for every app.
 ## Reports
 
 The Reports screen follows Timely's day report, without money. The toolbar has the period as title, then
-the grouping of the copied text (By project, tag, day, week or month), Copy as text and Save report…; below,
-one slim filter bar (Period presets as a segmented control, Custom revealing dates, clients, projects, tags, rounding, archived projects). The
+Copy as text as a split button (the main part copies with the current grouping; its chevron opens a menu
+that picks it: By project, tag, day, week or month, the current one checked) and Save report…; below, one
+slim filter bar (Period presets as a segmented control, Custom revealing dates, clients, projects, tags,
+rounding, an Include archived switch). The
 P and N step the period, O goes to the one holding today, and the sidebar's calendar highlights it when it is one day, week or month. The content sits in inset groups:
 
 1. **Totals:** `Total` with the hours large (`--text-strong`, `--fs-display` bold), then Recordings,
    Projects, Untagged (only when there is untagged time) and `Billable 6h 24m · 80 %` (of the rounded total;
    only when time is recorded), each a `--o2` label over its value. With rounding, the unrounded total stands
    below in `--o3`.
-2. **Charts:** two donuts side by side, By client and By tag; a By select on each switches between client,
-   project and tag. The ring has the slices in their colors (a client's accent, a project's shade, a tag's
+2. **Charts:** two donuts side by side, By client and By tag; a By select on each switches between Client,
+   Project and Tag. The ring has the slices in their colors (a client's accent, a project's shade, a tag's
    accent by its place in the tag list, graphite for No client and Untagged) on a `--fill` track, the
    percentages outside the ring in `--o2` (from 3 %), the total and the count (`2 clients`) in the center,
    and a legend with a dot, the name and the hours.

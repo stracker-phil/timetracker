@@ -68,7 +68,7 @@ export const WeekCard = memo(function WeekCard({ entry, day, focused, dragging, 
       aria-label={entryName(entry)}
       aria-pressed={focused}
       title={entry.projectName}
-      subtitle={entry.note || undefined}
+      subtitle={entry.showNote && entry.note ? entry.note : undefined}
       meta={
         <>
           {entry.tag && (

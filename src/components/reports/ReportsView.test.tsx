@@ -76,7 +76,8 @@ describe("ReportsView", () => {
       render(<ReportsView />);
       await screen.findByLabelText("Totals");
       expect(lastFilter()).toEqual({ ...defaultFilter(null), range: { kind: "today" }, groupBy: "week", rounding: "nearest15" });
-      expect(screen.getByRole("combobox", { name: "Group copied text by" })).toHaveValue("week");
+      await userEvent.click(screen.getByRole("button", { name: "Group copied text by" }));
+      expect(screen.getByRole("menuitemcheckbox", { name: "By week" })).toHaveAttribute("aria-checked", "true");
     });
 
     it.each<[string, Range["kind"]]>([
@@ -91,11 +92,15 @@ describe("ReportsView", () => {
       expect(period.getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "true");
     });
 
-    it("runs the report again with the grouping chosen for the copied text", async () => {
+    it("runs the report again with the grouping chosen for the copied text, without copying", async () => {
       await renderView();
-      await userEvent.selectOptions(screen.getByRole("combobox", { name: "Group copied text by" }), "By tag");
+      await userEvent.click(screen.getByRole("button", { name: "Group copied text by" }));
+      await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "By tag" }));
       await vi.waitFor(() => expect(lastFilter().groupBy).toBe("tag"));
-      expect(screen.getByRole("combobox", { name: "Group copied text by" })).toHaveValue("tag");
+      expect(mocked.reportText).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByRole("button", { name: "Group copied text by" }));
+      expect(screen.getByRole("menuitemcheckbox", { name: "By tag" })).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("menuitemcheckbox", { name: "By project" })).toHaveAttribute("aria-checked", "false");
     });
 
     it.each<[string, Rounding]>([
@@ -110,7 +115,7 @@ describe("ReportsView", () => {
 
     it("runs the report again with archived projects included", async () => {
       await renderView();
-      await userEvent.click(screen.getByRole("switch", { name: "Archived projects" }));
+      await userEvent.click(screen.getByRole("switch", { name: "Include archived" }));
       await vi.waitFor(() => expect(lastFilter().includeArchived).toBe(true));
     });
 
@@ -151,6 +156,22 @@ describe("ReportsView", () => {
       expect(await screen.findByText("Copied the report")).toBeInTheDocument();
       expect(mocked.reportText).toHaveBeenCalledWith(expect.objectContaining({ range: { kind: "lastWeek" } }));
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Tue Mar 10\n\nWebsite 0:45 h\n");
+    });
+
+    it("offers the groupings in the chevron menu of the Copy as text group", async () => {
+      await renderView();
+      const group = within(screen.getByRole("group", { name: "Copy as text" }));
+      const chevron = group.getByRole("button", { name: "Group copied text by" });
+      expect(chevron).toHaveAttribute("aria-haspopup", "menu");
+      await userEvent.click(chevron);
+      expect(screen.getAllByRole("menuitemcheckbox").map((i) => i.textContent)).toEqual(["By project", "By tag", "By day", "By week", "By month"]);
+      expect(screen.getByRole("menuitemcheckbox", { name: "By project" })).toHaveAttribute("aria-checked", "true");
+    });
+
+    it("copies the text grouped as currently chosen", async () => {
+      await renderView({ reportFilter: { ...defaultFilter(settings()), groupBy: "month" } });
+      await userEvent.click(within(screen.getByRole("group", { name: "Copy as text" })).getByRole("button", { name: /^Copy as text/ }));
+      await vi.waitFor(() => expect(mocked.reportText).toHaveBeenCalledWith(expect.objectContaining({ groupBy: "month" })));
     });
 
     it("copies through the reports.copyText command", async () => {
@@ -245,7 +266,8 @@ describe("ReportsView", () => {
       act(() => useStore.getState().openSavedReport(saved));
       await vi.waitFor(() => expect(lastFilter()).toEqual(saved.filter));
       expect(within(screen.getByRole("group", { name: "Period" })).getByRole("button", { name: "Last week" })).toHaveAttribute("aria-pressed", "true");
-      expect(screen.getByRole("combobox", { name: "Group copied text by" })).toHaveValue("tag");
+      await userEvent.click(screen.getByRole("button", { name: "Group copied text by" }));
+      expect(screen.getByRole("menuitemcheckbox", { name: "By tag" })).toHaveAttribute("aria-checked", "true");
     });
   });
 });

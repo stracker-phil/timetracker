@@ -5,7 +5,7 @@ use tauri_plugin_positioner::{Position, WindowExt};
 
 const LABEL: &str = "timer";
 const URL: &str = "src/windows/timer/index.html";
-const SIZE: (f64, f64) = (380.0, 320.0);
+const SIZE: (f64, f64) = (380.0, 380.0);
 
 /// Shows the picker under the tray icon (centered when the tray's place is unknown) and focuses it.
 pub fn open(app: &AppHandle) {
@@ -41,7 +41,7 @@ pub fn hide(app: &AppHandle) {
 
 fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(URL.into()))
-        .title("Timer")
+        .title("Start Timer")
         .inner_size(SIZE.0, SIZE.1)
         .decorations(false)
         .transparent(true)

@@ -1,16 +1,15 @@
 import { Plus } from "lucide-react";
-import { useState } from "react";
 import type { TagListItem } from "../../api";
+import { runCommand, useBindingLabel } from "../../commands";
 import { plural } from "../../lib/format";
 import { useStore } from "../../state/store";
-import { InsetField } from "../Field";
 import { Toolbar } from "../Toolbar";
 import { TagRow } from "./TagRow";
 
 /** The tags, one per recording, for kinds of work across projects; added, renamed and deleted here. */
 export function TagsPage() {
   const tags = useStore((s) => s.tags);
-  const [draft, setDraft] = useState("");
+  const newKeys = useBindingLabel("tags.new");
 
   function remove(tag: TagListItem) {
     const { deleteTag, openDialog } = useStore.getState();
@@ -24,35 +23,23 @@ export function TagsPage() {
     });
   }
 
-  function add() {
-    const name = draft.trim();
-    if (!name) return;
-    void useStore
-      .getState()
-      .saveTag(null, name)
-      .then(() => setDraft(""), () => {});
-  }
-
   return (
     <section className="view-page" aria-label="Tags">
-      <Toolbar title="Tags" detail={<span className="toolbar-detail">One per recording, for kinds of work across projects.</span>} />
+      <Toolbar title="Tags" detail={<span className="toolbar-detail">One per recording, for kinds of work across projects.</span>}>
+        <button type="button" className="btn" title={newKeys ? `New tag (${newKeys})` : undefined} onClick={() => runCommand("tags.new")}>
+          <Plus size="1.154rem" /> New tag
+        </button>
+      </Toolbar>
       <div className="tags-page">
-        <ul className="tag-rows">
-          {tags.map((tag) => (
-            <TagRow key={tag.id} tag={tag} onDelete={remove} />
-          ))}
-        </ul>
-        <InsetField icon={<Plus size="1.077rem" />} className="tag-add">
-          <input
-            aria-label="New tag"
-            placeholder="New tag"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") add();
-            }}
-          />
-        </InsetField>
+        {tags.length === 0 ? (
+          <p className="o3">No tags yet.</p>
+        ) : (
+          <ul className="tag-rows">
+            {tags.map((tag) => (
+              <TagRow key={tag.id} tag={tag} onDelete={remove} />
+            ))}
+          </ul>
+        )}
       </div>
     </section>
   );

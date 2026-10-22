@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Play, Square } from "lucide-react";
 import { api, type RecentTimer, type RunningTimer as Running } from "../../api";
 import { AccentDot } from "../../components/Accent";
-import { NoteInput } from "../../components/NoteInput";
+import { FormField } from "../../components/Field";
+import { NOTE_PLACEHOLDER, NoteInput } from "../../components/NoteInput";
 import { ProjectPicker } from "../../components/pickers/ProjectPicker";
 import { TagPicker } from "../../components/pickers/TagPicker";
 import { formatDuration } from "../../lib/format";
@@ -46,12 +47,11 @@ function useRecentTimers(): RecentTimer[] {
 function RunningTimer({ running, onAnother, onStop }: { running: Running; onAnother: () => void; onStop: () => void }) {
   return (
     <>
-      <h1>Timer</h1>
-      <div className="timer-running">
+      <h1 className="timer-running">
         <AccentDot accent={running.color} shade={running.shade} />
         <span className="grow-text">{running.projectName}</span>
-        <span className="timer-elapsed">{formatDuration(running.elapsedMs)}</span>
-      </div>
+      </h1>
+      <span className="timer-elapsed">{formatDuration(running.elapsedMs)}</span>
       {running.recording.note && <p className="timer-note o2">{running.recording.note}</p>}
       <div className="actions">
         <button type="button" className="btn" onClick={onAnother}>
@@ -69,6 +69,7 @@ function StartForm({ onStart }: { onStart: Start }) {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [tagId, setTagId] = useState<string | null>(null);
+  const noteId = useId();
   return (
     <form
       className="timer-form"
@@ -77,10 +78,16 @@ function StartForm({ onStart }: { onStart: Start }) {
         if (projectId) onStart(projectId, note.trim(), tagId);
       }}
     >
-      <h1>Start timer</h1>
-      <ProjectPicker value={projectId} onChange={setProjectId} autoFocus />
-      <NoteInput aria-label="Note" placeholder="Note" maxLength={500} value={note} onChange={setNote} />
-      <TagPicker value={tagId} onChange={setTagId} />
+      <h1>Start Timer</h1>
+      <FormField label="Note" htmlFor={noteId}>
+        <NoteInput id={noteId} placeholder={NOTE_PLACEHOLDER} autoFocus maxLength={500} value={note} onChange={setNote} />
+      </FormField>
+      <FormField label="Project">
+        <ProjectPicker value={projectId} onChange={setProjectId} />
+      </FormField>
+      <FormField label="Tag">
+        <TagPicker value={tagId} onChange={setTagId} />
+      </FormField>
       <div className="actions">
         <button type="button" className="btn" onClick={close}>
           Cancel
@@ -113,7 +120,7 @@ function RecentTimers({ recent, onStart }: { recent: RecentTimer[]; onStart: Sta
   );
 }
 
-/** The small window under the tray icon: start a timer (project, note, tag), or stop the running one. */
+/** The small window under the tray icon: start a timer (note, project, tag), or stop the running one. */
 export function TimerPicker() {
   const recent = useRecentTimers();
   const running = useStore((s) => s.timer?.running);

@@ -93,7 +93,7 @@ export function ReportFilters({ filter, shown, onChange }: Props) {
         </select>
         <label className="inline-switch">
           <input className="switch" type="checkbox" role="switch" checked={filter.includeArchived} onChange={(e) => onChange({ includeArchived: e.target.checked })} />
-          Archived projects
+          Include archived
         </label>
       </div>
     </div>

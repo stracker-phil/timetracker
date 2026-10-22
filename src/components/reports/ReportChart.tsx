@@ -5,10 +5,10 @@ import { accentColor, AccentDot } from "../Accent";
 
 type ChartBy = "client" | "project" | "tag";
 
-const CHART_BYS: { by: ChartBy; slices: keyof ReportCharts; one: string; many: string }[] = [
-  { by: "client", slices: "byClient", one: "client", many: "clients" },
-  { by: "project", slices: "byProject", one: "project", many: "projects" },
-  { by: "tag", slices: "byTag", one: "tag", many: "tags" },
+const CHART_BYS: { by: ChartBy; label: string; slices: keyof ReportCharts; one: string; many: string }[] = [
+  { by: "client", label: "Client", slices: "byClient", one: "client", many: "clients" },
+  { by: "project", label: "Project", slices: "byProject", one: "project", many: "projects" },
+  { by: "tag", label: "Tag", slices: "byTag", one: "tag", many: "tags" },
 ];
 
 const SIZE = 220;
@@ -78,7 +78,7 @@ export function ReportChart({ charts, totalMs, initial }: { charts: ReportCharts
         <select className="input" aria-label="Chart by" value={by} onChange={(e) => setBy(e.target.value as ChartBy)}>
           {CHART_BYS.map((c) => (
             <option key={c.by} value={c.by}>
-              {c.one}
+              {c.label}
             </option>
           ))}
         </select>

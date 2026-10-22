@@ -27,20 +27,20 @@ use record::RecordArgs;
 use report::ReportArgs;
 
 const EXAMPLES: &str = "Examples:
-  timetracker                     start TimeTracker or bring it to the front
-  timetracker --hidden            start without opening the window (launch at login)
-  timetracker show yesterday      show yesterday's Day view
-  timetracker status --json       the tracker state as JSON
-  timetracker pause 1h            pause tracking for an hour
+  timetracker                          start TimeTracker or bring it to the front
+  timetracker --hidden                 start without opening the window (launch at login)
+  timetracker show yesterday           show yesterday's Day view
+  timetracker status --json            the tracker state as JSON
+  timetracker pause 1h                 pause tracking for an hour
+  timetracker activity delete today    delete today's activity (undo within 30 s: activity undo)
+  timetracker stop                     stop the running timer
+  timetracker start acme --note \"weekly call\" --tag \"external meeting\"
   timetracker activity add --source planner --title \"Weekly sync\" --start 10:00 --end 10:45
   timetracker activity start --source planner --title Break
   timetracker activity stop --source planner
-  timetracker activity delete today   delete today's activity (undo within 30 s: activity undo)
   timetracker record --project acme --from 09:00 --to 09:30 --note standup --tag \"internal meeting\"
   timetracker record --project acme --span 14:25-15:00 --span 16:05-20:15
   timetracker report last-week --by tag --round 15
-  timetracker start acme --note \"weekly call\" --tag \"external meeting\"
-  timetracker stop
   claude mcp add timetracker -- ~/.local/bin/timetracker mcp";
 
 /// The `--log-level` of the CLI; without it the app logs at `Info`.
@@ -129,8 +129,7 @@ enum Command {
     },
     /// Stop the running timer
     Stop,
-    /// Serve a read-only MCP server on stdin/stdout for Claude and other MCP clients; it reads the data
-    /// itself, so it works while the app is closed (`claude mcp add timetracker -- ~/.local/bin/timetracker mcp`)
+    /// Serve a read-only MCP server (works while the app is closed)
     Mcp,
     /// Developer tools (debug builds only)
     #[cfg(debug_assertions)]
@@ -607,6 +606,37 @@ mod tests {
 
         assert!(!err.in_app);
         assert!(err.message.contains("<PROJECT>"), "{}", err.message);
+    }
+
+    #[test]
+    fn help_describes_the_mcp_subcommand() {
+        let help = Cli::command().render_help().to_string();
+        assert!(
+            help.contains("Serve a read-only MCP server (works while the app is closed)"),
+            "{help}"
+        );
+    }
+
+    #[test]
+    fn example_descriptions_start_in_the_same_column() {
+        let help = Cli::command().render_long_help().to_string();
+        let columns: Vec<(usize, &str)> = help
+            .lines()
+            .skip_while(|line| *line != "Examples:")
+            .skip(1)
+            .filter_map(|line| {
+                let command = line.trim_start();
+                let indent = line.len() - command.len();
+                let gap = command.find("  ")?;
+                let spaces = command[gap..].len() - command[gap..].trim_start().len();
+                Some((indent + gap + spaces, line))
+            })
+            .collect();
+        assert!(columns.len() >= 6, "{help}");
+        let (first, _) = columns[0];
+        for (column, line) in &columns {
+            assert_eq!(*column, first, "{line}");
+        }
     }
 
     #[test]

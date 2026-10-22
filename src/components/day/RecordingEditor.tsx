@@ -1,7 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { Sparkles, Trash2 } from "lucide-react";
 import { useStore } from "../../state/store";
-import { NoteInput } from "../NoteInput";
+import { NOTE_PLACEHOLDER, NoteInput } from "../NoteInput";
 import { ProjectPicker } from "../pickers/ProjectPicker";
 import { TagPicker } from "../pickers/TagPicker";
 import { DurationField, EditorRow, OverlapNotice } from "./EditorParts";
@@ -81,7 +81,7 @@ export function RecordingEditor({ id }: { id?: string }) {
         </p>
       )}
       <div className="editor-note">
-        <NoteInput aria-label="Note" placeholder="What did you work on?" autoFocus maxLength={500} value={draft.note} onChange={(note) => patchDraft({ note })} />
+        <NoteInput aria-label="Note" placeholder={NOTE_PLACEHOLDER} autoFocus maxLength={500} value={draft.note} onChange={(note) => patchDraft({ note })} />
         {errors.note && (
           <span className="form-field-error" role="alert">
             {errors.note}

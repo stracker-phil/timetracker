@@ -72,11 +72,35 @@ describe("RulesView", () => {
       expect(screen.getByRole("switch", { name: "Suggest from Docs" })).not.toBeChecked();
     });
 
-    it("says so when there are no rules", async () => {
-      mocked.rulesList.mockResolvedValue([]);
-      resetStore(projectsStore());
-      render(<RulesView />);
-      expect(await screen.findByText("No rules yet.")).toBeInTheDocument();
+    describe("without rules", () => {
+      async function renderEmpty() {
+        mocked.rulesList.mockResolvedValue([]);
+        resetStore(projectsStore());
+        render(
+          <>
+            <RulesView />
+            <Dialogs />
+          </>,
+        );
+        await screen.findByText("No rules yet");
+      }
+
+      it("says there are no rules yet and tips to drag an activity onto a project with ⌥", async () => {
+        await renderEmpty();
+        expect(screen.getByText("Hold ⌥ and drag an activity onto a project to make a rule.")).toBeInTheDocument();
+      });
+
+      it("offers a New rule button in the empty state that opens the rule dialog", async () => {
+        await renderEmpty();
+        const empty = screen.getByText("No rules yet").closest("div") as HTMLElement;
+        await userEvent.click(within(empty).getByRole("button", { name: "New rule" }));
+        expect(await screen.findByRole("dialog", { name: "New rule" })).toBeInTheDocument();
+      });
+
+      it("keeps the toolbar's New rule button next to the empty state's", async () => {
+        await renderEmpty();
+        expect(screen.getAllByRole("button", { name: "New rule" })).toHaveLength(2);
+      });
     });
 
     it("loads the rules when it opens", async () => {
@@ -89,6 +113,11 @@ describe("RulesView", () => {
     it("explains that suggestions wait in the Day view until they are approved or dismissed", async () => {
       await renderView();
       expect(screen.getByText(/the first matching rule wins\. Suggestions wait in the Day view until you approve or dismiss them/)).toBeInTheDocument();
+    });
+
+    it("tells in the intro to drag an activity onto a project with ⌥ to make a rule", async () => {
+      await renderView();
+      expect(screen.getByText(/Hold ⌥ and drag an activity onto a project/)).toBeInTheDocument();
     });
   });
 

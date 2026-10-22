@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { api, toAppError, type AppError, type AwayPrompt as Prompt, type AwayReason, type ProjectListItem, type Recording } from "../../api";
 import { FormField } from "../../components/Field";
-import { NoteInput } from "../../components/NoteInput";
+import { NOTE_PLACEHOLDER, NoteInput } from "../../components/NoteInput";
 import { TimeField, typedTimesSettled } from "../../components/day/TimeField";
 import { ProjectPicker } from "../../components/pickers/ProjectPicker";
 import { TagPicker } from "../../components/pickers/TagPicker";
@@ -126,8 +126,14 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
         void record();
       }}
     >
+      <FormField label="Note" htmlFor={ids.note} error={errors.note}>
+        <NoteInput id={ids.note} placeholder={NOTE_PLACEHOLDER} autoFocus maxLength={500} value={note} onChange={setNote} />
+      </FormField>
       <FormField label="Project" error={errors.projectId}>
-        <ProjectPicker value={projectId} autoFocus onChange={setPicked} />
+        <ProjectPicker value={projectId} onChange={setPicked} />
+      </FormField>
+      <FormField label="Tag" error={errors.tagId}>
+        <TagPicker value={tagId} onChange={setTagId} />
       </FormField>
       <div className="away-times">
         <FormField label="From" htmlFor={ids.start} error={errors.start}>
@@ -138,12 +144,6 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
         </FormField>
         {draft && <span className="away-length o2">{formatDuration(draft.totalMs)}</span>}
       </div>
-      <FormField label="Note" htmlFor={ids.note} error={errors.note}>
-        <NoteInput id={ids.note} maxLength={500} value={note} onChange={setNote} />
-      </FormField>
-      <FormField label="Tag" error={errors.tagId}>
-        <TagPicker value={tagId} onChange={setTagId} />
-      </FormField>
       {failure && (
         <p className="away-failure" role="alert">
           {failure}

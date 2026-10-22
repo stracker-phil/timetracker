@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api } from "../../api";
+import { installCommands } from "../../commands";
 import { resetStore } from "../../state/store";
 import { projectsStore, tag } from "../../test/projectFixtures";
 import { Dialogs } from "../Dialogs";
@@ -15,6 +16,7 @@ const mocked = vi.mocked(api, true);
 
 function renderTags(tags = [tag({ name: "admin" }), tag({ name: "research", recordings: 3 }), tag({ name: "support", recordings: 1 })]) {
   resetStore(projectsStore({ tags }));
+  installCommands();
   render(
     <>
       <TagsPage />
@@ -111,10 +113,7 @@ describe("TagsPage", () => {
 
       it("opens on Enter once the row is reached with Tab", async () => {
         renderTags();
-        await userEvent.tab();
-        await userEvent.tab();
-        await userEvent.tab();
-        await userEvent.tab();
+        for (let i = 0; i < 10 && researchRow() !== document.activeElement; i++) await userEvent.tab();
         expect(researchRow()).toHaveFocus();
         await userEvent.keyboard("{Enter}");
         expect(field()).toHaveValue("research");
@@ -238,31 +237,46 @@ describe("TagsPage", () => {
   });
 
   describe("adding", () => {
-    it("creates the typed tag on Enter and clears the field", async () => {
+    const openPrompt = async () => {
+      await userEvent.click(screen.getByRole("button", { name: "New tag" }));
+      return within(await screen.findByRole("dialog", { name: "New tag" }));
+    };
+
+    it("has no New tag textbox on the page", () => {
       renderTags();
-      await userEvent.type(screen.getByLabelText("New tag"), "billing{Enter}");
-      expect(mocked.tagsSave).toHaveBeenCalledWith(null, "billing");
-      await vi.waitFor(() => expect(screen.getByLabelText("New tag")).toHaveValue(""));
+      expect(screen.queryByRole("textbox", { name: "New tag" })).not.toBeInTheDocument();
     });
 
-    it("trims the name", async () => {
+    it("opens a prompt from the toolbar button and creates the tag typed in it", async () => {
       renderTags();
-      await userEvent.type(screen.getByLabelText("New tag"), "  billing  {Enter}");
-      expect(mocked.tagsSave).toHaveBeenCalledWith(null, "billing");
+      const dialog = await openPrompt();
+      await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "billing{Enter}");
+      await vi.waitFor(() => expect(mocked.tagsSave).toHaveBeenCalledWith(null, "billing"));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    it("ignores Enter on a blank field", async () => {
+    it("creates the tag with the prompt's Add button", async () => {
       renderTags();
-      await userEvent.type(screen.getByLabelText("New tag"), "   {Enter}");
+      const dialog = await openPrompt();
+      await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "billing");
+      await userEvent.click(dialog.getByRole("button", { name: "Add" }));
+      await vi.waitFor(() => expect(mocked.tagsSave).toHaveBeenCalledWith(null, "billing"));
+    });
+
+    it("creates nothing when the prompt is cancelled", async () => {
+      renderTags();
+      const dialog = await openPrompt();
+      await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(mocked.tagsSave).not.toHaveBeenCalled();
     });
+  });
 
-    it("keeps the typed text and toasts when the save fails", async () => {
-      mocked.tagsSave.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
-      renderTags();
-      await userEvent.type(screen.getByLabelText("New tag"), "billing{Enter}");
-      expect(await screen.findByText("Could not save the tag: Disk full")).toBeInTheDocument();
-      expect(screen.getByLabelText("New tag")).toHaveValue("billing");
+  describe("without tags", () => {
+    it("says there are no tags yet and lists none", () => {
+      renderTags([]);
+      expect(screen.getByText("No tags yet.")).toBeInTheDocument();
+      expect(screen.queryAllByRole("listitem")).toHaveLength(0);
     });
   });
 });

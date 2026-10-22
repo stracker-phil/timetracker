@@ -297,6 +297,9 @@ Secondary windows are pages of their own in `src/windows/<name>/` (`index.html`,
 `build.rollupOptions.input` entry in `vite.config.ts`; they import `src/styles/index.ts` and use the same
 store and `api`. `windows/timer/TimerPicker.tsx` reloads settings, projects, the timer and the recent timers
 whenever the window gains focus (it is hidden, not closed, between uses), and reports its errors to the log.
+Its `StartForm` ("Start Timer") and the away window use the editor's field order with `FormField` labels:
+Note (`NoteInput`, autofocus, `NOTE_PLACEHOLDER` "What did you work on?"), Project, Tag. While a timer runs the
+heading is its project's name.
 
 ### Away window
 
@@ -317,7 +320,8 @@ position) and their writes; a `data_changed` of kind `rules` reloads them.
 - `RulesView` lists `RuleRow`s in order: a grip (a pointer drag by whole rows; on release `reorderRules`
   sends every id in the new order, shown at once and restored when the write fails), the enable switch
   (`setRuleEnabled`), the name, the project and `conditionSummary` (`app is "Slack" · title contains "x"`).
-  A row click, New rule or ⌘N (`rules.new`) opens the `rule` dialog.
+  A row click, New rule or ⌘N (`rules.new`) opens the `rule` dialog. Without rules a centered empty state
+  ("No rules yet", the ⌥-drag tip, a New rule button) replaces the intro and the list.
 - `RuleSheet` (dialog `rule` with `id` or a `draft`): name, `ProjectPicker`, note, `TagPicker`, the
   `ConditionRow`s (field, comparison, value, remove; Add condition; an `app` condition whose value names a
   tracked app from `appsList()` shows its `AppIcon`, else the initial) and the enable switch. Save sends
@@ -331,9 +335,10 @@ position) and their writes; a `data_changed` of kind `rules` reloads them.
 around `RecordingEditor`, only while `editorView` is the shown view: the Week and Month have no timesheet) and `entry.ts` (`editEntry`: the editor on an
 entry's recording, found by its `start`/`end` as `at`; `entryName`). `WeekView` runs `weekView(day)` keyed by
 the day and `changeCount`: day heads (`DayHead`: `Mon 19`, today as "Today" in accent, and the day's recorded
-`h:mm`; a click opens the day) over seven columns in one scroll box, each the day's `WeekCard`s in order and a
-"New recording" button (`openNewRecording(day)`, filling an empty column). `WeekCard` is a `Card` (project,
-note, tag, the spans count when several, the day's `h:mm`) whose height is `heightUnits` times `--week-unit`:
+`h:mm`, left out at zero; a click opens the day) over seven columns in one scroll box, each the day's
+`WeekCard`s in order and a "New recording" button (`openNewRecording(day)`), shown while the column is hovered
+or the button has the keyboard focus. `WeekCard` is a `Card` (project, the note when Rust's `showNote` says it fits,
+tag, the spans count when several, the day's `h:mm`) whose height is `heightUnits` times `--week-unit`:
 a click focuses it (`focusRecording`), a double-click or ↵ `editEntry`, ⌫ `deleteRecording`. Dragged
 (`pointerDrag`) it dims, the column under the pointer (`elementFromPoint`, `data-day`) gets an accent ring, and
 released over another column it moves there, with ⌥ it is copied (`moveRecording`/`copyRecording` with the
@@ -349,13 +354,15 @@ The editor's `edit` request may carry `at` (a span of the recording), so views o
 ### Reports screen
 
 `components/reports/`: `ReportsView` (the `reports` view) runs `reportRun(filter)` keyed by the filter and
-`changeCount`: a `Toolbar` with `result.title` (Rust, in the Day title's format), the grouping of the copied text, Copy as text
-(`reports.copyText`, ⌘⇧C: `reportText` to the clipboard) and Save report… (`reports.save`: the `prompt`
-dialog, then `saveReport`); `ReportFilters`, one slim row (Period presets as a segmented control, Custom revealing dates, `MultiSelect`
-for clients, projects and tags, Rounding, Archived projects). Below, all rendered from `ReportResult` as Rust
+`changeCount`: a `Toolbar` with `result.title` (Rust, in the Day title's format), `CopyTextButton` (a split
+button: Copy as text, `reports.copyText`, ⌘⇧C: `reportText` to the clipboard; its chevron, "Group copied text
+by", opens a `useContextMenu` menu of checkable By project, tag, day, week, month that sets
+`reportFilter.groupBy`) and Save report… (`reports.save`: the `prompt` dialog, then `saveReport`);
+`ReportFilters`, one slim row (Period presets as a segmented control, Custom revealing dates, `MultiSelect`
+for clients, projects and tags, Rounding, Include archived). Below, all rendered from `ReportResult` as Rust
 built it: `ReportTotals` (the total large, recordings, projects, untagged time, `Billable 6:24 h · 80 %`),
-two `ReportChart`s (SVG donuts of `result.charts`, by client and by tag, each with a By select for client,
-project or tag, the total and count in the center, percentages on the ring and a legend; colors through
+two `ReportChart`s (SVG donuts of `result.charts`, by client and by tag, each with a By select for Client,
+Project or Tag, the total and count in the center, percentages on the ring and a legend; colors through
 `accentColor` in `Accent.tsx`), and `ReportTable` (`result.clients`: client rows, project rows that unfold
 their recordings, Expand all / Collapse all; a recording row shows its day, all its spans of the day
 `14:25–15:00, 16:05–20:15`, note and tag). A project row's Copy notes puts `project.notes.text` in the
@@ -386,10 +393,10 @@ ago`, then `weekMs` and `monthMs` as `h:mm` in two right-aligned columns (`--o3`
 
 ### Tags screen
 
-`components/tags/TagsPage.tsx`, the `tags` view (⌘6): a `Toolbar` (`Tags` and its description), one row per
-tag from the `projects` slice's `tags` (`TagRow`: name, the number of recordings, Rename, Delete; a confirm
-first when recordings carry it) and a New tag field (Enter, `saveTag`); `tags.new` (⌘N) asks for a name
-instead. `TagRow` renames in place (`useTagRename`): a double click on the name, ↵ on the focused row or Rename (`Rename tag
+`components/tags/TagsPage.tsx`, the `tags` view (⌘6): a `Toolbar` (`Tags`, its description and New tag, which
+runs `tags.new` (⌘N): a name prompt, then `saveTag`), then one row per tag from the `projects` slice's `tags`
+(`TagRow`: name, the number of recordings, Rename, Delete, the two shown on hover or focus within the row; a
+confirm first when recordings carry it), or `No tags yet.` `TagRow` renames in place (`useTagRename`): a double click on the name, ↵ on the focused row or Rename (`Rename tag
 <name>`) shows the `Tag name` field, focused and selected; ↵ or blur calls `saveTag(tag.id, name)`, Escape and
 an empty or unchanged name cancel. A failure keeps the field open, with a field error (a taken name) shown
 beside it; the row takes the focus back after ↵ or Escape.

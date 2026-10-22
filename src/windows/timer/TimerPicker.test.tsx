@@ -24,11 +24,11 @@ function renderPicker() {
 const startButton = () => screen.getByRole("button", { name: "Start" });
 const noteField = () => screen.getByRole("textbox", { name: "Note" });
 
-/** The project field has the focus; typing opens the filtered list and ↵ picks the first match. */
+/** Focuses the project field; typing opens the filtered list and ↵ picks the first match. */
 async function chooseProject() {
   const field = await screen.findByRole("combobox", { name: "Project" });
   await vi.waitFor(() => expect(useStore.getState().projects.length).toBeGreaterThan(0));
-  expect(field).toHaveFocus();
+  await userEvent.click(field);
   await userEvent.keyboard("Web{Enter}");
 }
 
@@ -42,10 +42,21 @@ describe("TimerPicker", () => {
   describe("without a running timer", () => {
     it("shows the start form with Start disabled until a project is chosen", async () => {
       renderPicker();
-      expect(await screen.findByRole("heading", { name: "Start timer" })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "Start Timer" })).toBeInTheDocument();
       expect(startButton()).toBeDisabled();
       await chooseProject();
       expect(startButton()).toBeEnabled();
+    });
+
+    it("asks for Note, Project and Tag in that order, with the note focused and a prompt in it", async () => {
+      renderPicker();
+      const note = await screen.findByRole("textbox", { name: "Note" });
+      const project = screen.getByRole("combobox", { name: "Project" });
+      const tag = screen.getByRole("combobox", { name: "Tag" });
+      expect(note).toHaveFocus();
+      expect(note).toHaveAttribute("placeholder", "What did you work on?");
+      expect(note.compareDocumentPosition(project) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(project.compareDocumentPosition(tag) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it("starts the timer with project, trimmed note and tag, then closes", async () => {
@@ -118,7 +129,7 @@ describe("TimerPicker", () => {
 
     it("shows no recent list when there are no recent timers", async () => {
       renderPicker();
-      await screen.findByRole("heading", { name: "Start timer" });
+      await screen.findByRole("heading", { name: "Start Timer" });
       expect(screen.queryByRole("list", { name: "Recent timers" })).not.toBeInTheDocument();
       expect(screen.queryByText("Recent")).not.toBeInTheDocument();
     });
@@ -132,10 +143,10 @@ describe("TimerPicker", () => {
 
     it("shows the project, the elapsed time and the note instead of the form", async () => {
       renderPicker();
-      expect(await screen.findByText("Docs")).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { level: 1, name: "Docs" })).toBeInTheDocument();
       expect(screen.getByText("1h 23m")).toBeInTheDocument();
       expect(screen.getByText("writing")).toBeInTheDocument();
-      expect(screen.queryByRole("heading", { name: "Start timer" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Start Timer" })).not.toBeInTheDocument();
       expect(screen.queryByRole("list", { name: "Recent timers" })).not.toBeInTheDocument();
     });
 
@@ -149,7 +160,7 @@ describe("TimerPicker", () => {
     it("shows the start form on Start another…", async () => {
       renderPicker();
       await userEvent.click(await screen.findByRole("button", { name: "Start another…" }));
-      expect(screen.getByRole("heading", { name: "Start timer" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Start Timer" })).toBeInTheDocument();
       expect(startButton()).toBeDisabled();
     });
 
@@ -164,7 +175,7 @@ describe("TimerPicker", () => {
   describe("when the window is shown again", () => {
     it("reloads the timer and follows a timer started elsewhere", async () => {
       renderPicker();
-      await screen.findByRole("heading", { name: "Start timer" });
+      await screen.findByRole("heading", { name: "Start Timer" });
       mocked.timerStatus.mockResolvedValue(runningStatus({ projectName: "Docs" }));
       act(() => void window.dispatchEvent(new Event("focus")));
       expect(await screen.findByRole("button", { name: "Stop" })).toBeInTheDocument();
@@ -172,7 +183,7 @@ describe("TimerPicker", () => {
 
     it("follows timer status events", async () => {
       renderPicker();
-      await screen.findByRole("heading", { name: "Start timer" });
+      await screen.findByRole("heading", { name: "Start Timer" });
       act(() => mocked.onTimerStatus.mock.calls[0][0](runningStatus({ projectName: "Docs" })));
       expect(await screen.findByRole("button", { name: "Stop" })).toBeInTheDocument();
     });

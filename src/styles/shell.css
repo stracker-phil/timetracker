@@ -33,6 +33,10 @@
 .toolbar .btn:not(.btn-primary):hover:not(:disabled) { background: var(--fill); }
 .toolbar .btn:not(.btn-primary):active:not(:disabled) { background: var(--fill-strong); }
 .toolbar .btn svg { color: var(--o2); }
+/* A split button shows both halves and a hairline between them while either is hovered. */
+.toolbar .split-btn:hover > .btn:not(.btn-primary) { background: var(--fill); }
+.toolbar .split-btn > .btn:not(.btn-primary):hover:not(:disabled) { background: var(--fill-strong); }
+.toolbar .split-btn:hover > .split-btn-menu { box-shadow: inset 1px 0 0 var(--line); }
 .toolbar .icon-btn { width: var(--toolbar-control-h); height: var(--toolbar-control-h); color: var(--o2); }
 .toolbar select.input { width: auto; }
 .toolbar .projects-archived, .toolbar .inline-switch { margin: 0 var(--space-2); }

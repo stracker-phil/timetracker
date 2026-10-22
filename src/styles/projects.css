@@ -28,7 +28,9 @@
 .project-none { margin: 0; padding: var(--space-3); }
 
 .tag-row { display: flex; align-items: center; gap: var(--space-3); }
-.tag-add { margin-top: var(--space-2); max-width: 20rem; }
+/* Rename and delete show while the row is hovered or holds the focus; Tab still reaches them. */
+.tag-row .icon-btn { opacity: 0; }
+.tag-row:hover .icon-btn, .tag-row:focus-within .icon-btn { opacity: 1; }
 .tag-row:focus-visible { outline: none; border-radius: var(--radius-sm); box-shadow: var(--focus-ring); }
 .tag-rename { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-3); }
 .tag-rename .input { max-width: 20rem; }

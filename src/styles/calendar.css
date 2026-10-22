@@ -30,10 +30,11 @@
 .week-add {
   flex: none; display: flex; align-items: center; justify-content: center; gap: var(--space-1); padding: var(--space-1) var(--space-2);
   border: 1px dashed transparent; border-radius: var(--radius-card); background: none; color: var(--o3); font-size: var(--fs-meta); font-weight: 500;
+  opacity: 0;
 }
+/* Hidden until the column is hovered or the button has keyboard focus. */
+.week-column:hover .week-add, .week-add:focus-visible { opacity: 1; }
 .week-add:hover, .week-add:focus-visible { border-color: var(--line); background: var(--fill); color: var(--text); }
-/* An empty day: the + is a card-sized slot at the top, like a first entry. */
-.week-add--empty { min-height: 3.5rem; border-color: var(--line); }
 
 /* ---------- month: rows of whole weeks filling the view; one line per recording ---------- */
 .month-grid { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }

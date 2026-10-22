@@ -633,6 +633,7 @@ mod tests {
         assert_eq!(entry["durationMs"], json!(HOUR));
         assert_eq!(entry["spanIds"], json!(["a-span0"]));
         assert_eq!(entry["heightUnits"], json!(4));
+        assert_eq!(entry["showNote"], json!(true));
         assert!(entry.get("card").is_none());
     }
 
@@ -887,7 +888,8 @@ mod tests {
                     "end": d + 2 * HOUR,
                     "spanIds": ["a-span0"],
                     "running": false,
-                    "heightUnits": 4
+                    "heightUnits": 4,
+                    "showNote": true
                 }]
             })
         );

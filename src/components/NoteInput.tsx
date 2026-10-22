@@ -1,5 +1,7 @@
 import type { InputHTMLAttributes } from "react";
 
+export const NOTE_PLACEHOLDER = "What did you work on?";
+
 const oneLine = (text: string) => text.replace(/[\r\n]+/g, " ");
 
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "onPaste"> & {
