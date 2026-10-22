@@ -18,18 +18,16 @@ const news = projectItem({ project: { id: "p-news", name: "Newsletter", clientId
 const solo = projectItem({ project: { id: "p-solo", name: "Solo" } });
 const legacy = projectItem({ project: { id: "p-legacy", name: "Legacy", clientId: acme.id, archivedAt: 5 }, client: acme });
 
-function renderPicker(store: Parameters<typeof projectsStore>[0] = {}, value: string | null = null, showRecent = false) {
+function renderPicker(store: Parameters<typeof projectsStore>[0] = {}, value: string | null = null, showRecent = false, suggested: string | null = null) {
   const onChange = vi.fn();
   resetStore(projectsStore({ projects: [site, news, solo, legacy], clients: [acme, bolt], recent: [solo.project, site.project, legacy.project], ...store }));
-  render(<ProjectPicker value={value} onChange={onChange} showRecent={showRecent} />);
+  render(<ProjectPicker value={value} onChange={onChange} showRecent={showRecent} suggested={suggested} />);
   return { onChange };
 }
 
 const field = () => screen.getByRole("combobox", { name: "Project" });
-const open = async () => {
-  await userEvent.click(field());
-  if (field().getAttribute("aria-expanded") !== "true") await userEvent.keyboard("{ArrowDown}");
-};
+const open = () => userEvent.click(field());
+const chevron = () => screen.getByRole("button", { name: "Show projects" });
 const options = () => within(screen.getByRole("listbox", { name: "Projects" })).getAllByRole("option");
 const optionTexts = () => options().map((o) => o.textContent);
 
@@ -37,101 +35,106 @@ describe("ProjectPicker", () => {
   beforeEach(() => vi.clearAllMocks());
 
   describe("list", () => {
-    it("lists Recent first, then the projects by client", async () => {
+    it("lists every active project once, grouped by client with No client last", async () => {
       renderPicker();
       await open();
-      expect(optionTexts()).toEqual(["Solo", "WebsiteAcme", "NewsletterAcme", "WebsiteAcme", "Solo", "New project…"]);
-      expect(screen.getByText("Recent")).toBeInTheDocument();
+      expect(optionTexts()).toEqual(["Newsletter", "Website", "Solo", "New project…"]);
+      expect(screen.getByText("Acme")).toBeInTheDocument();
       expect(screen.getByText("No client")).toBeInTheDocument();
+      expect(screen.queryByText("Recent")).not.toBeInTheDocument();
     });
 
-    it("never lists archived projects, not even as recent", async () => {
+    it("never lists archived projects", async () => {
       renderPicker();
       await open();
       expect(screen.queryByText("Legacy")).not.toBeInTheDocument();
     });
 
-    it("omits the Recent section when no recent project is active", async () => {
-      renderPicker({ recent: [legacy.project] });
-      await open();
-      expect(screen.queryByText("Recent")).not.toBeInTheDocument();
-    });
-
-    it("shows the chosen project as Client / Name", () => {
+    it("shows the chosen project's name as the value and its client as muted text", () => {
       renderPicker({}, "p-site");
-      expect(field()).toHaveValue("Acme / Website");
+      expect(field()).toHaveValue("Website");
+      expect(screen.getByText("Acme")).toBeInTheDocument();
     });
 
-    it("shows an empty value with the No project placeholder when nothing is chosen", () => {
+    it("shows an empty value with the Select project placeholder when nothing is chosen", () => {
       renderPicker();
       expect(field()).toHaveValue("");
-      expect(field()).toHaveAttribute("placeholder", "No project");
+      expect(field()).toHaveAttribute("placeholder", "Select project");
     });
   });
 
   describe("opening", () => {
-    it("opens nothing on focus when a project is chosen", async () => {
-      renderPicker({}, "p-site");
-      await userEvent.tab();
-      expect(field()).toHaveFocus();
-      expect(field()).toHaveAttribute("aria-expanded", "false");
-      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-    });
-
-    it("opens the list on Tab focus when no project is chosen", async () => {
-      renderPicker();
+    it.each([null, "p-site"])("opens the list on Tab focus (value %j)", async (value) => {
+      renderPicker({}, value);
       await userEvent.tab();
       expect(field()).toHaveFocus();
       expect(field()).toHaveAttribute("aria-expanded", "true");
       expect(screen.getByRole("listbox", { name: "Projects" })).toBeInTheDocument();
     });
 
-    it("opens the list on the first click when no project is chosen", async () => {
-      renderPicker();
+    it.each([null, "p-site"])("opens the list on the first click (value %j)", async (value) => {
+      renderPicker({}, value);
       await userEvent.click(field());
       expect(field()).toHaveFocus();
       expect(screen.getByRole("listbox", { name: "Projects" })).toBeInTheDocument();
     });
 
-    it("closes the list with Escape and keeps focus when no project is chosen", async () => {
-      renderPicker();
+    it("highlights the current project when opened by focus", async () => {
+      renderPicker({}, "p-news");
+      await userEvent.tab();
+      const current = screen.getByRole("option", { name: "Newsletter" });
+      expect(current).toHaveAttribute("aria-selected", "true");
+      expect(current).toHaveAttribute("aria-checked", "true");
+    });
+
+    it("closes the list with Escape, keeps focus and shows the client again", async () => {
+      renderPicker({}, "p-site");
       await userEvent.tab();
       await userEvent.keyboard("{Escape}");
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
       expect(field()).toHaveFocus();
       expect(field()).toHaveAttribute("aria-expanded", "false");
+      expect(screen.getByText("Acme")).toBeInTheDocument();
     });
 
-    it("only focuses on the first click and opens the list on the second when a project is chosen", async () => {
+    it("reopens a closed list with a click on the focused field", async () => {
       renderPicker({}, "p-site");
-      await userEvent.click(field());
-      expect(field()).toHaveFocus();
-      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      await userEvent.tab();
+      await userEvent.keyboard("{Escape}");
       await userEvent.click(field());
       expect(field()).toHaveAttribute("aria-expanded", "true");
       expect(screen.getByRole("listbox", { name: "Projects" })).toBeInTheDocument();
     });
 
-    it("toggles the list with the chevron", async () => {
+    it("focuses and opens through the chevron on an unfocused field", async () => {
       renderPicker({}, "p-site");
-      await userEvent.click(screen.getByRole("button", { name: "Show projects" }));
+      await userEvent.click(chevron());
+      expect(field()).toHaveFocus();
       expect(screen.getByRole("listbox", { name: "Projects" })).toBeInTheDocument();
-      await userEvent.click(screen.getByRole("button", { name: "Show projects" }));
-      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     });
 
-    it.each(["{ArrowDown}", "{ArrowUp}", " "])("opens on %j with the current project highlighted and checked", async (key) => {
+    it("toggles the list with the chevron on a focused field", async () => {
+      renderPicker({}, "p-site");
+      await userEvent.tab();
+      await userEvent.click(chevron());
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      await userEvent.click(chevron());
+      expect(screen.getByRole("listbox", { name: "Projects" })).toBeInTheDocument();
+    });
+
+    it.each(["{ArrowDown}", "{ArrowUp}", " "])("reopens a closed list on %j with the current project highlighted and checked", async (key) => {
       renderPicker({}, "p-news");
-      await userEvent.click(field());
+      await userEvent.tab();
+      await userEvent.keyboard("{Escape}");
       await userEvent.keyboard(key);
-      const current = screen.getByRole("option", { name: /^Newsletter/ });
+      const current = screen.getByRole("option", { name: "Newsletter" });
       expect(current).toHaveAttribute("aria-selected", "true");
       expect(current).toHaveAttribute("aria-checked", "true");
     });
 
-    it("opens filtered by the typed character with the first match highlighted", async () => {
+    it("filters by the typed character with the first match highlighted", async () => {
       renderPicker();
-      await userEvent.click(field());
+      await userEvent.tab();
       await userEvent.keyboard("n");
       expect(field()).toHaveValue("n");
       expect(options()[0]).toHaveTextContent("Newsletter");
@@ -170,7 +173,7 @@ describe("ProjectPicker", () => {
       const { onChange } = renderPicker();
       await open();
       await userEvent.keyboard("{Enter}");
-      expect(onChange).toHaveBeenCalledWith("p-solo");
+      expect(onChange).toHaveBeenCalledWith("p-news");
     });
 
     it("moves with the arrow keys and picks the highlighted option", async () => {
@@ -207,15 +210,19 @@ describe("ProjectPicker", () => {
       renderPicker({}, "p-site");
       await open();
       await userEvent.keyboard("{Escape}");
-      expect(field()).toHaveValue("Acme / Website");
+      expect(field()).toHaveValue("Website");
     });
 
-    it("does nothing on Backspace while the list is closed", async () => {
+    it("does nothing on Backspace without a query", async () => {
       const { onChange } = renderPicker({}, "p-site");
-      await userEvent.click(field());
+      await open();
       await userEvent.keyboard("{Backspace}");
       expect(onChange).not.toHaveBeenCalled();
-      expect(field()).toHaveValue("Acme / Website");
+      expect(field()).toHaveValue("");
+      await userEvent.keyboard("{Escape}");
+      await userEvent.keyboard("{Backspace}");
+      expect(onChange).not.toHaveBeenCalled();
+      expect(field()).toHaveValue("Website");
     });
 
     it("lets Enter reach the surrounding form while the list is closed", async () => {
@@ -227,7 +234,8 @@ describe("ProjectPicker", () => {
           <button type="submit">Go</button>
         </form>,
       );
-      await userEvent.click(field());
+      await open();
+      await userEvent.keyboard("{Escape}");
       await userEvent.keyboard("{Enter}");
       expect(onSubmit).toHaveBeenCalled();
     });
@@ -236,7 +244,7 @@ describe("ProjectPicker", () => {
       const { onChange } = renderPicker();
       await open();
       await userEvent.click(options()[2]);
-      expect(onChange).toHaveBeenCalledWith("p-news");
+      expect(onChange).toHaveBeenCalledWith("p-solo");
     });
 
     it("closes the list after picking", async () => {
@@ -273,6 +281,52 @@ describe("ProjectPicker", () => {
       await userEvent.tab();
       await userEvent.tab();
       expect(within(recentList()).getByRole("button", { name: "Solo" })).not.toHaveFocus();
+    });
+
+    describe("suggested", () => {
+      const labels = () => within(recentList()).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
+
+      it("comes first and is marked Suggested", () => {
+        renderPicker({}, null, true, "p-news");
+        expect(labels()).toEqual(["Acme / Newsletter", "Solo", "Acme / Website"]);
+        expect(within(within(recentList()).getByRole("button", { name: "Acme / Newsletter" })).getByText("Suggested")).toBeInTheDocument();
+        expect(screen.getAllByText("Suggested")).toHaveLength(1);
+      });
+
+      it("is not repeated among the recent ones", () => {
+        renderPicker({}, null, true, "p-site");
+        expect(labels()).toEqual(["Acme / Website", "Solo"]);
+      });
+
+      it("is ignored when archived", () => {
+        renderPicker({}, null, true, "p-legacy");
+        expect(labels()).toEqual(["Solo", "Acme / Website"]);
+        expect(screen.queryByText("Suggested")).not.toBeInTheDocument();
+      });
+
+      it("keeps the list at five", () => {
+        const many = Array.from({ length: 7 }, (_, i) => projectItem({ project: { id: `p-${i}`, name: `Project ${i}` } }));
+        renderPicker({ projects: many, recent: many.map((m) => m.project) }, null, true, "p-6");
+        expect(labels()).toHaveLength(5);
+        expect(labels()[0]).toBe("Project 6");
+      });
+
+      it("sets no value by itself", () => {
+        const { onChange } = renderPicker({}, null, true, "p-news");
+        expect(field()).toHaveValue("");
+        expect(onChange).not.toHaveBeenCalled();
+      });
+
+      it("picks it when clicked", async () => {
+        const { onChange } = renderPicker({}, null, true, "p-news");
+        await userEvent.click(within(recentList()).getByRole("button", { name: "Acme / Newsletter" }));
+        expect(onChange).toHaveBeenCalledWith("p-news");
+      });
+
+      it("shows nothing marked without a suggestion", () => {
+        renderPicker({}, null, true);
+        expect(screen.queryByText("Suggested")).not.toBeInTheDocument();
+      });
     });
 
     it("renders nothing without showRecent", () => {

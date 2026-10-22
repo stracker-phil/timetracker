@@ -54,8 +54,6 @@ export interface EditorSlice {
   /** Closes the editor and drops its draft and the selection. */
   closeEditor: () => void;
   patchDraft: (patch: Partial<Pick<Draft, "projectId" | "note" | "tagId">>) => void;
-  /** Like `patchDraft`, but a value the editor proposed itself (the project Rust proposes), so the draft stays unchanged. */
-  prefillDraft: (patch: Partial<Pick<Draft, "projectId" | "note" | "tagId">>) => void;
   /**
    * Runs `proceed` once the open editor is out of the way: at once without one, after closing an unchanged one,
    * and for a changed one only after "Discard changes?" is answered with Discard (Keep editing stays).
@@ -210,14 +208,6 @@ export const editorSlice: Slice<EditorSlice> = {
       patchDraft(patch) {
         const draft = get().draft;
         if (draft) set({ draft: { ...draft, ...patch } });
-      },
-
-      prefillDraft(patch) {
-        const draft = get().draft;
-        if (!draft) return;
-        const prefilled = { ...draft, ...patch };
-        if (!changed()) openedDraft = prefilled;
-        set({ draft: prefilled });
       },
 
       setDraftSpan(index, span) {

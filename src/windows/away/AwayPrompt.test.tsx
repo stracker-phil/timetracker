@@ -210,9 +210,13 @@ describe("AwayPrompt", () => {
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     });
 
-    it("records with Enter from the project field while its list is closed", async () => {
+    it("closes the list with Enter in the project field, then records with Enter", async () => {
       await renderPrompt();
       await userEvent.click(screen.getByRole("combobox", { name: "Project" }));
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+      await userEvent.keyboard("{Enter}");
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      expect(mocked.awayPromptAnswer).not.toHaveBeenCalled();
       await userEvent.keyboard("{Enter}");
       await vi.waitFor(() => expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p-site" })));
     });

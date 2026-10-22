@@ -188,11 +188,28 @@ describe("RecordingEditor", () => {
       await waitFor(() => expect(mocked.recordingProposal).toHaveBeenCalledWith([{ start: START, end: END }]));
     });
 
-    it("prefills the project of a new recording from the proposal", async () => {
+    it("offers the proposed project first, marked Suggested, without filling it in", async () => {
+      mocked.recordingProposal.mockResolvedValue({ projectId: "p-site" });
+      renderCreate(projectsStore({ projects: [website, intranet], clients: [acme], recent: [intranet.project] }));
+      await editorForm("New recording");
+      const list = within(await screen.findByRole("list", { name: "Recent projects" }));
+      expect(await list.findByText("Suggested")).toBeInTheDocument();
+      const rows = list.getAllByRole("button");
+      expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual(["Acme / Website", "Intranet"]);
+      expect(rows[0]).toHaveTextContent("Suggested");
+      expect(rows[1]).not.toHaveTextContent("Suggested");
+      expect(projectField()).toHaveValue("");
+    });
+
+    it("sets the project when the Suggested row is clicked", async () => {
       mocked.recordingProposal.mockResolvedValue({ projectId: "p-site" });
       renderCreate();
       await editorForm("New recording");
-      await waitFor(() => expect(projectField()).toHaveValue("Acme / Website"));
+      const list = within(await screen.findByRole("list", { name: "Recent projects" }));
+      await list.findByText("Suggested");
+      await userEvent.click(list.getByRole("button", { name: "Acme / Website" }));
+      expect(projectField()).toHaveValue("Website");
+      expect(tagField()).toBeInTheDocument();
     });
 
     it("leaves a project the opener chose alone", async () => {
@@ -259,7 +276,7 @@ describe("RecordingEditor", () => {
       renderCreate(withRecent);
       await editorForm("New recording");
       await userEvent.click(within(screen.getByRole("list", { name: "Recent projects" })).getByRole("button", { name: "Acme / Website" }));
-      expect(projectField()).toHaveValue("Acme / Website");
+      expect(projectField()).toHaveValue("Website");
       expect(recentList()).not.toBeInTheDocument();
       expect(tagField()).toBeInTheDocument();
     });
@@ -292,11 +309,15 @@ describe("RecordingEditor", () => {
       await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p-site" }), "cancel"));
     });
 
-    it("closes the editor with Escape in a picker whose list is closed", async () => {
+    it("closes the editor with a second Escape in a picker, after the first closed its list", async () => {
       renderCreate();
       await editorForm("New recording");
       await chooseWebsite();
       await userEvent.click(tagField());
+      expect(screen.getByRole("listbox", { name: "Tags" })).toBeInTheDocument();
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      expect(screen.getByRole("form", { name: "New recording" })).toBeInTheDocument();
       await userEvent.keyboard("{Escape}");
       expect(screen.queryByRole("form")).not.toBeInTheDocument();
     });
@@ -580,7 +601,8 @@ describe("RecordingEditor", () => {
       expect(field("Time 1 from")).toHaveValue("11:00");
       expect(field("Time 1 to")).toHaveValue("11:45");
       expect(field("Note")).toHaveValue("standup");
-      expect(projectField()).toHaveValue("Acme / Website");
+      expect(projectField()).toHaveValue("Website");
+      expect(screen.getByText("Acme")).toBeInTheDocument();
     });
 
     it("shows the tag of the recording", async () => {
@@ -594,7 +616,7 @@ describe("RecordingEditor", () => {
       renderEditor({ mode: "edit", id: "r1" });
       await editorForm("Edit recording");
       await waitFor(() => expect(mocked.recordingProposal).toHaveBeenCalled());
-      expect(projectField()).toHaveValue("Acme / Website");
+      expect(projectField()).toHaveValue("Website");
     });
 
     it("sends tagId null when the tag is cleared with Backspace", async () => {

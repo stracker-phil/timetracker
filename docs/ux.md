@@ -472,9 +472,10 @@ timeline's for every app.
 - **Editor**, inline in the timesheet (Timely's): a card with a 2px accent ring at the new recording's place
   among the cards (in place of the card it edits), pushing the cards below down and scrolled into view; it is
   never a sheet over the timeline (the Week and Month views, without a timesheet, show it as a sheet). Top to bottom: the
-  note as the title field (focused, "What did you work on?"), project (recent first, type to search, "New
-  project…"; while empty, up to 5 recent projects show below it as rows to click, and focusing it opens the
-  list), tag (only once a project is picked), the duration as `[0] h [20] m` behind a timer icon (both numbers
+  note as the title field (focused, "What did you work on?"), project (the name, the client muted after it;
+  focus opens the list of every project once by client, type to search, "New project…"; a new recording
+  starts empty, and while empty up to 5 projects show below it as rows to click: the proposed one first,
+  marked "Suggested", then the recent ones), tag (only once a project is picked), the duration as `[0] h [20] m` behind a timer icon (both numbers
   editable; a change moves the last span's end), the spans as `[10:00] – [10:20]` lines behind a clock icon (✕ removes one while there are several; "Add time" adds one
   after the last), then a trash icon for Delete at the leading end and Cancel and Save right-aligned. The note
   is always one input styled as a 15px semibold title, its text at the fields' leading edge; focus only adds
@@ -485,7 +486,7 @@ timeline's for every app.
   times and a short accent bar on the top and bottom edge (an edge in another day has none): dragging an edge
   moves that end from mark to mark while the block and the From and To fields follow; on release Rust merges
   spans that now touch or overlap into one. A click on a block can split them again (its span
-  leaves the draft). Editing an existing recording draws its spans the same way. A new recording's project is proposed: the project of the latest recording (two weeks back) that
+  leaves the draft). Editing an existing recording draws its spans the same way. A new recording's project is proposed (only offered, never filled in): the project of the latest recording (two weeks back) that
   covered the same main app, else the rule matching most of the activity. Field errors show under their
   field. A running recording's spans are shown, not edited.
 - **Leaving the view** with the editor open (the sidebar, the calendar, ⌘1…⌘7, the palette): an unchanged
@@ -784,7 +785,7 @@ Keys of controls, not commands (they act on the focused control and are not rebi
 | Where | Keys |
 |---|---|
 | Ghost card (Tab reaches it) | focuses the suggestion: ↵ approve, E edit, ⌫ dismiss (the `suggestion` scope); ✓ and ✕ inside it |
-| Recording editor, away prompt, timer picker, rule sheet | project and tag pickers: Tab or a click only focuses (an empty project picker opens its list); type (filters), ↓↑ or Space opens the list on the current value, ↓↑ move, ↵ picks (the last option creates), Escape closes the list and keeps the value; with the list closed ↵ and Escape belong to the form; ⌫ removes the tag; From and To: type `HH:MM` or ↑↓ by one snap step; ↵ saves, records or starts; in the editor also ⌘↵, and ⌘⌫ deletes; Escape cancels or skips |
+| Recording editor, away prompt, timer picker, rule sheet | project and tag pickers: Tab or a click opens the list; type (filters), ↓↑ or Space opens the list on the current value, ↓↑ move, ↵ picks (the last option creates), Escape closes the list and keeps the value; with the list closed ↵ and Escape belong to the form; ⌫ removes the tag; From and To: type `HH:MM` or ↑↓ by one snap step; ↵ saves, records or starts; in the editor also ⌘↵, and ⌘⌫ deletes; Escape cancels or skips |
 | Timeline, pointer | drag or click opens the editor; with the editor open, a click on an activity adds its time or takes it out again, and a drag adds a time |
 | Context menu (⌃↵ on an activity) | ↑↓ items, ↵ runs, Escape closes |
 | Pickers in the Reports filter | type, ↑↓, ↵ adds, ⌫ on an empty field removes the last |
@@ -810,7 +811,7 @@ From any view, with the documented default keys only (the pointer ways in bracke
    as far as the work went. The status bar shows the snapped time and its length; Escape clears it. (Drag over
    the time column or the lanes, or click an activity: the editor opens on release.)
 4. ↵ opens the inline editor in the timesheet, at the recording's place among the cards, with the note
-   focused: type it, then Tab to the project (often proposed already): type part of the name, ↑↓, ↵ picks it
+   focused: type it, then Tab to the project (its list opens; the proposed one is offered below the field): type part of the name, ↑↓, ↵ picks it
    (or the last option, `New project "x"…`, opens the project sheet). Tab on to the tag and the duration.
 5. Tab to a time's From and To: type `09:15` (or `915`) or press ↑↓ to move by one snap step; "Add time"
    adds another. (With the editor open, a click on an activity adds its time, a second click takes it out

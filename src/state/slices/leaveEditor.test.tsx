@@ -75,17 +75,8 @@ describe("leaving a view with the recording editor open", () => {
       expect([state().view, state().editor]).toEqual(["day", null]);
     });
 
-    it("does not count a project the editor prefilled itself as a change", async () => {
+    it("counts a picked project as a change", async () => {
       await openEditor();
-      act(() => state().prefillDraft({ projectId: "p-site" }));
-      state().setView("month");
-      expect(state().view).toBe("month");
-      expect(discardDialog()).not.toBeInTheDocument();
-    });
-
-    it("counts a project chosen after the prefill as a change", async () => {
-      await openEditor();
-      act(() => state().prefillDraft({ projectId: "p-site" }));
       act(() => state().patchDraft({ projectId: "p-web" }));
       act(() => state().setView("month"));
       expect(screen.getByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();

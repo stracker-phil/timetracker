@@ -26,17 +26,10 @@ export function RecordingEditor({ id }: { id?: string }) {
   const { errors, save, remove } = useEditorSave();
   const ref = useRef<HTMLFormElement>(null);
   const proposed = useProposal(draft?.spans ?? null);
-  const prefill = editor?.mode === "create" && !editor.projectId;
-  const projectId = draft?.projectId ?? null;
 
   useEffect(() => {
     ref.current?.scrollIntoView?.({ block: "nearest" });
   }, [editor]);
-
-  // A new recording takes the proposed project until one is picked.
-  useEffect(() => {
-    if (prefill && projectId === null && proposed) useStore.getState().prefillDraft({ projectId: proposed });
-  }, [prefill, projectId, proposed]);
 
   // Escape cancels wherever the focus is; an open list or dialog takes it first.
   useEffect(() => {
@@ -85,7 +78,7 @@ export function RecordingEditor({ id }: { id?: string }) {
         <NoteInput aria-label="Note" placeholder={NOTE_PLACEHOLDER} autoFocus maxLength={500} value={draft.note} onChange={(note) => patchDraft({ note })} />
       </EditorField>
       <EditorField error={errors.projectId}>
-        <ProjectPicker value={draft.projectId} onChange={(picked) => patchDraft({ projectId: picked })} showRecent />
+        <ProjectPicker value={draft.projectId} onChange={(picked) => patchDraft({ projectId: picked })} showRecent suggested={proposed} />
       </EditorField>
       {showTag && (
         <EditorField error={errors.tagId}>

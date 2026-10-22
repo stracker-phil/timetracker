@@ -10,6 +10,8 @@ interface Props<T> {
   icon: ReactNode;
   /** The value as text; `null` shows the placeholder. */
   text: string | null;
+  /** Muted text after the value while the list is closed, e.g. the project's client. */
+  detail?: string | null;
   placeholder: string;
   rowsFor: (query: string) => PickerRow<T>[];
   isCurrent: (value: T) => boolean;
@@ -17,17 +19,15 @@ interface Props<T> {
   onPick: (value: T, query: string) => void;
   /** ⌫ on the field without a query: removes the value (pickers that allow none). */
   onClear?: () => void;
-  /** Focus opens the list (an empty field waiting for a pick). */
-  openOnFocus?: boolean;
   autoFocus?: boolean;
 }
 
 /**
- * A combobox that shows its value and only focuses on Tab or a first click (with `openOnFocus`, both open the list). Typing, ↓ ↑, Space, a second
- * click or the chevron open the list on the current option; ↵ picks, Esc closes the list and keeps the
+ * A combobox that shows its value and opens its list on focus (Tab or a click) on the current option; typing
+ * filters, ↓ ↑, Space, a click on the focused field or the chevron open it again; ↵ picks, Esc closes the list and keeps the
  * value. With the list closed, ↵ and Esc belong to the form around it.
  */
-export function PickerField<T>({ label, listLabel, icon, text, placeholder, rowsFor, isCurrent, onPick, onClear, openOnFocus, autoFocus }: Props<T>) {
+export function PickerField<T>({ label, listLabel, icon, text, detail, placeholder, rowsFor, isCurrent, onPick, onClear, autoFocus }: Props<T>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -81,7 +81,7 @@ export function PickerField<T>({ label, listLabel, icon, text, placeholder, rows
     }
   };
 
-  // A first click only focuses; a click on the focused field opens the list.
+  // A click on the unfocused field opens the list through focus; on the focused one it reopens a closed list.
   const onFieldMouseDown = (e: MouseEvent) => {
     const input = inputRef.current;
     if (!input) return;
@@ -109,11 +109,12 @@ export function PickerField<T>({ label, listLabel, icon, text, placeholder, rows
           spellCheck={false}
           placeholder={open ? (text ?? placeholder) : placeholder}
           value={open ? query : (text ?? "")}
-          onFocus={() => openOnFocus && !open && show("")}
+          onFocus={() => !open && show("")}
           onBlur={close}
           onChange={(e) => show(e.target.value)}
           onKeyDown={onKeyDown}
         />
+        {!open && detail && <span className="picker-detail">{detail}</span>}
         <button
           type="button"
           tabIndex={-1}
@@ -122,9 +123,10 @@ export function PickerField<T>({ label, listLabel, icon, text, placeholder, rows
           onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            inputRef.current?.focus();
+            if (document.activeElement !== inputRef.current) inputRef.current?.focus();
+            else if (open) close();
+            else show("");
           }}
-          onClick={() => (open ? close() : show(""))}
         >
           <ChevronDown size="0.923rem" aria-hidden="true" />
         </button>
