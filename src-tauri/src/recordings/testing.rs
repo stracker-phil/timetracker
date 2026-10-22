@@ -8,7 +8,7 @@ use super::undo::{UndoStack, UndoStatus};
 use super::{RecordingInput, Recordings, Span};
 use crate::db::Db;
 use crate::db::projects::Project;
-use crate::db::recordings::{self, Recording, RecordingSpan};
+use crate::db::recordings::{self, Recording, RecordingPatch, RecordingSpan};
 use crate::db::tags::{self, Tag};
 use crate::db::time::{Day, Ms};
 use crate::error::AppError;
@@ -183,4 +183,45 @@ pub fn row(id: &str, start: Ms, end: Ms) -> Recording {
             end: Some(end),
         }],
     }
+}
+
+pub fn no_status() -> UndoStatus {
+    UndoStatus {
+        undo_label: None,
+        redo_label: None,
+    }
+}
+
+pub fn undo_label(label: &str) -> UndoStatus {
+    UndoStatus {
+        undo_label: Some(label.into()),
+        redo_label: None,
+    }
+}
+
+pub fn patch(f: impl FnOnce(&mut RecordingPatch)) -> RecordingPatch {
+    let mut patch = RecordingPatch::default();
+    f(&mut patch);
+    patch
+}
+
+pub fn span(start: Ms, end: Ms) -> Span {
+    Span { start, end }
+}
+
+pub fn respan(start: Ms, end: Ms) -> RecordingPatch {
+    patch(|p| p.spans = Some(vec![span(start, end)]))
+}
+
+pub fn input_of(w: &World, spans: &[(Ms, Ms)]) -> RecordingInput {
+    RecordingInput {
+        spans: spans.iter().map(|&(s, e)| span(s, e)).collect(),
+        ..w.input(0, 0)
+    }
+}
+
+pub fn overlap_ids(err: &AppError) -> Vec<String> {
+    let in_the_way: Vec<Recording> =
+        serde_json::from_value(err.details().unwrap().clone()).unwrap();
+    in_the_way.into_iter().map(|r| r.id).collect()
 }

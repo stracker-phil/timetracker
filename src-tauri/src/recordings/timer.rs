@@ -1,7 +1,8 @@
 //! Timers: a recording with an open span, started and stopped now. Both are ordinary undoable changes.
 
+use super::checks::{check_tag, checked_note, usable_project};
 use super::ops::Op;
-use super::{Change, MINUTE_MS, Recordings, check_tag, checked_note, snap, usable_project};
+use super::{Change, MINUTE_MS, Recordings, snap};
 use crate::db::new_id;
 use crate::db::recordings::{self, Recording, RecordingSpan};
 use crate::db::time::{Day, Ms};

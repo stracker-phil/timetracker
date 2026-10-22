@@ -282,23 +282,23 @@ clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `co
 `data_changed { kind: recordings, day }` for every day a span of the op touched, before and after
 (`Change.days`).
 
-- **Snapping** (`snap`, `snap_span`): to the nearest multiple of `timeline.snapMinutes` counted from local
+- **Snapping** (`snap.rs`: `snap`, `snap_span`): to the nearest multiple of `timeline.snapMinutes` counted from local
   midnight, read at call time; an end that snaps onto or before the start lands one step after it. `update`
   snaps only when the patch has `spans`, so editing a note keeps the times.
-- **Validation** (`InvalidField`): at least one span (`spans`), each `end` after its `start` and at most 24 h
+- **Validation** (`checks.rs`, `InvalidField`): at least one span (`spans`), each `end` after its `start` and at most 24 h
   later, none overlapping another of the recording (`spans`, checked by `db::recordings::check_spans` for both layers; touching is fine); `note` one line, at most 500
   characters, trimmed; `projectId` not archived (unless the recording already belongs to it); `tagId` (one
   tag or `null`, [ADR 0019](adr/0019-one-tag-per-recording.md)) known.
   A missing project is `not_found`; a running recording is not edited here ("Stop the timer first").
-- **Overlap** (`Overlap::Cancel | Replace`), per span: with `Cancel` a recording whose spans share time with
+- **Overlap** (`overlaps.rs`, `Overlap::Cancel | Replace`), per span: with `Cancel` a recording whose spans share time with
   another's is refused with `overlap` and those recordings in `details`; with `Replace` each span in the way
   is removed (inside), trimmed (one side out) or cut in two (both sides out; both pieces stay spans of the same
   recording), and a recording left without spans is deleted (`clear_op`), all in one `Op::Batch` with the
   written recording last. A running timer's open span in the way is `invalid_input`.
-- **Spans**: `add_span`, `update_span` (by span id), `remove_span` (removing the last one deletes the
+- **Spans** (`spans.rs`): `add_span`, `update_span` (by span id), `remove_span` (removing the last one deletes the
   recording), `split_span(at)` (two touching spans), `merge(into, from)` (the spans of `from` join `into`,
   `from` is deleted first so its span ids carry over). None of them edits the running timer.
-- **Move and copy** (`move_to_day`, `copy_to_day`): one span by id (the Week view's drag), or the whole
+- **Move and copy** (`to_day.rs`: `move_to_day`, `copy_to_day`): one span by id (the Week view's drag), or the whole
   recording (the Day view's menu commands): every span moves by the days between its first span's day and the
   target day, each at its own local time and length. A copy is a new recording.
 - **Operations** (`ops.rs`): `Op::Create | Update { before, after } | Delete | Batch` on whole recordings with

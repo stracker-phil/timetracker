@@ -98,7 +98,7 @@ The tray is the only way back to a hidden window besides a second launch, so dec
 close (remove `prevent_close` in `lib.rs`'s `WindowEvent::CloseRequested` handler and the `ExitRequested`
 `prevent_exit`; tracking then stops with the window, against [ADR 0007](adr/0007-tracker-in-process-menu-bar-app.md)),
 or keep running and show the window on a Dock click (`RunEvent::Reopen` → `window::show_main`). Then delete
-`tray.rs`, `pub mod tray;` and `tray::install` in `lib.rs`, `tray::sync` in `tracker/mod.rs`, `tray::set_timer`
+`tray.rs`, `pub mod tray;` and `tray::install` in `lib.rs`, `tray::sync` in `tracker/task.rs`, `tray::set_timer`
 in `timers/mod.rs`, `src-tauri/icons/tray/`, and the `tray-icon` features of `tauri` and
 `tauri-plugin-positioner` in `Cargo.toml`. The timer picker then opens at `Position::Center`
 (`timers/picker.rs`); pause, resume and timers stay in the window, the palette and the CLI. Update the Tray

@@ -92,7 +92,8 @@ table above.
 
 ## Tracker
 
-`tracker/mod.rs`. `Tracker` is managed as `Arc<Tracker>` and holds the `Db`, the source, the `tracker`
+`tracker/mod.rs` (the state machine's stages are in `stages.rs`, the open activity span in `activity.rs`, the
+tokio task in `task.rs`). `Tracker` is managed as `Arc<Tracker>` and holds the `Db`, the source, the `tracker`
 settings (`set_settings` replaces them; `update_settings` calls it), and its state behind one async mutex,
 so ticks, events, pause and resume never interleave.
 

@@ -1,5 +1,9 @@
+use super::activity::MIN_SPAN;
 use super::*;
+use crate::capture::Snapshot;
 use crate::capture::fake::{self, FakeSource};
+use crate::db::activities::NewActivity;
+use crate::db::away::NewAway;
 use crate::test_support::activity;
 
 const T: Ms = 1_800_000_000_000;
