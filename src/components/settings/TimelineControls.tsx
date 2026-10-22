@@ -11,10 +11,7 @@ const CONTINUITY: readonly Continuity[] = ["off", "short", "regular", "extended"
 const NOISE: readonly Noise[] = ["off", "low", "medium", "high"];
 const TITLES: readonly Titles[] = ["document", "app"];
 
-function saveTimeline(patch: Partial<TimelineSettings>) {
-  const { settings, saveSettings } = useStore.getState();
-  if (settings) void saveSettings({ ...settings, timeline: { ...settings.timeline, ...patch } }, { quiet: true });
-}
+const saveTimeline = (patch: Partial<TimelineSettings>) => void useStore.getState().saveTimeline(patch);
 
 function SummaryMinutes({ value }: { value: number }) {
   const id = useId();

@@ -566,6 +566,12 @@ mod tests {
     }
 
     #[test]
+    fn the_default_summary_interval_is_five_minutes() {
+        assert_eq!(Settings::default().timeline.summary_minutes, 5);
+        assert_eq!(TimelineSettings::default().summary_minutes, 5);
+    }
+
+    #[test]
     fn snap_minutes_snap_to_the_nearest_allowed_value_and_ties_go_down() {
         for (input, expected) in [
             (0, 1),
@@ -712,7 +718,7 @@ mod tests {
                 },
                 "timeline": {
                     "summaryLane": true,
-                    "summaryMinutes": 15,
+                    "summaryMinutes": 5,
                     "showAllActivity": true,
                     "compact": false,
                     "groupByApp": true,

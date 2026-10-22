@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { api, type Range } from "../api";
 import { addDays, addMonths, formatMonthLabel, today } from "../lib/day";
@@ -6,20 +6,10 @@ import { useApiResult } from "../lib/useApiResult";
 import { useStore } from "../state/store";
 import { useCalendarPeriod, useReportRange } from "./DateNavigator";
 import { Modal } from "./Modal";
+import { useAnchoredStyle } from "./useAnchoredStyle";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-const GAP = 6;
 const ARROW_STEPS: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
-
-/** Under the sidebar's date heading, left-aligned to it; centered when the heading isn't there. */
-function useAnchoredStyle(): CSSProperties | undefined {
-  const [style, setStyle] = useState<CSSProperties>();
-  useLayoutEffect(() => {
-    const rect = document.querySelector("[data-date-heading]")?.getBoundingClientRect();
-    if (rect) setStyle({ position: "fixed", top: rect.bottom + GAP, left: rect.left });
-  }, []);
-  return style;
-}
 
 /** The days to mark: the shown day, week or month in the calendar views, a custom range in Reports, else none. */
 function useSelectedDays(): [string, string] | null {
@@ -43,7 +33,7 @@ function startDay(): string {
 export function DatePickerPopover() {
   const close = useStore((s) => s.closeDialog);
   const showDate = useStore((s) => s.showDate);
-  const style = useAnchoredStyle();
+  const style = useAnchoredStyle("[data-date-heading]", "left");
   const [focus, setFocus] = useState(startDay);
   const selected = useSelectedDays();
   const gridRef = useRef<HTMLDivElement>(null);

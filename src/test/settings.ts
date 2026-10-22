@@ -17,7 +17,7 @@ export function settings(patch: Partial<Settings> = {}): Settings {
     capture: { excludedApps: [], excludedDomains: [], captureUrls: true, captureDocuments: true },
     timeline: {
       summaryLane: true,
-      summaryMinutes: 15,
+      summaryMinutes: 5,
       showAllActivity: true,
       compact: false,
       groupByApp: true,

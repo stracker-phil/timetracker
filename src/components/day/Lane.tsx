@@ -18,13 +18,14 @@ interface Props {
 /** One lane's blocks, absolutely placed from their times and columns. */
 export const Lane = memo(function Lane({ lane, origin, pxPerMinute, range, focusedBlock }: Props) {
   const y = (ms: number) => ((ms - origin) / 60_000) * pxPerMinute;
+  const look = lane.kind === "summary" ? "summary" : "memory";
   return (
     <div className={`lane lane--${lane.kind}`} data-lane-id={lane.id}>
       {lane.blocks.map((block) => {
         const top = y(block.start);
         const height = Math.max(MIN_BLOCK_PX, y(block.end) - top);
         if (top + height < range.top || top > range.bottom) return null;
-        return <ActivityBlock key={block.id} block={block} top={top} height={height} focused={block.id === focusedBlock} />;
+        return <ActivityBlock key={block.id} block={block} look={look} top={top} height={height} focused={block.id === focusedBlock} />;
       })}
     </div>
   );

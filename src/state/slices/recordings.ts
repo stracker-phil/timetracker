@@ -31,6 +31,9 @@ export interface RecordingsSlice {
   /** The recording keys act on. */
   focusedRecording: string | null;
   focusRecording: (id: string | null) => void;
+  /** The recording under the pointer, in the timesheet or the time column: all its spans and its card light up. */
+  hoveredRecording: string | null;
+  hoverRecording: (id: string | null) => void;
   editor: Editor | null;
   openEditor: (editor: Editor) => void;
   closeEditor: () => void;
@@ -112,6 +115,7 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
       selection: null,
       selectionSnap: null,
       focusedRecording: null,
+      hoveredRecording: null,
       editor: null,
       undoStatus: NOTHING_TO_UNDO,
 
@@ -138,6 +142,10 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
 
       focusRecording(id) {
         set({ focusedRecording: id });
+      },
+
+      hoverRecording(id) {
+        if (get().hoveredRecording !== id) set({ hoveredRecording: id });
       },
 
       openEditor(editor) {

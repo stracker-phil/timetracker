@@ -29,13 +29,23 @@ export const plural = (n: number, one: string, many: string) => `${formatCount(n
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 
-/** A duration as `1 h 05 min`, `45 min` or `0 min`; seconds are dropped, negative counts as zero. */
+/** Whole hours and the minutes past them (two digits); seconds are dropped, negative counts as zero. */
+function hoursMinutes(ms: number): { hours: number; minutes: number; padded: string } {
+  const total = Math.floor(Math.max(0, ms) / MINUTE_MS);
+  const minutes = total % 60;
+  return { hours: Math.floor(total / 60), minutes, padded: String(minutes).padStart(2, "0") };
+}
+
+/** A duration as `1 h 05 min`, `45 min` or `0 min`. */
 export function formatDuration(ms: number): string {
-  const minutes = Math.floor(Math.max(0, ms) / MINUTE_MS);
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  if (hours === 0) return `${rest} min`;
-  return `${hours} h ${String(rest).padStart(2, "0")} min`;
+  const { hours, minutes, padded } = hoursMinutes(ms);
+  return hours === 0 ? `${minutes} min` : `${hours} h ${padded} min`;
+}
+
+/** A duration as `34m` or `1h 05m`. */
+export function formatShortDuration(ms: number): string {
+  const { hours, minutes, padded } = hoursMinutes(ms);
+  return hours === 0 ? `${minutes}m` : `${hours}h ${padded}m`;
 }
 
 /** Hours and minutes as `12:30`; negative counts as zero. */

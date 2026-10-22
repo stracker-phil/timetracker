@@ -1,4 +1,4 @@
-import { Ellipsis, SlidersHorizontal } from "lucide-react";
+import { Columns3, Ellipsis, SlidersHorizontal } from "lucide-react";
 import type { DayTotals } from "../../api";
 import { runCommand, useBindingLabel } from "../../commands";
 import { formatDayLabel, isToday } from "../../lib/day";
@@ -11,10 +11,7 @@ const DAY_MODES = ["timeline", "list"] as const;
 
 const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` : label);
 
-/**
- * The date, the day's totals (only for a day other than today: the status bar shows today's), the Timeline or
- * List switch and the ⋯ menu (delete activity). The sidebar changes the day.
- */
+/** A slim bar: the date, a past day's totals, Timeline or List, Lanes, the timeline settings and the ⋯ menu. */
 export function DayHeader({ day, totals }: { day: string; totals: DayTotals | null }) {
   const settingsKeys = useBindingLabel("day.settings");
   const mode = useStore((s) => s.uiState.dayMode);
@@ -31,11 +28,18 @@ export function DayHeader({ day, totals }: { day: string; totals: DayTotals | nu
     <header className="day-head">
       <h1 className="day-title">{formatDayLabel(day)}</h1>
       {totals && !isToday(day) && (
-        <span className="day-totals mono o2" aria-label="Totals">
+        <span className="day-totals o2" aria-label="Totals">
           recorded {formatHm(totals.recordedMs)} · tracked {formatHm(totals.trackedMs)} · away {formatHm(totals.awayMs)}
         </span>
       )}
+      <span className="day-head-spacer" />
       <SegmentedControl label="Day mode" options={DAY_MODES} value={mode} onChange={setDayMode} />
+      {mode === "timeline" && (
+        <button type="button" className="btn btn-quiet" data-lanes-button aria-haspopup="dialog" onClick={() => useStore.getState().openDialog({ type: "lanes" })}>
+          <Columns3 size="1rem" aria-hidden="true" />
+          Lanes
+        </button>
+      )}
       <button
         type="button"
         className="icon-btn"

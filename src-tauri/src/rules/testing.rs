@@ -21,6 +21,7 @@ pub fn block(start: i64, end: i64, app: &str, title: &str) -> ActivityBlock {
         id: format!("a{start}"),
         start: start * MIN,
         end: end * MIN,
+        active_ms: (end - start) * MIN,
         app: app.into(),
         bundle_id: None,
         app_key: app.into(),

@@ -1,4 +1,4 @@
-import type { ActivityBlock, AwayBlock, DayTotals, DayView, Gap, Lane, RecordingBlock } from "../api/types";
+import type { ActivityBlock, AwayBlock, DayApp, DayTotals, DayView, Gap, Lane, RecordingBlock, TimesheetCard } from "../api/types";
 
 /** A fixed past day, so tests never depend on the clock. */
 export const DAY = "2026-03-10";
@@ -22,6 +22,7 @@ export function block(patch: Partial<ActivityBlock> = {}): ActivityBlock {
     id: "a1",
     start: at("09:00"),
     end: at("09:30"),
+    activeMs: (patch.end ?? at("09:30")) - (patch.start ?? at("09:00")),
     app: "Safari",
     bundleId: "com.apple.Safari",
     appKey: "com.apple.Safari",
@@ -61,9 +62,37 @@ export function recordingBlock(patch: Partial<RecordingBlock> = {}): RecordingBl
   };
 }
 
+/** A timesheet card of the default project for 09:00 to 09:45 of `DAY`; `patch` overrides fields. */
+export function timesheetCard(patch: Partial<TimesheetCard> = {}): TimesheetCard {
+  const start = patch.start ?? at("09:00");
+  const end = patch.end ?? at("09:45");
+  const id = patch.id ?? "r1";
+  return {
+    id,
+    projectId: "project-1",
+    projectName: "Website",
+    clientName: null,
+    color: "blue",
+    shade: 0,
+    note: "",
+    tag: null,
+    durationMs: end - start,
+    start,
+    end,
+    spanIds: [`${id}-s1`],
+    running: false,
+    ...patch,
+  };
+}
+
+/** An app a day can give a lane of its own, with 30 minutes of tracked time; `patch` overrides fields. */
+export function dayApp(patch: Partial<DayApp> = {}): DayApp {
+  return { appKey: "com.apple.Safari", app: "Safari", bundleId: "com.apple.Safari", activeMs: 30 * 60_000, ownLane: false, ...patch };
+}
+
 /** The Activity lane without blocks; `patch` overrides fields. */
 export function lane(patch: Partial<Lane> = {}): Lane {
-  return { id: "activity", kind: "activity", label: "Activity", appKey: null, blocks: [], ...patch };
+  return { id: "activity", kind: "activity", label: "Activity", appKey: null, bundleId: null, blocks: [], ...patch };
 }
 
 /** An external source lane (`source:<name>`) whose blocks all carry that source. */
@@ -107,6 +136,8 @@ export function dayView(patch: Partial<DayView> = {}): DayView {
     away: [],
     gaps: [],
     recordings: [],
+    timesheet: [],
+    apps: [],
     suggestions: [],
     totals,
     firstActivity: starts.length > 0 ? Math.min(...starts) : null,

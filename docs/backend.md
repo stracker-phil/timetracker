@@ -264,7 +264,9 @@ by the commands and the CLI. Activity is never edited (ADR 0005), so deletion wo
 `day/mod.rs`: `view(&DayInput, &ViewSettings) -> DayView` is a pure function ([ADR
 0012](adr/0012-timeline-layout-in-rust.md)); `day::commands::load` reads the rows (`list_for_range`, spans
 from the day before included) and calls it. `ViewSettings` is a copy of `Settings.timeline` and
-`Settings.apps`. In order:
+`Settings.apps`. The module is split by concern: `types.rs` (everything `DayView` sends), `totals.rs`
+(`totals`, `tracked_ms`, gaps, span unions), `recordings.rs` (`recording_blocks`, `timesheet`), `summary.rs`
+(the summary lane), `lanes.rs` (lanes and columns), `transform.rs` (the timeline settings). In order:
 
 1. `clipped_blocks`: every activity cut to the day's bounds (an open span ends at `now`); private rows keep
    the app and read "Private" without URL or path. `appKey` is the bundle id, else the app name: what
@@ -277,22 +279,30 @@ from the day before included) and calls it. `ViewSettings` is a copy of `Setting
    `without_hidden` drops apps with `hidden`; `identified` labels each row (`titles`: the title, or the app
    when empty or in `app` mode; private rows "Private") and keys it by app (`groupByApp`) or by app and
    label, a per-app override winning over `timeline`; private rows get a key of their own.
-4. `lanes::summary` (with `summaryLane`): the day in intervals of `summaryMinutes` from its start; each goes
-   to the key with the most time in it (ties: the earlier start); a run of equal winners is one block from
-   the winner's first start to its last end inside the run, id `s<start>`.
+4. `summary::summary` (with `summaryLane`; `bucket_winners`, then `run_blocks`): the day in buckets of `summaryMinutes` (default 5) from local
+   midnight, so they sit on the clock (:00, :05, …); each bucket goes to the key with the most time in it
+   (ties: the earlier start), a bucket without activity stays empty, and a run of buckets with one winner is
+   one block over the whole run, id `s<start>`. Every summary block starts and ends on the grid (:45, :50,
+   never :49); its `activeMs` is the winner's time inside it.
 5. `transform::grouped`: rows of one key that touch, or whose gap is shorter than the continuity (off 0,
    short 2, regular 8, extended 16 min), become one block unless a sleep, lock or pause lies between
    (`breaks_continuity`; idle is bridged). Other keys' rows in the gap stay their own blocks, beside it.
    Blocks shorter than the noise threshold (off 0, low 2, medium 4, high 6 min) are dropped. A block shows
-   its longest row (`title`, `label`, URL, path); its id is `a<first member id>`, `members` every row.
+   its longest row (`title`, `label`, URL, path); its id is `a<first member id>`, `members` every row,
+   `activeMs` the time its rows fill (without the gaps it bridges).
 6. `lanes::lanes`: the `activity` lane (unless `showAllActivity` is off), one `app:<appKey>` lane per app
-   with `ownLane` in the order of first appearance, one `source:<name>` lane per external source by name;
+   with `ownLane` in the order of first appearance (`bundleId` for its icon), one `source:<name>` lane per
+   external source by name;
    `packed` per lane: by start, longer first, each block in the lowest free column, a cluster of overlapping
    blocks sharing its width (`col` of `cols`).
 7. `mark_covered`: a block of any lane is `covered` when at least half of it lies inside recordings.
 
-`DayView` also carries `compact` (from `timeline`) and `hiddenApps` (every hidden override, named from the
-day's rows, else by its key) for the header's popover.
+`DayView` also carries `compact` (from `timeline`), `hiddenApps` (every hidden override, named from the
+day's rows, else by its key) for the header's popover, `apps` (the day's tracked apps that are not hidden,
+most time first by `activeMs`, with `ownLane`; `apps::day_apps`) for the Lanes popover, and `timesheet`: one `TimesheetCard` per recording,
+in the order of its first span on the day, with the day's parts of its spans added up (`durationMs`), its
+first start and last end on the day and its `spanIds` there (`recordings::timesheet`, from the recording
+blocks).
 
 ## Recordings
 

@@ -1,5 +1,5 @@
 import { setOverrides } from "../../commands/registry";
-import { api, toAppError, type AppSettingPatch, type Keybindings, type Settings } from "../../api";
+import { api, toAppError, type AppSettingPatch, type Keybindings, type Settings, type TimelineSettings } from "../../api";
 import { fail } from "../requests";
 import type { Slice } from "../store";
 
@@ -9,6 +9,8 @@ export interface SettingsSlice {
   loadSettings: () => Promise<void>;
   /** `quiet` skips the toast, for settings that apply as they change. */
   saveSettings: (settings: Settings, opts?: { quiet?: boolean }) => Promise<void>;
+  /** Changes timeline settings and saves them quietly; the Day view reloads. */
+  saveTimeline: (patch: Partial<TimelineSettings>) => Promise<void>;
   saveKeybindings: (bindings: Keybindings) => Promise<void>;
   /** Resolves the reason when Rust refuses it (the system took the keys, or they are no chord). */
   saveTimerShortcut: (binding: string) => Promise<string | null>;
@@ -73,6 +75,11 @@ export const settingsSlice: Slice<SettingsSlice> = {
         fail(e, "Could not change launch at login");
         return null;
       }
+    },
+
+    async saveTimeline(patch) {
+      const { settings } = get();
+      if (settings) await get().saveSettings({ ...settings, timeline: { ...settings.timeline, ...patch } }, { quiet: true });
     },
 
     async saveKeybindings(bindings) {

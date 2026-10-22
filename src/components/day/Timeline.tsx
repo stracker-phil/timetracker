@@ -17,6 +17,7 @@ import { useSnappedSpan } from "./useSnappedSpan";
 import { useRuleDrag } from "./useRuleDrag";
 import { useTimelineScroll } from "./useTimelineScroll";
 import { useVisibleRange } from "./useVisibleRange";
+import { ZoomControl } from "./ZoomControl";
 
 const MINUTE_MS = 60_000;
 const SHOW_CARD_MS = 300;
@@ -61,7 +62,7 @@ function useHoveredBlock() {
   };
 }
 
-/** The day's scroll box. */
+/** The day's scroll box: the time column and the lanes; the zoom floats over them. */
 export function Timeline({ view }: { view: DayView }) {
   const zoom = useStore((s) => s.uiState.timelineZoom);
   const pxPerMinute = view.compact ? zoom * COMPACT_SCALE : zoom;
@@ -113,42 +114,45 @@ export function Timeline({ view }: { view: DayView }) {
   const card = findBlock(view, cardId);
 
   return (
-    <div className={view.compact ? "timeline timeline--compact" : "timeline"} ref={scrollRef} onMouseLeave={hover.leave}>
-      <LaneHeader lanes={view.lanes} />
-      <div className="timeline-body" style={{ height: y(end) }}>
-        <Spans away={view.away} gaps={view.gaps} y={y} />
-        <RecordingsColumn ref={columnRef} recordings={view.recordings} suggestions={view.suggestions} y={y} pxPerMinute={pxPerMinute} selection={selection} />
-        <TimeAxis bounds={view.bounds} pxPerMinute={pxPerMinute} onPointerDown={press} />
-        <div
-          className={pxPerMinute >= HALF_HOURS_FROM_PX ? "lanes half-hours" : "lanes"}
-          style={{ "--hour-px": `${60 * pxPerMinute}px` } as CSSProperties}
-          onMouseOver={(e) => hover.over(blockIdAt(e.target))}
-          onPointerDown={pressLanes}
-          onClick={(e) => {
-            const gear = gearAt(e.target);
-            const id = blockIdAt(e.target);
-            if (!gear || !id) return;
-            const rect = gear.getBoundingClientRect();
-            openMenu({ x: rect.left, y: rect.bottom }, id);
-          }}
-          onContextMenu={(e) => {
-            const id = blockIdAt(e.target);
-            if (id) openMenu(e, id);
-          }}
-        >
-          {view.lanes.map((lane) => (
-            <Lane key={lane.id} lane={lane} origin={origin} pxPerMinute={pxPerMinute} range={range} focusedBlock={focusedBlock} />
-          ))}
-          {selection && (
-            <div className="selection" style={{ top: y(selection.start), height: y(selection.end) - y(selection.start) }} aria-label="Selection">
-              <span className="selection-label mono">
-                {formatClock(selection.start)}–{formatClock(selection.end)}
-              </span>
-            </div>
-          )}
-          {live && now >= origin && now < end && <div className="now-line" style={{ top: y(now) }} aria-hidden="true" />}
+    <div className="timeline-frame">
+      <div className={view.compact ? "timeline timeline--compact" : "timeline"} ref={scrollRef} onMouseLeave={hover.leave}>
+        <LaneHeader lanes={view.lanes} trackedMs={view.totals.trackedMs} />
+        <div className="timeline-body" style={{ height: y(end) }}>
+          <Spans away={view.away} gaps={view.gaps} y={y} />
+          <TimeAxis bounds={view.bounds} pxPerMinute={pxPerMinute} onPointerDown={press} />
+          <RecordingsColumn ref={columnRef} recordings={view.recordings} suggestions={view.suggestions} y={y} pxPerMinute={pxPerMinute} selection={selection} />
+          <div
+            className={pxPerMinute >= HALF_HOURS_FROM_PX ? "lanes half-hours" : "lanes"}
+            style={{ "--hour-px": `${60 * pxPerMinute}px` } as CSSProperties}
+            onMouseOver={(e) => hover.over(blockIdAt(e.target))}
+            onPointerDown={pressLanes}
+            onClick={(e) => {
+              const gear = gearAt(e.target);
+              const id = blockIdAt(e.target);
+              if (!gear || !id) return;
+              const rect = gear.getBoundingClientRect();
+              openMenu({ x: rect.left, y: rect.bottom }, id);
+            }}
+            onContextMenu={(e) => {
+              const id = blockIdAt(e.target);
+              if (id) openMenu(e, id);
+            }}
+          >
+            {view.lanes.map((lane) => (
+              <Lane key={lane.id} lane={lane} origin={origin} pxPerMinute={pxPerMinute} range={range} focusedBlock={focusedBlock} />
+            ))}
+            {selection && (
+              <div className="selection" style={{ top: y(selection.start), height: y(selection.end) - y(selection.start) }} aria-label="Selection">
+                <span className="selection-label">
+                  {formatClock(selection.start)}–{formatClock(selection.end)}
+                </span>
+              </div>
+            )}
+            {live && now >= origin && now < end && <div className="now-line" style={{ top: y(now) }} aria-hidden="true" />}
+          </div>
         </div>
       </div>
+      <ZoomControl />
       {card && <HoverCard block={card.block} anchor={element(card.block.id)} onPointerEnter={hover.keep} onPointerLeave={hover.leave} />}
       {menu.element}
       {ruleDrag.strip}

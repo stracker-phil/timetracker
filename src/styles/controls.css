@@ -11,6 +11,8 @@
 .btn-primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
 .btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, var(--shade)); }
 .btn-danger { background: var(--style-red); border-color: transparent; color: var(--on-accent); }
+.btn-quiet { background: transparent; border-color: transparent; color: var(--o2); }
+.btn-quiet:hover:not(:disabled) { color: var(--text); }
 .icon-btn {
   display: inline-grid; place-items: center; width: 2rem; height: 2rem; flex: none;
   border: none; border-radius: var(--radius-sm); background: transparent; color: var(--o2);

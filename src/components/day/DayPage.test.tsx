@@ -4,12 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, type DayView } from "../../api";
+import { api, EMPTY_UI_STATE, type DayView } from "../../api";
 import { handleKeydown, installCommands, runCommand } from "../../commands";
 import { today } from "../../lib/day";
 import { resetStore, useStore } from "../../state/store";
 import { trackerStatus } from "../../test/data";
-import { appLane, at, away, block, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane } from "../../test/dayFixtures";
+import { appLane, at, away, block, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane, timesheetCard } from "../../test/dayFixtures";
+import { listRow, listView } from "../../test/listFixtures";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
 import { suggestion } from "../../test/ruleFixtures";
@@ -86,7 +87,17 @@ describe("DayPage", () => {
       expect(await blockEl("Safari: Docs")).toBeInTheDocument();
       expect(screen.getByLabelText("Notes: Todo")).toBeInTheDocument();
       expect(screen.getByLabelText("Planner: Standup")).toBeInTheDocument();
-      expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Activity", "planner"]);
+      const heads = screen.getAllByRole("columnheader");
+      expect(heads).toHaveLength(2);
+      expect(heads[0]).toHaveTextContent("Activity");
+      expect(heads[1]).toHaveTextContent("planner");
+    });
+
+    it("shows the tracked time of the day in the head of the activity lane", async () => {
+      const totals = { recordedMs: 0, trackedMs: (6 * 60 + 12) * MINUTE_MS, awayMs: 0 };
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], totals }));
+      await blockEl("Safari: Docs");
+      expect(within(screen.getByRole("columnheader")).getByText("6h 12m")).toBeInTheDocument();
     });
 
     it("leaves out blocks outside the visible range and renders them once scrolled to", async () => {
@@ -154,12 +165,29 @@ describe("DayPage", () => {
   });
 
   describe("block labels", () => {
-    it("shows the app and the label of a block", async () => {
+    it("shows the label of a block and names its app only in the accessible name", async () => {
       const doc = block({ id: "a6", app: "Preview", title: "Report.pdf — Page 2", label: "Report.pdf" });
       renderDay(dayView({ lanes: [lane({ blocks: [doc] })] }));
       const el = await blockEl("Preview: Report.pdf");
-      expect(within(el).getByText("Preview")).toBeInTheDocument();
       expect(within(el).getByText("Report.pdf")).toBeInTheDocument();
+      expect(within(el).queryByText("Preview")).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ["an activity block", (b: ReturnType<typeof block>) => lane({ blocks: [b] })],
+      ["a summary block", (b: ReturnType<typeof block>) => summaryLane([b])],
+    ])("shows the active time of %s, not the length of its span", async (_name, laneOf) => {
+      const sparse = block({ id: "a6", app: "Preview", label: "Report.pdf", start: at("09:00"), end: at("09:30"), activeMs: 20 * MINUTE_MS });
+      renderDay(dayView({ lanes: [laneOf(sparse)] }));
+      const el = await blockEl("Preview: Report.pdf");
+      expect(within(el).getByText("20m")).toBeInTheDocument();
+      expect(within(el).queryByText("0:20")).not.toBeInTheDocument();
+    });
+
+    it("shows hours in the duration of a long block", async () => {
+      const long = block({ id: "a6", start: at("09:00"), end: at("11:05"), activeMs: 125 * MINUTE_MS });
+      renderDay(dayView({ lanes: [lane({ blocks: [long] })] }));
+      expect(within(await blockEl("Safari: Start Page")).getByText("2h 05m")).toBeInTheDocument();
     });
 
     it("shows only the app when the label is the app", async () => {
@@ -759,15 +787,34 @@ describe("DayPage", () => {
     const recordingEl = () => screen.findByLabelText("Website: standup");
     const grip = (el: HTMLElement, which: "start" | "end") => within(el).getByLabelText(`Drag to change the ${which}`);
 
-    it("shows a recording as project and note in the recordings column", async () => {
-      renderDay(recordedDay());
-      expect(within(await recordingEl()).getByText("Website")).toBeInTheDocument();
+    it("shows a recording in the time column by its start and end only", async () => {
+      renderDay(dayView({ recordings: [{ ...meeting, tag: "support" }] }));
+      const el = within(await recordingEl());
       expect(screen.getByLabelText("Recordings")).toContainElement(screen.getByLabelText("Website: standup"));
+      expect(el.getByText("11:00")).toBeInTheDocument();
+      expect(el.getByText("11:45")).toBeInTheDocument();
+      for (const text of ["Website", "standup", "support", "45m", "0:45"]) expect(el.queryByText(text)).not.toBeInTheDocument();
     });
 
-    it("shows the tag of a recording on its block", async () => {
-      renderDay(dayView({ recordings: [{ ...meeting, tag: "support" }] }));
-      expect(within(await recordingEl()).getByText("support")).toBeInTheDocument();
+    it("shows each span of a recording with several by its own times", async () => {
+      const morning = recordingBlock({ id: "r1", spanId: "r1-s1", spanCount: 2, start: at("09:00"), end: at("09:45") });
+      const noon = recordingBlock({ id: "r1", spanId: "r1-s2", spanCount: 2, start: at("11:00"), end: at("11:45") });
+      renderDay(dayView({ recordings: [morning, noon] }));
+      const column = within(await screen.findByLabelText("Recordings"));
+      for (const time of ["09:00", "09:45", "11:00", "11:45"]) expect(column.getByText(time)).toBeInTheDocument();
+    });
+
+    it("shows only the start of a span too short for both times", async () => {
+      renderDay(dayView({ recordings: [recordingBlock({ id: "r3", note: "quick", start: at("10:00"), end: at("10:10") })] }));
+      const el = within(await screen.findByLabelText("Website: quick"));
+      expect(el.getByText("10:00")).toBeInTheDocument();
+      expect(el.queryByText("10:10")).not.toBeInTheDocument();
+    });
+
+    it("shows no times in a span too short for text", async () => {
+      renderDay(dayView({ recordings: [recordingBlock({ id: "r3", note: "quick", start: at("10:00"), end: at("10:05") })] }));
+      const el = within(await screen.findByLabelText("Website: quick"));
+      expect(el.queryByText("10:00")).not.toBeInTheDocument();
     });
 
     it("shows a day with only recordings as a timeline", async () => {
@@ -932,6 +979,203 @@ describe("DayPage", () => {
         await userEvent.keyboard("{Escape}{Backspace}");
         expect(mocked.recordingDelete).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe("timesheet", () => {
+    const planning = timesheetCard({ id: "r0", projectId: "p-site", projectName: "Website", note: "planning", start: at("09:00"), end: at("09:30") });
+    const standupCard = timesheetCard({ id: "r1", projectId: "p-site", projectName: "Website", clientName: "Acme", note: "standup", tag: "support", start: at("11:00"), end: at("11:45") });
+    const bare = timesheetCard({ id: "r2", projectName: "Docs", clientName: "Acme", start: at("13:00"), end: at("14:05") });
+    const sheet = () => within(screen.getByRole("complementary", { name: "Timesheet" }));
+    const cards = () => sheet().getAllByRole("button", { name: /, (\d+h )?\d+m$/ });
+    const cardOf = (name: string) => sheet().getByRole("button", { name });
+
+    const sheetDay = (timesheet = [planning, standupCard]) => dayView({ lanes: [lane({ blocks: [docs] })], recordings: [meeting], timesheet });
+
+    it("lists a card per recording in the order of their first spans", async () => {
+      renderDay(sheetDay([planning, standupCard, bare]));
+      await screen.findByRole("complementary", { name: "Timesheet" });
+      expect(cards().map((c) => c.getAttribute("aria-label"))).toEqual(["planning, Website, 30m", "standup, Website | Acme, 45m", "Docs, Docs | Acme, 1h 05m"]);
+    });
+
+    it("shows a card with the note as title, project and client, tag and duration", async () => {
+      renderDay(sheetDay());
+      await screen.findByRole("complementary", { name: "Timesheet" });
+      const card = within(cardOf("standup, Website | Acme, 45m"));
+      expect(card.getByText("standup")).toBeInTheDocument();
+      expect(card.getByText("Website | Acme")).toBeInTheDocument();
+      expect(card.getByText("support")).toBeInTheDocument();
+      expect(card.getByText("45m")).toBeInTheDocument();
+    });
+
+    it("titles a card without a note by its project and shows the client below", async () => {
+      renderDay(sheetDay([bare]));
+      await screen.findByRole("complementary", { name: "Timesheet" });
+      const card = within(cardOf("Docs, Docs | Acme, 1h 05m"));
+      expect(card.getByText("Docs")).toBeInTheDocument();
+      expect(card.getByText("Acme")).toBeInTheDocument();
+      expect(card.getByText("1h 05m")).toBeInTheDocument();
+    });
+
+    it("counts the spans of a recording with several", async () => {
+      const split = timesheetCard({ id: "r3", note: "pairing", spanIds: ["r3-s1", "r3-s2"] });
+      renderDay(sheetDay([planning, split]));
+      await screen.findByRole("complementary", { name: "Timesheet" });
+      expect(within(cardOf("pairing, Website, 45m")).getByText("2 spans")).toBeInTheDocument();
+      expect(within(cardOf("planning, Website, 30m")).queryByText(/spans/)).not.toBeInTheDocument();
+    });
+
+    it("shows the recorded time of the day as the total", async () => {
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], timesheet: [planning, standupCard], totals: { recordedMs: 75 * MINUTE_MS, trackedMs: 0, awayMs: 0 } }));
+      await screen.findByRole("complementary", { name: "Timesheet" });
+      expect(sheet().getByLabelText("Recorded")).toHaveTextContent("1h 15m");
+    });
+
+    it("says nothing is recorded yet when the day has no recordings", async () => {
+      renderDay(busyDay());
+      await blockEl("Safari: Docs");
+      expect(sheet().getByText("Nothing recorded yet. Drag over the timeline, or press +.")).toBeInTheDocument();
+      expect(sheet().getByLabelText("Recorded")).toHaveTextContent("0m");
+    });
+
+    it("stays next to the message of a day without activity", async () => {
+      renderDay(dayView());
+      expect(await screen.findByText("Nothing tracked on this day")).toBeInTheDocument();
+      expect(sheet().getByText(/Nothing recorded yet/)).toBeInTheDocument();
+    });
+
+    it("stays next to the list", async () => {
+      mocked.listView.mockResolvedValue(listView({ rows: [listRow()] }));
+      renderDay(sheetDay(), { uiState: { ...EMPTY_UI_STATE, dayMode: "list" } });
+      expect(await screen.findByRole("list", { name: "Activity" })).toBeInTheDocument();
+      expect(cardOf("standup, Website | Acme, 45m")).toBeInTheDocument();
+    });
+
+    describe("a card", () => {
+      it("is focused by a click, which also focuses its span in the time column", async () => {
+        renderDay(sheetDay());
+        const card = await screen.findByRole("button", { name: "standup, Website | Acme, 45m" });
+        expect(card).toHaveAttribute("aria-pressed", "false");
+        await userEvent.click(card);
+        expect(card).toHaveAttribute("aria-pressed", "true");
+        expect(screen.getByLabelText("Website: standup")).toHaveClass("focused");
+        expect(cardOf("planning, Website, 30m")).toHaveAttribute("aria-pressed", "false");
+      });
+
+      it("opens the editor of its recording with a double-click", async () => {
+        mocked.recordingsList.mockResolvedValue([meetingRow]);
+        renderDay(sheetDay(), withProject);
+        await userEvent.dblClick(await screen.findByRole("button", { name: "standup, Website | Acme, 45m" }));
+        expect(await screen.findByRole("dialog", { name: "Edit recording" })).toBeInTheDocument();
+      });
+
+      it("opens the editor on the first span of a recording with several", async () => {
+        const morning = { id: "r1-s1", start: at("09:00"), end: at("09:30") };
+        const noon = { id: "r1-s2", start: at("11:00"), end: at("11:45") };
+        mocked.recordingsList.mockResolvedValue([recording({ ...meetingRow, spans: [morning, noon] })]);
+        const split = timesheetCard({ id: "r1", projectId: "p-site", note: "standup", start: at("09:00"), end: at("11:45"), durationMs: 75 * MINUTE_MS, spanIds: [morning.id, noon.id] });
+        renderDay(sheetDay([split]), withProject);
+        await userEvent.dblClick(await screen.findByRole("button", { name: "standup, Website, 1h 15m" }));
+        const dialog = within(await screen.findByRole("dialog", { name: "Edit recording" }));
+        expect(await dialog.findByLabelText("From")).toHaveValue("09:00");
+        expect(dialog.getByText("Also 11:00–11:45")).toBeInTheDocument();
+      });
+    });
+
+    describe("hovering", () => {
+      it("marks the spans of the hovered card in the time column and clears them when it is left", async () => {
+        renderDay(sheetDay());
+        const card = await screen.findByRole("button", { name: "standup, Website | Acme, 45m" });
+        fireEvent.pointerEnter(card);
+        expect(card).toHaveClass("hovered");
+        expect(screen.getByLabelText("Website: standup")).toHaveClass("hovered");
+        fireEvent.pointerLeave(card);
+        expect(card).not.toHaveClass("hovered");
+        expect(screen.getByLabelText("Website: standup")).not.toHaveClass("hovered");
+      });
+
+      it("marks the card of a hovered span in the time column", async () => {
+        renderDay(sheetDay());
+        const span = await blockEl("Website: standup");
+        fireEvent.pointerEnter(span);
+        expect(cardOf("standup, Website | Acme, 45m")).toHaveClass("hovered");
+        expect(cardOf("planning, Website, 30m")).not.toHaveClass("hovered");
+      });
+    });
+
+    describe("the + button", () => {
+      it("opens the editor for a new recording on the default span", async () => {
+        mocked.recordingDefaultSpan.mockResolvedValue({ start: at("14:00"), end: at("14:30") });
+        renderDay(busyDay(), withProject);
+        await userEvent.click(await screen.findByRole("button", { name: "New recording" }));
+        const dialog = within(await screen.findByRole("dialog", { name: "New recording" }));
+        expect(dialog.getByLabelText("From")).toHaveValue("14:00");
+        expect(dialog.getByLabelText("To")).toHaveValue("14:30");
+      });
+
+      it("opens the editor on the selection when there is one", async () => {
+        renderDay(busyDay(), withProject);
+        await userEvent.click(await blockEl("Safari: Docs"));
+        await userEvent.click(screen.getByRole("button", { name: "New recording" }));
+        const dialog = within(await screen.findByRole("dialog", { name: "New recording" }));
+        expect(dialog.getByLabelText("From")).toHaveValue("09:00");
+        expect(dialog.getByLabelText("To")).toHaveValue("09:30");
+      });
+    });
+  });
+
+  describe("zoom control", () => {
+    const docsEl = () => blockEl("Safari: Docs");
+
+    it("zooms in one step with + and out with −", async () => {
+      renderDay(busyDay());
+      expect(await docsEl()).toHaveStyle({ height: "75px" });
+      await userEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+      expect(await docsEl()).toHaveStyle({ height: "90px" });
+      await userEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+      await userEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+      expect(await docsEl()).toHaveStyle({ height: "60px" });
+    });
+
+    it("sets the scale with the slider", async () => {
+      renderDay(busyDay());
+      await docsEl();
+      fireEvent.change(screen.getByRole("slider", { name: "Zoom level" }), { target: { value: "4" } });
+      expect(await docsEl()).toHaveStyle({ height: "120px" });
+      expect(screen.getByRole("slider", { name: "Zoom level" })).toHaveValue("4");
+    });
+
+    it("stops zooming in at the largest scale", async () => {
+      renderDay(busyDay(), { uiState: { ...useStore.getState().uiState, timelineZoom: 8 } });
+      await docsEl();
+      expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Zoom out" })).toBeEnabled();
+    });
+
+    it("stops zooming out at the smallest scale", async () => {
+      renderDay(busyDay(), { uiState: { ...useStore.getState().uiState, timelineZoom: 1 } });
+      expect(await docsEl()).toHaveStyle({ height: "30px" });
+      expect(screen.getByRole("button", { name: "Zoom out" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Zoom in" })).toBeEnabled();
+    });
+  });
+
+  describe("away spans", () => {
+    it("draws every away span with its reason and length", async () => {
+      renderDay(
+        dayView({
+          lanes: [lane({ blocks: [docs] })],
+          away: [away({ id: 1, reason: "lock", start: at("12:00"), end: at("13:05") }), away({ id: 2, reason: "sleep", start: at("15:00"), end: at("15:45") })],
+        }),
+      );
+      expect(await screen.findByText("Away · lock 1 h 05 min")).toBeInTheDocument();
+      expect(screen.getByText("Away · sleep 45 min")).toBeInTheDocument();
+    });
+
+    it("shows a day with only away time as a timeline", async () => {
+      renderDay(dayView({ away: [away({ reason: "idle", start: at("12:00"), end: at("12:30") })] }));
+      expect(await screen.findByText("Away · idle 30 min")).toBeInTheDocument();
+      expect(screen.queryByText("Nothing tracked on this day")).not.toBeInTheDocument();
     });
   });
 

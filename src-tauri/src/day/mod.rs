@@ -5,24 +5,26 @@ pub mod apps;
 pub mod commands;
 mod lanes;
 pub mod list;
+mod recordings;
+mod summary;
 #[cfg(test)]
 mod testing;
+mod totals;
 pub(crate) mod transform;
+mod types;
 
 use std::collections::HashMap;
 
-use serde::Serialize;
-use ts_rs::TS;
-
 use crate::db::activities::ActivityRow;
-use crate::db::away::{AwayReason, AwayRow};
+use crate::db::away::AwayRow;
 use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms, clip};
-use crate::rules::types::Suggestion;
 use crate::store::settings::{AppOverride, Settings, TimelineSettings};
 
-/// Time without activity or away shorter than this is no gap.
-pub const GAP_MIN: Ms = 2 * 60_000;
+pub use recordings::{recording_blocks, timesheet};
+pub use totals::{GAP_MIN, totals, tracked_ms};
+use totals::{gaps, union};
+pub use types::*;
 
 const TRACKER_SOURCE: &str = "tracker";
 const EXTERNAL_PREFIX: &str = "external:";
@@ -84,191 +86,69 @@ pub struct ProjectRef {
     pub shade: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct DayView {
-    pub day: Day,
-    pub bounds: (Ms, Ms),
-    /// Summary lane, activity lane, app lanes, source lanes; each only when present.
-    pub lanes: Vec<Lane>,
-    /// The recordings column, by start.
-    pub recordings: Vec<RecordingBlock>,
-    pub away: Vec<AwayBlock>,
-    pub gaps: Vec<Gap>,
-    pub totals: DayTotals,
-    pub first_activity: Option<Ms>,
-    /// Every source of the day's activity, sorted.
-    pub sources: Vec<String>,
-    /// The timeline's compact density.
-    pub compact: bool,
-    /// Every app the settings hide, by name.
-    pub hidden_apps: Vec<HiddenApp>,
-    /// What the rules suggest recording, by start; filled by `commands::load`.
-    pub suggestions: Vec<Suggestion>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct HiddenApp {
-    pub app_key: String,
-    /// Its name on this day, else the key.
-    pub app: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub enum LaneKind {
-    Summary,
-    Activity,
-    App,
-    Source,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct Lane {
-    /// `summary`, `activity`, `app:<app key>` or `source:<name>`.
-    pub id: String,
-    pub kind: LaneKind,
-    pub label: String,
-    /// The app of an app lane.
-    pub app_key: Option<String>,
-    pub blocks: Vec<ActivityBlock>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct ActivityBlock {
-    /// `a<first member id>`; `s<start>` in the summary lane.
-    pub id: String,
-    pub start: Ms,
-    pub end: Ms,
-    pub app: String,
-    pub bundle_id: Option<String>,
-    pub app_key: String,
-    /// The window title of its longest member.
-    pub title: String,
-    /// What the block shows: the document name or the app, by the title setting.
-    pub label: String,
-    pub url: Option<String>,
-    pub path: Option<String>,
-    pub source: String,
-    /// At least half of it lies inside recordings.
-    pub covered: bool,
-    /// The activity ids the block stands for.
-    pub members: Vec<i64>,
-    /// Position among the overlapping blocks of its lane: column `col` of `cols` equal columns.
-    pub col: u8,
-    pub cols: u8,
-    pub private: bool,
-}
-
-/// A span of a recording cut to the day; a recording with several spans on the day has several blocks.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct RecordingBlock {
-    /// The recording's id.
-    pub id: String,
-    pub span_id: String,
-    /// How many spans the recording has, on any day.
-    pub span_count: u32,
-    pub start: Ms,
-    pub end: Ms,
-    pub project_id: String,
-    pub project_name: String,
-    pub client_name: Option<String>,
-    /// The project's accent and shade.
-    pub color: String,
-    pub shade: u8,
-    pub note: String,
-    pub tag: Option<String>,
-    /// The timer's open span, still recording.
-    pub running: bool,
-    /// The span starts on an earlier day or ends on a later one.
-    pub clipped_start: bool,
-    pub clipped_end: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct AwayBlock {
-    pub id: i64,
-    pub start: Ms,
-    pub end: Ms,
-    pub reason: AwayReason,
-}
-
-/// Time inside the day's activity with neither activity nor away.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct Gap {
-    pub start: Ms,
-    pub end: Ms,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct DayTotals {
-    /// The day's part of its recordings' spans.
-    pub recorded_ms: i64,
-    /// Tracker activity, overlaps counted once, hidden apps and noise included; external sources are not
-    /// tracked time.
-    pub tracked_ms: i64,
-    pub away_ms: i64,
-}
-
-/// Recorded, tracked and away time inside the day; `names` is not read.
-pub fn totals(input: &DayInput) -> DayTotals {
-    let clipped = |start: Ms, end: Option<Ms>| clip(start, end, input.bounds, input.now);
-    DayTotals {
-        recorded_ms: input
-            .recordings
-            .iter()
-            .flat_map(|r| &r.spans)
-            .filter_map(|s| clipped(s.start, s.end))
-            .map(|(start, end)| end - start)
-            .sum(),
-        tracked_ms: tracked_ms(&input.activities, input.bounds, input.now),
-        away_ms: union_length(
-            input
-                .away
-                .iter()
-                .filter_map(|a| clipped(a.start, a.end))
-                .collect(),
-        ),
-    }
-}
-
 pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
     let rows = clipped_blocks(input);
     let recordings = recording_blocks(&input.recordings, &input.names, input.bounds, input.now);
     let away = away_blocks(input);
-
-    // Totals and gaps describe what was captured, before any setting hides or merges it.
-    let span = |b: &ActivityBlock| (b.start, b.end);
-    let activity: Vec<(Ms, Ms)> = rows.iter().map(span).collect();
-    let away_spans: Vec<(Ms, Ms)> = away.iter().map(|a| (a.start, a.end)).collect();
-    let recorded: Vec<(Ms, Ms)> = recordings.iter().map(|r| (r.start, r.end)).collect();
-    let totals = totals(input);
-    let gaps = gaps(&activity, &away_spans);
-    let first_activity = activity.iter().map(|s| s.0).min();
-    let mut sources: Vec<String> = rows.iter().map(|b| b.source.clone()).collect();
-    sources.sort();
-    sources.dedup();
+    let captured = captured(input, &rows, &away);
     let hidden_apps = hidden_apps(&rows, settings);
 
     let (tracker, external): (Vec<_>, Vec<_>) =
         rows.into_iter().partition(|b| b.source == TRACKER_SOURCE);
-    let pieces = transform::identified(transform::without_hidden(tracker, settings), settings);
+    let tracker = transform::without_hidden(tracker, settings);
+    let apps = apps::day_apps(&tracker, settings);
+    let mut lanes = timeline_lanes(tracker, external, &away, input.bounds, settings);
+    mark_covered(&mut lanes, &recordings);
+
+    DayView {
+        day: input.day,
+        bounds: input.bounds,
+        lanes,
+        timesheet: timesheet(&recordings),
+        recordings,
+        away,
+        gaps: captured.gaps,
+        totals: captured.totals,
+        first_activity: captured.first_activity,
+        sources: captured.sources,
+        compact: settings.timeline.compact,
+        hidden_apps,
+        apps,
+        suggestions: Vec::new(),
+    }
+}
+
+/// What was captured, before any setting hides or merges it.
+struct Captured {
+    totals: DayTotals,
+    gaps: Vec<Gap>,
+    first_activity: Option<Ms>,
+    sources: Vec<String>,
+}
+
+fn captured(input: &DayInput, rows: &[ActivityBlock], away: &[AwayBlock]) -> Captured {
+    let activity: Vec<(Ms, Ms)> = rows.iter().map(|b| (b.start, b.end)).collect();
+    let away: Vec<(Ms, Ms)> = away.iter().map(|a| (a.start, a.end)).collect();
+    let mut sources: Vec<String> = rows.iter().map(|b| b.source.clone()).collect();
+    sources.sort();
+    sources.dedup();
+    Captured {
+        totals: totals(input),
+        gaps: gaps(&activity, &away),
+        first_activity: activity.iter().map(|s| s.0).min(),
+        sources,
+    }
+}
+
+/// The summary lane (when on) from the visible tracker rows, then the grouped activity, app and source lanes.
+fn timeline_lanes(
+    tracker: Vec<ActivityBlock>,
+    external: Vec<ActivityBlock>,
+    away: &[AwayBlock],
+    bounds: (Ms, Ms),
+    settings: &ViewSettings,
+) -> Vec<Lane> {
+    let pieces = transform::identified(tracker, settings);
     let barriers: Vec<(Ms, Ms)> = away
         .iter()
         .filter(|a| transform::breaks_continuity(a.reason))
@@ -277,27 +157,12 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
     let timeline = &settings.timeline;
     let mut lanes: Vec<Lane> = Vec::new();
     if timeline.summary_lane {
-        let interval = Ms::from(timeline.summary_minutes) * 60_000;
-        lanes.push(lanes::summary(&pieces, interval, input.bounds));
+        let bucket = Ms::from(timeline.summary_minutes) * 60_000;
+        lanes.push(summary::summary(&pieces, bucket, bounds));
     }
     let tracker = transform::grouped(pieces, settings, &barriers);
     lanes.extend(lanes::lanes(tracker, external, settings));
-    mark_covered(&mut lanes, &recorded);
-
-    DayView {
-        day: input.day,
-        bounds: input.bounds,
-        lanes,
-        recordings,
-        away,
-        gaps,
-        totals,
-        first_activity,
-        sources,
-        compact: timeline.compact,
-        hidden_apps,
-        suggestions: Vec::new(),
-    }
+    lanes
 }
 
 fn hidden_apps(rows: &[ActivityBlock], settings: &ViewSettings) -> Vec<HiddenApp> {
@@ -322,45 +187,9 @@ fn hidden_apps(rows: &[ActivityBlock], settings: &ViewSettings) -> Vec<HiddenApp
     hidden
 }
 
-/// The spans of `recordings` cut to `bounds`, one block each, by start; an open span ends at `now`.
-pub fn recording_blocks(
-    recordings: &[Recording],
-    names: &Names,
-    bounds: (Ms, Ms),
-    now: Ms,
-) -> Vec<RecordingBlock> {
-    let mut blocks: Vec<RecordingBlock> = recordings
-        .iter()
-        .flat_map(|r| r.spans.iter().map(move |s| (r, s)))
-        .filter_map(|(r, s)| {
-            let (start, end) = clip(s.start, s.end, bounds, now)?;
-            let project = names.projects.get(&r.project_id);
-            Some(RecordingBlock {
-                id: r.id.clone(),
-                span_id: s.id.clone(),
-                span_count: u32::try_from(r.spans.len()).unwrap_or(u32::MAX),
-                start,
-                end,
-                project_id: r.project_id.clone(),
-                project_name: project.map_or_else(String::new, |p| p.name.clone()),
-                client_name: project.and_then(|p| p.client_name.clone()),
-                color: project.map_or_else(|| "graphite".into(), |p| p.color.clone()),
-                shade: project.map_or(4, |p| p.shade),
-                note: r.note.clone(),
-                tag: r.tag_id.as_ref().and_then(|id| names.tags.get(id).cloned()),
-                running: s.end.is_none(),
-                clipped_start: s.start < bounds.0,
-                clipped_end: s.end.unwrap_or(now) > bounds.1,
-            })
-        })
-        .collect();
-    blocks.sort_by_key(|b| b.start);
-    blocks
-}
-
 /// A block is covered when at least half of it lies inside recordings.
-fn mark_covered(lanes: &mut [Lane], recorded: &[(Ms, Ms)]) {
-    let recorded = union(recorded.to_vec());
+fn mark_covered(lanes: &mut [Lane], recordings: &[RecordingBlock]) {
+    let recorded = union(recordings.iter().map(|r| (r.start, r.end)).collect());
     for block in lanes.iter_mut().flat_map(|l| l.blocks.iter_mut()) {
         let inside: Ms = recorded
             .iter()
@@ -407,6 +236,7 @@ fn clipped_blocks(input: &DayInput) -> Vec<ActivityBlock> {
                 id: format!("a{}", row.id),
                 start,
                 end,
+                active_ms: end - start,
                 app: row.app.clone(),
                 bundle_id: row.bundle_id.clone(),
                 app_key: app_key(row.bundle_id.as_deref(), &row.app),
@@ -425,105 +255,13 @@ fn clipped_blocks(input: &DayInput) -> Vec<ActivityBlock> {
         .collect()
 }
 
-/// Sorted spans with overlapping and touching ones merged.
-fn union(mut spans: Vec<(Ms, Ms)>) -> Vec<(Ms, Ms)> {
-    spans.sort_unstable();
-    let mut merged: Vec<(Ms, Ms)> = Vec::with_capacity(spans.len());
-    for (start, end) in spans {
-        match merged.last_mut() {
-            Some(last) if start <= last.1 => last.1 = last.1.max(end),
-            _ => merged.push((start, end)),
-        }
-    }
-    merged
-}
-
-/// Tracker activity inside `bounds`, overlaps counted once; external sources are not tracked time.
-pub fn tracked_ms(activities: &[ActivityRow], bounds: (Ms, Ms), now: Ms) -> Ms {
-    union_length(
-        activities
-            .iter()
-            .filter(|a| a.source == TRACKER_SOURCE)
-            .filter_map(|a| clip(a.start, a.end, bounds, now))
-            .collect(),
-    )
-}
-
-fn union_length(spans: Vec<(Ms, Ms)>) -> Ms {
-    union(spans).iter().map(|(start, end)| end - start).sum()
-}
-
-/// Holes of at least `GAP_MIN` between the first activity's start and the last activity's end.
-fn gaps(activity: &[(Ms, Ms)], away: &[(Ms, Ms)]) -> Vec<Gap> {
-    let (Some(first), Some(last)) = (
-        activity.iter().map(|s| s.0).min(),
-        activity.iter().map(|s| s.1).max(),
-    ) else {
-        return Vec::new();
-    };
-    let filled = union(activity.iter().chain(away).copied().collect());
-    let mut gaps = Vec::new();
-    let mut at = first;
-    for (start, end) in filled {
-        if start >= last {
-            break;
-        }
-        if start - at >= GAP_MIN {
-            gaps.push(Gap {
-                start: at,
-                end: start,
-            });
-        }
-        at = at.max(end);
-    }
-    gaps
-}
-
 #[cfg(test)]
 mod tests {
     use super::testing::*;
     use super::*;
-    use crate::db::recordings::RecordingSpan;
+    use crate::db::away::AwayReason;
+    use crate::store::settings::Noise;
     use serde_json::json;
-
-    fn lane<'a>(view: &'a DayView, id: &str) -> &'a Lane {
-        view.lanes
-            .iter()
-            .find(|l| l.id == id)
-            .unwrap_or_else(|| panic!("no lane {id}"))
-    }
-
-    fn lane_ids(view: &DayView) -> Vec<&str> {
-        view.lanes.iter().map(|l| l.id.as_str()).collect()
-    }
-
-    fn block_ids(lane: &Lane) -> Vec<&str> {
-        lane.blocks.iter().map(|b| b.id.as_str()).collect()
-    }
-
-    fn spans(lane: &Lane) -> Vec<(Ms, Ms)> {
-        lane.blocks.iter().map(|b| (b.start, b.end)).collect()
-    }
-
-    fn columns(lane: &Lane) -> Vec<(u8, u8)> {
-        lane.blocks.iter().map(|b| (b.col, b.cols)).collect()
-    }
-
-    fn gap_spans(view: &DayView) -> Vec<(Ms, Ms)> {
-        view.gaps.iter().map(|g| (g.start, g.end)).collect()
-    }
-
-    fn code(id: i64, start_min: i64, end_min: i64) -> ActivityRow {
-        activity(id, mins(start_min), Some(mins(end_min)), "Code", "")
-    }
-
-    fn titled(id: i64, start_min: i64, end_min: i64, title: &str) -> ActivityRow {
-        activity(id, mins(start_min), Some(mins(end_min)), "Code", title)
-    }
-
-    fn activity_lane(view: &DayView) -> &Lane {
-        lane(view, "activity")
-    }
 
     #[test]
     fn spans_across_the_day_edges_appear_clipped_to_the_day() {
@@ -702,7 +440,7 @@ mod tests {
     fn an_empty_day_still_has_the_activity_lane() {
         let view = view(&input(vec![], vec![]), &settings());
 
-        assert_eq!(lane_ids(&view), ["activity"]);
+        assert_eq!(lane_id_list(&view), ["activity"]);
         let lane = activity_lane(&view);
         assert_eq!(lane.kind, LaneKind::Activity);
         assert_eq!(lane.label, "Activity");
@@ -727,7 +465,7 @@ mod tests {
         let view = view(&input(rows, vec![]), &settings);
 
         assert_eq!(
-            lane_ids(&view),
+            lane_id_list(&view),
             [
                 "activity",
                 "app:test.mail",
@@ -750,14 +488,14 @@ mod tests {
             ]
         );
         assert_eq!(
-            lane(&view, "app:test.code").app_key.as_deref(),
+            lane_by_id(&view, "app:test.code").app_key.as_deref(),
             Some("test.code")
         );
         assert_eq!(block_ids(activity_lane(&view)), ["a2"]);
-        assert_eq!(block_ids(lane(&view, "app:test.code")), ["a3"]);
-        assert_eq!(block_ids(lane(&view, "app:test.mail")), ["a1"]);
-        assert_eq!(block_ids(lane(&view, "source:planner")), ["a4"]);
-        assert_eq!(block_ids(lane(&view, "source:calendar")), ["a5"]);
+        assert_eq!(block_ids(lane_by_id(&view, "app:test.code")), ["a3"]);
+        assert_eq!(block_ids(lane_by_id(&view, "app:test.mail")), ["a1"]);
+        assert_eq!(block_ids(lane_by_id(&view, "source:planner")), ["a4"]);
+        assert_eq!(block_ids(lane_by_id(&view, "source:calendar")), ["a5"]);
     }
 
     #[test]
@@ -772,7 +510,10 @@ mod tests {
         let view = view(&input(rows, vec![]), &settings);
 
         assert_eq!(columns(activity_lane(&view)), [(0, 1)]);
-        assert_eq!(columns(lane(&view, "app:test.mail")), [(0, 2), (1, 2)]);
+        assert_eq!(
+            columns(lane_by_id(&view, "app:test.mail")),
+            [(0, 2), (1, 2)]
+        );
     }
 
     #[test]
@@ -788,10 +529,13 @@ mod tests {
             &own_lane(hidden(settings(), &bundle_of("Code")), "other"),
         );
 
-        assert_eq!(lane_ids(&by_name), ["activity", "app:Code"]);
-        assert_eq!(block_ids(lane(&by_name, "app:Code")), ["a1"]);
-        assert_eq!(lane(&by_name, "app:Code").app_key.as_deref(), Some("Code"));
-        assert_eq!(lane_ids(&by_other_key), ["activity"]);
+        assert_eq!(lane_id_list(&by_name), ["activity", "app:Code"]);
+        assert_eq!(block_ids(lane_by_id(&by_name, "app:Code")), ["a1"]);
+        assert_eq!(
+            lane_by_id(&by_name, "app:Code").app_key.as_deref(),
+            Some("Code")
+        );
+        assert_eq!(lane_id_list(&by_other_key), ["activity"]);
         assert_eq!(block_ids(activity_lane(&by_other_key)), ["a1"]);
     }
 
@@ -810,102 +554,13 @@ mod tests {
 
         let view = view(&input(rows, vec![]), &settings);
 
-        assert_eq!(lane_ids(&view), ["activity", "source:planner"]);
+        assert_eq!(lane_id_list(&view), ["activity", "source:planner"]);
         assert_eq!(block_ids(activity_lane(&view)), ["a1", "a3"]);
-        assert_eq!(block_ids(lane(&view, "source:planner")), ["a4"]);
+        assert_eq!(block_ids(lane_by_id(&view, "source:planner")), ["a4"]);
         assert_eq!(view.totals.tracked_ms, mins(70));
         assert!(view.gaps.is_empty());
         assert_eq!(view.sources, ["external:planner", "tracker"]);
         assert_eq!(view.first_activity, Some(0));
-    }
-
-    #[test]
-    fn a_hole_of_under_two_minutes_is_no_gap_and_two_minutes_is() {
-        for (hole, expected) in [(GAP_MIN - 1, vec![]), (GAP_MIN, vec![(mins(10), mins(12))])] {
-            let rows = vec![
-                code(1, 0, 10),
-                activity(2, mins(10) + hole, Some(mins(20) + hole), "Code", ""),
-            ];
-
-            let view = view(&input(rows, vec![]), &settings());
-
-            assert_eq!(gap_spans(&view), expected, "hole {hole}");
-        }
-    }
-
-    #[test]
-    fn gaps_lie_only_between_the_first_and_the_last_activity() {
-        let rows = vec![code(1, 300, 310), code(2, 330, 340)];
-
-        let view = view(&input(rows, vec![]), &settings());
-
-        assert_eq!(gap_spans(&view), [(mins(310), mins(330))]);
-    }
-
-    #[test]
-    fn a_day_with_one_activity_has_no_gaps() {
-        let view = view(&input(vec![code(1, 0, 10)], vec![]), &settings());
-
-        assert!(view.gaps.is_empty());
-    }
-
-    #[test]
-    fn external_activity_fills_gaps_between_tracker_spans() {
-        let rows = vec![
-            code(1, 0, 10),
-            from_source(code(2, 10, 40), "external:planner"),
-            code(3, 40, 50),
-        ];
-
-        let view = view(&input(rows, vec![]), &settings());
-
-        assert!(view.gaps.is_empty());
-    }
-
-    #[test]
-    fn away_spans_fill_the_holes_they_cover() {
-        let rows = vec![code(1, 0, 10), code(2, 40, 50)];
-
-        let covered = view(
-            &input(
-                rows.clone(),
-                vec![away(1, mins(10), Some(mins(40)), AwayReason::Idle)],
-            ),
-            &settings(),
-        );
-        let partly = view(
-            &input(
-                rows,
-                vec![away(1, mins(15), Some(mins(30)), AwayReason::Idle)],
-            ),
-            &settings(),
-        );
-
-        assert!(covered.gaps.is_empty());
-        assert_eq!(
-            gap_spans(&partly),
-            [(mins(10), mins(15)), (mins(30), mins(40))]
-        );
-    }
-
-    #[test]
-    fn overlapping_tracker_spans_count_once_and_external_ones_not_at_all() {
-        let rows = vec![
-            code(1, 0, 60),
-            code(2, 30, 90),
-            from_source(code(3, 0, 120), "external:planner"),
-        ];
-
-        let view = view(&input(rows, vec![]), &settings());
-
-        assert_eq!(
-            view.totals,
-            DayTotals {
-                recorded_ms: 0,
-                tracked_ms: mins(90),
-                away_ms: 0
-            }
-        );
     }
 
     #[test]
@@ -957,6 +612,7 @@ mod tests {
                 id: "a7".into(),
                 start: mins(10),
                 end: mins(20),
+                active_ms: mins(10),
                 app: "Code".into(),
                 bundle_id: Some("test.code".into()),
                 app_key: "test.code".into(),
@@ -1011,10 +667,12 @@ mod tests {
                     "kind": "activity",
                     "label": "Activity",
                     "appKey": null,
+                    "bundleId": null,
                     "blocks": [{
                         "id": "a1",
                         "start": mins(10),
                         "end": mins(20),
+                        "activeMs": mins(10),
                         "app": "Code",
                         "bundleId": "test.code",
                         "appKey": "test.code",
@@ -1031,6 +689,7 @@ mod tests {
                     }]
                 }],
                 "recordings": [],
+                "timesheet": [],
                 "away": [{"id": 3, "start": mins(30), "end": mins(40), "reason": "idle"}],
                 "gaps": [],
                 "totals": {"recordedMs": 0, "trackedMs": mins(10), "awayMs": mins(10)},
@@ -1038,9 +697,82 @@ mod tests {
                 "sources": ["tracker"],
                 "compact": false,
                 "hiddenApps": [],
+                "apps": [{
+                    "appKey": "test.code",
+                    "app": "Code",
+                    "bundleId": "test.code",
+                    "activeMs": mins(10),
+                    "ownLane": false
+                }],
                 "suggestions": []
             })
         );
+    }
+
+    #[test]
+    fn apps_list_the_visible_tracker_apps_with_their_time_most_first() {
+        let rows = vec![
+            activity(1, 0, Some(mins(10)), "Mail", ""),
+            code(2, 10, 40),
+            activity(3, mins(40), Some(mins(60)), "Notes", ""),
+            code(4, 60, 70),
+            from_source(
+                activity(5, mins(70), Some(mins(120)), "Planner", ""),
+                "external:planner",
+            ),
+        ];
+        let settings = own_lane(hidden(settings(), &bundle_of("Notes")), &bundle_of("Mail"));
+
+        let view = view(&input(rows, vec![]), &settings);
+
+        assert_eq!(
+            view.apps,
+            [
+                DayApp {
+                    app_key: "test.code".into(),
+                    app: "Code".into(),
+                    bundle_id: Some("test.code".into()),
+                    active_ms: mins(40),
+                    own_lane: false,
+                },
+                DayApp {
+                    app_key: "test.mail".into(),
+                    app: "Mail".into(),
+                    bundle_id: Some("test.mail".into()),
+                    active_ms: mins(10),
+                    own_lane: true,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn apps_with_equal_time_are_ordered_by_name_ignoring_case_and_keyed_by_name_without_a_bundle_id()
+     {
+        let rows = vec![
+            activity(1, 0, Some(mins(5)), "beta", ""),
+            with_bundle_id(activity(2, mins(5), Some(mins(10)), "Alpha", ""), None),
+        ];
+
+        let view = view(&input(rows, vec![]), &settings());
+
+        let apps: Vec<(&str, Option<&str>)> = view
+            .apps
+            .iter()
+            .map(|a| (a.app_key.as_str(), a.bundle_id.as_deref()))
+            .collect();
+        assert_eq!(apps, [("Alpha", None), ("test.beta", Some("test.beta"))]);
+    }
+
+    #[test]
+    fn apps_count_the_time_before_bridging_and_noise() {
+        let rows = vec![code(1, 0, 1), code(2, 10, 11)];
+        let settings = with_timeline(settings(), |t| t.noise = Noise::High);
+
+        let view = view(&input(rows, vec![]), &settings);
+
+        assert!(activity_lane(&view).blocks.is_empty());
+        assert_eq!(view.apps[0].active_ms, mins(2));
     }
 
     #[test]
@@ -1119,457 +851,5 @@ mod tests {
         let flags = covered_flags(rows, vec![recording("r", 0, Some(mins(10)))]);
 
         assert_eq!(flags, [true, false]);
-    }
-
-    #[test]
-    fn recorded_time_sums_the_parts_of_recordings_inside_the_day() {
-        let input = DayInput {
-            bounds: (HOUR, 2 * HOUR),
-            now: mins(115),
-            ..input_with_recordings(vec![
-                recording("a", mins(30), Some(mins(90))),
-                recording("b", mins(100), Some(mins(200))),
-                recording("c", mins(110), None),
-                recording("d", 0, Some(HOUR)),
-                recording("e", 3 * HOUR, Some(4 * HOUR)),
-            ])
-        };
-
-        let view = view(&input, &settings());
-
-        assert_eq!(view.totals.recorded_ms, mins(30) + mins(20) + mins(5));
-        assert_eq!(view.recordings.len(), 3);
-    }
-
-    #[test]
-    fn a_recording_across_midnight_shows_clipped_on_both_days() {
-        let midnight = DAY_LENGTH;
-        let rows = vec![recording("r", midnight - HOUR, Some(midnight + 2 * HOUR))];
-        let first = DayInput {
-            bounds: (0, midnight),
-            ..input_with_recordings(rows.clone())
-        };
-        let second = DayInput {
-            bounds: (midnight, 2 * midnight),
-            ..input_with_recordings(rows)
-        };
-
-        let first = view(&first, &settings());
-        let second = view(&second, &settings());
-
-        let shape = |view: &DayView| {
-            view.recordings
-                .iter()
-                .map(|b| (b.start, b.end, b.clipped_start, b.clipped_end))
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(shape(&first), [(midnight - HOUR, midnight, false, true)]);
-        assert_eq!(
-            shape(&second),
-            [(midnight, midnight + 2 * HOUR, true, false)]
-        );
-        assert_eq!(first.totals.recorded_ms, HOUR);
-        assert_eq!(second.totals.recorded_ms, 2 * HOUR);
-    }
-
-    #[test]
-    fn a_recording_with_spans_on_two_days_has_one_block_per_span_on_each_day() {
-        let midnight = DAY_LENGTH;
-        let rows = vec![recording_of_spans(
-            "r",
-            &[
-                (midnight - 3 * HOUR, midnight - 2 * HOUR),
-                (midnight - HOUR, midnight + HOUR),
-                (midnight + 5 * HOUR, midnight + 6 * HOUR),
-            ],
-        )];
-        let first = DayInput {
-            bounds: (0, midnight),
-            ..input_with_recordings(rows.clone())
-        };
-        let second = DayInput {
-            bounds: (midnight, 2 * midnight),
-            ..input_with_recordings(rows)
-        };
-
-        let first = view(&first, &settings());
-        let second = view(&second, &settings());
-
-        let shape = |view: &DayView| {
-            assert!(view.recordings.iter().all(|b| b.id == "r"));
-            view.recordings
-                .iter()
-                .map(|b| {
-                    let clipped = (b.clipped_start, b.clipped_end);
-                    (b.span_id.clone(), b.span_count, b.start, b.end, clipped)
-                })
-                .collect::<Vec<_>>()
-        };
-        let at = |hours: i64| midnight + hours * HOUR;
-        let id = String::from;
-        assert_eq!(
-            shape(&first),
-            [
-                (id("r-span0"), 3, at(-3), at(-2), (false, false)),
-                (id("r-span1"), 3, at(-1), at(0), (false, true)),
-            ]
-        );
-        assert_eq!(
-            shape(&second),
-            [
-                (id("r-span1"), 3, at(0), at(1), (true, false)),
-                (id("r-span2"), 3, at(5), at(6), (false, false)),
-            ]
-        );
-    }
-
-    #[test]
-    fn recorded_time_of_a_day_counts_only_the_parts_of_spans_inside_it() {
-        let midnight = DAY_LENGTH;
-        let rows = vec![recording_of_spans(
-            "r",
-            &[
-                (midnight - 3 * HOUR, midnight - 2 * HOUR),
-                (midnight - HOUR, midnight + HOUR),
-                (midnight + 5 * HOUR, midnight + 6 * HOUR),
-            ],
-        )];
-
-        let totals_on = |bounds| {
-            totals(&DayInput {
-                bounds,
-                ..input_with_recordings(rows.clone())
-            })
-            .recorded_ms
-        };
-
-        assert_eq!(totals_on((0, midnight)), 2 * HOUR);
-        assert_eq!(totals_on((midnight, 2 * midnight)), 2 * HOUR);
-        assert_eq!(totals_on((midnight - 2 * HOUR, midnight - HOUR)), 0);
-    }
-
-    #[test]
-    fn a_running_span_after_closed_ones_is_the_only_running_block() {
-        let mut r = recording_of_spans("r", &[(HOUR, 2 * HOUR)]);
-        r.spans.push(RecordingSpan {
-            id: "r-open".into(),
-            start: 3 * HOUR,
-            end: None,
-        });
-        let input = DayInput {
-            now: 4 * HOUR,
-            ..input_with_recordings(vec![r])
-        };
-
-        let view = view(&input, &settings());
-
-        let blocks: Vec<_> = view
-            .recordings
-            .iter()
-            .map(|b| (b.span_id.as_str(), b.end, b.running))
-            .collect();
-        assert_eq!(
-            blocks,
-            [("r-span0", 2 * HOUR, false), ("r-open", 4 * HOUR, true)]
-        );
-        assert_eq!(view.totals.recorded_ms, 2 * HOUR);
-    }
-
-    #[test]
-    fn blocks_of_different_recordings_are_ordered_by_start_across_their_spans() {
-        let input = input_with_recordings(vec![
-            recording_of_spans("a", &[(HOUR, 2 * HOUR), (5 * HOUR, 6 * HOUR)]),
-            recording_of_spans("b", &[(3 * HOUR, 4 * HOUR)]),
-        ]);
-
-        let view = view(&input, &settings());
-
-        let ids: Vec<_> = view.recordings.iter().map(|b| b.id.as_str()).collect();
-        assert_eq!(ids, ["a", "b", "a"]);
-    }
-
-    #[test]
-    fn a_recording_block_carries_the_project_and_the_tag_name() {
-        let mut input = input_with_recordings(vec![
-            Recording {
-                note: "fix login".into(),
-                tag_id: Some("t-alpha".into()),
-                ..recording("late", mins(120), Some(mins(150)))
-            },
-            recording("early", mins(60), Some(mins(90))),
-        ]);
-        input.names.projects.insert(
-            "p1".into(),
-            ProjectRef {
-                client_name: Some("Acme".into()),
-                color: "teal".into(),
-                shade: 7,
-                ..project_ref("Portal")
-            },
-        );
-        input.names.tags.insert("t-alpha".into(), "Alpha".into());
-
-        let view = view(&input, &settings());
-
-        assert_eq!(
-            view.recordings,
-            [
-                RecordingBlock {
-                    id: "early".into(),
-                    span_id: "early-span".into(),
-                    span_count: 1,
-                    start: mins(60),
-                    end: mins(90),
-                    project_id: "p1".into(),
-                    project_name: "Portal".into(),
-                    client_name: Some("Acme".into()),
-                    color: "teal".into(),
-                    shade: 7,
-                    note: String::new(),
-                    tag: None,
-                    running: false,
-                    clipped_start: false,
-                    clipped_end: false,
-                },
-                RecordingBlock {
-                    id: "late".into(),
-                    span_id: "late-span".into(),
-                    span_count: 1,
-                    start: mins(120),
-                    end: mins(150),
-                    project_id: "p1".into(),
-                    project_name: "Portal".into(),
-                    client_name: Some("Acme".into()),
-                    color: "teal".into(),
-                    shade: 7,
-                    note: "fix login".into(),
-                    tag: Some("Alpha".into()),
-                    running: false,
-                    clipped_start: false,
-                    clipped_end: false,
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn a_recording_block_has_no_tag_when_its_tag_is_gone() {
-        let input = input_with_recordings(vec![Recording {
-            tag_id: Some("t-gone".into()),
-            ..recording("r1", mins(60), Some(mins(90)))
-        }]);
-
-        let view = view(&input, &settings());
-
-        assert_eq!(view.recordings[0].tag, None);
-    }
-
-    #[test]
-    fn a_running_recording_runs_to_now_and_is_clipped_at_the_end_of_the_day_when_now_is_later() {
-        for (now, expected_end, clipped_end) in [
-            (mins(90), mins(90), false),
-            (3 * DAY_LENGTH, DAY_LENGTH, true),
-        ] {
-            let input = DayInput {
-                now,
-                ..input_with_recordings(vec![recording("r", HOUR, None)])
-            };
-
-            let view = view(&input, &settings());
-
-            let block = &view.recordings[0];
-            assert_eq!(
-                (block.start, block.end, block.running, block.clipped_end),
-                (HOUR, expected_end, true, clipped_end),
-                "now {now}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_recording_of_an_unknown_project_falls_back_to_graphite() {
-        let input = input_with_recordings(vec![recording("r", HOUR, Some(2 * HOUR))]);
-
-        let view = view(&input, &settings());
-
-        let block = &view.recordings[0];
-        assert_eq!(
-            (block.project_name.as_str(), block.client_name.clone()),
-            ("", None)
-        );
-        assert_eq!((block.color.as_str(), block.shade), ("graphite", 4));
-    }
-
-    #[test]
-    fn tracked_ms_counts_overlapping_tracker_activity_once() {
-        let activities = rows(&[
-            (0, 60, "Code", "a"),
-            (30, 90, "Mail", "b"),
-            (120, 150, "Code", "c"),
-        ]);
-
-        assert_eq!(
-            tracked_ms(&activities, (0, DAY_LENGTH), NOW),
-            mins(90) + mins(30)
-        );
-    }
-
-    #[test]
-    fn tracked_ms_excludes_external_sources() {
-        let activities = vec![
-            activity(1, 0, Some(mins(60)), "Code", "a"),
-            from_source(
-                activity(2, mins(30), Some(mins(120)), "Cal", "m"),
-                "external:calendar",
-            ),
-        ];
-
-        assert_eq!(tracked_ms(&activities, (0, DAY_LENGTH), NOW), mins(60));
-    }
-
-    #[test]
-    fn tracked_ms_is_clipped_to_the_bounds() {
-        let activities = rows(&[
-            (0, 60, "Code", "a"),
-            (100, 200, "Code", "b"),
-            (300, 400, "Code", "c"),
-        ]);
-
-        assert_eq!(
-            tracked_ms(&activities, (mins(30), mins(150)), NOW),
-            mins(30) + mins(50)
-        );
-    }
-
-    #[test]
-    fn tracked_ms_of_an_open_span_runs_to_now_within_the_bounds() {
-        let activities = vec![activity(1, mins(60), None, "Code", "a")];
-
-        for (now, bounds_end, expected) in [
-            (mins(90), DAY_LENGTH, mins(30)),
-            (3 * DAY_LENGTH, DAY_LENGTH, DAY_LENGTH - mins(60)),
-            (mins(30), DAY_LENGTH, 0),
-        ] {
-            assert_eq!(
-                tracked_ms(&activities, (0, bounds_end), now),
-                expected,
-                "now {now}"
-            );
-        }
-    }
-
-    #[test]
-    fn tracked_ms_of_nothing_is_zero() {
-        assert_eq!(tracked_ms(&[], (0, DAY_LENGTH), NOW), 0);
-    }
-
-    #[test]
-    fn a_recording_block_serializes_with_camel_case_keys() {
-        let mut input = input_with_recordings(vec![Recording {
-            note: "n".into(),
-            tag_id: Some("t1".into()),
-            ..recording("r1", HOUR, Some(2 * HOUR))
-        }]);
-        input
-            .names
-            .projects
-            .insert("p1".into(), project_ref("Portal"));
-        input.names.tags.insert("t1".into(), "admin".into());
-
-        let view = view(&input, &settings());
-
-        assert_eq!(
-            serde_json::to_value(&view.recordings).unwrap(),
-            json!([{
-                "id": "r1",
-                "spanId": "r1-span",
-                "spanCount": 1,
-                "start": HOUR,
-                "end": 2 * HOUR,
-                "projectId": "p1",
-                "projectName": "Portal",
-                "clientName": null,
-                "color": "blue",
-                "shade": 4,
-                "note": "n",
-                "tag": "admin",
-                "running": false,
-                "clippedStart": false,
-                "clippedEnd": false
-            }])
-        );
-    }
-
-    fn busy_input() -> DayInput {
-        DayInput {
-            bounds: (HOUR, 3 * HOUR),
-            now: 2 * HOUR + mins(30),
-            recordings: vec![
-                recording("r1", 0, Some(mins(90))),
-                recording("r2", mins(100), Some(mins(110))),
-                recording("r3", mins(140), None),
-                recording("r4", 4 * HOUR, Some(5 * HOUR)),
-            ],
-            ..input(
-                vec![
-                    activity(1, 0, Some(mins(90)), "Code", ""),
-                    activity(2, mins(80), Some(mins(100)), "Mail", ""),
-                    activity(3, mins(150), Some(mins(170)), "Code", ""),
-                    activity(4, 4 * HOUR, Some(5 * HOUR), "Code", ""),
-                ],
-                vec![
-                    away(1, mins(70), Some(mins(100)), AwayReason::Idle),
-                    away(2, mins(90), Some(mins(130)), AwayReason::Sleep),
-                    away(3, mins(140), None, AwayReason::Lock),
-                ],
-            )
-        }
-    }
-
-    #[test]
-    fn totals_count_recorded_tracked_and_away_time_inside_the_day() {
-        assert_eq!(
-            totals(&busy_input()),
-            DayTotals {
-                recorded_ms: mins(30) + mins(10) + mins(10),
-                tracked_ms: mins(40) + mins(20),
-                away_ms: mins(60) + mins(10),
-            }
-        );
-    }
-
-    #[test]
-    fn a_running_recording_in_totals_ends_at_now() {
-        let input = DayInput {
-            now: 2 * HOUR,
-            ..input_with_recordings(vec![recording("r1", HOUR, None)])
-        };
-
-        assert_eq!(totals(&input).recorded_ms, HOUR);
-    }
-
-    #[test]
-    fn overlapping_away_spans_count_once_in_totals() {
-        let input = input(
-            vec![],
-            vec![
-                away(1, mins(60), Some(mins(120)), AwayReason::Idle),
-                away(2, mins(90), Some(mins(180)), AwayReason::Sleep),
-            ],
-        );
-
-        assert_eq!(totals(&input).away_ms, mins(120));
-    }
-
-    #[test]
-    fn totals_of_an_empty_day_are_zero() {
-        assert_eq!(totals(&input(vec![], vec![])), DayTotals::default());
-    }
-
-    #[test]
-    fn totals_equal_the_totals_of_the_view() {
-        for input in [busy_input(), input(vec![], vec![])] {
-            assert_eq!(totals(&input), view(&input, &settings()).totals);
-        }
     }
 }

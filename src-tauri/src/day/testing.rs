@@ -219,3 +219,38 @@ pub fn project_ref(name: &str) -> ProjectRef {
         shade: 4,
     }
 }
+
+pub fn block_ids(lane: &Lane) -> Vec<&str> {
+    lane.blocks.iter().map(|b| b.id.as_str()).collect()
+}
+
+pub fn spans(lane: &Lane) -> Vec<(Ms, Ms)> {
+    lane.blocks.iter().map(|b| (b.start, b.end)).collect()
+}
+
+pub fn columns(lane: &Lane) -> Vec<(u8, u8)> {
+    lane.blocks.iter().map(|b| (b.col, b.cols)).collect()
+}
+
+pub fn gap_spans(view: &DayView) -> Vec<(Ms, Ms)> {
+    view.gaps.iter().map(|g| (g.start, g.end)).collect()
+}
+
+pub fn code(id: i64, start_min: i64, end_min: i64) -> ActivityRow {
+    activity(id, mins(start_min), Some(mins(end_min)), "Code", "")
+}
+
+pub fn titled(id: i64, start_min: i64, end_min: i64, title: &str) -> ActivityRow {
+    activity(id, mins(start_min), Some(mins(end_min)), "Code", title)
+}
+
+pub fn activity_lane(view: &DayView) -> &Lane {
+    lane_by_id(view, "activity")
+}
+/// `settings()` with the summary lane on, in buckets of `minutes`.
+pub fn summarizing(minutes: u16) -> ViewSettings {
+    with_timeline(settings(), |t| {
+        t.summary_lane = true;
+        t.summary_minutes = minutes;
+    })
+}

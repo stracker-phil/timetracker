@@ -59,6 +59,30 @@ describe("recordings slice", () => {
     });
   });
 
+  describe("hoverRecording", () => {
+    it("marks the recording as hovered and clears it with null", () => {
+      expect(state().hoveredRecording).toBeNull();
+      state().hoverRecording("r1");
+      expect(state().hoveredRecording).toBe("r1");
+      state().hoverRecording(null);
+      expect(state().hoveredRecording).toBeNull();
+    });
+
+    it("moves the mark to another recording", () => {
+      state().hoverRecording("r1");
+      state().hoverRecording("r2");
+      expect(state().hoveredRecording).toBe("r2");
+    });
+
+    it("leaves the focused recording alone", () => {
+      state().focusRecording("r1");
+      state().hoverRecording("r2");
+      expect(state().focusedRecording).toBe("r1");
+      state().hoverRecording(null);
+      expect(state().focusedRecording).toBe("r1");
+    });
+  });
+
   describe("createRecording", () => {
     it("saves with overlap cancel, toasts with Undo and clears the selection", async () => {
       state().setSelection({ ...input.spans[0], blockIds: [] });

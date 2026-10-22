@@ -60,7 +60,7 @@ The Day view showing a day, the main path through every layer:
 3. `day::commands::day_view` parses the day, reads the activity and away rows that share time with it
    (`db::activities::list_for_range`, `db::away::list_for_range`, one indexed query each) and the settings.
 4. `day::view` clips the rows, computes totals and gaps from them, then applies the timeline settings in a
-   fixed order: `transform::without_hidden`, `transform::identified` (titles, grouping), `lanes::summary`,
+   fixed order: `transform::without_hidden`, `transform::identified` (titles, grouping), `summary::summary`,
    `transform::grouped` (continuity, noise), `lanes::lanes` (lanes and columns), `mark_covered`. A pure
    function, tested without a database ([ADR 0012](adr/0012-timeline-layout-in-rust.md)).
 5. The `DayView` crosses IPC as generated types; `Timeline` positions every block from `start`, `end`, `col`

@@ -1,9 +1,10 @@
-//! The apps the timeline settings can override, for Settings → Timeline.
+//! The apps the timeline settings can override: every app ever tracked (Settings → Timeline) and the day's
+//! apps (the Lanes popover).
 
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::app_key;
+use super::{ActivityBlock, DayApp, ViewSettings, app_key};
 use crate::db::Db;
 use crate::db::activities::apps_seen;
 use crate::db::time::Ms;
@@ -51,6 +52,29 @@ pub async fn known_apps(db: &Db, settings: &Settings, now: Ms) -> AppResult<Vec<
             .then_with(|| a.app_key.cmp(&b.app_key))
     });
     Ok(apps)
+}
+
+/// The apps of `blocks` with their active time, most first, then by name.
+pub(super) fn day_apps(blocks: &[ActivityBlock], settings: &ViewSettings) -> Vec<DayApp> {
+    let mut apps: Vec<DayApp> = Vec::new();
+    for block in blocks {
+        match apps.iter_mut().find(|a| a.app_key == block.app_key) {
+            Some(app) => app.active_ms += block.active_ms,
+            None => apps.push(DayApp {
+                app_key: block.app_key.clone(),
+                app: block.app.clone(),
+                bundle_id: block.bundle_id.clone(),
+                active_ms: block.active_ms,
+                own_lane: settings.app(&block.app_key).is_some_and(|a| a.own_lane),
+            }),
+        }
+    }
+    apps.sort_by(|a, b| {
+        b.active_ms
+            .cmp(&a.active_ms)
+            .then_with(|| a.app.to_lowercase().cmp(&b.app.to_lowercase()))
+    });
+    apps
 }
 
 #[cfg(test)]

@@ -58,10 +58,13 @@
      them keeps clear of them. */
   --traffic-lights: 88px;
 
-  /* The Day view's columns: time axis, recordings column, a lane's narrowest width. */
-  --timeline-axis-w: 56px;
-  --recordings-col-w: 240px;
+  /* The Day view's columns: the hour axis, the time column (recordings), and each lane's narrowest width. */
+  --timeline-axis-w: 52px;
+  --recordings-col-w: 92px;
   --lane-min-w: 160px;
+  --summary-lane-min-w: 200px;
+  --activity-lane-min-w: 260px;
+  --app-lane-min-w: 96px;
 }
 
 /* Shared controls inside the sidebar (buttons, key caps, rows) take the sidebar tokens; its accent hues come from

@@ -22,6 +22,30 @@
 .block.dimmed:hover { background: var(--activity-fill-hover); }
 .block.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
 
+/* The summary lane's blocks: the icon and the label of each run's main app, on a fuller fill. */
+.summary-block { background: var(--activity-fill-hover); }
+.summary-block:hover { background: var(--activity-fill-hover); filter: brightness(0.97); }
+.summary-block .block-title { font-weight: 500; }
+
+/* An activity lane's memory: the icon over a bar as long as the activity, the label and duration beside it. The
+   text may run past a short block; the bar keeps its real length. */
+.memory {
+  --memory-bar: color-mix(in srgb, var(--o3) 45%, transparent);
+  position: absolute; box-sizing: border-box; display: flex; align-items: flex-start; gap: var(--space-2);
+  padding: 0 var(--space-1) 0 var(--space-2); line-height: 1.25; cursor: default;
+}
+.memory .app-icon { position: relative; z-index: 1; }
+.memory-bar { position: absolute; top: 0; bottom: 0; left: calc(var(--space-2) + 0.615rem - 2px); width: 4px; border-radius: 2px; background: var(--memory-bar); }
+.memory-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.memory-title { font-weight: 500; color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.memory-duration { font-size: var(--fs-caption); color: var(--o3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.memory.one-line .memory-text { flex-direction: row; align-items: baseline; gap: var(--space-2); }
+.memory:hover { --memory-bar: var(--o2); }
+.memory:hover .memory-title { color: var(--accent-text); }
+.memory.private .memory-title, .memory.dimmed .memory-title { color: var(--o2); font-weight: 400; }
+.memory.focused { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: var(--radius-sm); z-index: 2; }
+.memory:hover .block-gear { display: grid; }
+
 /* A recording (`Card`): filled with `--block-fill`, its text in `--block-text` (theme.css derives both from the
    project's shade `--rec`). */
 .card {
@@ -32,10 +56,15 @@
 .card-subtitle { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-foot { display: flex; align-items: center; gap: var(--space-2); margin-top: auto; color: var(--block-meta); font-size: var(--fs-meta); }
 .card-meta { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card-trailing { flex: none; font-size: var(--data-font-size); color: var(--block-text); }
+.card-trailing { flex: none; font-size: var(--data-font-size); font-variant-numeric: tabular-nums; color: var(--block-text); }
 .recording { position: absolute; left: 4px; right: 4px; border: 1px solid var(--bg); cursor: grab; touch-action: none; }
 .recording.dragging { cursor: grabbing; opacity: 0.85; z-index: 2; }
 .recording.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
+.recording.hovered:not(.focused) { box-shadow: 0 0 0 2px var(--block-meta); z-index: 2; }
+/* In the Day view's time column: only the start (top left) and the end (bottom right). */
+.recording--times { padding: 3px var(--space-1) 2px; }
+.recording--times .card-title { font-size: var(--fs-caption); font-weight: 600; font-variant-numeric: tabular-nums; }
+.recording--times .card-trailing { font-size: var(--fs-caption); font-weight: 600; }
 .recording.clipped-start { border-top: 2px dashed var(--block-text); border-top-left-radius: 0; border-top-right-radius: 0; }
 .recording.clipped-end { border-bottom: 2px dashed var(--block-text); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .recording-duration { position: absolute; right: var(--space-2); bottom: 3px; font-size: var(--data-font-size); }
@@ -44,12 +73,12 @@
 .recording .grip.end { bottom: 0; }
 
 /* A running timer: a pulsing dot at its growing edge. */
-.recording.running::after {
+.recording.running::after, .sheet-card.running::after {
   content: ""; position: absolute; right: 0.462rem; top: 0.462rem; width: 6px; height: 6px; border-radius: 50%;
   background: var(--accent); animation: pulse 1.6s ease-in-out infinite;
 }
 @keyframes pulse { 50% { opacity: 0.25; } }
-@media (prefers-reduced-motion: reduce) { .recording.running::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .recording.running::after, .sheet-card.running::after { animation: none; } }
 
 /* Suggestions: a rule's proposed recording, outlined dashed in its card text color, filled once hovered. */
 .suggestion {

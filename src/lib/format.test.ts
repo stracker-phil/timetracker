@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NOW } from "../test/now";
-import { capitalize, formatBytes, formatClock, formatDay, formatDuration, formatHm, relativeTime } from "./format";
+import { capitalize, formatBytes, formatClock, formatDay, formatDuration, formatHm, formatShortDuration, relativeTime } from "./format";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -36,6 +36,21 @@ describe("formatDuration", () => {
     ["a negative span", -5 * MIN, "0 min"],
   ])("formats %s", (_name, ms, expected) => {
     expect(formatDuration(ms)).toBe(expected);
+  });
+});
+
+describe("formatShortDuration", () => {
+  it.each([
+    ["zero", 0, "0m"],
+    ["less than a minute", 59_999, "0m"],
+    ["whole minutes without padding", 5 * MIN, "5m"],
+    ["just under an hour", 59 * MIN, "59m"],
+    ["an exact hour, minutes zero-padded", HOUR, "1h 00m"],
+    ["an hour and some minutes, zero-padded", 65 * MIN, "1h 05m"],
+    ["more than a day", 25 * HOUR + 30 * MIN, "25h 30m"],
+    ["a negative span", -5 * MIN, "0m"],
+  ])("formats %s", (_name, ms, expected) => {
+    expect(formatShortDuration(ms)).toBe(expected);
   });
 });
 

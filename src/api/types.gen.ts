@@ -4,7 +4,12 @@ export type ActivityBlock = {
 /**
  * `a<first member id>`; `s<start>` in the summary lane.
  */
-id: string, start: number, end: number, app: string, bundleId: string | null, appKey: string, 
+id: string, start: number, end: number, 
+/**
+ * The time its activity fills inside it: less than `end - start` when it bridges gaps or, in the
+ * summary lane, when its buckets are not full.
+ */
+activeMs: number, app: string, bundleId: string | null, appKey: string, 
 /**
  * The window title of its longest member.
  */
@@ -172,6 +177,12 @@ name: string | null, unit: PeriodUnit, from: Day, to: Day, };
  */
 export type Day = string;
 
+export type DayApp = { appKey: string, app: string, bundleId: string | null, 
+/**
+ * Its tracked time on the day.
+ */
+activeMs: number, ownLane: boolean, };
+
 export type DayColumn = { day: Day, bounds: [number, number], 
 /**
  * `Mon 20`.
@@ -196,13 +207,17 @@ trackedMs: number, awayMs: number, };
 
 export type DayView = { day: Day, bounds: [number, number], 
 /**
- * Summary lane, activity lane, app lanes, source lanes; each only when present.
+ * The summary, activity, app and source lanes, each when shown.
  */
 lanes: Array<Lane>, 
 /**
  * The recordings column, by start.
  */
-recordings: Array<RecordingBlock>, away: Array<AwayBlock>, gaps: Array<Gap>, totals: DayTotals, firstActivity: number | null, 
+recordings: Array<RecordingBlock>, 
+/**
+ * The timesheet: one card per recording on the day, by its first span on the day.
+ */
+timesheet: Array<TimesheetCard>, away: Array<AwayBlock>, gaps: Array<Gap>, totals: DayTotals, firstActivity: number | null, 
 /**
  * Every source of the day's activity, sorted.
  */
@@ -215,6 +230,10 @@ compact: boolean,
  * Every app the settings hide, by name.
  */
 hiddenApps: Array<HiddenApp>, 
+/**
+ * The day's tracked apps that are not hidden, most time first: what can get a lane of its own.
+ */
+apps: Array<DayApp>, 
 /**
  * What the rules suggest recording, by start; filled by `commands::load`.
  */
@@ -262,7 +281,11 @@ id: string, kind: LaneKind, label: string,
 /**
  * The app of an app lane.
  */
-appKey: string | null, blocks: Array<ActivityBlock>, };
+appKey: string | null, 
+/**
+ * The bundle id of an app lane's app, for its icon.
+ */
+bundleId: string | null, blocks: Array<ActivityBlock>, };
 
 export type LaneKind = "summary" | "activity" | "app" | "source";
 
@@ -656,6 +679,27 @@ summaryMinutes: number, showAllActivity: boolean, compact: boolean, groupByApp: 
 snapMinutes: number, zoom: number, };
 
 export type TimerStatus = { running: RunningTimer | null, };
+
+/**
+ * A recording as the timesheet shows it: the parts of its spans on the day, added up.
+ */
+export type TimesheetCard = { 
+/**
+ * The recording's id.
+ */
+id: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, note: string, tag: string | null, 
+/**
+ * The day's part of its spans.
+ */
+durationMs: number, 
+/**
+ * Its first span's start and its last span's end on the day.
+ */
+start: number, end: number, 
+/**
+ * Its spans on the day, by start.
+ */
+spanIds: Array<string>, running: boolean, };
 
 /**
  * What an activity block is labeled with.

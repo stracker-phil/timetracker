@@ -57,7 +57,7 @@ describe("Settings Timeline page", () => {
     describe("summary interval", () => {
       it("shows the current interval in minutes", () => {
         renderPage();
-        expect(screen.getByText("15 min")).toBeInTheDocument();
+        expect(screen.getByText("5 min")).toBeInTheDocument();
       });
 
       it("saves the minutes of the chosen step", () => {

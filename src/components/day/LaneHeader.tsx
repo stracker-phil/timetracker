@@ -1,17 +1,33 @@
+import { History, Layers, Plug } from "lucide-react";
 import type { Lane } from "../../api";
+import { formatShortDuration } from "../../lib/format";
 import { AppIcon } from "../AppIcon";
 
-/** The sticky labels over the recordings column, the time axis and each lane. */
-export function LaneHeader({ lanes }: { lanes: Lane[] }) {
+function LaneIcon({ lane }: { lane: Lane }) {
+  switch (lane.kind) {
+    case "summary":
+      return <Layers size={16} aria-hidden="true" />;
+    case "activity":
+      return <History size={16} aria-hidden="true" />;
+    case "app":
+      return <AppIcon app={lane.label} bundleId={lane.bundleId} size={16} />;
+    case "source":
+      return <Plug size={16} aria-hidden="true" />;
+  }
+}
+
+/** The sticky heads over the lanes; the activity lane shows the day's tracked time. */
+export function LaneHeader({ lanes, trackedMs }: { lanes: Lane[]; trackedMs: number }) {
   return (
     <div className="timeline-head" role="row">
-      <span className="recordings-col-head o3">Recordings</span>
+      <span aria-hidden="true" />
       <span aria-hidden="true" />
       <div className="lane-heads">
         {lanes.map((lane) => (
-          <span key={lane.id} className="lane-head" role="columnheader" title={lane.label}>
-            {lane.kind === "app" && <AppIcon app={lane.label} bundleId={lane.appKey} size={16} />}
+          <span key={lane.id} className={`lane-head lane-head--${lane.kind}`} role="columnheader" title={lane.label}>
+            <LaneIcon lane={lane} />
             <span className="lane-head-label">{lane.label}</span>
+            {lane.kind === "activity" && <span className="lane-head-total">{formatShortDuration(trackedMs)}</span>}
           </span>
         ))}
       </div>

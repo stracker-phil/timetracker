@@ -164,8 +164,8 @@ Spacing sits on a 4px grid (`--space-1` 4px to `--space-8` 32px, in rem so it zo
 
 | Component | Where | Look |
 |---|---|---|
-| `Card` (`components/Card.tsx`) | a recording in the recordings column (and the Week view) | filled with `--block-fill`, text `--block-text`: the title (600), the subtitle (500), a foot with meta (the tag, with an icon) and the duration in mono on the right |
-| `Block` (`components/Block.tsx`) | an activity block on the timeline, placed by time | `--activity-fill`, 1px `--bg` border, `--radius-block`: the app (500, `--text-strong`), the title (`--text`), the duration trailing at the bottom right (mono, `--o2`), as on a card; one line when short |
+| `Card` (`components/Card.tsx`) | a recording in the timesheet, the time column and the Week view | filled with `--block-fill`, text `--block-text`: the title (600), the subtitle (500), a foot with meta (the tag, with an icon) and the duration in mono on the right |
+| `Block` (`components/Block.tsx`) | a summary block on the timeline, placed by time (activity lanes draw memories, see Timeline) | `--activity-fill`, 1px `--bg` border, `--radius-block`: the app (500, `--text-strong`), the title (`--text`), the duration trailing at the bottom right (mono, `--o2`), as on a card; one line when short |
 | Buttons | `.btn` (secondary), `.btn-primary`, `.btn-danger`, `.icon-btn` | secondary: `--pop` with a `--field-line` border; primary and danger: the accent or `--style-red` with `--on-accent`; icon: a 2rem square |
 | `SegmentedControl` (`components/SegmentedControl.tsx`) | Day mode, Settings choices, report grouping | a `--track` with the pressed segment raised on `--raised` with `--shadow-small` |
 | Popover | `Modal variant="popover"`: the date picker, the timeline settings | `--pop`, `--radius`, placed under its control, no scrim |
@@ -248,27 +248,49 @@ text; a row's date or detail follows its title in `--o2`.
 
 ## Timeline
 
-The Day view is a vertical day: a fixed recordings column (`--recordings-col-w`, empty until recordings
-exist), the time axis (`--timeline-axis-w`, hour labels in mono `--fs-caption` `--o2`; hour hairlines in
-`--line`, half hours from 3 px per minute), then one lane per kind of activity (`--lane-min-w` each):
-Activity, an app's own lane, an external source's lane. Lane labels stick to the top in `--o3`.
+The Day view reads like Timely's: a slim header, the timesheet on the left, then the timeline.
 
-- **Blocks** (`Block`) are soft filled surfaces: `--activity-fill`, a 1px `--bg` gap to their neighbours,
-  `--radius-block`. The app name strong (500, `--text-strong`), the title normal (`--text`), the duration as
-  meta (mono, `--o2`); short blocks put all three on one line, the duration at the right, tiny ones show
-  none. Private blocks read "Private" in `--o2`. Overlapping blocks of one lane share its width side by side.
+- **Header:** the date, the day's totals (`recorded 1:00 · tracked 6:12 · away 1:05`) only for a day other
+  than today (the status bar has today's), the Timeline/List switch, Lanes (timeline only), the timeline
+  settings gear and the ⋯ menu.
+- **Timesheet** (left, about a quarter of the width, resizable with the splitter; kept as the `timesheet`
+  pane size): "Timesheet", the day's recorded total large (`6h 05m`) and a + button (a new recording for the
+  selection, else now; `recording.new`). Below, one `Card` per recording in the order of its first span on
+  the day, filled in the project's shade: the note as title (the project without one), the project's dot and
+  `Project | Client`, the tag (and `2 spans` when it has several on the day), the day's total at the bottom
+  right (`1h 20m`). Longer recordings get taller cards (from about one line up to 300 minutes). A click
+  focuses the recording, a double-click or ↵ edits it; hovering a card lights up its spans in the time
+  column, and hovering a span lights up its card.
+- **Timeline columns,** left to right: the hour axis (`--timeline-axis-w`, hour labels in `--fs-caption`
+  `--o2`, tabular figures; hour hairlines in `--line`, half hours from 3 px per minute), the time column
+  (`--recordings-col-w`, about 90 px: recordings and suggestions, where a drag selects time), the summary
+  lane, then the activity lanes: Activity, an app's own lane, an external source's lane. Lane heads stick to
+  the top with an icon (the app's for an app lane) and the name; the Activity head shows the day's tracked
+  time. Lanes take shares of the width by kind (summary 1.2, activity 2, app 0.6, source 1) with minimum
+  widths (`--summary-lane-min-w`, `--activity-lane-min-w`, `--app-lane-min-w`, `--lane-min-w`).
+- **Summary lane** works in clock-aligned buckets of the Summary interval (default 5 min): each bucket shows
+  the app (or window, without grouping by app) with the most time in it, neighbouring buckets with the same
+  winner merge, empty buckets stay empty, so a summary block always starts and ends on the grid (:45, :50,
+  never :49). Blocks (`Block`, `summary-block`) are filled with the app icon and label, the active time at
+  the bottom right when tall enough.
+- **Memories** (the activity, app and source lanes): each block is the app icon over a thin vertical bar as
+  long as the activity really is, the label (500, `--text-strong`) and its duration (`34m`, `--o3`) beside it,
+  on two lines when there is room, else on one; text may run past a short block, the bar keeps the real
+  length; tiny ones show only the bar. Private blocks read "Private" in `--o2`. Overlapping blocks of one lane
+  share its width side by side.
 - **Focus** (J/K/H/L or a click) is a 2px accent outline; Space opens the details card for it.
 - **Hover card** after 300 ms on `--pop` with `--shadow`: app, full title, URL or path (selectable; an
   http(s) URL opens in the browser), `09:12–09:40 · 28 min`, and the source when external.
-- **Away spans and gaps** are bands across the whole timeline, recordings column and axis included, behind
-  the blocks: away in `--away-band` (darker than `--bg`), reading "Away · idle 25 min" in `--o2` when tall
+- **Away spans and gaps** are darker bands across the axis, the time column and the lanes, behind the
+  blocks: away in `--away-band` (darker than `--bg`), reading "Away · idle 25 min" in `--o2` when tall
   enough; gaps (2 min or more between the day's first and last activity) in a lighter mix of it, unlabeled.
 - **Now** is a 1px accent line on today, updated every 30 s.
 - **Empty day:** "Nothing tracked on this day" with the tracker's status line; without the Accessibility
-  permission "Tracking needs permission" with Allow….
-- **Zoom** is 1–8 px per minute (default 2.5), kept in `ui_state.json` as `timelineZoom`.
-- **Summary lane** comes first, on a translucent `--band` (the away bands show through): one block per run
-  of intervals with the same main app.
+  permission "Tracking needs permission" with Allow…. The timesheet stays beside it.
+- **Zoom** is 1–8 px per minute (default 2.5), kept in `ui_state.json` as `timelineZoom`: a floating control
+  at the timeline's bottom right (−, a slider, +) and ⌘= / ⌘-.
+- **Lanes** (header): a popover with Summary and Activity switches and a switch per app of the day (most
+  time first) that gives it a lane of its own (`ownLane`).
 - **Compact** draws the day at 60% of the zoom, every block on one line.
 - **Block gear:** a hovered block shows a gear at its top right; it opens the same menu as a right-click.
 
@@ -278,7 +300,7 @@ Settings → Timeline and the Day header's gear (both save at once; the Day view
 
 | Setting | Values | Does |
 |---|---|---|
-| Summary lane | on (15 min) | a first lane with the main app of every 5, 10, 15, 20, 30, 45 or 60 minutes |
+| Summary lane | on (5 min) | a lane with the main app of every 5, 10, 15, 20, 30, 45 or 60 minutes, in buckets on the clock |
 | Show all activity | on | the activity lane; off leaves the summary, app and source lanes |
 | Compact activity | off | shorter rows, one line per block |
 | Group by app and website | on | one block per app, whatever its windows are called; off splits by title |
@@ -296,14 +318,16 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   block (⇧J and ⇧K add the next or previous one): `--sel` fill with
   accent hairlines and the snapped `09:00–10:30` in mono accent text; the status bar repeats it with the
   duration. A dashed accent outline in the recordings column shows where the recording goes.
-- **Recording blocks** sit in the recordings column, one per span: a recording can hold several separate
-  spans (14:25–15:00 and 16:05–20:15), each its own block; project, note and tag belong to the recording.
-  Each is a `Card` filled in the project's shade (`--block-fill`, light in light palettes, a muted dark tint
+- **Recording blocks** sit in the time column, one per span: a recording can hold several separate
+  spans (14:25–15:00 and 16:05–20:15), each its own block, all lit up together with the recording's single
+  timesheet card when one is hovered or focused; project, note and tag belong to the recording and show on
+  the card. In the Day view a span shows only its start (top left) and end (bottom right); the Week view
+  shows the full card. Each is a `Card` filled in the project's shade (`--block-fill`, light in light palettes, a muted dark tint
   in dark ones) with `--block-text`, at least 4.5:1 for every accent and shade: the project name (600), the
   note (500), then the tag with a tag icon and the duration in mono at the bottom right. A dashed top or
   bottom edge means the span continues on another day. The top and bottom 6px resize the span; the body
-  moves it. Activity under recordings (half or more) takes `--activity-fill-dim` with its text in `--o2`;
-  hover lifts it.
+  moves it. Activity under recordings (half or more) takes `--activity-fill-dim` (summary) or a regular-weight
+  `--o2` label (memories); hover lifts it.
 - **Editor**: a sheet with project, From/To of the span it was opened on, duration, the other spans
   read-only ("Also 14:25–15:00"), note, tag; Save, Cancel, Delete. Field errors show under their field.
 - **Overlap**: a confirm sheet listing the recordings in the way, each with its spans; "Replace overlapped
@@ -332,7 +356,8 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 
 - ⌘⇧L or Day mode → List shows the day as rows grouped like the timeline, longest first: app in `--o2`, the
   label, URL or path below, the duration right with a thin covered bar (the accent over `--line`) and
-  `· 3 spans` when the activity came in parts.
+  `· 3 spans` when the activity came in parts. The timesheet with its cards stays on the left, as in the
+  timeline.
 - A strip of project chips (recent first, More… for the rest), each filled like a recording card, sits above
   the rows. Drag a row onto a chip
   to record it: the editor opens with the row's first start to last end and, for several spans, the warning
@@ -341,7 +366,7 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 
 ## Rules and suggestions
 
-- **Suggestions** sit in the recordings column under the recordings: a card outlined dashed in
+- **Suggestions** sit in the time column under the recordings: a card outlined dashed in
   `--block-meta` on a half-strength `--block-fill` (full once hovered), a "+" top right, the project (500)
   and the rule's name, the duration bottom right. The cursor is `copy`. A click records it; ⌥-click records every suggestion of that rule on the
   day. Each is a button, so Tab reaches it, ↵ accepts it and ⌥↵ every suggestion of its rule. The tooltip names the rule, project, span and note.

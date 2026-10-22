@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use super::totals::union_length;
 use super::{ActivityBlock, PRIVATE_TITLE, ViewSettings};
 use crate::db::away::AwayReason;
 use crate::db::time::Ms;
@@ -139,8 +140,15 @@ fn crosses(barriers: &[(Ms, Ms)], from: Ms, to: Ms) -> bool {
         .any(|&(start, end)| start < to && end > from)
 }
 
-/// One block over `span` standing for `pieces` (by start), shown as its longest piece.
+/// One block over `span` for `pieces`, styled as the longest; `active_ms` is the time the pieces fill of it.
 pub(super) fn joined(pieces: Vec<Piece>, span: (Ms, Ms)) -> ActivityBlock {
+    let active_ms = union_length(
+        pieces
+            .iter()
+            .map(|p| (p.block.start.max(span.0), p.block.end.min(span.1)))
+            .filter(|(start, end)| start < end)
+            .collect(),
+    );
     let longest = pieces
         .iter()
         .max_by_key(|p| {
@@ -158,6 +166,7 @@ pub(super) fn joined(pieces: Vec<Piece>, span: (Ms, Ms)) -> ActivityBlock {
         id: format!("a{}", members[0]),
         start: span.0,
         end: span.1,
+        active_ms,
         members,
         ..longest.block.clone()
     }
@@ -229,7 +238,10 @@ mod tests {
 
         let view = render(rows, &settings);
 
-        assert_eq!(shape(lane_by_id(&view, "summary")), [(0, 30, vec![1, 3])]);
+        assert_eq!(
+            shape(lane_by_id(&view, "summary")),
+            [(0, 10, vec![1]), (20, 30, vec![3])]
+        );
         assert_eq!(
             shape(lane_by_id(&view, "activity")),
             [(0, 10, vec![1]), (20, 30, vec![3])]
@@ -467,6 +479,29 @@ mod tests {
                 let block = &lane_by_id(&view, "activity").blocks[0];
                 assert_eq!((block.start, block.end), (0, mins(20) + gap));
             }
+        }
+    }
+
+    #[test]
+    fn active_ms_of_a_joined_block_excludes_bridged_gaps_and_counts_overlaps_once() {
+        let cases = [
+            ("single row", vec![(0, 10)], 10),
+            ("bridged gap", vec![(0, 10), (20, 30)], 20),
+            ("overlapping rows", vec![(0, 10), (5, 15)], 15),
+        ];
+
+        for (name, spans, expected) in cases {
+            let rows = spans
+                .iter()
+                .enumerate()
+                .map(|(i, &(s, e))| code(i as i64 + 1, s, e))
+                .collect();
+
+            let view = render(rows, &with_continuity(Continuity::Extended));
+
+            let lane = lane_by_id(&view, "activity");
+            assert_eq!(lane.blocks.len(), 1, "{name}");
+            assert_eq!(lane.blocks[0].active_ms, mins(expected), "{name}");
         }
     }
 

@@ -202,7 +202,7 @@ impl Default for TimelineSettings {
     fn default() -> Self {
         Self {
             summary_lane: true,
-            summary_minutes: 15,
+            summary_minutes: 5,
             show_all_activity: true,
             compact: false,
             group_by_app: true,

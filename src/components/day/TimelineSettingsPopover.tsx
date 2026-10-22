@@ -1,28 +1,15 @@
-import { useLayoutEffect, useState, type CSSProperties } from "react";
 import { useStore } from "../../state/store";
 import { Modal } from "../Modal";
 import { Group, Row } from "../settings/controls";
 import { TimelineControls } from "../settings/TimelineControls";
-
-const GAP = 6;
-const EDGE = 8;
-
-/** Under the header's gear, right-aligned to it; centered when the gear isn't there. */
-function useAnchoredStyle(): CSSProperties | undefined {
-  const [style, setStyle] = useState<CSSProperties>();
-  useLayoutEffect(() => {
-    const rect = document.querySelector("[data-timeline-settings]")?.getBoundingClientRect();
-    if (rect) setStyle({ position: "fixed", top: rect.bottom + GAP, right: Math.max(EDGE, window.innerWidth - rect.right) });
-  }, []);
-  return style;
-}
+import { useAnchoredStyle } from "../useAnchoredStyle";
 
 /** The Day header's timeline settings: the controls of Settings → Timeline and the hidden apps. */
 export function TimelineSettingsPopover() {
   const close = useStore((s) => s.closeDialog);
   const settings = useStore((s) => s.settings);
   const hiddenApps = useStore((s) => s.dayView?.hiddenApps ?? []);
-  const style = useAnchoredStyle();
+  const style = useAnchoredStyle("[data-timeline-settings]", "right");
   if (!settings) return null;
   const unhide = (appKey: string) => void useStore.getState().setAppSetting(appKey, { hidden: false });
   return (

@@ -1,6 +1,7 @@
 import { useStore } from "../state/store";
 import { DatePickerPopover } from "./DatePickerPopover";
 import { DeleteActivityDialog } from "./day/DeleteActivityDialog";
+import { LanesPopover } from "./day/LanesPopover";
 import { OverlapDialog } from "./day/OverlapDialog";
 import { TimelineSettingsPopover } from "./day/TimelineSettingsPopover";
 import { Modal } from "./Modal";
@@ -51,6 +52,8 @@ export function Dialogs() {
       return <PromptDialog {...dialog} />;
     case "timelineSettings":
       return <TimelineSettingsPopover />;
+    case "lanes":
+      return <LanesPopover />;
     case "datePicker":
       return <DatePickerPopover />;
     case "deleteActivity":

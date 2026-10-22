@@ -23,7 +23,7 @@ export function TimeAxis({ bounds, pxPerMinute, onPointerDown }: Props) {
         const hour = (t - bounds[0]) % HOUR_MS === 0;
         return (
           <div key={t} className={hour ? "axis-mark hour" : "axis-mark"} style={{ top: y(t) }}>
-            {hour && <span className="axis-label mono">{formatClock(t)}</span>}
+            {hour && <span className="axis-label">{formatClock(t)}</span>}
           </div>
         );
       })}
