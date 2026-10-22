@@ -1,10 +1,10 @@
 import { memo, type CSSProperties, type KeyboardEvent } from "react";
-import { Tag } from "lucide-react";
 import type { TimesheetCard as CardData } from "../../api";
 import { formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { AccentDot, shadeColor } from "../Accent";
 import { Card } from "../Card";
+import { TagLabel } from "../TagLabel";
 
 const MINUTE_MS = 60_000;
 
@@ -56,12 +56,7 @@ export const TimesheetCard = memo(function TimesheetCard({ card, focused, hovere
       }
       meta={
         <>
-          {card.tag && (
-            <>
-              <Tag size="0.846rem" aria-hidden="true" />
-              {card.tag}
-            </>
-          )}
+          {card.tag && <TagLabel name={card.tag} emoji={card.tagEmoji} />}
           {card.spanIds.length > 1 && <span>{card.spanIds.length} times</span>}
         </>
       }

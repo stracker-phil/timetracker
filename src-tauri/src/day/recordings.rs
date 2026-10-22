@@ -17,6 +17,7 @@ pub fn recording_blocks(
         .filter_map(|(r, s)| {
             let (start, end) = clip(s.start, s.end, bounds, now)?;
             let project = names.projects.get(&r.project_id);
+            let tag = r.tag_id.as_ref().and_then(|id| names.tags.get(id));
             Some(RecordingBlock {
                 id: r.id.clone(),
                 span_id: s.id.clone(),
@@ -29,7 +30,8 @@ pub fn recording_blocks(
                 color: project.map_or_else(|| "graphite".into(), |p| p.color.clone()),
                 shade: project.map_or(4, |p| p.shade),
                 note: r.note.clone(),
-                tag: r.tag_id.as_ref().and_then(|id| names.tags.get(id).cloned()),
+                tag: tag.map(|t| t.name.clone()),
+                tag_emoji: tag.and_then(|t| t.emoji.clone()),
                 running: s.end.is_none(),
                 clipped_start: s.start < bounds.0,
                 clipped_end: s.end.unwrap_or(now) > bounds.1,
@@ -60,6 +62,7 @@ pub fn timesheet(blocks: &[RecordingBlock]) -> Vec<TimesheetCard> {
             shade: block.shade,
             note: block.note.clone(),
             tag: block.tag.clone(),
+            tag_emoji: block.tag_emoji.clone(),
             duration_ms: block.end - block.start,
             start: block.start,
             end: block.end,
@@ -74,7 +77,7 @@ pub fn timesheet(blocks: &[RecordingBlock]) -> Vec<TimesheetCard> {
 mod tests {
     use super::*;
     use crate::day::testing::*;
-    use crate::day::{DayInput, DayView, ProjectRef, totals, view};
+    use crate::day::{DayInput, DayView, ProjectRef, TagRef, totals, view};
     use crate::db::recordings::RecordingSpan;
     use serde_json::json;
 
@@ -264,7 +267,7 @@ mod tests {
                 ..project_ref("Portal")
             },
         );
-        input.names.tags.insert("t-alpha".into(), "Alpha".into());
+        input.names.tags.insert("t-alpha".into(), tag_ref("Alpha"));
 
         let view = view(&input, &settings());
 
@@ -284,6 +287,7 @@ mod tests {
                     shade: 7,
                     note: String::new(),
                     tag: None,
+                    tag_emoji: None,
                     running: false,
                     clipped_start: false,
                     clipped_end: false,
@@ -301,12 +305,33 @@ mod tests {
                     shade: 7,
                     note: "fix login".into(),
                     tag: Some("Alpha".into()),
+                    tag_emoji: None,
                     running: false,
                     clipped_start: false,
                     clipped_end: false,
                 },
             ]
         );
+    }
+
+    #[test]
+    fn the_tags_emoji_shows_on_the_block_and_the_timesheet_card() {
+        let mut input = named_input(vec![Recording {
+            tag_id: Some("t-alpha".into()),
+            ..recording("r1", mins(60), Some(mins(90)))
+        }]);
+        input.names.tags.insert(
+            "t-alpha".into(),
+            TagRef {
+                emoji: Some("🧪".into()),
+                ..tag_ref("Alpha")
+            },
+        );
+
+        let view = view(&input, &settings());
+
+        assert_eq!(view.recordings[0].tag_emoji.as_deref(), Some("🧪"));
+        assert_eq!(view.timesheet[0].tag_emoji.as_deref(), Some("🧪"));
     }
 
     #[test]
@@ -387,6 +412,7 @@ mod tests {
             shade: 4,
             note: String::new(),
             tag: None,
+            tag_emoji: None,
             duration_ms,
             start,
             end,
@@ -478,6 +504,7 @@ mod tests {
                 "shade": 4,
                 "note": "n",
                 "tag": null,
+                "tagEmoji": null,
                 "durationMs": HOUR,
                 "start": HOUR,
                 "end": 2 * HOUR,
@@ -498,7 +525,7 @@ mod tests {
             .names
             .projects
             .insert("p1".into(), project_ref("Portal"));
-        input.names.tags.insert("t1".into(), "admin".into());
+        input.names.tags.insert("t1".into(), tag_ref("admin"));
 
         let view = view(&input, &settings());
 
@@ -517,6 +544,7 @@ mod tests {
                 "shade": 4,
                 "note": "n",
                 "tag": "admin",
+                "tagEmoji": null,
                 "running": false,
                 "clippedStart": false,
                 "clippedEnd": false

@@ -1,6 +1,7 @@
 import { Pencil, X } from "lucide-react";
 import type { TagListItem } from "../../api";
 import { plural } from "../../lib/format";
+import { TagEmojiField } from "./TagEmojiField";
 import { useTagRename } from "./useTagRename";
 
 interface Props {
@@ -8,12 +9,13 @@ interface Props {
   onDelete: (tag: TagListItem) => void;
 }
 
-/** One tag row: inline rename, recording count and actions. */
+/** One tag row: its emoji, inline rename, recording count and actions. */
 export function TagRow({ tag, onDelete }: Props) {
   const rename = useTagRename(tag);
 
   return (
     <li ref={rename.rowRef} className="tag-row" tabIndex={0} onKeyDown={rename.rowKeyDown}>
+      <TagEmojiField tag={tag} />
       {rename.draft === null ? (
         <span className="grow-text" onDoubleClick={rename.start}>
           {tag.name}

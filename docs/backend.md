@@ -217,6 +217,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `projects_recent` | `limit: u32` | `Project[]` by latest recording | `db` |
 | `tags_list` | – | `TagListItem[]` by name | `db` |
 | `tags_save` | `id: string \| null, name` | `Tag`; `null` creates or returns the tag with that name | `invalid_input` (`field`), `not_found`, `db` |
+| `tags_set_emoji` | `id, emoji: string \| null` | `Tag`; `null` or blank clears the emoji (`db::tags::set_emoji`) | `invalid_input` (`field`: `emoji`, "Use a single emoji"), `not_found`, `db` |
 | `tags_delete` | `id` | – | `not_found`, `db` |
 | `activity_add` (`activity/commands.rs`) | `items: ActivityInput[]` | `number[]` (the new ids) | `invalid_input`, `overlap`, `db` |
 | `activity_start` | `input: ActivityInput` | `ActivityRow` (open) | `invalid_input`, `overlap`, `db` |
@@ -315,7 +316,8 @@ day's rows, else by its key) for the header's popover, `apps` (the day's tracked
 most time first by `activeMs`, with `ownLane`; `apps::day_apps`) for the View options popover, and `timesheet`: one `TimesheetCard` per recording,
 in the order of its first span on the day, with the day's parts of its spans added up (`durationMs`), its
 first start and last end on the day and its `spanIds` there (`recordings::timesheet`, from the recording
-blocks).
+blocks, `tag` and `tagEmoji` included). `day::Names` (`day::load::names`) holds what blocks show of projects
+(`ProjectRef`) and tags (`TagRef { name, emoji }`), archived ones included.
 
 ## Recordings
 
@@ -370,7 +372,7 @@ clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `co
 
 The Day view gets the day's recordings too (`day::load` reads them with the projects, clients and
 tags): `DayView.recordings` (`RecordingBlock`, one per span on the day: the recording's `id`, `spanId`,
-`spanCount`, the clipped span, project, client, color and shade, note, `tag` name, `running`,
+`spanCount`, the clipped span, project, client, color and shade, note, `tag` name and `tagEmoji`, `running`,
 `clippedStart`/`clippedEnd`), `ActivityBlock.covered` when at least half of a block lies inside recordings,
 and `totals.recordedMs` (the day's parts of the spans).
 
@@ -504,7 +506,7 @@ dismissing one keeps its time from that rule for good.
   suggestions never overlap. Recorded time, and each rule's own dismissed time (`dismissed`, read by
   `day::load` with `db::dismissed::list_for_day`), is cut away; pieces under `MIN_SUGGESTION_MS` (5 min) are
   dropped. Ids are `<rule id>:<start>:<end>`, so a suggestion keeps its id across reloads. A tag deleted since
-  the rule was saved is left out; `tag` carries the tag's name, `clientName` the project's client.
+  the rule was saved is left out; `tag` carries the tag's name, `tagEmoji` its emoji, `clientName` the project's client.
   `rules::day_suggestions` sets each suggestion's `nextCard` (`next_card`: the first timesheet card starting
   after it), which the page puts it before, and `durationMs`.
 - `review.rs` (re-exported from `rules/mod.rs`): `approve`, `approve_all(ids)`, `approve_rule`, `approve_edited`

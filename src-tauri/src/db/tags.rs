@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use sqlx::SqliteConnection;
 use ts_rs::TS;
+use unicode_segmentation::UnicodeSegmentation;
 
 use super::time::{Ms, now_ms};
-use super::{Db, name_in_use, name_taken, new_id, required_name, same_name};
+use super::{Db, invalid_field, name_in_use, name_taken, new_id, required_name, same_name};
 use crate::error::{AppError, AppResult};
 
 /// The kinds of work a new data store starts with (ADR 0018); the user can rename or delete them.
@@ -27,6 +28,8 @@ pub struct Tag {
     pub id: String,
     /// Unique, ignoring case.
     pub name: String,
+    /// One emoji, shown before the name.
+    pub emoji: Option<String>,
     pub created_at: Ms,
 }
 
@@ -84,6 +87,45 @@ pub async fn rename(db: &Db, id: &str, name: &str) -> AppResult<Tag> {
         .fetch_optional(db.pool())
         .await?
         .ok_or_else(|| not_found(id))
+}
+
+/// `None` or a blank `emoji` clears it; see `valid_emoji`.
+pub async fn set_emoji(db: &Db, id: &str, emoji: Option<&str>) -> AppResult<Tag> {
+    let emoji = valid_emoji(emoji)?;
+    sqlx::query_as("UPDATE tags SET emoji = ?2 WHERE id = ?1 RETURNING *")
+        .bind(id)
+        .bind(emoji)
+        .fetch_optional(db.pool())
+        .await?
+        .ok_or_else(|| not_found(id))
+}
+
+/// Long enough for family and flag sequences, short enough to stop a stack of combining marks.
+const MAX_EMOJI_CHARS: usize = 16;
+
+/// The trimmed emoji, `None` when blank. One grapheme cluster that is not a single letter, digit or
+/// ASCII character.
+fn valid_emoji(emoji: Option<&str>) -> AppResult<Option<String>> {
+    let emoji = emoji.map(str::trim).unwrap_or_default();
+    if emoji.is_empty() {
+        return Ok(None);
+    }
+    if is_plain_char(emoji)
+        || emoji.graphemes(true).count() != 1
+        || emoji.chars().count() > MAX_EMOJI_CHARS
+    {
+        return Err(invalid_field("emoji", "Use a single emoji"));
+    }
+    Ok(Some(emoji.to_string()))
+}
+
+/// A single letter, digit or ASCII character: text, not an emoji.
+fn is_plain_char(text: &str) -> bool {
+    let mut chars = text.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => c.is_ascii() || c.is_alphanumeric(),
+        _ => false,
+    }
 }
 
 /// The id of the tag named `name`, when one is given; as `resolve_name` otherwise.
@@ -429,9 +471,92 @@ mod tests {
             serde_json::json!({
                 "id": tag.id,
                 "name": "zzz",
+                "emoji": null,
                 "createdAt": tag.created_at,
                 "recordings": 0,
             })
         );
+    }
+
+    async fn emoji_of(db: &Db, id: &str) -> Option<String> {
+        list(db)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|t| t.id == id)
+            .unwrap()
+            .emoji
+    }
+
+    #[tokio::test]
+    async fn a_new_tag_has_no_emoji() {
+        let db = Db::open_memory().await.unwrap();
+        assert_eq!(insert(&db, "fresh").await.unwrap().emoji, None);
+    }
+
+    #[tokio::test]
+    async fn set_emoji_stores_single_emoji_sequences_trimmed() {
+        let db = Db::open_memory().await.unwrap();
+        let tag = insert(&db, "fun").await.unwrap();
+        for (input, expected) in [
+            ("🧪", "🧪"),
+            ("🛠\u{fe0f}", "🛠\u{fe0f}"),
+            ("👩\u{200d}💻", "👩\u{200d}💻"),
+            (" 🧪 ", "🧪"),
+        ] {
+            let updated = set_emoji(&db, &tag.id, Some(input)).await.unwrap();
+            assert_eq!(updated.emoji.as_deref(), Some(expected), "{input:?}");
+            assert_eq!(
+                emoji_of(&db, &tag.id).await.as_deref(),
+                Some(expected),
+                "{input:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn none_or_blank_clears_the_emoji() {
+        let db = Db::open_memory().await.unwrap();
+        let tag = insert(&db, "fun").await.unwrap();
+        for cleared in [None, Some("  ")] {
+            set_emoji(&db, &tag.id, Some("🧪")).await.unwrap();
+            let updated = set_emoji(&db, &tag.id, cleared).await.unwrap();
+            assert_eq!(updated.emoji, None, "{cleared:?}");
+            assert_eq!(emoji_of(&db, &tag.id).await, None, "{cleared:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn anything_but_a_single_emoji_is_rejected_and_keeps_the_stored_one() {
+        let db = Db::open_memory().await.unwrap();
+        let tag = insert(&db, "fun").await.unwrap();
+        set_emoji(&db, &tag.id, Some("🧪")).await.unwrap();
+        for input in ["ab", "a", "1", "!", "é", "🧪🧪"] {
+            let err = set_emoji(&db, &tag.id, Some(input)).await.unwrap_err();
+            assert_eq!(field_of(err), "emoji", "{input:?}");
+            assert_eq!(
+                emoji_of(&db, &tag.id).await.as_deref(),
+                Some("🧪"),
+                "{input:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn setting_the_emoji_of_an_unknown_tag_is_not_found() {
+        let db = Db::open_memory().await.unwrap();
+        assert_eq!(
+            set_emoji(&db, "nope", Some("🧪")).await.unwrap_err().kind(),
+            ErrorKind::NotFound
+        );
+    }
+
+    #[tokio::test]
+    async fn rename_keeps_the_emoji() {
+        let db = Db::open_memory().await.unwrap();
+        let tag = insert(&db, "old").await.unwrap();
+        set_emoji(&db, &tag.id, Some("🧪")).await.unwrap();
+        let renamed = rename(&db, &tag.id, "new").await.unwrap();
+        assert_eq!(renamed.emoji.as_deref(), Some("🧪"));
     }
 }

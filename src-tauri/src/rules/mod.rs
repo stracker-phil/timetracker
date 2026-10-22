@@ -735,6 +735,7 @@ mod tests {
         )
         .await
         .unwrap();
+        tags::set_emoji(&w.db, &w.tag_id, Some("🧪")).await.unwrap();
         w.app_rule("Slack").await;
         w.work(today, "Slack", (9, 0), (10, 0)).await;
 
@@ -744,9 +745,15 @@ mod tests {
             (
                 suggestion.client_name.as_deref(),
                 suggestion.tag_id.as_ref(),
-                suggestion.tag.as_deref()
+                suggestion.tag.as_deref(),
+                suggestion.tag_emoji.as_deref()
             ),
-            (Some("Initech"), Some(&w.tag_id), Some("billing"))
+            (
+                Some("Initech"),
+                Some(&w.tag_id),
+                Some("billing"),
+                Some("🧪")
+            )
         );
     }
 

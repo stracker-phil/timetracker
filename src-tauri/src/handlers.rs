@@ -61,6 +61,7 @@ pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         projects::projects_recent,
         projects::tags_list,
         projects::tags_save,
+        projects::tags_set_emoji,
         projects::tags_delete,
         recordings::commands::recording_create,
         recordings::commands::recording_update,

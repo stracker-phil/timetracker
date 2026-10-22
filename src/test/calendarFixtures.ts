@@ -16,6 +16,7 @@ export function calendarEntry(patch: Partial<CalendarEntry> = {}): CalendarEntry
     shade: 0,
     note: "",
     tag: null,
+    tagEmoji: null,
     durationMs: 45 * 60_000,
     start: at("09:00"),
     end: at("09:45"),

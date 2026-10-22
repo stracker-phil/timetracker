@@ -141,16 +141,19 @@ pub fn data_of(recordings: Vec<Recording>) -> ReportData {
             Tag {
                 id: "t-admin".into(),
                 name: "admin".into(),
+                emoji: None,
                 created_at: 0,
             },
             Tag {
                 id: "t-dev".into(),
                 name: "development".into(),
+                emoji: None,
                 created_at: 0,
             },
             Tag {
                 id: "t-sup".into(),
                 name: "support".into(),
+                emoji: None,
                 created_at: 0,
             },
         ],

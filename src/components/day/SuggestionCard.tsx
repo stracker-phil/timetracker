@@ -1,10 +1,11 @@
 import { memo, useEffect, useRef, type CSSProperties } from "react";
-import { Check, Sparkles, Tag, X } from "lucide-react";
+import { Check, Sparkles, X } from "lucide-react";
 import type { Suggestion } from "../../api";
 import { formatClock, formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { AccentDot, shadeColor } from "../Accent";
 import { Card } from "../Card";
+import { TagLabel } from "../TagLabel";
 
 const MINUTE_MS = 60_000;
 
@@ -47,12 +48,7 @@ export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focu
         <>
           <Sparkles size="0.846rem" aria-hidden="true" />
           <span className="suggestion-card-rule">Suggested by {s.ruleName}</span>
-          {s.tag && (
-            <>
-              <Tag size="0.846rem" aria-hidden="true" />
-              {s.tag}
-            </>
-          )}
+          {s.tag && <TagLabel name={s.tag} emoji={s.tagEmoji} />}
         </>
       }
       trailing={formatDuration(s.durationMs)}

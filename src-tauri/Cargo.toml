@@ -32,6 +32,8 @@ url = "2"
 base64 = "0.22"
 ts-rs = { version = "12", features = ["serde-compat", "chrono-impl", "serde-json-impl", "no-serde-warnings"] }
 libc = "0.2"
+# Tag emoji: one grapheme cluster.
+unicode-segmentation = "1"
 # SQLite with bundled libsqlite3; `macros` brings `migrate!` and `FromRow` (no `query!`).
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 tempfile = { version = "3", optional = true }

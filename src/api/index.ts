@@ -171,6 +171,8 @@ export const api = {
   tagsList: () => invoke<TagListItem[]>("tags_list"),
   /** `id: null` creates, or returns the tag that has the name already. */
   tagsSave: (id: string | null, name: string) => invoke<Tag>("tags_save", { id, name }),
+  /** `null` or blank clears it; anything but a single emoji is an error on `emoji`. */
+  tagsSetEmoji: (id: string, emoji: string | null) => invoke<Tag>("tags_set_emoji", { id, emoji }),
   /** Also removes the tag from every recording. */
   tagsDelete: (id: string) => invoke<void>("tags_delete", { id }),
 

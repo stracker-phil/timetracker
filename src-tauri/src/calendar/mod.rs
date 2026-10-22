@@ -883,6 +883,7 @@ mod tests {
                     "shade": 4,
                     "note": "",
                     "tag": null,
+                    "tagEmoji": null,
                     "durationMs": HOUR,
                     "start": d + HOUR,
                     "end": d + 2 * HOUR,

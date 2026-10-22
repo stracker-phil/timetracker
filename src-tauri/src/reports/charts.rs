@@ -285,6 +285,7 @@ mod tests {
             .map(|i| Tag {
                 id: format!("t{i}"),
                 name: format!("tag {i}"),
+                emoji: None,
                 created_at: 0,
             })
             .collect();

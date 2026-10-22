@@ -117,6 +117,13 @@ pub async fn tags_save(app: AppHandle, id: Option<String>, name: String) -> AppR
     changed(&app, DataKind::Tags, tag)
 }
 
+/// `emoji: None` or blank clears it.
+#[tauri::command]
+pub async fn tags_set_emoji(app: AppHandle, id: String, emoji: Option<String>) -> AppResult<Tag> {
+    let tag = tags::set_emoji(&db(&app)?, &id, emoji.as_deref()).await?;
+    changed(&app, DataKind::Tags, tag)
+}
+
 /// Also removes the tag from every recording.
 #[tauri::command]
 pub async fn tags_delete(app: AppHandle, id: String) -> AppResult<()> {

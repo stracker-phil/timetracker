@@ -126,6 +126,7 @@ pub struct RecordingBlock {
     pub shade: u8,
     pub note: String,
     pub tag: Option<String>,
+    pub tag_emoji: Option<String>,
     /// The timer's open span, still recording.
     pub running: bool,
     /// The span starts on an earlier day or ends on a later one.
@@ -147,6 +148,7 @@ pub struct TimesheetCard {
     pub shade: u8,
     pub note: String,
     pub tag: Option<String>,
+    pub tag_emoji: Option<String>,
     /// The day's part of its spans.
     pub duration_ms: i64,
     /// Its first span's start and its last span's end on the day.

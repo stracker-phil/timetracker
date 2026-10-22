@@ -21,7 +21,7 @@ export function projectItem(patch: Omit<Partial<ProjectListItem>, "project"> & {
 /** A tag used by no recording; `patch` overrides fields. */
 export function tag(patch: Partial<TagListItem> = {}): TagListItem {
   const name = patch.name ?? "admin";
-  return { id: `tag-${name}`, name, recordings: 0, createdAt: 0, ...patch };
+  return { id: `tag-${name}`, name, emoji: null, recordings: 0, createdAt: 0, ...patch };
 }
 
 export const DEFAULT_TAGS: TagListItem[] = ["admin", "research", "development", "maintenance", "internal meeting", "external meeting", "support"].map((name) => tag({ name }));

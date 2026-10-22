@@ -4863,6 +4863,7 @@ dependencies = [
  "timetracker",
  "tokio",
  "ts-rs",
+ "unicode-segmentation",
  "url",
  "uuid",
 ]

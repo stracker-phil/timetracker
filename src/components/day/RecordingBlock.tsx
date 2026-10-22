@@ -103,6 +103,7 @@ export const RecordingBlock = memo(function RecordingBlock({ block, grid, focuse
       style={{ top, height }}
       color={shadeColor(block.color, block.shade)}
       title={height >= TIMES_MIN_PX ? formatClock(shown.start) : undefined}
+      meta={height >= BOTH_TIMES_PX && block.tagEmoji ? <span className="tag-emoji">{block.tagEmoji}</span> : undefined}
       trailing={height >= BOTH_TIMES_PX ? formatClock(shown.end) : undefined}
       onPointerDown={press("move")}
       onPointerEnter={() => useStore.getState().hoverRecording(block.id)}

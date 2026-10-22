@@ -97,6 +97,7 @@ pub struct Suggestion {
     pub tag_id: Option<String>,
     /// The tag's name.
     pub tag: Option<String>,
+    pub tag_emoji: Option<String>,
     /// The first timesheet card that starts after it, which its card goes before; none puts it last.
     pub next_card: Option<String>,
 }

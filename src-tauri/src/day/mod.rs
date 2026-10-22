@@ -80,8 +80,14 @@ pub struct DayInput {
 pub struct Names {
     /// By project id.
     pub projects: HashMap<String, ProjectRef>,
-    /// Tag names by id.
-    pub tags: HashMap<String, String>,
+    /// By tag id.
+    pub tags: HashMap<String, TagRef>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TagRef {
+    pub name: String,
+    pub emoji: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

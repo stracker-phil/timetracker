@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::store;
 use super::types::{Condition, ConditionInput, Rule, RuleField, RuleInput, RuleOp};
-use crate::day::{ActivityBlock, Names, ProjectRef, RecordingBlock};
+use crate::day::{ActivityBlock, Names, ProjectRef, RecordingBlock, TagRef};
 use crate::db::Db;
 use crate::db::time::{Day, Ms};
 use crate::error::AppError;
@@ -103,7 +103,13 @@ pub fn names(projects: &[&str], tags: &[&str]) -> Names {
             .collect::<HashMap<_, _>>(),
         tags: tags
             .iter()
-            .map(|id| (id.to_string(), format!("tag {id}")))
+            .map(|id| {
+                let tag = TagRef {
+                    name: format!("tag {id}"),
+                    emoji: None,
+                };
+                (id.to_string(), tag)
+            })
             .collect(),
     }
 }
@@ -123,6 +129,7 @@ pub fn recorded(start: i64, end: i64) -> RecordingBlock {
         shade: 4,
         note: String::new(),
         tag: None,
+        tag_emoji: None,
         running: false,
         clipped_start: false,
         clipped_end: false,

@@ -7,7 +7,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { resetStore } from "../../state/store";
-import { projectsStore } from "../../test/projectFixtures";
+import { DEFAULT_TAGS, projectsStore, tag } from "../../test/projectFixtures";
 import { Toasts } from "../Toasts";
 import { TagPicker } from "./TagPicker";
 
@@ -27,9 +27,9 @@ function Harness({ initial, onChange }: { initial: string | null; onChange: (id:
   );
 }
 
-function renderPicker(initial: string | null = null) {
+function renderPicker(initial: string | null = null, tags = DEFAULT_TAGS) {
   const onChange = vi.fn();
-  resetStore(projectsStore());
+  resetStore(projectsStore({ tags }));
   render(
     <>
       <Harness initial={initial} onChange={onChange} />
@@ -54,6 +54,26 @@ describe("TagPicker", () => {
     renderPicker();
     expect(field()).toHaveValue("");
     expect(field()).toHaveAttribute("placeholder", "No tag");
+  });
+
+  describe("emoji", () => {
+    const tags = [tag({ name: "admin" }), tag({ name: "research", emoji: "🔬" })];
+
+    it("shows an option's emoji before the tag name", async () => {
+      renderPicker(null, tags);
+      await userEvent.click(field());
+      expect(optionTexts()).toEqual(["No tag", "admin", "🔬research"]);
+    });
+
+    it("shows the emoji of the chosen tag in the field", () => {
+      renderPicker("tag-research", tags);
+      expect(field().parentElement).toHaveTextContent("🔬");
+    });
+
+    it("shows no emoji for a chosen tag without one", () => {
+      renderPicker("tag-admin", tags);
+      expect(field().parentElement).not.toHaveTextContent("🔬");
+    });
   });
 
   describe("opening", () => {

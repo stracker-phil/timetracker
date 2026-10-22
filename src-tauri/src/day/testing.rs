@@ -1,6 +1,6 @@
 //! Fixtures for the Day view tests.
 
-use super::{DayInput, DayView, Lane, Names, ProjectRef, ViewSettings, view};
+use super::{DayInput, DayView, Lane, Names, ProjectRef, TagRef, ViewSettings, view};
 use crate::db::activities::ActivityRow;
 use crate::db::away::{AwayReason, AwayRow};
 use crate::db::recordings::{Recording, RecordingSpan};
@@ -217,6 +217,14 @@ pub fn project_ref(name: &str) -> ProjectRef {
         client_name: None,
         color: "blue".into(),
         shade: 4,
+    }
+}
+
+/// A tag without an emoji.
+pub fn tag_ref(name: &str) -> TagRef {
+    TagRef {
+        name: name.into(),
+        emoji: None,
     }
 }
 

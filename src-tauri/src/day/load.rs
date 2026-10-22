@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use super::{DayInput, DayTotals, DayView, Names, ProjectRef, ViewSettings, totals, view};
+use super::{DayInput, DayTotals, DayView, Names, ProjectRef, TagRef, ViewSettings, totals, view};
 use crate::db::time::{Day, Ms};
 use crate::db::{Db, activities, away, clients, dismissed, projects, recordings, tags};
 use crate::error::AppResult;
@@ -63,7 +63,13 @@ pub async fn names(db: &Db) -> AppResult<Names> {
         tags: tags::list(db)
             .await?
             .into_iter()
-            .map(|t| (t.id, t.name))
+            .map(|t| {
+                let tag = TagRef {
+                    name: t.name,
+                    emoji: t.emoji,
+                };
+                (t.id, tag)
+            })
             .collect(),
     })
 }

@@ -158,6 +158,7 @@ mod tests {
         Tag {
             id: id.into(),
             name: name.into(),
+            emoji: None,
             created_at: 0,
         }
     }

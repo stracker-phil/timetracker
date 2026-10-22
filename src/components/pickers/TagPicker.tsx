@@ -1,9 +1,14 @@
-import { Plus, Tag as TagIcon } from "lucide-react";
+import { Plus, Tag } from "lucide-react";
 import type { TagListItem } from "../../api";
 import { fuzzyFilter } from "../../lib/fuzzy";
 import { useStore } from "../../state/store";
 import { PickerField } from "./PickerField";
 import type { PickerRow } from "./PickerList";
+
+/** The tag's emoji, else the tag icon. */
+function TagIcon({ emoji }: { emoji: string | null }) {
+  return emoji ? <span className="tag-emoji">{emoji}</span> : <Tag size="1rem" aria-hidden="true" />;
+}
 
 type Choice = { kind: "none" } | { kind: "tag"; id: string } | { kind: "new"; name: string };
 /** "No tag" and every tag while the query is empty; else the matches, and "New tag" for a new name. */
@@ -16,7 +21,12 @@ function rowsFor(query: string, tags: TagListItem[]): PickerRow<Choice>[] {
       kind: "option",
       key: t.id,
       value: { kind: "tag", id: t.id },
-      content: <span className="grow-text">{t.name}</span>,
+      content: (
+        <>
+          <TagIcon emoji={t.emoji} />
+          <span className="grow-text">{t.name}</span>
+        </>
+      ),
     })),
   );
   const exists = tags.some((t) => t.name.toLowerCase() === name.toLowerCase());
@@ -44,7 +54,8 @@ interface Props {
 /** One tag or none: picks or creates a tag; ⌫ removes it (see `PickerField` for the keys). */
 export function TagPicker({ value, onChange }: Props) {
   const tags = useStore((s) => s.tags);
-  const chosen = value === null ? null : (tags.find((t) => t.id === value)?.name ?? value);
+  const tag = tags.find((t) => t.id === value);
+  const chosen = value === null ? null : (tag?.name ?? value);
 
   const pick = (choice: Choice) => {
     if (choice.kind === "none") return onChange(null);
@@ -59,7 +70,7 @@ export function TagPicker({ value, onChange }: Props) {
     <PickerField
       label="Tag"
       listLabel="Tags"
-      icon={<TagIcon size="1rem" />}
+      icon={<TagIcon emoji={tag?.emoji ?? null} />}
       text={chosen}
       placeholder="No tag"
       rowsFor={(query) => rowsFor(query, tags)}

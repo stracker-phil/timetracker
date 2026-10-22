@@ -1,5 +1,4 @@
 import { memo, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Tag } from "lucide-react";
 import type { CalendarEntry } from "../../api";
 import { formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
@@ -7,6 +6,7 @@ import { shadeColor } from "../Accent";
 import { Card } from "../Card";
 import { pointerDrag } from "../day/pointerDrag";
 import { editEntry, entryName } from "./entry";
+import { TagLabel } from "../TagLabel";
 
 /** The day column under the pointer, if any. */
 function dayAt(e: PointerEvent): string | null {
@@ -71,12 +71,7 @@ export const WeekCard = memo(function WeekCard({ entry, day, focused, dragging, 
       subtitle={entry.showNote && entry.note ? entry.note : undefined}
       meta={
         <>
-          {entry.tag && (
-            <>
-              <Tag size="0.846rem" aria-hidden="true" />
-              {entry.tag}
-            </>
-          )}
+          {entry.tag && <TagLabel name={entry.tag} emoji={entry.tagEmoji} />}
           {entry.spanIds.length > 1 && <span>{entry.spanIds.length} times</span>}
         </>
       }

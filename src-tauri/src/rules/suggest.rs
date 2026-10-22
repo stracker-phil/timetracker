@@ -124,8 +124,8 @@ pub fn suggest(
         let Some(project) = names.projects.get(&rule.project_id) else {
             continue;
         };
-        let tag_id = rule.tag_id.clone().filter(|id| names.tags.contains_key(id));
-        let tag = tag_id.as_ref().and_then(|id| names.tags.get(id)).cloned();
+        let tag = rule.tag_id.as_ref().and_then(|id| names.tags.get(id));
+        let tag_id = tag.and(rule.tag_id.clone());
         let rule_dismissed = dismissed
             .iter()
             .filter(|d| d.rule_id == rule.rule_id)
@@ -150,7 +150,8 @@ pub fn suggest(
                     duration_ms: end - start,
                     note: rule.note.clone(),
                     tag_id: tag_id.clone(),
-                    tag: tag.clone(),
+                    tag: tag.map(|t| t.name.clone()),
+                    tag_emoji: tag.and_then(|t| t.emoji.clone()),
                     next_card: None,
                 }),
         );
@@ -436,9 +437,27 @@ mod tests {
                 note: "standup".into(),
                 tag_id: Some("t1".into()),
                 tag: Some("tag t1".into()),
+                tag_emoji: None,
                 next_card: None,
             }]
         );
+    }
+
+    #[test]
+    fn a_suggestion_carries_the_emoji_of_the_rules_tag() {
+        let rule = Rule {
+            tag_id: Some("t1".into()),
+            ..app_is("r1", "p1", "Slack")
+        };
+        let blocks = [slack(10, 20)];
+        let refs: Vec<&ActivityBlock> = blocks.iter().collect();
+        let mut names = names(&["p1"], &["t1"]);
+        names.tags.get_mut("t1").unwrap().emoji = Some("🧪".into());
+
+        let found = suggest(&refs, &[], &[], &compile(&[rule]), &names, 0, &[]);
+
+        assert_eq!(found[0].tag.as_deref(), Some("tag t1"));
+        assert_eq!(found[0].tag_emoji.as_deref(), Some("🧪"));
     }
 
     #[test]

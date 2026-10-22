@@ -1115,6 +1115,21 @@ describe("DayPage", () => {
       expect(el.queryByText("10:10")).not.toBeInTheDocument();
     });
 
+    it("shows the tag's emoji in a span tall enough for both times", async () => {
+      renderDay(dayView({ recordings: [{ ...meeting, tag: "support", tagEmoji: "🧪" }] }));
+      expect(within(await recordingEl()).getByText("🧪")).toBeInTheDocument();
+    });
+
+    it("shows no emoji in a span too short for both times", async () => {
+      renderDay(dayView({ recordings: [recordingBlock({ id: "r3", note: "quick", tag: "support", tagEmoji: "🧪", start: at("10:00"), end: at("10:10") })] }));
+      expect(within(await screen.findByLabelText("Website: quick")).queryByText("🧪")).not.toBeInTheDocument();
+    });
+
+    it("shows no emoji for a recording whose tag has none", async () => {
+      renderDay(dayView({ recordings: [{ ...meeting, tag: "support", tagEmoji: null }] }));
+      expect(within(await recordingEl()).queryByText(/\p{Extended_Pictographic}/u)).not.toBeInTheDocument();
+    });
+
     it("shows no times in a span too short for text", async () => {
       renderDay(dayView({ recordings: [recordingBlock({ id: "r3", note: "quick", start: at("10:00"), end: at("10:05") })] }));
       const el = within(await screen.findByLabelText("Website: quick"));
@@ -1323,6 +1338,20 @@ describe("DayPage", () => {
       expect(card.getByText("Website | Acme")).toBeInTheDocument();
       expect(card.getByText("support")).toBeInTheDocument();
       expect(card.getByText("45m")).toBeInTheDocument();
+    });
+
+    it("shows the tag's emoji next to its name on a card", async () => {
+      renderDay(sheetDay([{ ...standupCard, tagEmoji: "🧪" }]));
+      await screen.findByRole("complementary", { name: "Timesheet" });
+      const card = within(cardOf("standup, Website | Acme, 45m"));
+      expect(card.getByText("🧪")).toBeInTheDocument();
+      expect(card.getByText("support")).toBeInTheDocument();
+    });
+
+    it("shows no emoji on a card whose tag has none", async () => {
+      renderDay(sheetDay([standupCard]));
+      await screen.findByRole("complementary", { name: "Timesheet" });
+      expect(within(cardOf("standup, Website | Acme, 45m")).queryByText(/\p{Extended_Pictographic}/u)).not.toBeInTheDocument();
     });
 
     it("titles a card without a note by its project and shows the client below", async () => {
@@ -1536,6 +1565,15 @@ describe("DayPage", () => {
         expect(card.getByText("Suggested by Slack")).toBeInTheDocument();
         expect(card.getByText("45m")).toBeInTheDocument();
         expect(within(await mailCard()).getByText("Suggested by Mail")).toBeInTheDocument();
+      });
+
+      it("shows the emoji of the suggested tag next to its name", async () => {
+        const tagged = { ...standupIdea, tag: "support", tagEmoji: "🧪" };
+        renderDay(dayView({ lanes: [lane({ blocks: [docs] })], timesheet: [review], suggestions: [tagged, mailIdea] }), withProject);
+        const card = within(await standupCard());
+        expect(card.getByText("🧪")).toBeInTheDocument();
+        expect(card.getByText("support")).toBeInTheDocument();
+        expect(within(await mailCard()).queryByText("🧪")).not.toBeInTheDocument();
       });
 
       it("puts each before the recording card it precedes and the last one at the end", async () => {

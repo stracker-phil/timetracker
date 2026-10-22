@@ -138,7 +138,7 @@ showNote: boolean,
 /**
  * The recording's id.
  */
-id: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, note: string, tag: string | null, 
+id: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, note: string, tag: string | null, tagEmoji: string | null, 
 /**
  * The day's part of its spans.
  */
@@ -575,7 +575,7 @@ spanCount: number, start: number, end: number, projectId: string, projectName: s
 /**
  * The project's accent and shade.
  */
-color: string, shade: number, note: string, tag: string | null, 
+color: string, shade: number, note: string, tag: string | null, tagEmoji: string | null, 
 /**
  * The timer's open span, still recording.
  */
@@ -819,7 +819,7 @@ id: string, ruleId: string, ruleName: string, projectId: string, projectName: st
 /**
  * The tag's name.
  */
-tag: string | null, 
+tag: string | null, tagEmoji: string | null, 
 /**
  * The first timesheet card that starts after it, which its card goes before; none puts it last.
  */
@@ -834,7 +834,11 @@ export type Tag = { id: string,
 /**
  * Unique, ignoring case.
  */
-name: string, createdAt: number, };
+name: string, 
+/**
+ * One emoji, shown before the name.
+ */
+emoji: string | null, createdAt: number, };
 
 /**
  * A tag with the number of recordings that carry it.
@@ -843,7 +847,11 @@ export type TagListItem = { recordings: number, id: string,
 /**
  * Unique, ignoring case.
  */
-name: string, createdAt: number, };
+name: string, 
+/**
+ * One emoji, shown before the name.
+ */
+emoji: string | null, createdAt: number, };
 
 /**
  * The size of all text. The frontend maps each step to its pixel sizes (`TEXT_SIZES` in `src/api/types.ts`).
@@ -869,7 +877,7 @@ export type TimesheetCard = {
 /**
  * The recording's id.
  */
-id: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, note: string, tag: string | null, 
+id: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, note: string, tag: string | null, tagEmoji: string | null, 
 /**
  * The day's part of its spans.
  */

@@ -185,6 +185,7 @@ mod tests {
         .await
         .unwrap();
         let alpha = tags::insert(&db, "Alpha").await.unwrap();
+        tags::set_emoji(&db, &alpha.id, Some("🧪")).await.unwrap();
         let saved = insert(
             &db,
             NewRecording {
@@ -218,11 +219,15 @@ mod tests {
                 shade: 3,
                 note: "fix login".into(),
                 tag: Some("Alpha".into()),
+                tag_emoji: Some("🧪".into()),
                 running: false,
                 clipped_start: false,
                 clipped_end: false,
             }]
         );
+        assert_eq!(view.timesheet.len(), 1);
+        assert_eq!(view.timesheet[0].tag.as_deref(), Some("Alpha"));
+        assert_eq!(view.timesheet[0].tag_emoji.as_deref(), Some("🧪"));
         assert_eq!(view.totals.recorded_ms, HOUR);
     }
 

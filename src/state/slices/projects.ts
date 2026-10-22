@@ -24,6 +24,8 @@ export interface ProjectsSlice {
   /** An existing name returns that tag. */
   saveTag: (id: string | null, name: string) => Promise<Tag>;
   deleteTag: (id: string) => Promise<void>;
+  /** `null` removes it; Rust accepts a single emoji only. */
+  setTagEmoji: (id: string, emoji: string | null) => Promise<Tag>;
 }
 
 export const projectsSlice: Slice<ProjectsSlice> = {
@@ -65,6 +67,7 @@ export const projectsSlice: Slice<ProjectsSlice> = {
       archiveClient: (id, archived) => write(archived ? "Could not archive the client" : "Could not restore the client", () => api.clientsArchive(id, archived)).then(() => {}),
       saveTag: (id, name) => write("Could not save the tag", () => api.tagsSave(id, name)),
       deleteTag: (id) => write("Could not delete the tag", () => api.tagsDelete(id)),
+      setTagEmoji: (id, emoji) => write("Could not save the emoji", () => api.tagsSetEmoji(id, emoji)),
     };
   },
 };

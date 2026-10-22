@@ -162,6 +162,15 @@ describe("WeekView", () => {
       for (const text of ["Website", "standup", "support", "2 times", "45m"]) expect(el.getByText(text)).toBeInTheDocument();
     });
 
+    it("shows the tag's emoji next to its name on a card, and none when the tag has no emoji", async () => {
+      renderWeek(recordedWeek([calendarEntry({ id: "r1", note: "standup", tag: "support", tagEmoji: "🧪" }), calendarEntry({ id: "r2", note: "review", tag: "admin", tagEmoji: null })]));
+      await screen.findAllByRole("columnheader");
+      const withEmoji = within(card("Website: standup"));
+      expect(withEmoji.getByText("🧪")).toBeInTheDocument();
+      expect(withEmoji.getByText("support")).toBeInTheDocument();
+      expect(within(card("Website: review")).queryByText("🧪")).not.toBeInTheDocument();
+    });
+
     it.each([
       [false, false],
       [true, true],

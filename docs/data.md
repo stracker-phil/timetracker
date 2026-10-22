@@ -73,7 +73,7 @@ A backup is the JSON export below, or a copy of the folder while the app is not 
 | `meta` | `key`/`value` facts: `schema` (`1`), `created_at`, `tags_seeded` |
 | `clients` | `id` (UUID), `name`, `color` (an accent name), `archived_at`, `created_at` |
 | `projects` | `id` (UUID), `client_id`, `name`, `color` (the client's accent, or its own without a client), `shade` (`0..SHADES`), `billable` (0/1, default 0), `archived_at`, `created_at` |
-| `tags` | `id` (UUID), `name` (unique, ignoring case), `created_at` |
+| `tags` | `id` (UUID), `name` (unique, ignoring case), `emoji` (NULL or one emoji, shown before the name), `created_at` |
 | `activities` | one span in one app and window: `id` (AUTOINCREMENT), `source` (`tracker` or `external:<name>`), `start`, `end` (NULL while open), `app`, `bundle_id`, `title`, `url`, `path`, `private`; indexed on `start` and `(source, start)` |
 | `away_spans` | no input, sleep, lock or pause: `id` (AUTOINCREMENT), `start`, `end`, `reason` (`idle`, `sleep`, `lock`, `paused`); indexed on `start` |
 | `recordings` | time confirmed for a project: `id` (UUID), `project_id`, `note`, `tag_id` (NULL without a tag; deleting the tag sets it NULL), `created_at`, `updated_at`; the time is in its spans |
@@ -167,7 +167,7 @@ there are no `query!` macros (they need a database at compile time).
 |---|---|---|
 | `clients.rs` | `list(include_archived)`, `get`, `insert(name)`, `update(id, name)`, `set_archived(id, bool)` | names unique (archived clients count); lists by name ignoring case; archiving keeps the first `archived_at` and archives the client's projects in the same transaction; restoring restores the client only |
 | `projects.rs` | `list`, `list_items(include_archived, now, windows)`, `get`, `insert(ProjectInput)`, `update(id, ProjectInput)`, `set_archived`, `recent(limit)`, `resolve(name_or_id)`, `count` | see [Projects, clients and tags](#projects-clients-and-tags) |
-| `tags.rs` | `list`, `list_with_usage`, `insert(name)`, `rename(id, name)`, `delete(id)`, `resolve_name(name)`, `resolve_optional_name(name?)` (the id, or `None` without a name), `seed_defaults` | names unique ignoring case: `insert` of a taken name returns the existing tag, `rename` to it is `invalid_input`; `DEFAULT_TAGS` are seeded once per data store (`meta.tags_seeded`), so deleting them all does not bring them back |
+| `tags.rs` | `list`, `list_with_usage`, `insert(name)`, `rename(id, name)`, `set_emoji(id, emoji?)`, `delete(id)`, `resolve_name(name)`, `resolve_optional_name(name?)` (the id, or `None` without a name), `seed_defaults` | names unique ignoring case: `insert` of a taken name returns the existing tag, `rename` to it is `invalid_input`; `DEFAULT_TAGS` are seeded once per data store (`meta.tags_seeded`), so deleting them all does not bring them back |
 | `activities.rs` | `apps_seen(from, now)`, `list_clipped(from, to, now)`, `close_stale(source, duration)`, `replace_open(id, NewActivity)`, `insert(NewActivity) -> id`, `close_open(source, end)`, `open_by_source`, `overlapping(source, start, end)`, `sources_with_prefix(prefix)` (latest first); `insert_on`, `get_on`, `close_open_on`, `open_by_source_on`, `overlapping_on` take a connection so a caller can combine them in a transaction; `list_for_range(from, to)`, `list_sources(from, to)`, `delete_range(from, to)`, `count_range(from, to)`, `count`, `first_start`; `take_range_on(from, to)` deletes and returns the rows, `restore_on(row)` inserts one under its id | ranges are `[from, to)` and include open spans; touching edges do not overlap; results are not clipped; `close_open` never sets an end before the start |
 | `away.rs` | `insert(NewAway) -> id`, `close_open(end)`, `open`, `list_for_range`, `delete_range`, `count_range`, `take_range_on`, `restore_on` | as for activities; `AwayReason` is stored and sent as `idle`, `sleep`, `lock`, `paused` |
 | `recordings/` | `insert(NewRecording)`, `get`, `update(id, RecordingPatch)`, `delete(id) -> Recording`, `list_for_range`, `running`, `latest(limit)`, `overlapping(start, end, except)`, `count`; `put_on(recording)` writes a row with all its spans, `remove_on`, `get_on`, `overlapping_on` take a connection (`mod.rs`); the types, `check_spans` and `respanned` are in `model.rs` | one transaction per write; the project and the tag (`tag_id`, optional) must exist (`not_found`); a note with a line break is `invalid_input`, notes are stored trimmed; a recording needs a span, each ending after it starts, none overlapping another of the recording, only the last open; a query returns whole recordings with every span (also those outside the range) by first span; `delete` returns the row so it can be restored under its id |
@@ -213,7 +213,9 @@ the field:
 - Tags: `insert` of a taken name returns that tag; `list_with_usage` gives `TagListItem` (a `Tag` plus
   `recordings`, the number of recordings that carry it); `delete` removes it from every recording and rule;
   `resolve_name` finds a tag by name ignoring case, `not_found` naming it. Seven tags are seeded once per
-  data store when it opens (`seed_defaults`).
+  data store when it opens (`seed_defaults`). `set_emoji` trims; `None` or blank clears the emoji; anything but
+  one grapheme cluster of at most 16 characters that is not a single ASCII character, letter or digit is
+  `invalid_input` on `emoji` ("Use a single emoji"; `unicode-segmentation`); a rename keeps it.
 - `projects/mod.rs` holds the Tauri commands; every write emits `data_changed { kind: projects | tags, day: null }`.
 
 ## Backup
@@ -268,6 +270,9 @@ recording one span with its `start` and `end` under the recording's own id, and 
 `0009_dismissed_suggestions.sql` adds `dismissed_suggestions` (repository `db/dismissed.rs`: `list_for_day`,
 `put_on`, `remove_on`; `put_on` skips a rule that no longer exists, so redoing a dismissal after the rule was
 deleted writes nothing).
+
+`0010_tag_emoji.sql` adds `tags.emoji` (NULL for existing tags). The pre-0006 backup reads tags without it
+(`one_tag::LegacyTag`), since it runs before this migration.
 
 ## Tests
 

@@ -60,6 +60,7 @@ pub fn entries(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::day::TagRef;
     use crate::db::recordings::RecordingSpan;
 
     const MIN: i64 = 60_000;
@@ -110,6 +111,27 @@ mod tests {
             assert_eq!(list.len(), 1, "{minutes} min");
             assert_eq!(list[0].show_note, expected, "{minutes} min");
         }
+    }
+
+    #[test]
+    fn an_entry_carries_the_tags_name_and_emoji() {
+        let mut names = Names::default();
+        names.tags.insert(
+            "t1".into(),
+            TagRef {
+                name: "Research".into(),
+                emoji: Some("🧪".into()),
+            },
+        );
+        let recording = Recording {
+            tag_id: Some("t1".into()),
+            ..recording_of(30)
+        };
+
+        let list = entries(&[recording], &names, (0, 24 * 60 * MIN), 24 * 60 * MIN);
+
+        assert_eq!(list[0].card.tag.as_deref(), Some("Research"));
+        assert_eq!(list[0].card.tag_emoji.as_deref(), Some("🧪"));
     }
 
     #[test]

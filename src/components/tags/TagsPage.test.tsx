@@ -160,7 +160,7 @@ describe("TagsPage", () => {
         mocked.tagsSave.mockImplementation((id, name) => {
           if (saved && id === "tag-research") return Promise.reject(Object.assign(new Error("Saved twice"), { kind: "io", code: null }));
           saved = true;
-          return gate.then(() => ({ id: id ?? "", name, createdAt: 0 }));
+          return gate.then(() => ({ id: id ?? "", name, emoji: null, createdAt: 0 }));
         });
         reloadsRenamed();
         renderTags();
@@ -233,6 +233,77 @@ describe("TagsPage", () => {
         expect(field()).toHaveAttribute("aria-invalid", "false");
         expect(within(researchRow()).queryByRole("alert")).not.toBeInTheDocument();
       });
+    });
+  });
+
+  describe("emoji", () => {
+    const emojiField = (name = "research") => screen.getByRole<HTMLInputElement>("textbox", { name: `Emoji for ${name}` });
+    const tooMany = { kind: "invalid_input", message: "Use a single emoji", code: null, field: "emoji" };
+    const withEmoji = () => renderTags([tag({ name: "admin" }), tag({ name: "research", emoji: "🔬", recordings: 3 })]);
+
+    it("shows each tag's emoji in its own field, empty without one", () => {
+      withEmoji();
+      expect(emojiField("research")).toHaveValue("🔬");
+      expect(emojiField("admin")).toHaveValue("");
+    });
+
+    it("saves the typed emoji on Enter", async () => {
+      withEmoji();
+      await userEvent.type(emojiField("admin"), "🧪{Enter}");
+      expect(mocked.tagsSetEmoji).toHaveBeenCalledWith("tag-admin", "🧪");
+    });
+
+    it("saves the typed emoji when the field loses focus", async () => {
+      withEmoji();
+      await userEvent.type(emojiField("admin"), "🧪");
+      await userEvent.tab();
+      expect(mocked.tagsSetEmoji).toHaveBeenCalledWith("tag-admin", "🧪");
+    });
+
+    it("removes the emoji when the field is cleared and confirmed with Enter", async () => {
+      withEmoji();
+      await userEvent.clear(emojiField("research"));
+      await userEvent.keyboard("{Enter}");
+      expect(mocked.tagsSetEmoji).toHaveBeenCalledWith("tag-research", null);
+    });
+
+    it("saves nothing when the value is unchanged", async () => {
+      withEmoji();
+      await userEvent.click(emojiField("research"));
+      await userEvent.keyboard("{Enter}");
+      await userEvent.tab();
+      expect(mocked.tagsSetEmoji).not.toHaveBeenCalled();
+    });
+
+    it("restores the saved emoji on Escape without saving", async () => {
+      withEmoji();
+      await userEvent.type(emojiField("research"), "🧪{Escape}");
+      expect(emojiField("research")).toHaveValue("🔬");
+      expect(mocked.tagsSetEmoji).not.toHaveBeenCalled();
+    });
+
+    it("does not start the rename when Enter is pressed in the field", async () => {
+      withEmoji();
+      await userEvent.type(emojiField("admin"), "🧪{Enter}");
+      expect(screen.queryByRole("textbox", { name: "Tag name" })).not.toBeInTheDocument();
+    });
+
+    it("shows a field error from Rust as an alert and keeps the typed text", async () => {
+      mocked.tagsSetEmoji.mockRejectedValueOnce(tooMany);
+      withEmoji();
+      await userEvent.type(emojiField("admin"), "ab{Enter}");
+      expect(await screen.findByRole("alert")).toHaveTextContent("Use a single emoji");
+      expect(emojiField("admin")).toHaveValue("ab");
+      expect(emojiField("admin")).toHaveAttribute("aria-invalid", "true");
+      expect(screen.queryByText(/Could not save the emoji/)).not.toBeInTheDocument();
+    });
+
+    it("toasts any other failure", async () => {
+      mocked.tagsSetEmoji.mockRejectedValueOnce({ kind: "io", message: "disk", code: null });
+      withEmoji();
+      await userEvent.type(emojiField("admin"), "🧪{Enter}");
+      expect(await screen.findByText("Could not save the emoji: disk")).toBeInTheDocument();
+      expect(emojiField("admin")).toHaveValue("🧪");
     });
   });
 

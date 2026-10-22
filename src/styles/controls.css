@@ -99,6 +99,8 @@ select.input:focus { box-shadow: var(--control-shadow), var(--focus-ring); }
 .accent-swatches .accent-system {
   background: conic-gradient(var(--a-red), var(--a-orange), var(--a-gold), var(--a-teal), var(--a-blue), var(--a-indigo), var(--a-purple), var(--a-magenta), var(--a-red));
 }
+/* A tag's emoji wherever the tag shows (cards, pickers, blocks). */
+.tag-emoji { flex: none; font-size: 1em; line-height: 1; }
 .accent-dot { flex: none; width: 0.615rem; height: 0.615rem; border-radius: 50%; }
 
 /* An installed app's icon, or its initial (`AppIcon`). */

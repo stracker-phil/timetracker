@@ -609,9 +609,14 @@ timeline's for every app.
 
 - A page of its own (⌘6): the toolbar reads `Tags` and `One per recording, for kinds of work across projects.`
   New tag (⌘N, `tags.new`) in the toolbar asks for a name in a sheet, as Projects and Rules add theirs.
-  Below, one inset group with a row per tag (its name, the number of recordings, a pencil to rename, ✕ to
+  Below, one inset group with a row per tag (its emoji, its name, the number of recordings, a pencil to rename, ✕ to
   delete; a confirm first when recordings carry it); the pencil and ✕ show while the row is hovered or holds
   the focus, and Tab still reaches them. Without tags: `No tags yet.`
+- The emoji is a small field before the name, framed only on hover and focus: type or pick one (⌃⌘Space),
+  ↵ or leaving it saves, empty removes it, Escape restores it. Rust takes a single emoji only ("Use a single
+  emoji" under the field otherwise). The emoji shows before the tag's name in the tag picker and on
+  recording cards (timesheet, Week, suggestions; a tag without one shows the tag icon), and alone in the
+  lower-left corner of a recording's block in the time column when the block is tall enough for both times.
 - Rename in place, as in Finder: a double click on the name, ↵ on the focused row (rows are Tab stops) or the
   pencil turns the name into a field with its text selected. ↵ or leaving the field saves, Escape cancels; an
   empty or unchanged name cancels. A name another tag has (ignoring case) keeps the field open with the error
