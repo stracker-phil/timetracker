@@ -11,6 +11,8 @@ use crate::rules::types::Suggestion;
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct DayView {
     pub day: Day,
+    /// The toolbar's title, by the day title setting (`titles::day_title`).
+    pub label: String,
     pub bounds: (Ms, Ms),
     /// The summary, activity, app and source lanes, each when shown.
     pub lanes: Vec<Lane>,

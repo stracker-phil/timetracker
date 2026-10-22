@@ -53,7 +53,7 @@ export function EditorSpans({ spans, step, runningSince, error }: Props) {
         </span>
       )}
       {editable && (
-        <button type="button" className="btn btn-quiet editor-span-add" title="Or ⌥-drag on the timeline" onClick={addDraftSpan}>
+        <button type="button" className="btn btn-quiet editor-span-add" title="Or drag on the timeline" onClick={addDraftSpan}>
           <Plus size="0.923rem" aria-hidden="true" />
           Add span
         </button>

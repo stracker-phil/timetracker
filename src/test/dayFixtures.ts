@@ -140,6 +140,7 @@ export function dayView(patch: Partial<DayView> = {}): DayView {
   const totals: DayTotals = { recordedMs: 0, trackedMs: 0, awayMs: 0 };
   return {
     day,
+    label: day,
     bounds: dayBounds(day),
     lanes,
     compact: false,

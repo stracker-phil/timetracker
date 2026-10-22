@@ -1,7 +1,7 @@
 use chrono::Local;
 use tauri::{AppHandle, Manager, State};
 
-use super::draft::{self, DraftSpans};
+use super::draft::{self, DraftSpans, DraftToggle};
 use super::proposal::{self, RecordingProposal};
 use super::undo::UndoStatus;
 use super::{
@@ -197,6 +197,24 @@ pub fn recording_draft_spans(spans: Vec<Span>) -> DraftSpans {
 #[tauri::command]
 pub fn recording_draft_total(spans: Vec<Span>, total_ms: i64) -> DraftSpans {
     draft::with_total(&spans, total_ms, &Local)
+}
+
+/// The editor's spans with `span` (a snapped selection) in them, merged with those it touches or overlaps.
+#[tauri::command]
+pub fn recording_draft_include(spans: Vec<Span>, span: Span) -> DraftSpans {
+    draft::with_included(&spans, span, &Local)
+}
+
+/// The editor's spans after a click on an activity block: its snapped span leaves them when they cover it,
+/// else joins them; `others` are the other clicked blocks, whose time a removal keeps.
+#[tauri::command]
+pub fn recording_draft_toggle(
+    state: State<'_, AppState>,
+    spans: Vec<Span>,
+    block: Span,
+    others: Vec<Span>,
+) -> DraftToggle {
+    draft::toggled_on_grid(&spans, block, &others, snap_minutes(&state), &Local)
 }
 
 /// The editor's spans and one more after the last (Add span).

@@ -41,6 +41,26 @@ impl From<LogLevel> for log::LevelFilter {
     }
 }
 
+/// The sidebar calendar's month name format.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum CalendarTitle {
+    #[default]
+    Short,
+    Full,
+}
+
+/// The Day view's title format.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum DayTitle {
+    #[default]
+    Long,
+    Short,
+}
+
 /// Accent hues; every palette defines each one. Projects take their color from this list.
 pub const ACCENTS: &[&str] = &[
     "orange", "gold", "red", "magenta", "purple", "indigo", "blue", "teal", "graphite",

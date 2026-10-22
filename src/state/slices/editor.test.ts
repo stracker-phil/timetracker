@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api, type DraftSpans, type Span } from "../../api";
-import { at, dayView, recordingBlock } from "../../test/dayFixtures";
+import { at, block, dayView, lane, recordingBlock } from "../../test/dayFixtures";
 import { recording } from "../../test/recordingFixtures";
 import { resetStore, useStore } from "../store";
 
@@ -267,28 +267,27 @@ describe("editor slice", () => {
       expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("09:28"), "start");
     });
 
-    it("moves an open create editor to the selection and keeps its fields", async () => {
-      await openCreate(morning);
-      state().patchDraft({ note: "keep me", projectId: "p-site" });
-      state().setSelection({ ...noon, blockIds: [] });
+    it("remembers the clicked blocks of the selection a new editor opens on", async () => {
+      state().setSelection({ ...morning, blockIds: ["a1"] });
       await state().recordSelection();
-      expect(state().editor).toEqual({ mode: "create", ...noon });
-      await vi.waitFor(() => expect(state().draft).toEqual({ projectId: "p-site", spans: [noon], totalMs: 45 * MINUTE_MS, note: "keep me", tagId: null }));
+      expect(state().draftBlockIds).toEqual(["a1"]);
     });
 
-    it("adds the selection as another span of the open editor with add, after the others", async () => {
+    it("includes the selection as another span of an open editor and keeps its fields", async () => {
+      await openCreate(noon);
+      state().patchDraft({ note: "keep me", projectId: "p-site" });
+      state().setSelection({ ...morning, blockIds: [] });
+      await state().recordSelection();
+      await vi.waitFor(() => expect(state().draft).toEqual({ projectId: "p-site", spans: [morning, noon], totalMs: 75 * MINUTE_MS, note: "keep me", tagId: null }));
+      expect(mocked.recordingDraftInclude).toHaveBeenCalledWith([noon], morning);
+      expect(state().editor).toEqual({ mode: "create", ...noon });
+    });
+
+    it("clears the selection once an open editor has taken it", async () => {
       await openCreate(noon);
       state().setSelection({ ...morning, blockIds: [] });
-      await state().recordSelection(true);
-      await vi.waitFor(() => expect(state().draft?.spans).toEqual([noon, morning]));
-      expect(mocked.recordingDraftSpans).toHaveBeenLastCalledWith([noon, morning]);
-      expect(state().editor).toEqual({ mode: "create", ...noon });
-    });
-
-    it("opens a new editor with add when none is open", async () => {
-      state().setSelection({ ...morning, blockIds: [] });
-      await state().recordSelection(true);
-      expect(state().editor).toEqual({ mode: "create", ...morning });
+      await state().recordSelection();
+      expect(state().selection).toBeNull();
     });
 
     it("toasts and opens no editor when Rust cannot snap", async () => {
@@ -297,6 +296,63 @@ describe("editor slice", () => {
       await state().recordSelection();
       expect(toastMessages()).toEqual(["Could not open the editor: no snap"]);
       expect(state().editor).toBeNull();
+    });
+  });
+
+  describe("toggleBlock", () => {
+    const docs = block({ id: "a1", ...morning });
+    const todo = block({ id: "a2", ...noon });
+    beforeEach(() => resetStore({ dayView: dayView({ lanes: [lane({ blocks: [docs, todo] })] }) }));
+
+    it("opens an editor on the block's span and remembers the block", async () => {
+      await state().toggleBlock("a1");
+      expect(state().editor).toEqual({ mode: "create", ...morning });
+      expect(state().draftBlockIds).toEqual(["a1"]);
+      await vi.waitFor(() => expect(state().draft?.spans).toEqual([morning]));
+    });
+
+    it("adds a second block as another span and leaves the time between unassigned", async () => {
+      await state().toggleBlock("a1");
+      await vi.waitFor(() => expect(state().draft).not.toBeNull());
+      await state().toggleBlock("a2");
+      expect(state().draft?.spans).toEqual([morning, noon]);
+      expect(state().draft?.totalMs).toBe(75 * MINUTE_MS);
+      expect(state().draftBlockIds).toEqual(["a1", "a2"]);
+    });
+
+    it("removes the span of a block clicked again", async () => {
+      await state().toggleBlock("a1");
+      await vi.waitFor(() => expect(state().draft).not.toBeNull());
+      await state().toggleBlock("a2");
+      await state().toggleBlock("a1");
+      expect(state().draft?.spans).toEqual([noon]);
+      expect(state().draftBlockIds).toEqual(["a2"]);
+    });
+
+    it("closes the editor without saving when the last span goes", async () => {
+      await state().toggleBlock("a1");
+      await vi.waitFor(() => expect(state().draft).not.toBeNull());
+      await state().toggleBlock("a1");
+      expect(state().editor).toBeNull();
+      expect(state().draft).toBeNull();
+      expect(state().draftBlockIds).toEqual([]);
+      expect(mocked.recordingCreate).not.toHaveBeenCalled();
+    });
+
+    it("ignores a block that is not in the view", async () => {
+      await state().toggleBlock("missing");
+      expect(state().editor).toBeNull();
+    });
+
+    it("does nothing while the running timer's recording is edited", async () => {
+      const running = recording({ id: "r1", spans: [{ id: "r1-s1", ...evening }, { id: "r1-s2", start: at("18:00"), end: null }] });
+      mocked.recordingsList.mockResolvedValue([running]);
+      resetStore({ dayView: dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [recordingBlock({ id: "r1", ...evening })] }) });
+      state().openEditor({ mode: "edit", id: "r1" });
+      await vi.waitFor(() => expect(state().draft).not.toBeNull());
+      await state().toggleBlock("a1");
+      expect(state().draft?.spans).toEqual([evening]);
+      expect(state().draftBlockIds).toEqual([]);
     });
   });
 

@@ -96,7 +96,6 @@
   position: absolute; left: 0; right: 0; z-index: 2; pointer-events: none; background: var(--sel);
   border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent);
 }
-.selection-label { position: absolute; top: 2px; left: 0.462rem; font-size: var(--data-font-size); font-weight: 500; color: var(--accent-text); }
 
 /* The zoom, floating over the timeline's bottom right. */
 .zoom-control {

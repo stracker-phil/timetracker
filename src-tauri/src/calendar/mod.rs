@@ -3,7 +3,9 @@
 pub mod commands;
 pub mod entries;
 pub mod jump;
+pub mod mini_month;
 pub mod period;
+pub mod titles;
 
 use chrono::{Datelike, Days, Months, Weekday};
 use serde::Serialize;

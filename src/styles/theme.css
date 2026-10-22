@@ -14,6 +14,7 @@
 
   /* Type scale: the macOS text styles, in rem so ⌘= and ⌘- scale them. */
   --fs-display: 1.692rem;
+  --fs-heading: 1.308rem;
   --fs-title: 1.154rem;
   --fs-body: 1rem;
   --fs-meta: 0.846rem;
@@ -59,7 +60,7 @@
   --radius-lg: 0.923rem;
   --radius-block: 0.462rem;
   --radius-card: 0.615rem;
-  --sidebar-width: 14rem;
+  --sidebar-width: 16rem;
   /* The unified toolbar: the window buttons (trafficLightPosition in tauri.conf.json) sit centered in its height
      and don't scale with the UI size, so neither does it. */
   --toolbar-height: 52px;

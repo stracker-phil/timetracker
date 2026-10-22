@@ -31,8 +31,7 @@
   --shadow-small: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 0.5px 2px rgba(0, 0, 0, 0.2);
   --scrim: rgba(0, 0, 0, 0.14);
 
-  /* text on an accent fill, at least 4.5:1 on every hue; white on the macOS accent */
-  --on-accent: #ffffff;
+  /* white on the macOS accent */
   --on-system-accent: #ffffff;
 
   /* status colors; red, yellow, blue and purple are accent hues (theme.css) */
@@ -54,6 +53,8 @@
 /* The accent hues for this tone, on its content and on a sidebar of the same tone (the Default scheme puts a dark
    sidebar beside light content). */
 [data-content="light"], [data-sidebar="light"] .sidebar {
+  /* text on an accent fill, at least 4.5:1 on every hue */
+  --on-accent: #ffffff;
   --accent-text-max-l: 0.56;
   --a-orange: #b9530f;
   --a-gold: #9c6b00;

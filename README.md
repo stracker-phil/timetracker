@@ -45,12 +45,17 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 
 - Time runs top to bottom: the recordings column on the left, activity lanes on the right (one for the
   tracker, one per external source); the lanes show only activity, away time adds to the day's totals.
-- Drag over time or click activity (⇧-click to extend, ⌘-click to gather; or J/K, V and ↵): the editor opens
-  in the timesheet, snapped to the grid, for a one-line note, a project (often proposed), a tag and the spans.
+- Drag over time or click activity (or J/K, V and ↵): the editor opens in the timesheet, snapped to the grid,
+  for a one-line note, a project (often proposed), a tag and the spans. Each further click on a block adds its
+  span or takes it out again, so scattered blocks make one recording with the time between them left out.
 - Recordings never overlap. Drag to move or resize, ⌘Z undoes; rules (⌥-drag a block onto a project) suggest
   recordings that wait in the timesheet as ghost cards until you approve, edit or dismiss them.
-- The sidebar shows the day (or week, month, report period) with ‹ › and Today; P, N and O do the same, and a
-  click on the date opens a calendar. ⌘1 to ⌘6 switch to Day, Week, Month, Reports, Projects and Rules.
+- The sidebar opens with a month calendar that is the navigation: a click on a day shows that day, on a week
+  number that week, on the month's name that month; the shown day, week or month is highlighted and a dot
+  marks days with recordings. P, N and O step back, ahead and to today. Below it: Hours (today's Day view),
+  Reports, then Projects, Tags and Rules, and at the bottom the tracking status with play / pause and the
+  Settings gear (in the status bar while the sidebar is hidden, ⌘⌃S).
+- ⌘1 to ⌘7 switch to Day, Week, Month, Reports, Projects, Tags and Rules.
 - Everything works from the keyboard: ⌘K opens the command palette, ? lists the shortcuts.
 - A project is billable or not (a switch in its sheet; no rates). The status bar shows the billable share of
   the recorded time for the shown day, week, month or report period, e.g. `Billable 80 %`.

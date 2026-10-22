@@ -8,7 +8,6 @@ import { useStore } from "../../state/store";
 import { AccentDot } from "../Accent";
 import { useContextMenu, type MenuEntry } from "../ContextMenu";
 import { Toolbar } from "../Toolbar";
-import { TagsSection } from "./TagsSection";
 
 function Hours({ ms, label }: { ms: number; label: string }) {
   return (
@@ -81,7 +80,7 @@ function ClientHead({ client, count }: { client: Client | null; count: number })
   );
 }
 
-/** Projects as a card per client; then the tags. */
+/** Projects as a card per client. */
 export function ProjectsPage() {
   const projects = useStore((s) => s.projects);
   const clients = useStore((s) => s.clients);
@@ -132,7 +131,6 @@ export function ProjectsPage() {
             </ul>
           </section>
         ))}
-        <TagsSection />
       </div>
       {menu.element}
     </section>

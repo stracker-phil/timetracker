@@ -6,9 +6,10 @@ vi.mock("./api", async (orig) => ({ ...(await orig<object>()), api: (await impor
 
 import App from "./App";
 import { api, EMPTY_UI_STATE } from "./api";
-import { addDays, today } from "./lib/day";
+import { addDays, addMonths, today } from "./lib/day";
 import { resetStore, useStore, type View } from "./state/store";
 import { activityRow, trackerStatus } from "./test/data";
+import { miniMonth } from "./test/calendarFixtures";
 import { dayView } from "./test/dayFixtures";
 import { projectItem, tag } from "./test/projectFixtures";
 import { savedReport } from "./test/reportFixtures";
@@ -25,9 +26,10 @@ async function renderApp(patch: Parameters<typeof resetStore>[0] = {}) {
   await screen.findByLabelText("Today");
 }
 
-/** The Day, Week, Month and Reports views are regions, the Projects and Rules pages have a level-1 heading. */
+/** The Day, Week, Month and Reports views are regions, the Projects, Tags and Rules pages have a level-1 heading. */
 const mainHeading = (name: string) => (["Day", "Week", "Month", "Reports"].includes(name) ? screen.getByRole("region", { name }) : screen.getByRole("heading", { level: 1, name }));
 const sidebarEntry = (name: string) => within(screen.getByRole("navigation", { name: "Views" })).getByRole("button", { name: new RegExp(`^${name}`) });
+const sidebar = () => within(screen.getByRole("complementary", { name: "Sidebar" }));
 
 describe("App", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -40,15 +42,26 @@ describe("App", () => {
       expect(mainHeading("Day")).toBeInTheDocument();
     });
 
-    it.each(["Day", "Week", "Month", "Reports", "Projects", "Rules"])("lists %s in the sidebar", async (name) => {
+    it.each(["Hours", "Reports", "Projects", "Tags", "Rules"])("lists %s in the sidebar", async (name) => {
       await renderApp();
       expect(sidebarEntry(name)).toBeInTheDocument();
     });
 
+    it("leaves Day, Week and Month to the calendar in the sidebar", async () => {
+      await renderApp();
+      expect(sidebar().getByRole("group", { name: "Calendar" })).toBeInTheDocument();
+      for (const name of ["Day", "Week", "Month"]) expect(within(screen.getByRole("navigation", { name: "Views" })).queryByRole("button", { name })).not.toBeInTheDocument();
+    });
+
     it("marks the active view in the sidebar", async () => {
-      await renderApp({ view: "month" });
-      expect(sidebarEntry("Month")).toHaveAttribute("aria-current", "page");
-      expect(sidebarEntry("Day")).not.toHaveAttribute("aria-current");
+      await renderApp({ view: "projects" });
+      expect(sidebarEntry("Projects")).toHaveAttribute("aria-current", "page");
+      expect(sidebarEntry("Hours")).not.toHaveAttribute("aria-current");
+    });
+
+    it("marks Hours while the Day view shows today", async () => {
+      await renderApp();
+      expect(sidebarEntry("Hours")).toHaveAttribute("aria-current", "page");
     });
 
     it("shows a toast for an error launch event", async () => {
@@ -162,13 +175,6 @@ describe("App", () => {
       expect(await screen.findByRole("button", { name: "Website" })).toBeInTheDocument();
     });
 
-    it("reloads the tags when tags changed", async () => {
-      await renderApp({ view: "projects" });
-      mocked.tagsList.mockResolvedValue([tag({ name: "billing" })]);
-      act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "tags", day: null }));
-      expect(await screen.findByText("billing")).toBeInTheDocument();
-    });
-
     it("shows the new hours on the Projects page when recordings changed", async () => {
       mocked.projectsList.mockResolvedValue([projectItem({ project: { id: "p-site", name: "Website" }, weekMs: 3_600_000 })]);
       await renderApp({ view: "projects" });
@@ -196,6 +202,23 @@ describe("App", () => {
       await userEvent.keyboard("{Meta>}k{/Meta}");
       await userEvent.type(await screen.findByLabelText("Search"), "p:web{Enter}");
       expect(await screen.findByRole("region", { name: "Reports" })).toBeInTheDocument();
+    });
+  });
+
+  describe("tags", () => {
+    it("lists the tags of the backend in the Tags view", async () => {
+      mocked.tagsList.mockResolvedValue([tag({ name: "billing" })]);
+      await renderApp({ view: "tags" });
+      expect(await screen.findByText("billing")).toBeInTheDocument();
+      expect(mainHeading("Tags")).toBeInTheDocument();
+    });
+
+    it("reloads the tags when tags changed", async () => {
+      mocked.tagsList.mockResolvedValue([]);
+      await renderApp({ view: "tags" });
+      mocked.tagsList.mockResolvedValue([tag({ name: "billing" })]);
+      act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "tags", day: null }));
+      expect(await screen.findByText("billing")).toBeInTheDocument();
     });
   });
 
@@ -235,10 +258,19 @@ describe("App", () => {
       expect(mainHeading("Reports")).toBeInTheDocument();
     });
 
-    it("steps to the previous day from the sidebar's date navigator", async () => {
-      await renderApp();
-      await userEvent.click(await screen.findByRole("button", { name: "Previous day" }));
-      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith(addDays(today(), -1)));
+    it("shows the Day view of today from Hours", async () => {
+      await renderApp({ view: "projects" });
+      await userEvent.click(sidebarEntry("Hours"));
+      expect(mainHeading("Day")).toBeInTheDocument();
+      expect(useStore.getState().day).toBe(today());
+    });
+
+    it("shows the Day view of a day clicked in the sidebar's calendar", async () => {
+      mocked.calendarMiniMonth.mockImplementation(async (shownDay, offset) => miniMonth({ monthStart: addMonths(shownDay, offset) }));
+      await renderApp({ view: "projects" });
+      await userEvent.click(await sidebar().findByRole("button", { name: today() }));
+      expect(mainHeading("Day")).toBeInTheDocument();
+      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith(today()));
     });
 
     it.each<[string, string, View]>([
@@ -247,7 +279,8 @@ describe("App", () => {
       ["{Meta>}3{/Meta}", "Month", "day"],
       ["{Meta>}4{/Meta}", "Reports", "day"],
       ["{Meta>}5{/Meta}", "Projects", "day"],
-      ["{Meta>}6{/Meta}", "Rules", "day"],
+      ["{Meta>}6{/Meta}", "Tags", "day"],
+      ["{Meta>}7{/Meta}", "Rules", "day"],
     ])("shows the view for %s", async (keys, heading, from) => {
       await renderApp({ view: from });
       await userEvent.keyboard(keys);
@@ -264,6 +297,15 @@ describe("App", () => {
       expect(screen.getByRole("complementary", { name: "Sidebar" })).toBeInTheDocument();
     });
 
+    it("shows the tracker status in the sidebar, and in the status bar only while the sidebar is hidden", async () => {
+      mocked.trackerStatus.mockResolvedValue(trackerStatus({ text: "Tracking · Mail" }));
+      await renderApp();
+      expect(await sidebar().findByText("Tracking · Mail")).toBeInTheDocument();
+      expect(within(screen.getByRole("contentinfo")).queryByText("Tracking · Mail")).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Toggle sidebar" }));
+      expect(await within(screen.getByRole("contentinfo")).findByText("Tracking · Mail")).toBeInTheDocument();
+    });
+
     it("hides when the status bar button is clicked", async () => {
       await renderApp();
       await userEvent.click(screen.getByRole("button", { name: "Toggle sidebar" }));
@@ -272,9 +314,7 @@ describe("App", () => {
   });
 
   describe("tracker", () => {
-    const sidebar = () => within(screen.getByRole("contentinfo"));
-
-    it("shows the status loaded on boot in the status bar", async () => {
+    it("shows the status loaded on boot in the sidebar", async () => {
       mocked.trackerStatus.mockResolvedValueOnce(trackerStatus({ text: "Tracking · Mail" }));
       await renderApp();
       expect(await sidebar().findByText("Tracking · Mail")).toBeInTheDocument();
@@ -325,14 +365,14 @@ describe("App", () => {
     const needsPermission = () => trackerStatus({ state: { kind: "needsPermission" }, permission: "denied", text: "Needs permission" });
     const dialogName = "Allow TimeTracker to read window titles";
 
-    it("reopens from the status bar's Allow… button after it was dismissed", async () => {
+    it("reopens from the sidebar's Allow… button after it was dismissed", async () => {
       await renderApp();
       act(() => mocked.onTrackerStatus.mock.calls[0][0](needsPermission()));
       await screen.findByRole("dialog", { name: dialogName });
       await userEvent.keyboard("{Escape}");
       expect(screen.queryByRole("dialog", { name: dialogName })).not.toBeInTheDocument();
 
-      await userEvent.click(within(screen.getByRole("contentinfo")).getByRole("button", { name: "Allow…" }));
+      await userEvent.click(sidebar().getByRole("button", { name: "Allow…" }));
       expect(await screen.findByRole("dialog", { name: dialogName })).toBeInTheDocument();
     });
 
@@ -367,9 +407,10 @@ describe("App", () => {
       expect(await screen.findByRole("heading", { name: "Appearance" })).toBeInTheDocument();
     });
 
-    it("has no Settings button in the window", async () => {
+    it("opens from the gear in the sidebar", async () => {
       await renderApp();
-      expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+      await userEvent.click(sidebar().getByRole("button", { name: "Settings" }));
+      expect(await screen.findByRole("heading", { name: "Appearance" })).toBeInTheDocument();
     });
 
     it("closes with Escape", async () => {

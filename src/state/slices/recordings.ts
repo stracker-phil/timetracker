@@ -22,8 +22,6 @@ export interface RecordingsSlice {
   setSelection: (selection: Selection | null) => void;
   /** Grows the selection to also cover `blockId`'s span. */
   extendSelection: (blockId: string) => void;
-  /** Adds `blockId` to the selected blocks, or takes it out; the selection covers the rest. */
-  toggleSelectionBlock: (blockId: string) => void;
   /** The recording keys act on. */
   focusedRecording: string | null;
   focusRecording: (id: string | null) => void;
@@ -135,16 +133,6 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
             blockIds: [...new Set([...current.blockIds, blockId])],
           },
         });
-      },
-
-      toggleSelectionBlock(blockId) {
-        const ids = get().selection?.blockIds ?? [];
-        const kept = ids.includes(blockId) ? ids.filter((id) => id !== blockId) : [...ids, blockId];
-        const spans = kept.flatMap((id) => blockSpan(get(), id) ?? []);
-        if (spans.length === 0) return set({ selection: null, selectionSnap: null });
-        const start = Math.min(...spans.map((s) => s.start));
-        const end = Math.max(...spans.map((s) => s.end));
-        set({ selection: { start, end, blockIds: kept } });
       },
 
       focusRecording(id) {

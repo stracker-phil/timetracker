@@ -18,6 +18,8 @@ const noUnlisten = () => Promise.resolve(() => {});
 /** The editor's spans as Rust answers: as given, with their sum. */
 const draftSpans = (spans: Span[]) => ({ spans, totalMs: spans.reduce((sum, s) => sum + s.end - s.start, 0) });
 
+const sorted = (spans: Span[]) => [...spans].sort((a, b) => a.start - b.start);
+
 const withIds = (recordingId: string, spans: Span[], from = 1): RecordingSpan[] => spans.map((s, i) => ({ id: `${recordingId}-s${from + i}`, ...s }));
 
 /** An `api` where every call resolves to a valid default; override per test with mockResolvedValue. */
@@ -59,6 +61,7 @@ export function createApiMock(): typeof realApi {
     weekView: vi.fn(async (day: string) => weekView({ weekStart: mondayOf(day) })),
     monthView: vi.fn(async (day: string) => monthView({ monthStart: `${day.slice(0, 7)}-01` })),
     calendarPeriod: vi.fn(async (_unit: PeriodUnit, day: string) => ({ from: day, to: day, holdsToday: false })),
+    calendarMiniMonth: vi.fn(async (shownDay: string) => ({ monthStart: `${shownDay.slice(0, 7)}-01`, monthName: "Oct", year: Number(shownDay.slice(0, 4)), monthSelected: false, weeks: [] })),
     calendarPicker: vi.fn(async (month: string) => ({ monthStart: `${month.slice(0, 7)}-01`, weeks: [] })),
     calendarJumps: vi.fn(async (): Promise<DateJump[]> => []),
     recordingMove: vi.fn(async (id: string) => recording({ id })),
@@ -85,6 +88,12 @@ export function createApiMock(): typeof realApi {
     recordingDraftAdd: vi.fn(async (spans: Span[]) => {
       const start = spans.length ? spans[spans.length - 1].end : 0;
       return draftSpans([...spans, { start, end: start + 30 * 60_000 }]);
+    }),
+    recordingDraftInclude: vi.fn(async (spans: Span[], span: Span) => draftSpans(sorted([...spans, span]))),
+    recordingDraftToggle: vi.fn(async (spans: Span[], block: Span, _others: Span[]) => {
+      const present = spans.some((s) => s.start === block.start && s.end === block.end);
+      const next = present ? spans.filter((s) => s.start !== block.start || s.end !== block.end) : sorted([...spans, block]);
+      return { ...draftSpans(next), included: !present };
     }),
     recordingProposal: vi.fn(async () => ({ projectId: null, activity: [] })),
     recordingDefaultSpan: vi.fn().mockResolvedValue({ start: 0, end: 1_800_000 }),

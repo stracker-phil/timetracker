@@ -267,6 +267,42 @@ mod tests {
     }
 
     #[test]
+    fn unknown_title_formats_fall_back_to_their_defaults_without_quarantining_the_file() {
+        let dir = temp_config_dir();
+        let raw = r#"{"calendarTitle": "tiny", "dayTitle": "medium", "uiFontSize": 16}"#;
+        write_settings(dir.path(), raw);
+
+        let loaded = SettingsStore::open(dir.path()).get();
+
+        assert_eq!(loaded, settings(|s| s.ui_font_size = 16));
+        assert_eq!(
+            (loaded.calendar_title, loaded.day_title),
+            (CalendarTitle::Short, DayTitle::Long)
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join(FILE_NAME)).unwrap(),
+            raw
+        );
+        assert_eq!(dir_entries(dir.path()), vec![FILE_NAME.to_string()]);
+    }
+
+    #[test]
+    fn known_title_formats_are_read_from_the_file() {
+        let dir = temp_config_dir();
+        write_settings(
+            dir.path(),
+            r#"{"calendarTitle": "full", "dayTitle": "short"}"#,
+        );
+
+        let loaded = Settings::peek(dir.path());
+
+        assert_eq!(
+            (loaded.calendar_title, loaded.day_title),
+            (CalendarTitle::Full, DayTitle::Short)
+        );
+    }
+
+    #[test]
     fn wrongly_typed_nested_objects_fall_back_to_their_default_while_siblings_survive() {
         let dir = temp_config_dir();
         write_settings(

@@ -9,6 +9,7 @@ import { PermissionDialog } from "./components/PermissionDialog";
 import { ProjectsPage } from "./components/projects/ProjectsPage";
 import { ReportsView } from "./components/reports/ReportsView";
 import { RulesView } from "./components/rules/RulesView";
+import { TagsPage } from "./components/tags/TagsPage";
 import { MonthView } from "./components/calendar/MonthView";
 import { WeekView } from "./components/calendar/WeekView";
 import { Sidebar } from "./components/Sidebar";
@@ -79,6 +80,8 @@ function ViewContent({ view }: { view: View }) {
       return <ProjectsPage />;
     case "reports":
       return <ReportsView />;
+    case "tags":
+      return <TagsPage />;
     case "rules":
       return <RulesView />;
     case "week":

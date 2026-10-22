@@ -60,6 +60,22 @@ function AppearancePage({ s, set }: SettingsPageProps) {
           <AccentSwatches withSystem value={s.accent} onChange={(accent) => set({ accent })} />
         </Row>
       </Group>
+      <Group title="Dates">
+        <Segmented
+          label="Calendar title"
+          description="The sidebar calendar's month: Short reads Nov 2026, Full November 2026."
+          options={["short", "full"] as const}
+          value={s.calendarTitle}
+          onChange={(calendarTitle) => set({ calendarTitle })}
+        />
+        <Segmented
+          label="Day title"
+          description="The Day view's title: Long reads Wednesday, November 11, 2026, Short Wed, Nov 11."
+          options={["long", "short"] as const}
+          value={s.dayTitle}
+          onChange={(dayTitle) => set({ dayTitle })}
+        />
+      </Group>
       <Group title="Text">
         <NumberField label="UI size" description="Sidebar, toolbar and labels." suffix="px" value={s.uiFontSize} min={TEXT_SIZES.ui.min} max={TEXT_SIZES.ui.max} onCommit={(uiFontSize) => set({ uiFontSize })} />
         <NumberField label="Data size" description="Times, durations and titles. ⌘= / ⌘- zoom both." suffix="px" value={s.dataFontSize} min={TEXT_SIZES.data.min} max={TEXT_SIZES.data.max} onCommit={(dataFontSize) => set({ dataFontSize })} />

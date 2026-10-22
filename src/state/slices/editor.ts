@@ -1,4 +1,5 @@
-import { api, type DraftSpans, type Recording, type Span } from "../../api";
+import { api, type DayView, type DraftSpans, type Recording, type Span } from "../../api";
+import { findBlock } from "../../lib/blockFocus";
 import { fail } from "../requests";
 import type { Slice } from "../store";
 
@@ -41,6 +42,8 @@ export interface EditorSlice {
   /** The recording the editor edits, once loaded. */
   editing: Recording | null;
   editorOverlap: EditorOverlap | null;
+  /** The activity blocks clicked into the open editor's spans, marked as selected on the timeline. */
+  draftBlockIds: string[];
   openEditor: (editor: Editor) => void;
   /** A new recording on Rust's default span: the half hour up to now, on another `day` at the same clock times. */
   openNewRecording: (day?: string) => Promise<void>;
@@ -55,11 +58,28 @@ export interface EditorSlice {
   /** Moves the last span's end so the spans add up to `totalMs` (Rust's call). */
   setDraftTotal: (totalMs: number) => void;
   /**
-   * The selection, snapped by Rust, as the editor's span: a new editor opens on it, an open new one moves
-   * to it; `add` adds it as another span of the open editor's recording.
+   * The selection, snapped by Rust: a new editor opens on it; an open editor takes it as another span, merged
+   * with the spans it touches or overlaps.
    */
-  recordSelection: (add?: boolean) => Promise<void>;
+  recordSelection: () => Promise<void>;
+  /**
+   * A click on an activity block: without an editor, a new one opens on the block's span; with one, the
+   * block's span joins its spans, or leaves them when they already cover it (Rust decides and snaps). Removing
+   * the last span closes the editor without saving.
+   */
+  toggleBlock: (blockId: string) => Promise<void>;
   answerOverlap: (replace: boolean) => void;
+}
+
+/** The running timer's spans are Rust's to end; its editor takes no spans from the timeline. */
+const runningEdited = (editing: Recording | null) => !!editing?.spans.some((s) => s.end === null);
+
+/** The spans of the blocks `ids` that the day shows. */
+function spansOfBlocks(view: DayView, ids: string[]): Span[] {
+  return ids.flatMap((id) => {
+    const block = findBlock(view, id)?.block;
+    return block ? [{ start: block.start, end: block.end }] : [];
+  });
 }
 
 const closedSpans = (recording: Recording): Span[] => recording.spans.flatMap((s) => (s.end === null ? [] : [{ start: s.start, end: s.end }]));
@@ -108,10 +128,11 @@ export const editorSlice: Slice<EditorSlice> = {
       draft: null,
       editing: null,
       editorOverlap: null,
+      draftBlockIds: [],
 
       openEditor(editor) {
         get().editorOverlap?.resolve(false);
-        set({ editor, draft: null, editing: null, editorOverlap: null });
+        set({ editor, draft: null, editing: null, editorOverlap: null, draftBlockIds: [] });
         const opened =
           editor.mode === "create"
             ? fill(editor, { projectId: editor.projectId ?? null, note: editor.note ?? "", tagId: editor.tagId ?? null }, [{ start: editor.start, end: editor.end }])
@@ -130,7 +151,7 @@ export const editorSlice: Slice<EditorSlice> = {
 
       closeEditor() {
         get().editorOverlap?.resolve(false);
-        set({ editor: null, draft: null, editing: null, editorOverlap: null, selection: null, selectionSnap: null });
+        set({ editor: null, draft: null, editing: null, editorOverlap: null, draftBlockIds: [], selection: null, selectionSnap: null });
       },
 
       patchDraft(patch) {
@@ -158,7 +179,7 @@ export const editorSlice: Slice<EditorSlice> = {
         void respan(null, () => api.recordingDraftTotal(spans, totalMs));
       },
 
-      async recordSelection(add = false) {
+      async recordSelection() {
         const selection = get().selection;
         if (!selection) return;
         let span: Span;
@@ -168,16 +189,39 @@ export const editorSlice: Slice<EditorSlice> = {
           fail(e, "Could not open the editor");
           return;
         }
-        const { editor, draft } = get();
-        if (add && editor && draft) {
-          const spans = [...draft.spans, span];
-          return respan(spans, () => api.recordingDraftSpans(spans));
-        }
-        if (editor?.mode === "create" && draft) {
-          set({ editor: { ...editor, start: span.start, end: span.end } });
-          return respan([span], () => api.recordingDraftSpans([span]));
+        const { editor, draft, editing } = get();
+        if (editor && draft) {
+          if (runningEdited(editing)) return;
+          const spans = draft.spans;
+          set({ selection: null, selectionSnap: null });
+          return respan(null, () => api.recordingDraftInclude(spans, span));
         }
         get().openEditor({ mode: "create", start: span.start, end: span.end });
+        set({ draftBlockIds: selection.blockIds });
+      },
+
+      async toggleBlock(blockId) {
+        const { editor, draft, editing, dayView, draftBlockIds, setSelection } = get();
+        const found = dayView && findBlock(dayView, blockId);
+        if (!dayView || !found) return;
+        const block = { start: found.block.start, end: found.block.end };
+        if (!editor) {
+          setSelection({ ...block, blockIds: [blockId] });
+          return get().recordSelection();
+        }
+        if (!draft || runningEdited(editing)) return;
+        const kept = draftBlockIds.filter((id) => id !== blockId);
+        const ticket = ++asked;
+        try {
+          const { included, ...answer } = await api.recordingDraftToggle(draft.spans, block, spansOfBlocks(dayView, kept));
+          const current = get().draft;
+          if (!current || ticket !== asked) return;
+          if (answer.spans.length === 0) return get().closeEditor();
+          // The blocks' spans now show as the draft's; a selection would stand for one of them only.
+          set({ draft: { ...current, ...answer }, draftBlockIds: included ? [...kept, blockId] : kept, selection: null, selectionSnap: null });
+        } catch (e) {
+          fail(e, "Could not change the times");
+        }
       },
 
       answerOverlap(replace) {

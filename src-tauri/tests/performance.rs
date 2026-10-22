@@ -5,11 +5,13 @@ use std::time::{Duration, Instant};
 
 use chrono::{Datelike, Days};
 use timetracker_lib::calendar::commands::{load_month, load_week};
+use timetracker_lib::calendar::mini_month::{Shown, load_mini_month};
+use timetracker_lib::calendar::period::PeriodUnit;
 use timetracker_lib::day::list::list;
 use timetracker_lib::day::{load, view_of};
 use timetracker_lib::db::time::{Day, now_ms};
 use timetracker_lib::reports::{self, Range, ReportFilter};
-use timetracker_lib::store::settings::Settings;
+use timetracker_lib::store::settings::{CalendarTitle, Settings};
 use timetracker_lib::test_support::seed::{ACTIVITIES_PER_DAY, seed_years};
 use timetracker_lib::test_support::temp_db;
 
@@ -72,6 +74,18 @@ async fn views_stay_fast_on_two_years_of_data() {
         ),
         ("week view", median(|| load_week(&db, day)).await, 100),
         ("month view", median(|| load_month(&db, day)).await, 150),
+        (
+            "sidebar calendar",
+            median(|| {
+                let shown = Shown::Period {
+                    unit: PeriodUnit::Day,
+                    day,
+                };
+                load_mini_month(Some(&db), day, 0, shown, CalendarTitle::Short, today, now)
+            })
+            .await,
+            20,
+        ),
         (
             "list view",
             median(|| async { list(&view_of(&db, day, &settings, now).await.unwrap()) }).await,

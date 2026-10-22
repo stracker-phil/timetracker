@@ -107,8 +107,12 @@ pub(crate) async fn save_settings(
 
 fn settings_saved(app: &AppHandle, previous: &Settings, saved: &Settings) {
     apply_settings(app, Some(previous), saved);
-    // The timeline settings shape every day's view, so they all reload.
-    if previous.timeline != saved.timeline || previous.apps != saved.apps {
+    // The timeline settings and the title formats shape every day's view and the calendar, so they reload.
+    if previous.timeline != saved.timeline
+        || previous.apps != saved.apps
+        || previous.day_title != saved.day_title
+        || previous.calendar_title != saved.calendar_title
+    {
         events::data_changed(app, DataKind::Settings, None);
     }
     if let Some(tracker) = app.try_state::<std::sync::Arc<Tracker>>() {

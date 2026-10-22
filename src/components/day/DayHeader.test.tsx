@@ -37,15 +37,19 @@ describe("DayHeader", () => {
   describe("date and totals", () => {
     const totals = { recordedMs: 3_600_000, trackedMs: 7_200_000, awayMs: 600_000 };
 
-    function renderFor(day: string) {
+    function renderFor(day: string, label?: string) {
       resetStore({ settings: settings(), day });
       installCommands();
-      render(<DayHeader day={day} totals={totals} />);
+      render(<DayHeader day={day} label={label} totals={totals} />);
     }
 
-    it("shows the date and the totals of a past day", () => {
-      renderFor(DAY);
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(formatDayLabel(DAY));
+    it.each(["Tuesday, March 10", "Tue, Mar 10"])("shows the title %s Rust gives for the day, as is", (label) => {
+      renderFor(DAY, label);
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(new RegExp(`^${label}$`));
+    });
+
+    it("shows the totals of a past day", () => {
+      renderFor(DAY, "Tuesday, March 10");
       expect(screen.getByLabelText("Totals")).toHaveTextContent("recorded 1:00 · tracked 2:00 · away 0:10");
     });
 

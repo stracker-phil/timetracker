@@ -31,8 +31,15 @@ describe("ShortcutsDialog", () => {
     expect(within(row(group, "Previous recording or suggestion")).getByText("[")).toBeInTheDocument();
   });
 
-  it("omits the date navigation group where the view has no period", () => {
-    render(<ShortcutsDialog scopes={["projects", "global"]} />);
+  it.each(["projects", "tags", "rules"])("omits the date navigation group in the %s view, which has no period", (view) => {
+    render(<ShortcutsDialog scopes={[view, "global"]} />);
     expect(screen.queryByRole("region", { name: "Day, Week, Month and Reports" })).not.toBeInTheDocument();
+  });
+
+  it("lists the view keys ⌘1 to ⌘7 among the global ones", () => {
+    render(<ShortcutsDialog scopes={["tags", "global"]} />);
+    const group = screen.getByRole("region", { name: "Everywhere" });
+    expect(within(row(group, "Show Tags")).getByText("⌘6")).toBeInTheDocument();
+    expect(within(row(group, "Show Rules")).getByText("⌘7")).toBeInTheDocument();
   });
 });

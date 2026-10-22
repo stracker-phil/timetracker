@@ -34,6 +34,10 @@ pub struct Settings {
     pub ui_font_size: u8,
     /// Data: times, durations, titles on the timeline.
     pub data_font_size: u8,
+    #[serde(deserialize_with = "lenient")]
+    pub calendar_title: CalendarTitle,
+    #[serde(deserialize_with = "lenient")]
+    pub day_title: DayTitle,
     /// An installed font family; `None` uses the system font (SF Pro).
     #[serde(deserialize_with = "lenient")]
     pub font_ui: Option<String>,
@@ -70,6 +74,8 @@ impl Default for Settings {
             accent: SYSTEM_ACCENT.into(),
             ui_font_size: 13,
             data_font_size: 12,
+            calendar_title: CalendarTitle::Short,
+            day_title: DayTitle::Long,
             font_ui: None,
             font_mono: None,
             log_level: LogLevel::Info,
@@ -713,6 +719,36 @@ mod tests {
     }
 
     #[test]
+    fn titles_default_to_a_short_calendar_month_and_a_long_day() {
+        let defaults = Settings::default();
+
+        assert_eq!(
+            (defaults.calendar_title, defaults.day_title),
+            (CalendarTitle::Short, DayTitle::Long)
+        );
+    }
+
+    #[test]
+    fn titles_round_trip_as_lowercase_json() {
+        for (calendar, day, calendar_json, day_json) in [
+            (CalendarTitle::Short, DayTitle::Long, "short", "long"),
+            (CalendarTitle::Full, DayTitle::Short, "full", "short"),
+        ] {
+            let original = settings(|s| {
+                s.calendar_title = calendar;
+                s.day_title = day;
+            });
+
+            let value = serde_json::to_value(&original).unwrap();
+
+            assert_eq!(value["calendarTitle"], json!(calendar_json));
+            assert_eq!(value["dayTitle"], json!(day_json));
+            let back: Settings = serde_json::from_value(value).unwrap();
+            assert_eq!(back, original, "{calendar_json}/{day_json}");
+        }
+    }
+
+    #[test]
     fn mcp_does_not_expose_activity_by_default() {
         assert!(!Settings::default().mcp.expose_activity);
         assert!(!McpSettings::default().expose_activity);
@@ -728,6 +764,8 @@ mod tests {
                 "accent": "system",
                 "uiFontSize": 13,
                 "dataFontSize": 12,
+                "calendarTitle": "short",
+                "dayTitle": "long",
                 "fontUi": null,
                 "fontMono": null,
                 "logLevel": "info",

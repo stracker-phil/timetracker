@@ -32,9 +32,9 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 ```
 App
 └─ .app grid
-   ├─ Sidebar        DateNavigator (the shown period, ‹ › Today), then Day, Week, Month, Reports, Projects, Rules
+   ├─ Sidebar        MiniCalendar, Hours, Reports, then Projects, Tags, Rules; SidebarStatus at the bottom
    ├─ main           the active view's page, its own Toolbar first (EmptyView for an unknown one)
-   └─ StatusBar      left: sidebar toggle, TrackerStatus, the selection; right: running timer, billable ratio, today's totals
+   └─ StatusBar      left: sidebar toggle, TrackerStatus (sidebar hidden only), the selection; right: running timer, billable ratio, today's totals
 Dialogs (settings, shortcuts, confirm) · PermissionDialog · Welcome · CommandPalette · Toasts
 ```
 
@@ -56,8 +56,8 @@ error's message, returning the `AppError`.
 | `data` | `dataVersion` (every day changed), `dayVersions` (per day), `changeCount` (every event, for views over many days), `dataChanged(event)` (called on every `data_changed` event); `selectDayVersion(day)` changes when that day's data may have changed |
 | `projects` | `projects` (`ProjectListItem[]`, archived included), `clients`, `tags` (`TagListItem[]`), `recent`, `projectsLoaded`; `loadProjects` (boot, and every `data_changed` of `projects` or `tags`); `saveProject(id, input)`, `archiveProject`, `saveClient`, `archiveClient`, `saveTag`, `deleteTag` reload after the write and reject on failure (toasted, unless the error has a `field` for the form). Helpers: `groupProjects(projects, clients, archived)`, `projectLabel` |
 | `tracker` | `tracker` (`TrackerStatus`, or `null` while the tracker is off), `setTracker`, `loadTracker`, `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then reloads the status), `permissionDialogHidden` |
-| `recordings` | `selection` (`{ start, end, blockIds, moving? }`, unsnapped; `moving` is the end a drag moves), `selectionSnap` (as Rust snaps it), `setSelection`, `extendSelection(blockId)`, `toggleSelectionBlock(blockId)` (⌘-click), `focusedRecording`/`focusRecording`, `hoveredRecording`/`hoverRecording` (the recording under the pointer in the timesheet or the time column), `undoStatus`/`loadUndoStatus`, `createRecording(input, suggestionId?)` (with a suggestion: `api.suggestionApproveEdited`), `updateRecording(id, patch)`, `updateSpan(id, spanId, span)`, `nudgeSpan(id, spanId, startSteps, endSteps)` (Rust applies the snap step), `deleteRecording(id)`, `moveRecording(id, day, spanId)`/`copyRecording(id, day, spanId)` (one span, else with `null` the whole recording), `undo`, `redo`. A write runs with `overlap: cancel`; on `overlap` it asks (inside the editor while one is open, else the overlap dialog) and runs again with `replace`. One write at a time; each ends with a toast offering Undo. A field error rejects for the editor, others are toasted |
-| `editor` | `editor` (`create { start, end, projectId?, note?, tagId?, warning?, suggestion? }` or `edit { id, at?, spanId? }`), `draft` (`{ projectId, spans, totalMs, note, tagId }`; null until Rust has answered for its spans and an edited recording has loaded through `recordingsList`), `editing` (that recording), `editorOverlap` (the recordings a save would overlap, with `resolve`), `openEditor`, `closeEditor` (also clears the selection), `patchDraft` (project, note, tag), `setDraftSpan(i, span)` and `removeDraftSpan(i)` (shown at once, then as `recordingDraftSpans` rolls them), `addDraftSpan` (`recordingDraftAdd`), `setDraftTotal(ms)` (`recordingDraftTotal`); only the latest ask's answer is kept. `recordSelection(add?)` (snaps the selection through `api.recordingSnap`, then opens a new editor on it, moves an open new one to it, or with `add` adds it as a span of the open editor's recording), `answerOverlap(replace)` |
+| `recordings` | `selection` (`{ start, end, blockIds, moving? }`, unsnapped; `moving` is the end a drag moves), `selectionSnap` (as Rust snaps it), `setSelection`, `extendSelection(blockId)` (⇧J, ⇧K), `focusedRecording`/`focusRecording`, `hoveredRecording`/`hoverRecording` (the recording under the pointer in the timesheet or the time column), `undoStatus`/`loadUndoStatus`, `createRecording(input, suggestionId?)` (with a suggestion: `api.suggestionApproveEdited`), `updateRecording(id, patch)`, `updateSpan(id, spanId, span)`, `nudgeSpan(id, spanId, startSteps, endSteps)` (Rust applies the snap step), `deleteRecording(id)`, `moveRecording(id, day, spanId)`/`copyRecording(id, day, spanId)` (one span, else with `null` the whole recording), `undo`, `redo`. A write runs with `overlap: cancel`; on `overlap` it asks (inside the editor while one is open, else the overlap dialog) and runs again with `replace`. One write at a time; each ends with a toast offering Undo. A field error rejects for the editor, others are toasted |
+| `editor` | `editor` (`create { start, end, projectId?, note?, tagId?, warning?, suggestion? }` or `edit { id, at?, spanId? }`), `draft` (`{ projectId, spans, totalMs, note, tagId }`; null until Rust has answered for its spans and an edited recording has loaded through `recordingsList`), `editing` (that recording), `editorOverlap` (the recordings a save would overlap, with `resolve`), `draftBlockIds` (the blocks clicked into the draft, marked selected on the timeline), `openEditor`, `closeEditor` (also clears the selection), `patchDraft` (project, note, tag), `setDraftSpan(i, span)` and `removeDraftSpan(i)` (shown at once, then as `recordingDraftSpans` rolls them), `addDraftSpan` (`recordingDraftAdd`), `setDraftTotal(ms)` (`recordingDraftTotal`); only the latest ask's answer is kept. `recordSelection()` (snaps the selection through `api.recordingSnap`, then opens a new editor on it, or adds it to the open editor's spans through `recordingDraftInclude`, which merges what touches), `toggleBlock(blockId)` (a click on a block: without an editor it opens one on the block's span; with one, `recordingDraftToggle` adds the block's span or takes it out, and taking out the last span closes the editor; not while the running timer's recording is edited), `answerOverlap(replace)` |
 | `appIcons` | `appIcons` (a PNG data URL per bundle id, `null` once known to have none), `requestAppIcon(bundleId)`: asks Rust once per id for the app's run; the asks of one task go out as one `api.appIcons` call, and a failure leaves the initials |
 | `viewState` | `uiState` (`UiState` from Rust), `setPaneSize`, `toggleSidebar`, `rememberDay`, `setTimelineZoom` (px per minute, `TIMELINE_ZOOM` 1–8, default 2.5), `finishOnboarding`, `showWelcome`; a debounced writer saves it, `flushUiState` writes at once |
 
@@ -162,7 +162,7 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 
 Shell components in `components/`: `Toolbar` (the unified toolbar every view renders first: `title`, an
 optional `detail` and the actions as children; a drag region), `Sidebar` (a drag strip
-under the window buttons, `DateNavigator`, then the entries of `views.ts`), `StatusBar`, `EmptyView`, `Modal`
+under the window buttons, `MiniCalendar`, Hours, the pages of `views.ts` from Reports on, `SidebarStatus`), `StatusBar`, `EmptyView`, `Modal`
 (`variant`: `sheet`, `panel`, `popover`, `bare`), `ContextMenu`, `Toasts`, `Field` (`InsetField`, `KeyCap`),
 `Splitter`, `ErrorBoundary`, `CommandPalette` (`palette/`), `ShortcutsDialog`, `Dialogs`, `AppIcon`, and
 `useAnchoredStyle` (a popover's fixed place under the element matching a selector, left- or right-aligned to it:
@@ -186,21 +186,28 @@ Design components ([ux.md](ux.md#components)):
 - `AccentSwatches`, `ShadeSwatches`, `AccentDot` and `shadeColor` (`Accent.tsx`); a shade's lightness is
   `shadeLightness` (`lib/accent.ts`).
 
-Dates are changed in one place, the sidebar:
+Dates are changed in one place, the sidebar's calendar (with P, N, O and Go to Date…):
 
-- `DateNavigator` (top of the sidebar): the shown period as a heading, ‹ › and a Today button. In Day, Week
-  and Month `useCalendarPeriod` asks Rust for the period (`api.calendarPeriod(unit, day)`: `from`, `to`,
-  `holdsToday`) and the page only formats it: Day `Wed, Oct 21` (`formatDayLabel`), Week `Oct 19 – 25`
-  (`formatRangeLabel`), Month `October 2026` (`formatMonthLabel`). Reports shows the preset's name or the
-  custom range. The Today button reads Today, This week or This month by the unit and is disabled while the
-  period holds today. The buttons call `step` and `goToday`, as P, N and O do. Projects and Rules render it
-  hidden (`date-nav--idle`), so the view list keeps its place.
-- `DatePickerPopover` (dialog `datePicker`, opened by the heading; anchored under `[data-date-heading]`): the
+- `views.ts` lists every view (`VIEWS`, in ⌘1 to ⌘7 order: Day, Week, Month, Reports, Projects, Tags,
+  Rules). The sidebar lists the pages from Reports on, Projects, Tags and Rules after a separator; the
+  calendar stands for Day, Week and Month. `Hours` calls `goToDay(today())`.
+- `shownPeriod.ts`: `useCalendarPeriod` (the Day, Week or Month view's period from Rust,
+  `api.calendarPeriod(unit, day)`), `useReportRange`, `useShown` (what the calendar highlights: a `Shown` of
+  `period` with the view's unit and day, `report` with the range, or `none`) and `useShownDay` (the day whose
+  month the calendar opens on).
+- `MiniCalendar` (top of the sidebar): `api.calendarMiniMonth(shownDay, offset, shown)`, keyed on those,
+  today and `changeCount`; Rust picks the month. Rust returns six Monday-first weeks (`MiniWeek { number, start, selected, days }`,
+  `MiniDay { day, dayOfMonth, inMonth, isToday, hasRecordings, selected }`), the title (`monthName`, `year`)
+  and `monthSelected` (the month name short or full by `settings.calendarTitle`); the page only draws them. A day calls `goToDay`, a week number `setView("week")` and
+  `showDate(start)`, the title `setView("month")` and `showDate(monthStart)`. ‹ › change a local month `offset`, which
+  starts over at 0 whenever the shown day changes. The title carries `data-date-heading`, so the date picker
+  opens under it; the cells are `tabIndex={-1}` (the keys are P, N, O, ⌘1 to ⌘3 and the picker).
+- `DatePickerPopover` (dialog `datePicker`, opened by Go to Date…; anchored under `[data-date-heading]`, the calendar's title, and centered while the sidebar is hidden): the
   month grid from Rust (`api.calendarPicker(month, selected)`: whole weeks from Monday, each day with
   `outside`, `isToday` and `selected`), today in accent text, the shown period (or a custom report range) on
   `--sel`. ‹ › and PageUp / PageDown turn the month, arrow keys move the focused day, ↵ or a click calls
   `showDate` and closes it.
-- `StatusBar`: the sidebar toggle, `TrackerStatus` and the selection on the left; the running timer,
+- `StatusBar`: the sidebar toggle, `TrackerStatus` (only while `uiState.sidebarHidden`) and the selection on the left; the running timer,
   `BillableRatio` (`api.billableRatio(range)` for the shown period: the report's range in Reports, the
   `useCalendarPeriod()` days in Day, Week and Month, today elsewhere; keyed on `changeCount` and the
   `useLiveReload` tick; a `role="meter"` hidden while `percent` is `null`) and
@@ -209,7 +216,10 @@ Dates are changed in one place, the sidebar:
 
 Tracker components:
 
-- `TrackerStatus` (status bar, left; the tracker state shows only there): a dot (accent while running, `--o3` while away or paused, `--style-red`
+- `SidebarStatus` (bottom of the sidebar): `TrackerDot`, the status text, and a play / pause button (Pause
+  pauses until resumed, a right-click offers the `PAUSES` durations; Play resumes; Allow… without
+  permission), then the Settings gear (`settings.toggle`).
+- `TrackerStatus` (status bar, left, while the sidebar is hidden): a dot (accent while running, `--o3` while away or paused, `--style-red`
   without permission), the status text Rust computed (the tray shows the same), and Pause (a `ContextMenu`:
   15 minutes, 1 hour, until tomorrow, until resumed) while running or away, Resume while paused, and
   "Allow…" (shows the permission dialog again) without permission. "Tracking off" while `tracker` is `null`.
@@ -233,7 +243,7 @@ Tracker components:
 | File | Renders |
 |---|---|
 | `DayPage` | `DayHeader`, then the `Timesheet` pane (width from `usePaneSize("timesheet")`, about a quarter of the window by default, 220–560 px, a `Splitter` beside it) and `Timeline` or `ListView`; the empty state ("Nothing tracked on this day" with the tracker's status text on today, or "Tracking needs permission" with Allow…) takes the timeline's place. Loads on a new day, on `selectDayVersion(day)`, and while today on `useLiveReload` (every 30 s, and on tracker statuses at most every 10 s, since the tracker sends no `data_changed`; paused while `document.visibilityState` is hidden, which WKWebView sets when the window hides, with one reload when it shows again) |
-| `DayHeader` | a slim bar: the date (`formatDayLabel`), totals `recorded 0:00 · tracked 6:12 · away 1:05` (`formatHm`) only for a day other than today (the status bar has today's), the Day mode switch, Lanes (timeline mode; dialog `lanes`, anchored under `[data-lanes-button]`), the gear that opens `TimelineSettingsPopover` (command `day.settings`, no default key), and the ⋯ menu: Delete activity for this day…, Delete activity in a range… |
+| `DayHeader` | a slim bar: the date (`label`, `DayView.label` from Rust in the `dayTitle` format; the last loaded one stays while the next day loads), totals `recorded 0:00 · tracked 6:12 · away 1:05` (`formatHm`) only for a day other than today (the status bar has today's), the Day mode switch, Lanes (timeline mode; dialog `lanes`, anchored under `[data-lanes-button]`), the gear that opens `TimelineSettingsPopover` (command `day.settings`, no default key), and the ⋯ menu: Delete activity for this day…, Delete activity in a range… |
 | `DeleteActivityDialog` | dialog `deleteActivity`, a `Modal` sheet: the day (its `dayView.bounds`) or two `datetime-local` fields prefilled with them, the sentence "Deletes 412 activity spans and 3 away spans. Spans that cross the range are deleted entirely. Recordings are not affected." (counts from `api.activityCount`), errors inline, and Delete (`api.activityDelete`). Then a toast `Deleted activity for Tue, Oct 21` whose Undo (`api.activityDeleteUndo`) lasts until `undoUntil`; the Day view reloads from `data_changed` |
 | `Timesheet` | the left pane: "Timesheet", the day's `totals.recordedMs` (`formatShortDuration`, `6h 05m`), + (`runCommand("recording.new")`), then a `TimesheetCard` per `view.timesheet` entry in Rust's order, or an empty line. The open `RecordingEditor` sits in place of the card it edits, or for a new recording before the first card that starts after its first span (`editorSlot`), in the same keyed list as the cards so it moves without mounting again |
 | `Timesheet` (suggestions) | `sheetEntries(view)` (`lib/sheet.ts`) puts each suggestion before its `nextCard`; the editor replaces the card or suggestion it edits; over the cards `ReviewLine`: "n suggestions · Approve all · Dismiss all" |
@@ -241,10 +251,10 @@ Tracker components:
 | `ZoomControl` | −, a range input (`TIMELINE_ZOOM`, step 0.5) and +: `stepTimelineZoom` and `setTimelineZoom` |
 | `LanesPopover` | dialog `lanes`: Summary (`summaryLane`) and Activity (`showAllActivity`) switches (the settings slice's `saveTimeline`), then a switch per `dayView.apps` entry for `ownLane` (`setAppSetting`) |
 | `TimelineSettingsPopover` | dialog `timelineSettings`, a `Modal` popover under the toolbar's gear: `TimelineControls` and "Hidden apps: n" from `dayView.hiddenApps`, each with Unhide |
-| `Timeline` | `timeline-frame`: the scroll box with `LaneHeader` (sticky), `TimeAxis`, the time column (`RecordingsColumn`), the lanes and the current-time line on today; `ZoomControl` floats over its bottom right. Opens a day scrolled to 30 min before its first activity. Hover (one `mouseover` listener reading `data-block-id`) shows `HoverCard` after 300 ms; right-click, the gear on a hovered block, or ⌃↵ opens the block menu. With `compact` it draws the day at 60% of the zoom and adds `timeline--compact` |
+| `Timeline` | `timeline-frame`: the scroll box with `LaneHeader` (sticky), `TimeAxis`, the time column (`RecordingsColumn`), the lanes and the current-time line on today; `ZoomControl` floats over its bottom right. Over the lanes, a `selection` band with no visible text per open editor's span (`drawnParts`, cut to the day) and one for the snapped selection while it is not one of them (labelled `Selection 09:00–10:30`); the blocks of `draftBlockIds` (with an editor open) or of the selection's `blockIds` are passed to each `Lane` as `selectedBlocks`. Opens a day scrolled to 30 min before its first activity. Hover (one `mouseover` listener reading `data-block-id`) shows `HoverCard` after 300 ms; right-click, the gear on a hovered block, or ⌃↵ opens the block menu. With `compact` it draws the day at 60% of the zoom and adds `timeline--compact` |
 | `blockMenu.ts` | the block menu's entries: for tracker blocks Group by app, Titles: Document name / App name and Own lane, checked by the effective value (an override equal to the timeline's setting is removed), Hide (a toast with Undo); then Copy title (not for private blocks), Copy URL |
 | `Lane` | its blocks, absolutely placed: `top`/`height` from the times and the zoom, `left`/`width` from `col`/`cols`; only blocks within the visible part ± one screen (`useVisibleRange`, which moves in half-screen steps). The summary lane draws `summary` blocks, the others `memory` blocks |
-| `ActivityBlock` | `look="summary"`: a `Block` with the `AppIcon` (16 px) and the label as title and `activeMs` (`formatShortDuration`) at the bottom right when tall; `look="memory"`: the icon over a bar of the block's real height, the label and `activeMs` beside it (two lines, one line when short, only the bar when tiny); a gear on hover; `private`, `dimmed` (covered) and `focused` classes |
+| `ActivityBlock` | `look="summary"`: a `Block` with the `AppIcon` (16 px) and the label as title and `activeMs` (`formatShortDuration`) at the bottom right when tall; `look="memory"`: the icon over a bar of the block's real height, the label and `activeMs` beside it (two lines, one line when short, only the bar when tiny); a gear on hover; `private`, `dimmed` (covered), `focused` and `selected` (its span is in the selection or the draft) classes |
 | `HoverCard` | `AppIcon` and app, title, URL (http(s) opens through `api.openUrl`) or path, time and duration, the source when external; beside the block, else below or above it |
 | `RecordingsColumn` | the time column: the day's `SuggestionBlock`s (the edited suggestion gives way to the draft) under its `RecordingBlock`s (`hovered` from `hoveredRecording`), while a span is selected a dashed outline where its recording would go, and the open editor's draft spans (cut to the day) as filled accent blocks with their times (`drawnParts`, for drawing only), in place of the edited recording's own blocks. A press on empty time is `useSelectionPress`'s |
 | `SuggestionBlock` | a rule's suggestion in the time column: hatched in the project's fill, outlined dashed, with the project, the rule and the duration; `focused` adds the accent ring; a click `editSuggestion` |
@@ -258,7 +268,7 @@ Tracker components:
 | `useEditorSave` | the editor's `save`, `remove` and field `errors` |
 | `TimeField` | `HH:MM` typed (each valid time counts at once) or ↑↓ by the snap step; the typed text shows while it belongs to the value, else the value |
 | `OverlapDialog` | the recordings in the way, "Replace overlapped part" or Cancel, for writes made while no editor is open |
-| `useSelectionPress` | the press on the lanes, the axis and the time column: a drag selects a span (auto-scrolling near the edges; `moving` is the end under the pointer) and opens the editor on release; a click on a block selects its span and opens the editor, ⇧-click extends the selection first, ⌘-click adds or removes the block and opens the editor when ⌘ is released (one listener per gathering, kept in a ref), a click on nothing clears the selection. With ⌥ while the editor is open, the span is added to its recording (`recordSelection(true)`) |
+| `useSelectionPress` | the press on the lanes, the axis and the time column: a drag selects a span (auto-scrolling near the edges; `moving` is the end under the pointer) and opens the editor on release; a click on a block toggles its span (`toggleBlock`), a click on nothing clears the selection. No modifier changes a click |
 | `useSnappedSpan` | a span on Rust's grid (`api.recordingSnap` with the span's own `moving` end, at most once per frame; the raw span stands in until the answer) |
 
 `lib/blockFocus.ts`: `stepBlock` (time order across lanes) and `stepLane` (the nearest block in the next
@@ -309,7 +319,7 @@ its minimum length.
 
 ### Rules screen
 
-`components/rules/`, the `rules` view (sidebar entry Rules, ⌘6). The `rules` slice holds `rules` (by
+`components/rules/`, the `rules` view (sidebar entry Rules, ⌘7). The `rules` slice holds `rules` (by
 position) and their writes; a `data_changed` of kind `rules` reloads them.
 
 - `RulesView` lists `RuleRow`s in order: a grip (a pointer drag by whole rows; on release `reorderRules`
@@ -369,7 +379,7 @@ lists saved reports under Reports: a click opens one, right-click renames (promp
 hours follow every recording): a `Toolbar` (Show archived, New client, New project), then an inset group per
 client by name (`ClientHead` above it: its color dot, the name, which edits the client, the number of projects, the labels
 This week and This month, and a `+` that creates a project for that client, except on archived clients;
-"No projects" when empty), client-less projects under "No client" last, then `TagsSection` as one more. A
+"No projects" when empty), client-less projects under "No client" last. A
 project row: color dot and name (click edits), `billable` (a `.secondary-label`) for a billable project, `last used 2 d
 ago`, then `weekMs` and `monthMs` as `h:mm` in two right-aligned columns (`--o3` at zero); archived rows
 (with Show archived) are dimmed with Restore. The row's context menu: Edit…, Archive or Restore, Copy id.
@@ -381,8 +391,12 @@ ago`, then `weekMs` and `monthMs` as `h:mm` in two right-aligned columns (`--o3`
   under their field.
 - `ClientSheet` (`dialog: client`): name, color (none pressed on a new client lets Rust pick); Archive
   (also archives its projects) or Restore.
-- `TagsSection`: one row per tag (name, the number of recordings, delete; a confirm first when
-  recordings carry it) and a New tag field (Enter).
+
+### Tags screen
+
+`components/tags/TagsPage.tsx`, the `tags` view (⌘6): a `Toolbar` (`Tags` and its description), one row per
+tag from the `projects` slice's `tags` (name, the number of recordings, delete; a confirm first when
+recordings carry it) and a New tag field (Enter, `saveTag`).
 
 ### Pickers
 
@@ -402,7 +416,7 @@ Enter picks, Esc closes the list without closing the sheet around it; the list c
 
 | Page | Holds |
 |---|---|
-| Appearance | Mode (`SegmentedControl`: Light, Dark; local state, starting on the macOS mode) that picks which setting the Scheme tiles below edit (`lightScheme` or `darkScheme`; three tiles, each a miniature window in its look through `schemeLook`, pressed for that mode's scheme), accent row (`AccentSwatches withSystem`: System first, then the nine hues), UI and data sizes, fonts |
+| Appearance | Mode (`SegmentedControl`: Light, Dark; local state, starting on the macOS mode) that picks which setting the Scheme tiles below edit (`lightScheme` or `darkScheme`; three tiles, each a miniature window in its look through `schemeLook`, pressed for that mode's scheme), accent row (`AccentSwatches withSystem`: System first, then the nine hues), Dates (`calendarTitle`: short, full; `dayTitle`: long, short; segmented controls), UI and data sizes, fonts |
 | Shortcuts | `ShortcutsPage`: every command with its binding; record, reset or unbind |
 | Tracking → Capture | `CapturePage` (`CapturePage.tsx`): address and document switches, excluded apps (an "Add app…" picker listing `appsSeen(30)`), excluded websites (a field; Enter adds) |
 | Tracking → Tracker | `TrackerPage`: away after (idle minutes), check every (poll seconds) |

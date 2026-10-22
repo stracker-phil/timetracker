@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, Billable, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, DraftSpans, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, Billable, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, MiniMonth, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -82,6 +82,10 @@ export const api = {
   recordingDraftSpans: (spans: Span[]) => invoke<DraftSpans>("recording_draft_spans", { spans }),
   /** The editor's spans with the last one's end moved so they add up to `totalMs`. */
   recordingDraftTotal: (spans: Span[], totalMs: number) => invoke<DraftSpans>("recording_draft_total", { spans, totalMs }),
+  /** The editor's spans with `span` (snapped) in them, merged with the spans it touches or overlaps. */
+  recordingDraftInclude: (spans: Span[], span: Span) => invoke<DraftSpans>("recording_draft_include", { spans, span }),
+  /** The editor's spans after a click on a block: without its span when they cover it, else with it. */
+  recordingDraftToggle: (spans: Span[], block: Span, others: Span[]) => invoke<DraftToggle>("recording_draft_toggle", { spans, block, others }),
   /** The editor's spans and one more after the last. */
   recordingDraftAdd: (spans: Span[]) => invoke<DraftSpans>("recording_draft_add", { spans }),
   /** The activity `spans` cover and the project to propose for them. */
@@ -111,6 +115,8 @@ export const api = {
   monthView: (day: string) => invoke<MonthView>("month_view", { day }),
   /** The day, week or month that holds `day`: its first and last day, and whether it holds today. */
   calendarPeriod: (unit: PeriodUnit, day: string) => invoke<Period>("calendar_period", { unit, day }),
+  /** The sidebar's six weeks of the month `offset` months from `shownDay`'s: week numbers, days with recordings, and what `shown` highlights. */
+  calendarMiniMonth: (shownDay: string, offset: number, shown: Shown) => invoke<MiniMonth>("calendar_mini_month", { shownDay, offset, shown }),
   /** The whole weeks covering `month`'s month, the days `selected` spans marked. */
   calendarPicker: (month: string, selected: [string, string] | null) => invoke<PickerMonth>("calendar_picker", { month, selected }),
   /** The palette's dates for `text`: a typed date, or the date words it starts; "" gives the Go to defaults. */

@@ -6,6 +6,8 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api } from "../api";
 import { installCommands } from "../commands";
+import { today } from "../lib/day";
+import { trackerStatus } from "../test/data";
 import { defaultFilter } from "../state/slices/reports";
 import { resetStore, useStore } from "../state/store";
 import { savedReport } from "../test/reportFixtures";
@@ -38,30 +40,81 @@ const savedReportCommand = (name: RegExp) => screen.queryByRole("option", { name
 const RENAME = /Rename saved report…/;
 const DELETE = /Delete saved report…/;
 
-describe("Sidebar date navigator", () => {
+describe("Sidebar rows", () => {
   beforeEach(() => vi.clearAllMocks());
 
   const views = () => within(screen.getByRole("navigation", { name: "Views" })).getAllByRole("button");
+  const hours = () => within(screen.getByRole("navigation", { name: "Views" })).getByRole("button", { name: /^Hours/ });
 
-  it("shows the date next to the list of views", async () => {
-    renderSidebar({ view: "day", savedReports: [] });
-    expect(within(await screen.findByRole("group", { name: "Date" })).getByRole("button", { name: "Previous day" })).toBeInTheDocument();
-    ["Day", "Week", "Month", "Reports", "Projects", "Rules"].forEach((name, i) => expect(views()[i]).toHaveTextContent(new RegExp(`^${name}`)));
-    expect(views()).toHaveLength(6);
+  it("shows the calendar above the pages, and the tracker status below them", async () => {
+    renderSidebar({ savedReports: [], tracker: trackerStatus({ text: "Tracking · Mail" }) });
+    const calendar = await screen.findByRole("group", { name: "Calendar" });
+    const nav = screen.getByRole("navigation", { name: "Views" });
+    const status = screen.getByRole("status");
+    expect(calendar.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(nav.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(status).toHaveTextContent("Tracking · Mail");
   });
 
-  it.each(["projects", "rules"] as const)("keeps the views and shows no date in the %s view", (view) => {
-    renderSidebar({ view });
+  it("lists Hours, Reports, Projects, Tags and Rules in this order", () => {
+    renderSidebar({ savedReports: [] });
+    ["Hours", "Reports", "Projects", "Tags", "Rules"].forEach((name, i) => expect(views()[i]).toHaveTextContent(new RegExp(`^${name}`)));
+    expect(views()).toHaveLength(5);
+  });
+
+  it("separates Projects, Tags and Rules from Hours and Reports", () => {
+    renderSidebar({ savedReports: [] });
+    const separator = within(screen.getByRole("navigation", { name: "Views" })).getByRole("separator");
+    expect(screen.getByRole("button", { name: /^Reports/ }).compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(separator.compareDocumentPosition(screen.getByRole("button", { name: /^Projects/ })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("has no rows for Day, Week and Month, which the calendar shows", () => {
+    renderSidebar({ savedReports: [] });
+    for (const name of ["Day", "Week", "Month"]) expect(screen.queryByRole("button", { name: new RegExp(`^${name}`) })).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Date" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Previous/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Day/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Projects/ })).toBeInTheDocument();
   });
 
-  it("steps the shown day with the date buttons", async () => {
-    renderSidebar({ view: "day", day: "2026-03-10" });
-    await userEvent.click(await screen.findByRole("button", { name: "Next day" }));
-    expect(useStore.getState().day).toBe("2026-03-11");
+  it("shows the key of a page next to it", () => {
+    renderSidebar({ savedReports: [] });
+    expect(screen.getByRole("button", { name: /^Tags/ })).toHaveTextContent("⌘6");
+    expect(screen.getByRole("button", { name: /^Rules/ })).toHaveTextContent("⌘7");
+  });
+
+  it.each([
+    ["Reports", "reports"],
+    ["Projects", "projects"],
+    ["Tags", "tags"],
+    ["Rules", "rules"],
+  ])("shows the %s view when its row is clicked", async (name, view) => {
+    renderSidebar({ view: "day", savedReports: [] });
+    await userEvent.click(screen.getByRole("button", { name: new RegExp(`^${name}`) }));
+    expect(useStore.getState().view).toBe(view);
+    expect(screen.getByRole("button", { name: new RegExp(`^${name}`) })).toHaveAttribute("aria-current", "page");
+  });
+
+  describe("Hours", () => {
+    it("is selected while the Day view shows today", () => {
+      renderSidebar({ view: "day", day: today(), savedReports: [] });
+      expect(hours()).toHaveAttribute("aria-current", "page");
+    });
+
+    it.each([
+      ["another day", { view: "day" as const, day: "2026-03-10" }],
+      ["the Week view", { view: "week" as const, day: today() }],
+      ["another view", { view: "projects" as const, day: today() }],
+    ])("is not selected in %s", (_, patch) => {
+      renderSidebar({ ...patch, savedReports: [] });
+      expect(hours()).not.toHaveAttribute("aria-current");
+    });
+
+    it("shows today in the Day view", async () => {
+      renderSidebar({ view: "reports", day: "2026-03-10", savedReports: [] });
+      await userEvent.click(hours());
+      expect(useStore.getState().view).toBe("day");
+      expect(useStore.getState().day).toBe(today());
+      expect(hours()).toHaveAttribute("aria-current", "page");
+    });
   });
 });
 

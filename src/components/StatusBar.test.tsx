@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api } from "../api";
+import { EMPTY_UI_STATE } from "../api/types";
 import { today } from "../lib/day";
 import { resetStore, useStore } from "../state/store";
 import { defaultFilter } from "../state/slices/reports";
@@ -120,7 +121,7 @@ describe("StatusBar", () => {
       expect(mocked.billableRatio).toHaveBeenLastCalledWith({ kind: "lastWeek" });
     });
 
-    it.each(["projects", "rules"] as const)("asks for today in the %s view", async (view) => {
+    it.each(["projects", "tags", "rules"] as const)("asks for today in the %s view", async (view) => {
       mocked.billableRatio.mockResolvedValue(eightHours);
       resetStore({ view });
       render(<StatusBar />);
@@ -130,8 +131,17 @@ describe("StatusBar", () => {
   });
 
   describe("tracker status", () => {
-    it("shows the status text with a Pause button while tracking", () => {
+    const hidden = { uiState: { ...EMPTY_UI_STATE, sidebarHidden: true } };
+
+    it("is left to the sidebar while the sidebar shows", () => {
       resetStore({ tracker: trackerStatus({ text: "Tracking · Mail" }) });
+      render(<StatusBar />);
+      expect(screen.queryByText("Tracking · Mail")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
+    });
+
+    it("shows the status text with a Pause button while the sidebar is hidden", () => {
+      resetStore({ ...hidden, tracker: trackerStatus({ text: "Tracking · Mail" }) });
       render(<StatusBar />);
       expect(screen.getByText("Tracking · Mail")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
@@ -139,7 +149,7 @@ describe("StatusBar", () => {
 
     it("offers Resume while paused and resumes tracking", async () => {
       mocked.trackerResume.mockResolvedValueOnce(trackerStatus({ text: "Tracking · Mail" }));
-      resetStore({ tracker: trackerStatus({ state: { kind: "paused", until: null }, text: "Paused until resumed" }) });
+      resetStore({ ...hidden, tracker: trackerStatus({ state: { kind: "paused", until: null }, text: "Paused until resumed" }) });
       render(<StatusBar />);
       await userEvent.click(screen.getByRole("button", { name: "Resume" }));
       expect(await screen.findByText("Tracking · Mail")).toBeInTheDocument();

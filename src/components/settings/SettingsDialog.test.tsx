@@ -138,6 +138,40 @@ describe("SettingsDialog", () => {
       expect(screen.getByRole("button", { name: "Accent teal" })).toHaveAttribute("aria-pressed", "false");
     });
 
+    describe("Dates", () => {
+      const control = (name: string) => within(screen.getByRole("group", { name }));
+
+      it.each([
+        ["Calendar title", ["Short", "Full"]],
+        ["Day title", ["Long", "Short"]],
+      ])("offers %s as %j", (name, options) => {
+        renderDialog();
+        expect(control(name).getAllByRole("button").map((b) => b.textContent)).toEqual(options);
+      });
+
+      it("presses the saved choices", () => {
+        renderDialog({ settings: settings({ calendarTitle: "full", dayTitle: "short" }) });
+        expect(control("Calendar title").getByRole("button", { name: "Full" })).toHaveAttribute("aria-pressed", "true");
+        expect(control("Calendar title").getByRole("button", { name: "Short" })).toHaveAttribute("aria-pressed", "false");
+        expect(control("Day title").getByRole("button", { name: "Short" })).toHaveAttribute("aria-pressed", "true");
+        expect(control("Day title").getByRole("button", { name: "Long" })).toHaveAttribute("aria-pressed", "false");
+      });
+
+      it("saves calendarTitle when the Calendar title is changed", async () => {
+        renderDialog();
+        await userEvent.click(control("Calendar title").getByRole("button", { name: "Full" }));
+        expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ calendarTitle: "full", dayTitle: "long" }));
+        await vi.waitFor(() => expect(control("Calendar title").getByRole("button", { name: "Full" })).toHaveAttribute("aria-pressed", "true"));
+      });
+
+      it("saves dayTitle when the Day title is changed", async () => {
+        renderDialog();
+        await userEvent.click(control("Day title").getByRole("button", { name: "Short" }));
+        expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ dayTitle: "short", calendarTitle: "short" }));
+        await vi.waitFor(() => expect(control("Day title").getByRole("button", { name: "Short" })).toHaveAttribute("aria-pressed", "true"));
+      });
+    });
+
     it("saves a typed text size on blur, not per keystroke", async () => {
       renderDialog();
       const size = screen.getByLabelText("UI size");

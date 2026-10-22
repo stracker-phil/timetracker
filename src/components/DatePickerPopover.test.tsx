@@ -1,16 +1,16 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api, type PeriodUnit, type PickerMonth, type Range } from "../api";
-import { installCommands } from "../commands";
+import { installCommands, runCommand } from "../commands";
 import { addDays, addMonths } from "../lib/day";
 import { defaultFilter } from "../state/slices/reports";
-import { resetStore, type View } from "../state/store";
+import { resetStore, useStore, type View } from "../state/store";
 import { mondayOf } from "../test/calendarFixtures";
-import { DateNavigator } from "./DateNavigator";
+import { MiniCalendar } from "./MiniCalendar";
 import { Dialogs } from "./Dialogs";
 
 const mocked = vi.mocked(api, true);
@@ -43,17 +43,20 @@ async function openPicker(view: View, day = TODAY, range?: Range) {
   installCommands();
   render(
     <>
-      <DateNavigator />
+      <MiniCalendar />
       <Dialogs />
     </>,
   );
-  await userEvent.click(await screen.findByTitle("Pick a date"));
+  await screen.findByRole("button", { name: /\d{4}$/ });
+  await act(async () => {
+    runCommand("nav.goToDate");
+  });
   const picker = within(await screen.findByRole("dialog", { name: "Pick a date" }));
   await picker.findAllByRole("gridcell");
   return picker;
 }
 
-const heading = () => screen.getByTitle("Pick a date").textContent;
+const shown = () => ({ view: useStore.getState().view, day: useStore.getState().day });
 
 describe("DatePickerPopover", () => {
   beforeEach(() => {
@@ -118,20 +121,20 @@ describe("DatePickerPopover", () => {
     it("shows it in the Day view and closes", async () => {
       const picker = await openPicker("day");
       await userEvent.click(picker.getByRole("gridcell", { name: "2026-10-14" }));
-      await vi.waitFor(() => expect(heading()).toBe("Wed, Oct 14"));
+      expect(shown()).toEqual({ view: "day", day: "2026-10-14" });
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
     it("shows its week in the Week view", async () => {
       const picker = await openPicker("week");
       await userEvent.click(picker.getByRole("gridcell", { name: "2026-10-14" }));
-      await vi.waitFor(() => expect(heading()).toBe("Oct 12 – 18"));
+      expect(shown()).toEqual({ view: "week", day: "2026-10-14" });
     });
 
     it("shows its month in the Month view, also for a day of a neighboring month", async () => {
       const picker = await openPicker("month");
       await userEvent.click(picker.getByRole("gridcell", { name: "2026-11-01" }));
-      await vi.waitFor(() => expect(heading()).toBe("November 2026"));
+      expect(shown()).toEqual({ view: "month", day: "2026-11-01" });
     });
 
     it("asks the backend for the report period that holds it", async () => {
@@ -155,7 +158,7 @@ describe("DatePickerPopover", () => {
       await userEvent.click(picker.getByRole("button", { name: "Next month" }));
       await userEvent.click(picker.getByRole("button", { name: "Next month" }));
       expect(picker.getByRole("grid", { name: "November 2026" })).toBeInTheDocument();
-      expect(heading()).toBe("Wed, Oct 21");
+      expect(shown().day).toBe(TODAY);
     });
 
     it("asks the backend for the grid of the month it was turned to", async () => {
@@ -168,7 +171,7 @@ describe("DatePickerPopover", () => {
       const picker = await openPicker("day");
       await userEvent.click(picker.getByRole("button", { name: "Previous month" }));
       await userEvent.click(await picker.findByRole("gridcell", { name: "2026-09-09" }));
-      await vi.waitFor(() => expect(heading()).toBe("Wed, Sep 9"));
+      expect(shown().day).toBe("2026-09-09");
     });
   });
 
@@ -177,7 +180,7 @@ describe("DatePickerPopover", () => {
       const picker = await openPicker("day");
       expect(picker.getByRole("gridcell", { name: TODAY })).toHaveFocus();
       await userEvent.keyboard("{ArrowDown}{ArrowLeft}{Enter}");
-      await vi.waitFor(() => expect(heading()).toBe("Tue, Oct 27"));
+      expect(shown().day).toBe("2026-10-27");
     });
 
     it("turns the month when an arrow key leaves it, and with PageDown", async () => {
@@ -192,7 +195,7 @@ describe("DatePickerPopover", () => {
       await openPicker("day");
       await userEvent.keyboard("{Escape}");
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(heading()).toBe("Wed, Oct 21");
+      expect(shown().day).toBe(TODAY);
     });
   });
 });

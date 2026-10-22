@@ -61,7 +61,8 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     check("view.month", "Month", "Mod+3"),
     check("view.reports", "Reports", "Mod+4"),
     check("view.projects", "Projects", "Mod+5"),
-    check("view.rules", "Rules", "Mod+6"),
+    check("view.tags", "Tags", "Mod+6"),
+    check("view.rules", "Rules", "Mod+7"),
     check("day.toggleList", "Show as List", "Mod+Shift+L"),
     item("sidebar.toggle", "Toggle Sidebar", "Mod+Ctrl+S"),
     item("zoom.in", "Zoom In", "Mod+="),
@@ -182,6 +183,7 @@ mod tests {
         "view.month",
         "view.reports",
         "view.projects",
+        "view.tags",
         "view.rules",
         "day.toggleList",
         "sidebar.toggle",
@@ -349,6 +351,35 @@ mod tests {
     }
 
     #[test]
+    fn the_view_items_are_bound_to_mod_digits_in_order() {
+        let bindings: Vec<(&str, &str)> = [
+            "view.day",
+            "view.week",
+            "view.month",
+            "view.reports",
+            "view.projects",
+            "view.tags",
+            "view.rules",
+        ]
+        .iter()
+        .map(|id| (*id, menu_item(id).expect(id).default_binding))
+        .collect();
+
+        assert_eq!(
+            bindings,
+            [
+                ("view.day", "Mod+1"),
+                ("view.week", "Mod+2"),
+                ("view.month", "Mod+3"),
+                ("view.reports", "Mod+4"),
+                ("view.projects", "Mod+5"),
+                ("view.tags", "Mod+6"),
+                ("view.rules", "Mod+7"),
+            ]
+        );
+    }
+
+    #[test]
     fn copying_the_report_notes_is_bound_to_mod_alt_c() {
         assert_eq!(default_binding("reports.copyNotes"), Some("Mod+Alt+C"));
     }
@@ -367,6 +398,7 @@ mod tests {
             "view.month",
             "view.reports",
             "view.projects",
+            "view.tags",
             "view.rules",
             "day.toggleList",
             "app.launchAtLogin",

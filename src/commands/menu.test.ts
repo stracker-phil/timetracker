@@ -124,7 +124,7 @@ describe("menuState", () => {
   });
 
   describe("items of one view", () => {
-    const ALL: View[] = ["day", "week", "month", "reports", "projects", "rules"];
+    const ALL: View[] = ["day", "week", "month", "reports", "projects", "tags", "rules"];
     const DATED: View[] = ["day", "week", "month", "reports"];
 
     it.each<[string, View[]]>([

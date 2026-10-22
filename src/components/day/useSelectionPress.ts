@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { useStore } from "../../state/store";
 import { pointerDrag } from "./pointerDrag";
 
@@ -13,15 +13,6 @@ interface Options {
   scrollRef: RefObject<HTMLElement | null>;
 }
 
-interface Modifiers {
-  /** ⇧: grow the selection over the block. */
-  extend: boolean;
-  /** ⌘: add or remove the block; the editor opens once ⌘ is released. */
-  toggle: boolean;
-  /** ⌥: a span for the open editor's recording. */
-  add: boolean;
-}
-
 const blockIdAt = (target: EventTarget) => (target instanceof Element ? (target.closest<HTMLElement>("[data-block-id]")?.dataset.blockId ?? null) : null);
 
 function autoScroll(box: HTMLElement | null, clientY: number) {
@@ -33,42 +24,16 @@ function autoScroll(box: HTMLElement | null, clientY: number) {
 
 /**
  * The press handler of the lanes, the axis and the time column: a drag selects a span and opens the editor on
- * release; a click on a block selects its span and opens the editor (⇧ extends first, ⌘ gathers blocks and opens it
- * when ⌘ is released); a click on nothing clears the selection.
+ * release (an open editor takes it as another span); a click on a block toggles its span in the editor's spans
+ * (the first opens the editor); a click on nothing clears the selection.
  */
 export function useSelectionPress({ origin, pxPerMinute, scrollRef }: Options) {
-  // Set while ⌘-clicks gather blocks, so one release of ⌘ opens the editor once.
-  const waitingForMeta = useRef(false);
-
-  function recordOnMetaUp() {
-    if (waitingForMeta.current) return;
-    waitingForMeta.current = true;
-    const up = (e: KeyboardEvent) => {
-      if (e.key !== "Meta") return;
-      window.removeEventListener("keyup", up);
-      waitingForMeta.current = false;
-      void useStore.getState().recordSelection();
-    };
-    window.addEventListener("keyup", up);
-  }
-
-  function selectClicked(blockId: string | null, { extend, toggle, add }: Modifiers) {
+  function selectClicked(blockId: string | null) {
     const s = useStore.getState();
     s.focusRecording(null);
-    if (blockId === null) {
-      s.setSelection(null);
-      s.focusBlock(null);
-      return;
-    }
     s.focusBlock(blockId);
-    if (toggle) {
-      s.toggleSelectionBlock(blockId);
-      recordOnMetaUp();
-      return;
-    }
-    if (!extend) s.setSelection(null);
-    s.extendSelection(blockId);
-    void s.recordSelection(add);
+    if (blockId === null) s.setSelection(null);
+    else void s.toggleBlock(blockId);
   }
 
   return (e: ReactPointerEvent<HTMLElement>) => {
@@ -77,14 +42,13 @@ export function useSelectionPress({ origin, pxPerMinute, scrollRef }: Options) {
     const msAt = (clientY: number) => origin + ((clientY - el.getBoundingClientRect().top) / pxPerMinute) * 60_000;
     const anchor = msAt(e.clientY);
     const blockId = blockIdAt(e.target);
-    const modifiers = { extend: e.shiftKey, toggle: e.metaKey, add: e.altKey && useStore.getState().editor !== null };
     pointerDrag(e, {
       move: (_dy, ev) => {
         autoScroll(scrollRef.current, ev.clientY);
         const at = msAt(ev.clientY);
         useStore.getState().setSelection({ start: Math.min(anchor, at), end: Math.max(anchor, at), blockIds: [], moving: at < anchor ? "start" : "end" });
       },
-      end: (_dy, dragged) => (dragged ? void useStore.getState().recordSelection(modifiers.add) : selectClicked(blockId, modifiers)),
+      end: (_dy, dragged) => (dragged ? void useStore.getState().recordSelection() : selectClicked(blockId)),
     });
   };
 }

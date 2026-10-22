@@ -3,6 +3,7 @@ import type { RecordingBlock as Block, Span, Suggestion } from "../../api";
 import { formatClock } from "../../lib/format";
 import type { Draft, Editor } from "../../state/slices/editor";
 import { useStore } from "../../state/store";
+import { drawnParts } from "./drawnParts";
 import { RecordingBlock } from "./RecordingBlock";
 import { SuggestionBlock } from "./SuggestionBlock";
 
@@ -18,11 +19,6 @@ interface Props {
   selection: Span | null;
   /** A press on empty time starts a selection. */
   onPress: (e: PointerEvent<HTMLDivElement>) => void;
-}
-
-/** The parts of `spans` inside the shown day, for drawing only (nothing is saved from them). */
-function drawnParts(spans: Span[], [first, last]: [number, number]): Span[] {
-  return spans.filter((s) => s.end > first && s.start < last).map((s) => ({ start: Math.max(s.start, first), end: Math.min(s.end, last) }));
 }
 
 /** The recording or suggestion the open editor edits, whose own blocks give way to its draft spans. */

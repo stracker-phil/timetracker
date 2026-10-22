@@ -145,6 +145,11 @@ start: number, end: number,
  */
 spanIds: Array<string>, running: boolean, };
 
+/**
+ * The sidebar calendar's month name format.
+ */
+export type CalendarTitle = "short" | "full";
+
 export type CaptureSettings = { 
 /**
  * Bundle ids the tracker never records.
@@ -257,6 +262,11 @@ entries: Array<CalendarEntry>, totalMs: number, trackedMs: number, };
  */
 export type DayMode = "timeline" | "list";
 
+/**
+ * The Day view's title format.
+ */
+export type DayTitle = "long" | "short";
+
 export type DayTotals = { 
 /**
  * The day's part of its recordings' spans.
@@ -268,7 +278,11 @@ recordedMs: number,
  */
 trackedMs: number, awayMs: number, };
 
-export type DayView = { day: Day, bounds: [number, number], 
+export type DayView = { day: Day, 
+/**
+ * The toolbar's title, by the day title setting (`titles::day_title`).
+ */
+label: string, bounds: [number, number], 
 /**
  * The summary, activity, app and source lanes, each when shown.
  */
@@ -316,6 +330,15 @@ export type DraftSpans = {
  * In the order given, each ending after its start.
  */
 spans: Array<Span>, totalMs: number, };
+
+/**
+ * The draft after a click on an activity block: whether the block's span joined it or left it.
+ */
+export type DraftToggle = { 
+/**
+ * By start, none touching or overlapping another.
+ */
+spans: Array<Span>, totalMs: number, included: boolean, };
 
 export type ErrorKind = "db" | "io" | "invalid_input" | "not_found" | "overlap" | "permission_required" | "tracker_paused" | "session_not_found" | "cancelled";
 
@@ -402,6 +425,36 @@ exposeActivity: boolean, };
  * What the page reports: the items whose commands can run now and the checked ones.
  */
 export type MenuState = { enabled: Array<string>, checked: Array<string>, };
+
+export type MiniDay = { day: Day, dayOfMonth: number, inMonth: boolean, isToday: boolean, hasRecordings: boolean, 
+/**
+ * This day is the highlighted range.
+ */
+selected: boolean, };
+
+export type MiniMonth = { monthStart: Day, 
+/**
+ * By the calendar title setting (`titles::month_name`).
+ */
+monthName: string, year: number, 
+/**
+ * This month is the highlighted range.
+ */
+monthSelected: boolean, weeks: Array<MiniWeek>, };
+
+export type MiniWeek = { 
+/**
+ * The ISO week number.
+ */
+number: number, 
+/**
+ * Its Monday.
+ */
+start: Day, 
+/**
+ * This week is the highlighted range.
+ */
+selected: boolean, days: Array<MiniDay>, };
 
 export type MonthDay = { day: Day, weekday: string, dayOfMonth: number, inMonth: boolean, isToday: boolean, isWeekend: boolean, recordedMs: number, 
 /**
@@ -749,7 +802,7 @@ uiFontSize: number,
 /**
  * Data: times, durations, titles on the timeline.
  */
-dataFontSize: number, 
+dataFontSize: number, calendarTitle: CalendarTitle, dayTitle: DayTitle, 
 /**
  * An installed font family; `None` uses the system font (SF Pro).
  */
@@ -762,6 +815,11 @@ fontMono: string | null, logLevel: LogLevel, launchAtLogin: boolean,
  * The data folder when moved away from the config dir.
  */
 dataDir: string | null, tracker: TrackerSettings, capture: CaptureSettings, timeline: TimelineSettings, apps: { [key in string]: AppOverride }, reports: ReportSettings, timerShortcut: string, mcp: McpSettings, };
+
+/**
+ * What the main view shows, which the calendar highlights.
+ */
+export type Shown = { "kind": "period", unit: PeriodUnit, day: Day, } | { "kind": "report", range: Range, } | { "kind": "none" };
 
 /**
  * The end of a span a drag moves; the other end keeps its place.

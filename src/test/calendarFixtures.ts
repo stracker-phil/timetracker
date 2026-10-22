@@ -1,5 +1,5 @@
 // Must not import the store or "../api" at runtime: apiMock.ts imports this file while the api module is mocked.
-import type { CalendarEntry, DayColumn, MonthDay, MonthView, WeekView } from "../api/types";
+import type { CalendarEntry, DayColumn, MiniDay, MiniMonth, MiniWeek, MonthDay, MonthView, WeekView } from "../api/types";
 import { at, DAY } from "./dayFixtures";
 
 /** A 45-minute recording of "Website" at 09:00 on `DAY`, as the Week and Month list it; `patch` overrides fields. */
@@ -40,6 +40,36 @@ const shift = (day: string, by: number): string => {
 /** The Monday of the week containing `day`. */
 export function mondayOf(day: string): string {
   return shift(day, -((parse(day).getDay() + 6) % 7));
+}
+
+const isoWeek = (monday: string): number => {
+  const thursday = parse(shift(monday, 3));
+  const jan1 = new Date(thursday.getFullYear(), 0, 1);
+  return Math.floor(Math.round((thursday.getTime() - jan1.getTime()) / 86_400_000) / 7) + 1;
+};
+
+/**
+ * The sidebar calendar for the month of `monthStart` (default the month of `DAY`), Monday first. `selected` is the
+ * highlighted day or `[from, to]` range; `today` and `recorded` mark days. The title is highlighted by `monthSelected`.
+ */
+export function miniMonth(patch: Partial<MiniMonth> & { selected?: string | [string, string]; today?: string; recorded?: string[] } = {}): MiniMonth {
+  const { selected, today, recorded = [], ...rest } = patch;
+  const monthStart = patch.monthStart ?? `${DAY.slice(0, 7)}-01`;
+  const first = parse(monthStart);
+  const last = format(new Date(first.getFullYear(), first.getMonth() + 1, 0));
+  const gridStart = mondayOf(monthStart);
+  const [from, to] = Array.isArray(selected) ? selected : [selected, selected];
+  const inRange = (day: string) => from !== undefined && to !== undefined && day >= from && day <= to;
+  const count = Math.ceil(((parse(last).getTime() - parse(gridStart).getTime()) / 86_400_000 + 1) / 7);
+  const weeks = Array.from({ length: count }, (_, w): MiniWeek => {
+    const start = shift(gridStart, w * 7);
+    const days = Array.from({ length: 7 }, (_, i): MiniDay => {
+      const day = shift(start, i);
+      return { day, dayOfMonth: parse(day).getDate(), inMonth: day.slice(0, 7) === monthStart.slice(0, 7), isToday: day === today, hasRecordings: recorded.includes(day), selected: inRange(day) };
+    });
+    return { number: isoWeek(start), start, selected: days.some((d) => d.selected), days };
+  });
+  return { monthStart, monthName: MONTHS[first.getMonth()], year: first.getFullYear(), monthSelected: false, weeks, ...rest };
 }
 
 /** One day of a week; `patch` overrides fields. `weekday`, `dayOfMonth` and `isWeekend` default from the day. */

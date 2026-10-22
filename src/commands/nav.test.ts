@@ -20,6 +20,37 @@ async function press(keys: string) {
   }
 }
 
+describe("view commands", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    installCommands();
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it.each<[string, View]>([
+    ["{Meta>}1{/Meta}", "day"],
+    ["{Meta>}2{/Meta}", "week"],
+    ["{Meta>}3{/Meta}", "month"],
+    ["{Meta>}4{/Meta}", "reports"],
+    ["{Meta>}5{/Meta}", "projects"],
+    ["{Meta>}6{/Meta}", "tags"],
+    ["{Meta>}7{/Meta}", "rules"],
+  ])("%s shows the %s view", async (keys, view) => {
+    resetStore({ view: view === "day" ? "rules" : "day" });
+    await press(keys);
+    expect(state().view).toBe(view);
+  });
+
+  it.each<View>(["day", "week", "month", "reports", "projects", "tags", "rules"])("view.%s shows that view from any other", (view) => {
+    resetStore({ view: view === "day" ? "rules" : "day" });
+    expect(runCommand(`view.${view}`)).toBe(true);
+    expect(state().view).toBe(view);
+  });
+});
+
 describe("date navigation commands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -91,6 +122,9 @@ describe("date navigation commands", () => {
       ["projects", "n"],
       ["projects", "p"],
       ["projects", "o"],
+      ["tags", "n"],
+      ["tags", "p"],
+      ["tags", "o"],
       ["rules", "n"],
       ["rules", "p"],
       ["rules", "o"],

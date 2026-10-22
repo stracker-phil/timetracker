@@ -21,6 +21,7 @@
 .block.dimmed .block-title, .block.dimmed .block-subtitle { color: var(--o2); }
 .block.dimmed:hover { background: var(--activity-fill-hover); }
 .block.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
+.block.selected { box-shadow: inset 0 0 0 1px var(--accent); }
 
 /* The summary lane's blocks: the icon and the label of each run's main app, on a fuller fill. */
 .summary-block { background: var(--activity-fill-hover); }
@@ -44,6 +45,8 @@
 .memory:hover .memory-title { color: var(--accent-text); }
 .memory.private .memory-title, .memory.dimmed .memory-title { color: var(--o2); font-weight: 400; }
 .memory.focused { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: var(--radius-sm); z-index: 2; }
+.memory.selected { --memory-bar: var(--accent); }
+.memory.selected .memory-title { color: var(--accent-text); }
 .memory:hover .block-gear { display: grid; }
 
 /* A recording (`Card`): filled with `--block-fill`, its text in `--block-text` (theme.css derives both from the

@@ -137,6 +137,7 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
                 "view.month",
                 "view.reports",
                 "view.projects",
+                "view.tags",
                 "view.rules",
             ],
             &["day.toggleList"],

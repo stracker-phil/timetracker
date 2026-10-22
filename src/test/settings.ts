@@ -8,6 +8,8 @@ export function settings(patch: Partial<Settings> = {}): Settings {
     accent: "orange",
     uiFontSize: 13,
     dataFontSize: 12,
+    calendarTitle: "short",
+    dayTitle: "long",
     fontUi: null,
     fontMono: null,
     logLevel: "info",

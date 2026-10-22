@@ -52,16 +52,26 @@ window's `sidebar` material (vibrancy) shows through, and it greys out while the
 
 One place for views and one place for dates: the sidebar.
 
-- **Sidebar**: full height on its own palette. On top a drag strip under the window buttons, then the date
-  navigator, then the views (Day to Rules, ⌘1 to ⌘6) with saved reports under Reports. The navigator shows
-  the active period as a heading in `--fs-title` semibold: Day `Wed, Oct 21` (with the year when it is not
-  this year's), Week `Oct 19 – 25`, Month `October 2026`, Reports the period's name (`Today`, `This week`, …)
-  or its days (`Oct 5 – 14`). Below it ‹ and › and a Today button labelled by the unit (Today, This week,
-  This month), disabled while the period holds today. In Reports ‹ › step the period by its own length: a
-  month, a week, or its number of days; a step that lands on a preset shows its name (a week back from This
-  week is Last week). Projects and Rules keep the navigator's space empty. Clicking the heading opens a month
-  calendar under it (today in accent text, the shown day, week or month on `--sel`); a day shows that day,
-  its week or month, or in Reports the report's period that holds it.
+- **Sidebar** (`Sidebar`): full height on its own palette. On top a drag strip under the window buttons, then:
+  - **Month calendar** (`MiniCalendar`), the Day, Week and Month navigation: the month and year as the title
+    (`--fs-heading`, bold, the year in `--accent-text`; `Nov 2026`, or `November 2026` with Settings →
+    Appearance → Calendar title on Full), ‹ › to page months, a week-number column (`Wk`, ISO
+    numbers, a hairline beside it) and weekday initials from Monday. Six weeks always, so the sidebar never
+    changes height; days outside the month are dimmed, today sits in an accent circle with `--on-accent`
+    text, and a small dot under a day means it has recordings. It shows the month of the shown date (the
+    report's first day for a custom report, else today); ‹ › page it until the shown date changes. The shown range is highlighted: the day on `--sidebar-selected` (Day view), the whole week row as a
+    rounded `--sidebar-selected` band with its number in the accent (Week view), or the title (Month view);
+    Reports highlight their period the same way when it is one day, week or month. A click on a day shows it
+    in the Day view, on a week number that week in the Week view, on the title that month in the Month view.
+    The cells are for the pointer; the keys are ⌘1 to ⌘3, P, N, O and Go to Date… (`nav.goToDate`), whose
+    picker opens under the title.
+  - **Hours** (clock): today in the Day view, ready to record today; selected while the Day view shows today.
+  - **Reports** (⌘4) with the saved reports under it.
+  - A separator, then the configuration pages: **Projects** (⌘5), **Tags** (⌘6), **Rules** (⌘7).
+  - **At the bottom** (`SidebarStatus`): the tracker's status in a rounded `--sidebar-hover` field with a
+    `--sidebar-line` ring (the dot as in the status bar, the tray's text, `Tracking · Code`) and a play / pause
+    button: Pause pauses until resumed (a right-click offers 15 minutes, 1 hour, until tomorrow), Play
+    resumes, Allow… without permission. The Settings gear sits beside it.
 - **Unified toolbar** (`Toolbar`): every view starts with one 52px row beside the window buttons (which sit
   centered in it, 20px from the left): the view's title (`--fs-title`, bold, `--text-strong`), its detail
   (`--fs-meta`, `--o2`, e.g. `recorded 1:00 · tracked 4:12`), then its actions at the trailing end, with a
@@ -70,12 +80,12 @@ One place for views and one place for dates: the sidebar.
   buttons. Titles, totals and view switches live here, never date controls; the Day toolbar shows the
   shown day's totals only when it is not today.
 - **Status bar** (plain `--fs-meta` text in `--o2` on `--chrome`, beside the sidebar): on the left the sidebar
-  toggle, the tracker's state (a dot: accent while running, `--o3` while away or paused, `--style-red`
+  toggle, the tracker's state only while the sidebar is hidden (a dot: accent while running, `--o3` while away or paused, `--style-red`
   without permission; the tray's text; Pause, Resume or Allow…) and the selection; on the right the running
   timer, the billable ratio and today's totals, `recorded 1:00 · tracked 3:12`, in every view. The billable
   ratio is a small bar (a neutral track, filled in the accent; no red or green judgment) with
-  `Billable 80 %`, and `Billable 6:24 / 8:00` in its tooltip, for the period the navigator shows (day, week,
-  month, report period; today on Projects and Rules). It hides while nothing is recorded in that period. The
+  `Billable 80 %`, and `Billable 6:24 / 8:00` in its tooltip, for the shown period (day, week,
+  month, report period; today on Projects, Tags and Rules). It hides while nothing is recorded in that period. The
   text zoom has no readout: ⌘= ⌘- ⌘0.
 
 ## Appearance and tokens
@@ -116,7 +126,7 @@ tokens; no color literal appears outside them (`src/styles/colors.test.ts`).
 | `--shadow`, `--shadow-small` | | | overlays (a hairline ring and a soft drop; no border); the raised segment and the switch thumb |
 | `--scrim`, `--shade` | black 14% | black 35% | behind sheets and panels; black for `color-mix` darkening |
 | `--a-<name>`, `--accent-text-max-l` | deep hues, `0.56` | light hues, `1` | the nine accent hues (`ACCENTS`): app accent and project colors; the highest OKLCH lightness of `--accent-text`. They also apply inside a sidebar of the same tone |
-| `--on-accent` | white | `#1a1a1a` | text on any palette accent's fill, at least 4.5:1 on every hue |
+| `--on-accent` | white | `#1a1a1a` | text on any palette accent's fill, at least 4.5:1 on every hue; like the hues, it follows the sidebar's tone inside the sidebar |
 | `--on-system-accent` | white | white | text on the System accent, as macOS draws it |
 | `--style-green` | | | the success tint; red, yellow, blue and purple are accent hues (`theme.css`) |
 | `--activity-fill`, `-hover`, `-dim` | `#f0f0f0` … | `#2c2c2c` … | activity blocks; hovered; covered by a recording |
@@ -130,10 +140,10 @@ sidebar's tone):
 | Token | Dark | Light | Role |
 |---|---|---|---|
 | `--sidebar-bg` | `#262626` | `#ebebeb` | the surface where it is opaque |
-| `--sidebar-text`, `--sidebar-strong` | `#e6e6e6`, white | `#262626`, black | entries; the selected entry and the date heading |
-| `--sidebar-muted` | `#9e9e9e` | `#636363` | icons, key caps, saved reports |
-| `--sidebar-hover`, `--sidebar-selected` | white at 5 and 12% | black at 4 and 9% | hovered and selected entry (translucent, so they work on the material) |
-| `--sidebar-line` | white at 10% | black at 10% | its edge, the Today button |
+| `--sidebar-text`, `--sidebar-strong` | `#e6e6e6`, white | `#262626`, black | entries and days; the selected entry and the calendar's title |
+| `--sidebar-muted` | `#9e9e9e` | `#636363` | icons, key caps, saved reports, week numbers, weekday initials, dimmed days, recording dots |
+| `--sidebar-hover`, `--sidebar-selected` | white at 5 and 12% | black at 4 and 9% | hovered and selected entry, the calendar's highlighted day, week band and title, the tracker field (translucent, so they work on the material) |
+| `--sidebar-line` | white at 10% | black at 10% | its edge, the separator, the week-number column, the tracker field's ring |
 
 Derived tokens in `src/styles/theme.css`, the same for every palette:
 
@@ -168,7 +178,8 @@ the system one.
 | Token | Size | Used for |
 |---|---|---|
 | `--fs-display` | 22px | large numbers: the timesheet total, the report total, the editor's duration, the running timer |
-| `--fs-title` | 15px | toolbar titles, the sidebar's date heading, Settings page titles, the palette's field |
+| `--fs-heading` | 17px | the sidebar calendar's month and year |
+| `--fs-title` | 15px | toolbar titles (the Day view's `Wednesday, November 11, 2026`, or `Wed, Nov 11` with Settings → Appearance → Day title on Short), Settings page titles, the palette's field |
 | `--fs-body` | 13px (the UI size) | everything else, block and card titles, sheet titles (bold) and group headings (semibold) included |
 | `--fs-meta` | 11px | secondary text: meta lines, labels, descriptions, counts, the status bar, toolbar details |
 | `--fs-caption` | 10px | hour labels, key caps |
@@ -358,19 +369,27 @@ timeline), Hidden (gone from every lane; the Lanes popover lists hidden apps wit
 ## Recordings
 
 - **Recording by selection** (as in Timely; no key needed). Drag over empty time in the time column, the
-  axis or the lanes, or click an activity block: the editor opens on release. ⇧-click grows the selection over
-  another block first. ⌘-click adds or removes blocks without opening the editor; it opens when ⌘ is
-  released, so several scattered blocks can be gathered. While the editor is open, a new drag or click moves a
-  new recording to the new span (note, project and tag stay), and ⌥-drag or ⌥-click adds the span to the
-  open recording instead (without an open editor, ⌥ on a block still drags it onto a project for a rule).
+  axis or the lanes, or click an activity block: the editor opens on release. Every click on an activity or
+  summary block toggles that block's span in the editor's spans, with no modifier: a click on a block whose
+  span is not in them adds it as another span, a click on one whose span they cover takes that time out
+  again (a span that sticks out on both sides becomes two). Two clicked blocks give two spans with the time
+  between them unrecorded; spans that touch or overlap once snapped merge into one. Taking out the last span
+  closes the editor without saving, as Escape does. A drag while the editor is open adds its span the same way
+  (merged with the spans it touches). Both work alike on a new recording and on the recording being edited
+  (not on the running timer's, whose spans Rust ends). ⌥ on a block without an open editor drags it onto a
+  project for a rule.
 - **Snapping** (the Time snapping setting, 5 min by default) applies to every selection, drag and resize,
   on both ends, and Rust computes it: a selection over activity snaps each end to the nearest mark (blocks
   from 13:12 to 13:38 give 13:10–13:40); dragging an edge of a selection or a recording, or dragging in the
   time column, moves that edge in whole steps (13:40, 13:45, …); an end that would reach the other keeps one
   step. ⌥⇧↑ ⌥⇧↓ on a recording move its end the same way.
 - **Selection** (the keyboard's way: V on the focused block, ⇧J and ⇧K add the next or previous one; ↵ opens
-  the editor): `--sel` fill with accent hairlines and the snapped `09:00–10:30` in accent text; the status
-  bar repeats it with the duration. A dashed accent outline in the time column shows where the recording goes.
+  the editor, or adds the span to an open one): a `--sel` band with accent hairlines over the lanes, with no
+  time in it (the time column shows the times); the status bar shows the snapped span with the duration. A
+  dashed accent outline in the time column shows where the recording goes. While the editor is open, each of
+  its spans has its own band over the lanes and its draft block in the time column with its start and end, and
+  every clicked block whose span is in them is marked selected (an accent edge on a summary block, an accent
+  bar and title on an activity block) until a second click takes it out.
 - **Recording blocks** sit in the time column, one per span: a recording can hold several separate
   spans (14:25–15:00 and 16:05–20:15), each its own block, all lit up together with the recording's single
   timesheet card when one is hovered or focused; project, note and tag belong to the recording and show on
@@ -489,8 +508,8 @@ timeline), Hidden (gone from every lane; the Lanes popover lists hidden apps wit
   the editor or the Day view; the Week has no resize. Today's column has a faint accent tint, Saturday and
   Sunday a `--bg-quiet` one; the columns scroll together.
 - **Month**: whole weeks, Monday in the top-left cell, cells divided by `--line` hairlines, weekends on
-  `--bg-quiet`. A row is as tall as its fullest day, so a busy day makes its week taller and quiet weeks stay
-  compact. Each cell reads `Mon 19` at the top (today's number in an accent circle, days outside the month
+  `--bg-quiet`. The weeks fill the view's height, sharing it evenly; a week whose fullest day needs more grows
+  taller than the others and the grid scrolls. Each cell reads `Mon 19` at the top (today's number in an accent circle, days outside the month
   dimmed; a click opens the day), a + on hover (the editor for that day, as in the Week) and the recorded
   hours on the right, then one line per recording in start order, all the same height: a dot in the
   project's shade, the note or the project (ellipsized) and the duration on the right; a click edits it. No
@@ -506,7 +525,13 @@ timeline), Hidden (gone from every lane; the Lanes popover lists hidden apps wit
   new project of that client. Each project row: its dot, the name (a click edits it), `billable` and
   `last used 2 d ago` as secondary labels, then the hours this week and this month as `3:20` (tabular,
   `--o3` at zero; Rust computes both for the current week and month). Right-click: Edit…, Archive or
-  Restore, Copy id. The tags follow in an inset group of their own, with the New tag field below it.
+  Restore, Copy id.
+
+## Tags
+
+- A page of its own (⌘6): the toolbar reads `Tags` and `One per recording, for kinds of work across projects.`
+  Below, one inset group with a row per tag (its name, the number of recordings, ✕ to delete; a confirm first
+  when recordings carry it), then the New tag field (↵ adds).
 
 ## Settings
 
@@ -517,13 +542,17 @@ timeline), Hidden (gone from every lane; the Lanes popover lists hidden apps wit
   and the control on the right, hairlines between rows. Counts and durations use tabular
   figures; paths, bundle ids and commands are mono and selectable. A failure reads in red on a light red
   tint.
+- Appearance → **Dates**: Calendar title (Short `Nov 2026`, the default, or Full `November 2026`) and Day
+  title (Long `Wednesday, November 11, 2026`, the default, or Short `Wed, Nov 11`, with the year only when it
+  is not this year's), as segmented controls. Rust formats both; a change reloads the Day view and the
+  calendar. Other labels (the palette, Week and Month toolbars, reports) keep their own formats.
 
 ## Reports
 
 The Reports screen follows Timely's day report, without money. The toolbar has the period as title, then
 the grouping of the copied text (By project, tag, day, week or month), Copy as text and Save report…; below,
 one slim filter bar (Period presets as a segmented control, Custom revealing dates, clients, projects, tags, rounding, archived projects). The
-sidebar's navigator steps the period. The content sits in inset groups:
+P and N step the period, O goes to the one holding today, and the sidebar's calendar highlights it when it is one day, week or month. The content sits in inset groups:
 
 1. **Totals:** `Total` with the hours large (`--text-strong`, `--fs-display` bold), then Recordings,
    Projects, Untagged (only when there is untagged time) and `Billable 6:24 h · 80 %` (of the rounded total;
@@ -595,7 +624,7 @@ Rules of the keys (`handleKeydown`):
   focus, and closing returns it to where it was.
 
 Scopes are the registry's (`src/commands/scopes.ts`): `global`; `dated` under it, active in Day, Week, Month
-and Reports; and one scope per view (`day`, `week`, `month`, `reports` under `dated`; `projects`, `rules`
+and Reports; and one scope per view (`day`, `week`, `month`, `reports` under `dated`; `projects`, `tags`, `rules`
 under `global`), active while that view shows. `suggestion` (under `dated`, beside `day`) is active while the
 Day view has a focused suggestion and no selection or focused recording, so its ↵ and ⌫ never clash with the
 recording commands'.
@@ -608,7 +637,7 @@ recording commands'.
 | `shortcuts.show` | Keyboard shortcuts | ? | global |
 | `palette.toggle` | Command palette | ⌘K | global |
 | `sidebar.toggle` | Toggle sidebar | ⌘⌃S | global |
-| `view.day` … `view.rules` | Show Day, Week, Month, Reports, Projects, Rules | ⌘1 … ⌘6 | global |
+| `view.day` … `view.rules` | Show Day, Week, Month (each keeps the shown date), Reports, Projects, Tags, Rules | ⌘1 … ⌘7 | global |
 | `zoom.in` / `zoom.out` / `zoom.reset` | Zoom in / out / Reset zoom (the timeline in the Day view, the text elsewhere) | ⌘= / ⌘- / ⌘0 | global |
 | `window.hide` | Close window | ⌘W | global |
 | `tracker.pause` | Pause tracking (until resumed) | palette | global |
@@ -630,8 +659,8 @@ recording commands'.
 | `day.prevLane` / `day.nextLane` | Block in the lane to the left / right | H / L | day |
 | `day.details` | Block details | Space | day |
 | `day.blockMenu` | Block actions… (app settings, copy, Make a rule…) | ⌃↵ | day |
-| `day.selectBlock` | Select block (the focused one, as a click does) | V | day |
-| `day.extendNext` / `day.extendPrev` | Extend selection to the next / previous block (as a ⇧-click does) | ⇧J / ⇧K | day |
+| `day.selectBlock` | Select block (the focused one's span) | V | day |
+| `day.extendNext` / `day.extendPrev` | Extend selection to the next / previous block | ⇧J / ⇧K | day |
 | `day.toggleList` | Toggle timeline and list | ⌘⇧L | day |
 | `activity.deleteDay` | Delete activity for this day… | menu | day |
 | `activity.deleteRange` | Delete activity in a range… | menu | day |
@@ -665,15 +694,15 @@ Keys of controls, not commands (they act on the focused control and are not rebi
 | List mode | `/` search, ↑↓ rows, ↵ record the row (pick the project), Space show it on the timeline; Tab to a project chip and ↵ records the focused row |
 | Ghost card (Tab reaches it) | focuses the suggestion: ↵ approve, E edit, ⌫ dismiss (the `suggestion` scope); ✓ and ✕ inside it |
 | Recording editor, away prompt, timer picker | project picker: type, ↑↓, ↵ picks (the last option creates a project); From and To: type `HH:MM` or ↑↓ by one snap step; ↵ saves, records or starts; in the editor also ⌘↵, and ⌘⌫ deletes; Escape cancels or skips |
-| Timeline, pointer | drag or click opens the editor; ⇧-click extends, ⌘-click gathers blocks (the editor opens when ⌘ is released), ⌥-drag or ⌥-click adds a span to the open editor's recording |
+| Timeline, pointer | drag or click opens the editor; with the editor open, a click on a block adds its span or takes it out again, and a drag adds a span |
 | Context menu (⌃↵ on a block) | ↑↓ items, ↵ runs, Escape closes |
 | Pickers in the Reports filter | type, ↑↓, ↵ adds, ⌫ on an empty field removes the last |
 | Week and Month | Tab to a day head (Week) or a day's date (Month), ↵ opens that day; Tab to a card (Week) or a line (Month), ↵ opens the editor; on a Week card ⌫ deletes it; Tab to + and ↵ opens the editor for that day |
-| Date picker (the sidebar's date heading) | ←→ by a day, ↑↓ by a week, PageUp / PageDown by a month, ↵ shows the day, Escape closes |
+| Date picker (Go to Date…, under the calendar's title) | ←→ by a day, ↑↓ by a week, PageUp / PageDown by a month, ↵ shows the day, Escape closes |
 | Settings → Shortcuts | a key field records the next key; Escape stops, ⌫ unbinds |
 
 Left to the pointer, each with a keyboard way to the same result: dragging a selection (V, ⇧J, ⇧K, or the
-List mode), ⌥-adding a span to the open recording ("Add span" and its From / To fields), dragging or resizing a recording (⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓), dragging a card to another day in the
+List mode), clicking or dragging a span into the open editor ("Add span" and its From / To fields), dragging or resizing a recording (⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓), dragging a card to another day in the
 Week view (⌥← ⌥→, ⌥⇧ to copy, in the Day view),
 ⌥-dragging a block onto a project (⌃↵ → Make a rule…), the rules' grip (⌥↑ ⌥↓), the hover card (Space), the
 saved reports' right-click menu (`reports.rename`, `reports.delete`), and the Projects screen's right-click
@@ -723,7 +752,7 @@ from every text field. The page's key handler runs them, with the rules above.
 | TimeTracker | About; Settings… (`settings.toggle`; ⌘,); Launch at Login (`app.launchAtLogin`, a check item); Show Welcome Again (`welcome.show`); Services; Hide, Hide Others, Show All; Quit TimeTracker (`app.quit`; ⌘Q) |
 | File | New Recording… (`recording.new`); Start Timer… (`timer.start`; ⌘T), Stop Timer (`timer.stop`; ⌘⇧.); New Project… (`projects.new`; ⌘N), New Client… (`clients.new`), New Rule… (`rules.new`; ⌘N); Export Backup… (`data.exportBackup`); Close Window (`window.hide`; ⌘W) |
 | Edit | Undo (`edit.undo`; ⌘Z), Redo (`edit.redo`; ⌘⇧Z); Cut, Copy, Paste, Select All (native); Delete Recording (`recording.delete`; ⌫); Copy Report as Text (`reports.copyText`; ⌘⇧C), Copy Report Notes (`reports.copyNotes`; ⌥⌘C) |
-| View | Day … Rules (`view.day` … `view.rules`; ⌘1 … ⌘6, the active view checked); Show as List (`day.toggleList`; ⌘⇧L, checked in List mode); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); Timeline Settings… (`day.settings`); Enter Full Screen (native) |
+| View | Day, Week, Month, Reports, Projects, Tags, Rules (`view.day` … `view.rules`; ⌘1 … ⌘7, the active view checked); Show as List (`day.toggleList`; ⌘⇧L, checked in List mode); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); Timeline Settings… (`day.settings`); Enter Full Screen (native) |
 | Go | Previous (`nav.prev`; P), Next (`nav.next`; N), Today (`nav.today`; O), Go to Date… (`nav.goToDate`); Next Block (`day.nextBlock`; J), Previous Block (`day.prevBlock`; K); Next Recording (`recording.next`; ], recordings and suggestions), Previous Recording (`recording.prev`; [) |
 | Day | Record Selection (`recording.create`; ↵, the key of `recording.open`), Edit Recording… (`recording.edit`); Move Recording to Previous / Next Day (⌥← / ⌥→), Copy Recording to Previous / Next Day (⌥⇧← / ⌥⇧→); Approve Suggestion (↵), Edit Suggestion… (E), Dismiss Suggestion (⌫), Approve All Suggestions of Rule, Approve All Suggestions, Dismiss All Suggestions (`suggestion.*`); Delete Activity for This Day…, Delete Activity in a Range… (`activity.*`) |
 | Window | Minimize, Zoom, Bring All to Front (native) |
@@ -742,7 +771,7 @@ Commands left out of the menu, with keys and the palette only:
 | `recording.nudgeEarlier` / `nudgeLater` / `extend` / `shrink` | one snap step per press, held to repeat; a menu click per 5 minutes helps no one |
 | `reports.save`, `reports.rename`, `reports.delete` | saved reports live in the sidebar, whose right-click menu renames and deletes them |
 | `rules.moveUp` / `rules.moveDown` | act on the focused rule row, next to its drag grip |
-| `tracker.pause`, `tracker.resume` | the menu bar item (tray) has Pause Tracking with its durations and Resume |
+| `tracker.pause`, `tracker.resume` | the sidebar's play / pause button and the menu bar item (tray) have Pause Tracking with its durations and Resume |
 | `timer.toggle` | File has Start Timer… and Stop Timer |
 
 ## Scheme audit

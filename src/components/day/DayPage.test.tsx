@@ -141,6 +141,11 @@ describe("DayPage", () => {
   });
 
   describe("header", () => {
+    it("titles the toolbar with the label of the day view", async () => {
+      renderDay(dayView({ label: "Tuesday, March 10", lanes: [lane({ blocks: [docs] })] }));
+      expect(await screen.findByRole("heading", { level: 1, name: "Tuesday, March 10" })).toBeInTheDocument();
+    });
+
     it("shows the totals of the day", async () => {
       const totals = { recordedMs: 0, trackedMs: (6 * 60 + 12) * 60_000, awayMs: (60 + 5) * 60_000 };
       renderDay(dayView({ lanes: [lane({ blocks: [docs] })], totals }));
@@ -687,10 +692,48 @@ describe("DayPage", () => {
   describe("selection", () => {
     const editorDialog = () => editorForm("New recording");
 
-    it("selects the span of a clicked block and shows it", async () => {
+    it("outlines the span of a clicked block until the editor has its draft", async () => {
+      mocked.recordingDraftSpans.mockReturnValueOnce(new Promise(() => {}));
       renderDay(busyDay());
       await userEvent.click(await blockEl("Safari: Docs"));
-      expect(await screen.findByLabelText("Selection")).toHaveTextContent("09:00–09:30");
+      expect(await screen.findByLabelText("Selection 09:00–09:30")).toBeEmptyDOMElement();
+    });
+
+    it("shows a draft band for each span of the open editor, without text", async () => {
+      renderDay(busyDay());
+      await userEvent.click(await blockEl("Safari: Docs"));
+      await editorDialog();
+      expect(screen.queryByLabelText(/^Selection/)).not.toBeInTheDocument();
+      expect(lanesEl().querySelectorAll(".selection")).toHaveLength(1);
+      await userEvent.click(screen.getByLabelText("Notes: Todo"));
+      await waitFor(() => expect(lanesEl().querySelectorAll(".selection")).toHaveLength(2));
+      for (const band of lanesEl().querySelectorAll(".selection")) {
+        expect(band).toHaveAttribute("aria-hidden", "true");
+        expect(band).toBeEmptyDOMElement();
+      }
+    });
+
+    it("shows no time text in the lanes", async () => {
+      renderDay(busyDay());
+      await userEvent.click(await blockEl("Safari: Docs"));
+      await editorDialog();
+      await userEvent.click(screen.getByLabelText("Notes: Todo"));
+      await waitFor(() => expectSpan(screen.getByRole("form", { name: "New recording" }), "10:00", "10:30", 2));
+      expect(within(lanesEl()).queryByText(/\d\d:\d\d/)).not.toBeInTheDocument();
+    });
+
+    it("marks the clicked blocks as selected and unmarks them when clicked again", async () => {
+      renderDay(busyDay());
+      const docsEl = await blockEl("Safari: Docs");
+      const todoEl = screen.getByLabelText("Notes: Todo");
+      await userEvent.click(docsEl);
+      await editorDialog();
+      await userEvent.click(todoEl);
+      await waitFor(() => expect(todoEl).toHaveClass("selected"));
+      expect(docsEl).toHaveClass("selected");
+      await userEvent.click(docsEl);
+      await waitFor(() => expect(docsEl).not.toHaveClass("selected"));
+      expect(todoEl).toHaveClass("selected");
     });
 
     it("opens the editor in the timesheet with the span of the clicked block", async () => {
@@ -710,79 +753,80 @@ describe("DayPage", () => {
       expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:00"), at("09:30"), null);
     });
 
-    it("extends the selection from the earliest start to the latest end with a shift-click and moves the editor to it", async () => {
-      renderDay(busyDay());
-      await userEvent.click(await blockEl("Notes: Todo"));
-      const form = await editorDialog();
-      const first = screen.getByLabelText("Safari: Docs");
-      fireEvent.pointerDown(first, { button: 0, shiftKey: true });
-      fireEvent.pointerUp(first, { shiftKey: true });
-      await screen.findByText("09:00–10:30");
-      await waitFor(() => expectSpan(form, "09:00", "10:30"));
-      expect(screen.getAllByRole("form")).toHaveLength(1);
-    });
-
-    it("gathers blocks with ⌘-clicks and opens the editor only once ⌘ is released", async () => {
-      renderDay(busyDay());
-      for (const label of ["Safari: Docs", "Notes: Todo"]) {
-        const el = await blockEl(label);
-        fireEvent.pointerDown(el, { button: 0, metaKey: true });
-        fireEvent.pointerUp(el, { metaKey: true });
-      }
-      await screen.findByText("09:00–10:30");
-      expect(screen.queryByRole("form")).not.toBeInTheDocument();
-      fireEvent.keyUp(window, { key: "Meta" });
-      expectSpan(await editorDialog(), "09:00", "10:30");
-    });
-
-    it("takes a block out of the selection with a second ⌘-click", async () => {
-      renderDay(busyDay());
-      for (const label of ["Safari: Docs", "Notes: Todo", "Safari: Docs"]) {
-        const el = await blockEl(label);
-        fireEvent.pointerDown(el, { button: 0, metaKey: true });
-        fireEvent.pointerUp(el, { metaKey: true });
-      }
-      await screen.findByText("10:00–10:30");
-      fireEvent.keyUp(window, { key: "Meta" });
-      expectSpan(await editorDialog(), "10:00", "10:30");
-    });
-
-    it("moves a create editor to the span of another clicked block and keeps its note", async () => {
+    it("adds the span of a second clicked block as another row and keeps the note", async () => {
       renderDay(busyDay());
       await userEvent.click(await blockEl("Safari: Docs"));
       const form = await editorDialog();
       await userEvent.type(within(form).getByLabelText("Note"), "keep me");
       await userEvent.click(screen.getByLabelText("Notes: Todo"));
-      await waitFor(() => expectSpan(form, "10:00", "10:30"));
+      await waitFor(() => expectSpan(form, "10:00", "10:30", 2));
+      expectSpan(form, "09:00", "09:30");
       expect(within(form).getByLabelText("Note")).toHaveValue("keep me");
       expect(screen.getAllByRole("form")).toHaveLength(1);
     });
 
-    it("adds the span of an ⌥-clicked block as another row of the open editor", async () => {
+    it("shows two draft blocks for two clicked blocks and leaves the time between them unassigned", async () => {
+      renderDay(busyDay());
+      await userEvent.click(await blockEl("Safari: Docs"));
+      await editorDialog();
+      await userEvent.click(screen.getByLabelText("Notes: Todo"));
+      await waitFor(() => expect(lanesEl().querySelectorAll(".selection")).toHaveLength(2));
+      expect(screen.queryByLabelText(/^Selection/)).not.toBeInTheDocument();
+      expect(await screen.findByLabelText("Draft 09:00–09:30")).toBeInTheDocument();
+      expect(screen.getByLabelText("Draft 10:00–10:30")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Draft 09:30–10:00")).not.toBeInTheDocument();
+    });
+
+    it("removes the span of a block clicked a second time", async () => {
+      renderDay(busyDay());
+      await userEvent.click(await blockEl("Safari: Docs"));
+      const form = await editorDialog();
+      await userEvent.click(screen.getByLabelText("Notes: Todo"));
+      await waitFor(() => expectSpan(form, "10:00", "10:30", 2));
+      await userEvent.click(screen.getByLabelText("Safari: Docs"));
+      await waitFor(() => expect(within(form).queryByLabelText("Span 2 from")).not.toBeInTheDocument());
+      expectSpan(form, "10:00", "10:30");
+    });
+
+    it("closes the editor without saving when the only block is clicked again", async () => {
+      renderDay(busyDay());
+      await userEvent.click(await blockEl("Safari: Docs"));
+      await editorDialog();
+      await userEvent.click(screen.getByLabelText("Safari: Docs"));
+      await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
+      expect(mocked.recordingCreate).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["a ⇧-click", { shiftKey: true }],
+      ["a ⌘-click", { metaKey: true }],
+      ["an ⌥-click", { altKey: true }],
+    ])("treats %s on a block like a plain click", async (_name, modifier) => {
       renderDay(busyDay());
       await userEvent.click(await blockEl("Safari: Docs"));
       const form = await editorDialog();
       const todoEl = screen.getByLabelText("Notes: Todo");
-      fireEvent.pointerDown(todoEl, { button: 0, altKey: true });
-      fireEvent.pointerUp(todoEl, { altKey: true });
+      fireEvent.pointerDown(todoEl, { button: 0, ...modifier });
+      fireEvent.pointerUp(todoEl, modifier);
       await waitFor(() => expectSpan(form, "10:00", "10:30", 2));
       expectSpan(form, "09:00", "09:30");
     });
 
-    it("replaces the selection when another block is clicked without shift", async () => {
+    it("opens the editor on a modified first click without waiting for a key release", async () => {
       renderDay(busyDay());
-      await userEvent.click(await blockEl("Safari: Docs"));
-      await userEvent.click(screen.getByLabelText("Notes: Todo"));
-      expect(await screen.findByText("10:00–10:30")).toBeInTheDocument();
+      const el = await blockEl("Safari: Docs");
+      fireEvent.pointerDown(el, { button: 0, metaKey: true });
+      fireEvent.pointerUp(el, { metaKey: true });
+      expectSpan(await editorDialog(), "09:00", "09:30");
     });
 
     it("closes the editor and clears the selection with Escape", async () => {
       renderDay(busyDay());
       await userEvent.click(await blockEl("Safari: Docs"));
       await editorDialog();
-      await screen.findByLabelText("Selection");
+      await waitFor(() => expect(lanesEl().querySelectorAll(".selection")).toHaveLength(1));
       await userEvent.keyboard("{Escape}");
-      expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
+      expect(lanesEl().querySelectorAll(".selection")).toHaveLength(0);
       expect(screen.queryByRole("form")).not.toBeInTheDocument();
       expect(useStore.getState().draft).toBeNull();
     });
@@ -799,7 +843,7 @@ describe("DayPage", () => {
         expect(mocked.recordingCreate).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: at("09:00"), end: at("09:30") }], note: "read the docs", tagId: "tag-research" }, "cancel"),
       );
       await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
-      expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
+      expect(lanesEl().querySelectorAll(".selection")).toHaveLength(0);
     });
 
     it("opens a fresh editor on the next click after Cancel", async () => {
@@ -812,39 +856,42 @@ describe("DayPage", () => {
       expectSpan(await editorDialog(), "10:00", "10:30");
     });
 
-    it("clears the selection when empty space is clicked", async () => {
+    it("clears a pending selection when empty space is clicked", async () => {
       renderDay(busyDay());
-      await userEvent.click(await blockEl("Safari: Docs"));
-      await screen.findByLabelText("Selection");
+      await blockEl("Safari: Docs");
+      await userEvent.keyboard("jv");
+      await screen.findByLabelText("Selection 09:00–09:30");
       await userEvent.click(lanesEl());
-      expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Selection/)).not.toBeInTheDocument();
     });
 
     describe("dragging", () => {
-      /** Presses `target` at 09:02, drags to 10:28 (Rust snaps it to 09:00–10:30) and releases. */
+      /** Presses `target` at 09:02 and drags to 10:28 (Rust snaps it to 09:00–10:30); the returned function releases. */
       async function dragOver(target: () => HTMLElement) {
         mocked.recordingSnap.mockResolvedValue({ start: at("09:00"), end: at("10:30") });
         renderDay(busyDay());
         await blockEl("Safari: Docs");
         fireEvent.pointerDown(target(), { button: 0, clientX: 300, clientY: px("09:02") });
         fireEvent.pointerMove(target(), { clientX: 300, clientY: px("10:28") });
-        await screen.findByText("09:00–10:30");
-        fireEvent.pointerUp(target(), { clientX: 300, clientY: px("10:28") });
+        const band = await screen.findByLabelText("Selection 09:00–10:30");
+        return { band, release: () => fireEvent.pointerUp(target(), { clientX: 300, clientY: px("10:28") }) };
       }
 
-      it("shows the dragged span with the times Rust snaps it to", async () => {
-        await dragOver(lanesEl);
-        expect(screen.getByLabelText("Selection")).toHaveTextContent("09:00–10:30");
+      it("shows the dragged span with the times Rust snaps it to, as a band without text", async () => {
+        const { band } = await dragOver(lanesEl);
+        expect(band).toBeEmptyDOMElement();
         expect(mocked.recordingSnap).toHaveBeenCalledWith(at("09:02"), at("10:28"), "end");
       });
 
       it("opens the editor with the snapped span when released over the lanes", async () => {
-        await dragOver(lanesEl);
+        const { release } = await dragOver(lanesEl);
+        release();
         expectSpan(await editorDialog(), "09:00", "10:30");
       });
 
       it("opens the editor with the snapped span after a drag in the time column", async () => {
-        await dragOver(() => screen.getByLabelText("Recordings"));
+        const { release } = await dragOver(() => screen.getByLabelText("Recordings"));
+        release();
         expectSpan(await editorDialog(), "09:00", "10:30");
       });
 
@@ -857,26 +904,16 @@ describe("DayPage", () => {
         expect(screen.queryByRole("form")).not.toBeInTheDocument();
       });
 
-      it("adds a row to the open editor with an ⌥-drag", async () => {
-        renderDay(busyDay());
-        await userEvent.click(await blockEl("Safari: Docs"));
-        const form = await editorDialog();
-        fireEvent.pointerDown(lanesEl(), { button: 0, altKey: true, clientX: 300, clientY: px("13:00") });
-        fireEvent.pointerMove(lanesEl(), { clientX: 300, clientY: px("13:30") });
-        fireEvent.pointerUp(lanesEl(), { altKey: true, clientX: 300, clientY: px("13:30") });
-        await waitFor(() => expectSpan(form, "13:00", "13:30", 2));
-        expectSpan(form, "09:00", "09:30");
-      });
-
-      it("moves a create editor to the dragged span without ⌥", async () => {
+      it("adds a row to the open editor with a drag", async () => {
         renderDay(busyDay());
         await userEvent.click(await blockEl("Safari: Docs"));
         const form = await editorDialog();
         fireEvent.pointerDown(lanesEl(), { button: 0, clientX: 300, clientY: px("13:00") });
         fireEvent.pointerMove(lanesEl(), { clientX: 300, clientY: px("13:30") });
         fireEvent.pointerUp(lanesEl(), { clientX: 300, clientY: px("13:30") });
-        await waitFor(() => expectSpan(form, "13:00", "13:30"));
-        expect(screen.queryByLabelText("Span 2 from")).not.toBeInTheDocument();
+        await waitFor(() => expectSpan(form, "13:00", "13:30", 2));
+        expectSpan(form, "09:00", "09:30");
+        expect(screen.getAllByRole("form")).toHaveLength(1);
       });
     });
   });
@@ -1510,7 +1547,7 @@ describe("DayPage", () => {
         renderDay(busyDay());
         await blockEl("Safari: Docs");
         await userEvent.keyboard("jv");
-        expect(await screen.findByLabelText("Selection")).toHaveTextContent("09:00–09:30");
+        expect(await screen.findByLabelText("Selection 09:00–09:30")).toBeInTheDocument();
         expect(screen.queryByRole("form")).not.toBeInTheDocument();
         await userEvent.keyboard("{Enter}");
         expectSpan(await editorForm("New recording"), "09:00", "09:30");
@@ -1520,7 +1557,7 @@ describe("DayPage", () => {
         renderDay(busyDay());
         await blockEl("Safari: Docs");
         await userEvent.keyboard("v{Enter}");
-        expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText(/^Selection/)).not.toBeInTheDocument();
         expect(screen.queryByRole("form")).not.toBeInTheDocument();
       });
     });
@@ -1530,7 +1567,7 @@ describe("DayPage", () => {
         renderDay(busyDay());
         await blockEl("Safari: Docs");
         await userEvent.keyboard("j{Shift>}j{/Shift}");
-        expect(await screen.findByLabelText("Selection")).toHaveTextContent("09:00–10:30");
+        expect(await screen.findByLabelText("Selection 09:00–10:30")).toBeInTheDocument();
         expect(focusedBlocks()).toEqual(["Notes: Todo"]);
         await userEvent.keyboard("{Enter}");
         expectSpan(await editorForm("New recording"), "09:00", "10:30");
@@ -1540,7 +1577,7 @@ describe("DayPage", () => {
         renderDay(busyDay());
         await blockEl("Safari: Docs");
         await userEvent.keyboard("jj{Shift>}k{/Shift}");
-        expect(await screen.findByLabelText("Selection")).toHaveTextContent("09:00–10:30");
+        expect(await screen.findByLabelText("Selection 09:00–10:30")).toBeInTheDocument();
         expect(focusedBlocks()).toEqual(["Safari: Docs"]);
       });
 
@@ -1548,7 +1585,7 @@ describe("DayPage", () => {
         renderDay(busyDay());
         await blockEl("Safari: Docs");
         await userEvent.keyboard("{Shift>}j{/Shift}");
-        expect(await screen.findByLabelText("Selection")).toHaveTextContent("09:00–09:30");
+        expect(await screen.findByLabelText("Selection 09:00–09:30")).toBeInTheDocument();
         expect(focusedBlocks()).toEqual(["Safari: Docs"]);
       });
 
@@ -1557,7 +1594,7 @@ describe("DayPage", () => {
         await blockEl("Website: standup");
         await userEvent.keyboard("]");
         await userEvent.keyboard("{Shift>}j{/Shift}{Backspace}");
-        expect(await screen.findByLabelText("Selection")).toBeInTheDocument();
+        expect(await screen.findByLabelText(/^Selection/)).toBeInTheDocument();
         expect(mocked.recordingDelete).not.toHaveBeenCalled();
       });
     });
@@ -1603,9 +1640,9 @@ describe("DayPage", () => {
         renderDay(twoRecordings(), withProject);
         await blockEl("Safari: Docs");
         await userEvent.keyboard("jv");
-        await screen.findByLabelText("Selection");
+        await screen.findByLabelText(/^Selection/);
         await userEvent.keyboard("]");
-        expect(screen.queryByLabelText("Selection")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText(/^Selection/)).not.toBeInTheDocument();
         expect(focusedBlocks()).toEqual([]);
         await userEvent.keyboard("{Enter}");
         expect(await editorForm("Edit recording")).toBeInTheDocument();
@@ -1678,7 +1715,7 @@ describe("DayPage", () => {
         renderDay(busyDay());
         await blockEl("Safari: Docs");
         await userEvent.keyboard("jv");
-        await screen.findByLabelText("Selection");
+        await screen.findByLabelText(/^Selection/);
         screen.getByRole("button", { name: "More day actions" }).focus();
         await userEvent.keyboard(keys);
         expect(await screen.findByRole("menu")).toBeInTheDocument();

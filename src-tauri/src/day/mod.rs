@@ -16,11 +16,12 @@ mod types;
 
 use std::collections::HashMap;
 
+use crate::calendar::titles::day_title;
 use crate::db::activities::ActivityRow;
 use crate::db::away::AwayRow;
 use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms, clip};
-use crate::store::settings::{AppOverride, Settings, TimelineSettings};
+use crate::store::settings::{AppOverride, DayTitle, Settings, TimelineSettings};
 
 pub use load::{load, names, totals_of, view_of};
 pub use recordings::{recording_blocks, timesheet};
@@ -37,6 +38,7 @@ pub struct ViewSettings {
     pub timeline: TimelineSettings,
     /// Keyed by `ActivityBlock::app_key`.
     pub apps: HashMap<String, AppOverride>,
+    pub day_title: DayTitle,
 }
 
 impl From<&Settings> for ViewSettings {
@@ -44,6 +46,7 @@ impl From<&Settings> for ViewSettings {
         Self {
             timeline: settings.timeline.clone(),
             apps: settings.apps.clone(),
+            day_title: settings.day_title,
         }
     }
 }
@@ -104,6 +107,7 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
 
     DayView {
         day: input.day,
+        label: day_title(input.day, settings.day_title, Day::of(input.now)),
         bounds: input.bounds,
         lanes,
         timesheet: timesheet(&recordings),
@@ -652,6 +656,7 @@ mod tests {
             value,
             json!({
                 "day": "2026-01-05",
+                "label": "Monday, January 5, 2026",
                 "bounds": [0, DAY_LENGTH],
                 "lanes": [{
                     "id": "activity",
@@ -696,6 +701,31 @@ mod tests {
                 "suggestions": []
             })
         );
+    }
+
+    #[test]
+    fn the_view_is_labelled_by_the_day_title_setting() {
+        let this_year = day().bounds().0 + HOUR;
+        for (format, now, expected) in [
+            (DayTitle::Long, this_year, "Monday, January 5, 2026"),
+            (DayTitle::Short, this_year, "Mon, Jan 5"),
+            (
+                DayTitle::Short,
+                400 * DAY_LENGTH + this_year,
+                "Mon, Jan 5, 2026",
+            ),
+        ] {
+            let input = DayInput {
+                now,
+                ..input(vec![], vec![])
+            };
+            let settings = ViewSettings {
+                day_title: format,
+                ..settings()
+            };
+
+            assert_eq!(view(&input, &settings).label, expected, "{format:?} {now}");
+        }
     }
 
     #[test]

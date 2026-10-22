@@ -1,6 +1,7 @@
 use tauri::State;
 
 use super::jump::{DateJump, jumps};
+use super::mini_month::{MiniMonth, Shown, load_mini_month};
 use super::period::{Period, PeriodUnit, PickerMonth, period, picker_month};
 use super::{CalendarInput, MonthView, WeekView, month, month_days, week, week_days};
 use crate::day::names;
@@ -44,6 +45,26 @@ pub async fn week_view(state: State<'_, AppState>, day: Day) -> AppResult<WeekVi
 #[tauri::command]
 pub async fn month_view(state: State<'_, AppState>, day: Day) -> AppResult<MonthView> {
     load_month(&state.data.db()?, day).await
+}
+
+#[tauri::command]
+pub async fn calendar_mini_month(
+    state: State<'_, AppState>,
+    shown_day: Day,
+    offset: i32,
+    shown: Shown,
+) -> AppResult<MiniMonth> {
+    let title = state.settings.get().calendar_title;
+    load_mini_month(
+        state.data.db().ok().as_ref(),
+        shown_day,
+        offset,
+        shown,
+        title,
+        Day::today(),
+        now_ms(),
+    )
+    .await
 }
 
 #[tauri::command]

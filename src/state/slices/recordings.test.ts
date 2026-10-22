@@ -51,39 +51,6 @@ describe("recordings slice", () => {
       expect(state().selection).toBeNull();
     });
 
-    describe("toggleSelectionBlock", () => {
-      it("starts a selection from the block's span", () => {
-        state().toggleSelectionBlock("a2");
-        expect(state().selection).toEqual({ start: todo.start, end: todo.end, blockIds: ["a2"] });
-      });
-
-      it("adds another block and covers both", () => {
-        state().toggleSelectionBlock("a1");
-        state().toggleSelectionBlock("a2");
-        expect(state().selection).toEqual({ start: docs.start, end: todo.end, blockIds: ["a1", "a2"] });
-      });
-
-      it("shrinks the selection to the remaining blocks when one is toggled off", () => {
-        state().toggleSelectionBlock("a1");
-        state().toggleSelectionBlock("a2");
-        state().toggleSelectionBlock("a1");
-        expect(state().selection).toEqual({ start: todo.start, end: todo.end, blockIds: ["a2"] });
-      });
-
-      it("clears the selection and its snap when the last block is toggled off", () => {
-        state().toggleSelectionBlock("a1");
-        state().setSelectionSnap({ start: docs.start, end: docs.end });
-        state().toggleSelectionBlock("a1");
-        expect(state().selection).toBeNull();
-        expect(state().selectionSnap).toBeNull();
-      });
-
-      it("ignores a block that is not in the view", () => {
-        state().toggleSelectionBlock("missing");
-        expect(state().selection).toBeNull();
-      });
-    });
-
     it("forgets the snapped span when the selection is cleared", () => {
       state().setSelection({ start: 1, end: 2, blockIds: [] });
       state().setSelectionSnap({ start: 1, end: 2 });

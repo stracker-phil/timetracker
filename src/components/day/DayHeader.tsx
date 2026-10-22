@@ -1,7 +1,7 @@
 import { Columns3, Ellipsis, SlidersHorizontal } from "lucide-react";
 import type { DayTotals } from "../../api";
 import { runCommand, useBindingLabel } from "../../commands";
-import { formatDayLabel, isToday } from "../../lib/day";
+import { isToday } from "../../lib/day";
 import { formatHm } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { useContextMenu } from "../ContextMenu";
@@ -12,7 +12,8 @@ const DAY_MODES = ["timeline", "list"] as const;
 
 const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` : label);
 
-export function DayHeader({ day, totals }: { day: string; totals: DayTotals | null }) {
+/** `label` is the day's title from Rust, in the format of the day title setting. */
+export function DayHeader({ day, label = "", totals }: { day: string; label?: string; totals: DayTotals | null }) {
   const settingsKeys = useBindingLabel("day.settings");
   const mode = useStore((s) => s.uiState.dayMode);
   const setDayMode = useStore((s) => s.setDayMode);
@@ -26,7 +27,7 @@ export function DayHeader({ day, totals }: { day: string; totals: DayTotals | nu
   };
   return (
     <Toolbar
-      title={formatDayLabel(day)}
+      title={label}
       detail={
         totals &&
         !isToday(day) && (

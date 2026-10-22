@@ -11,7 +11,7 @@ import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, i
 import { activeScopes, registerScope } from "./scopes";
 import { registerSuggestionScope, SUGGESTION_COMMANDS } from "./suggestions";
 
-/** The views with a period, which the sidebar's date navigator and P, N, O step. */
+/** The views with a period, which P, N and O step. */
 const DATED_VIEWS: View[] = ["day", "week", "month", "reports"];
 
 export * from "./registry";
@@ -72,7 +72,7 @@ function moveFocus(step: typeof stepBlock, by: 1 | -1) {
   s.focusBlock(step(s.dayView, s.focusedBlock, by));
 }
 
-/** Selects the focused block's span, as a click on it does. */
+/** Selects the focused block's span. */
 function selectFocusedBlock() {
   const s = useStore.getState();
   if (s.focusedBlock === null) return;
@@ -82,7 +82,7 @@ function selectFocusedBlock() {
   s.extendSelection(s.focusedBlock);
 }
 
-/** Moves the block focus in time and grows the selection over it, as a ⇧-click does. */
+/** Moves the block focus in time and grows the selection over it. */
 function extendToBlock(by: 1 | -1) {
   const s = useStore.getState();
   if (s.dayView?.day !== s.day) return;

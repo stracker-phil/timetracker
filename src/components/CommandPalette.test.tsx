@@ -61,6 +61,7 @@ describe("CommandPalette", () => {
         expect.stringMatching(/^Month/),
         expect.stringMatching(/^Reports/),
         expect.stringMatching(/^Projects/),
+        expect.stringMatching(/^Tags/),
         expect.stringMatching(/^Rules/),
         expect.stringMatching(/^Today/),
         expect.stringContaining("Acme / Promo"),

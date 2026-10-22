@@ -214,6 +214,18 @@ pub async fn get_on(conn: &mut SqliteConnection, id: &str) -> AppResult<Recordin
     fetch(conn, id).await
 }
 
+/// The start and end (`None` while running) of every span that shares time with `[from, to)`, by start.
+pub async fn spans_in(db: &Db, from: Ms, to: Ms) -> AppResult<Vec<(Ms, Option<Ms>)>> {
+    Ok(sqlx::query_as(
+        r#"SELECT start, "end" FROM recording_spans
+           WHERE start < ?2 AND ("end" IS NULL OR "end" > ?1) ORDER BY start"#,
+    )
+    .bind(from)
+    .bind(to)
+    .fetch_all(db.pool())
+    .await?)
+}
+
 pub async fn count(db: &Db) -> AppResult<i64> {
     Ok(sqlx::query_scalar("SELECT count(*) FROM recordings")
         .fetch_one(db.pool())
@@ -898,6 +910,29 @@ mod tests {
         }
         let found = overlapping(&db, 450, 460, None).await.unwrap();
         assert_eq!(found[0].spans, split.spans);
+    }
+
+    #[tokio::test]
+    async fn spans_in_lists_the_spans_sharing_time_with_the_window_by_start() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+        for (start, end) in [
+            (400, Some(450)),
+            (50, Some(100)),
+            (190, Some(300)),
+            (90, Some(150)),
+            (200, Some(250)),
+            (600, None),
+        ] {
+            recording(&db, &p.id, start, end).await;
+        }
+
+        assert_eq!(
+            spans_in(&db, 100, 200).await.unwrap(),
+            [(90, Some(150)), (190, Some(300))]
+        );
+        assert_eq!(spans_in(&db, 1_000, 2_000).await.unwrap(), [(600, None)]);
+        assert!(spans_in(&db, 0, 50).await.unwrap().is_empty());
     }
 
     #[tokio::test]

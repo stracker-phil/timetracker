@@ -4,7 +4,7 @@ import { api, type Range } from "../api";
 import { addDays, addMonths, formatMonthLabel, today } from "../lib/day";
 import { useApiResult } from "../lib/useApiResult";
 import { useStore } from "../state/store";
-import { useCalendarPeriod, useReportRange } from "./DateNavigator";
+import { useCalendarPeriod, useReportRange } from "./shownPeriod";
 import { Modal } from "./Modal";
 import { useAnchoredStyle } from "./useAnchoredStyle";
 

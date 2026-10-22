@@ -3,9 +3,10 @@ import type { DayView } from "../../api";
 import { findBlock } from "../../lib/blockFocus";
 import { isToday } from "../../lib/day";
 import { formatClock } from "../../lib/format";
-import { useStore } from "../../state/store";
+import { useStore, type Store } from "../../state/store";
 import { useContextMenu } from "../ContextMenu";
 import { blockMenu } from "./blockMenu";
+import { drawnParts, selectionBand } from "./drawnParts";
 import { HoverCard } from "./HoverCard";
 import { Lane } from "./Lane";
 import { LaneHeader } from "./LaneHeader";
@@ -24,6 +25,11 @@ const HIDE_CARD_MS = 150;
 const NOW_TICK_MS = 30_000;
 /** Compact density draws the day at this share of the zoom's height. */
 const COMPACT_SCALE = 0.6;
+
+const NO_BLOCKS: string[] = [];
+
+/** The blocks marked selected: those clicked into the open editor's spans, else the selection's. */
+const selectHighlightedBlocks = (s: Store) => (s.editor ? s.draftBlockIds : (s.selection?.blockIds ?? NO_BLOCKS));
 
 const blockIdAt = (target: EventTarget) => (target instanceof Element ? (target.closest<HTMLElement>("[data-block-id]")?.dataset.blockId ?? null) : null);
 const gearAt = (target: EventTarget) => (target instanceof Element ? target.closest<HTMLElement>("[data-block-gear]") : null);
@@ -82,7 +88,7 @@ export function Timeline({ view }: { view: DayView }) {
   const columnRef = useRef<HTMLDivElement>(null);
   const press = useSelectionPress({ origin, pxPerMinute, scrollRef });
   const ruleDrag = useRuleDrag(columnRef, scrollRef);
-  // ⌥ on a block drags it onto a project for a rule; while the editor is open it adds a span instead.
+  // ⌥ on a block drags it onto a project for a rule; while the editor is open it is a plain press.
   const pressLanes = (e: PointerEvent<HTMLDivElement>) => {
     if (gearAt(e.target) !== null) return;
     const ruling = e.altKey && e.button === 0 && useStore.getState().editor === null;
@@ -91,6 +97,10 @@ export function Timeline({ view }: { view: DayView }) {
     else press(e);
   };
   const selection = useSnappedSpan(useStore((s) => s.selection));
+  const draft = useStore((s) => s.draft);
+  const selectedBlocks = useStore(selectHighlightedBlocks);
+  const draftBands = drawnParts(draft?.spans ?? [], view.bounds);
+  const ownBand = selectionBand(selection, draftBands);
   const selectionStart = selection?.start;
   const selectionEnd = selection?.end;
   useEffect(() => {
@@ -139,14 +149,17 @@ export function Timeline({ view }: { view: DayView }) {
             }}
           >
             {view.lanes.map((lane) => (
-              <Lane key={lane.id} lane={lane} origin={origin} pxPerMinute={pxPerMinute} range={range} focusedBlock={focusedBlock} />
+              <Lane key={lane.id} lane={lane} origin={origin} pxPerMinute={pxPerMinute} range={range} focusedBlock={focusedBlock} selectedBlocks={selectedBlocks} />
             ))}
-            {selection && (
-              <div className="selection" style={{ top: y(selection.start), height: y(selection.end) - y(selection.start) }} aria-label="Selection">
-                <span className="selection-label">
-                  {formatClock(selection.start)}–{formatClock(selection.end)}
-                </span>
-              </div>
+            {draftBands.map((band) => (
+              <div key={band.start} className="selection" style={{ top: y(band.start), height: y(band.end) - y(band.start) }} aria-hidden="true" />
+            ))}
+            {ownBand && (
+              <div
+                className="selection"
+                style={{ top: y(ownBand.start), height: y(ownBand.end) - y(ownBand.start) }}
+                aria-label={`Selection ${formatClock(ownBand.start)}–${formatClock(ownBand.end)}`}
+              />
             )}
             {live && now >= origin && now < end && <div className="now-line" style={{ top: y(now) }} aria-hidden="true" />}
           </div>

@@ -17,11 +17,13 @@ interface Props {
   top: number;
   height: number;
   focused: boolean;
+  /** Its span is in the selection or the open editor's spans. */
+  selected: boolean;
 }
 
 type BlockProps = Omit<Props, "look">;
 
-const flags = (block: ActivityBlockData, focused: boolean) => [block.private && "private", block.covered && "dimmed", focused && "focused"];
+const flags = (block: ActivityBlockData, focused: boolean, selected: boolean) => [block.private && "private", block.covered && "dimmed", focused && "focused", selected && "selected"];
 
 const placement = (block: ActivityBlockData) => ({ left: `${(block.col / block.cols) * 100}%`, width: `${100 / block.cols}%` });
 
@@ -36,9 +38,9 @@ function Gear({ block }: { block: ActivityBlockData }) {
 }
 
 /** A filled block with the app icon and label, the active time at the bottom right when tall. */
-function SummaryBlock({ block, top, height, focused }: BlockProps) {
+function SummaryBlock({ block, top, height, focused, selected }: BlockProps) {
   const text = height >= TEXT_MIN_PX;
-  const classes = ["summary-block", height < ONE_LINE_PX && "one-line", ...flags(block, focused)];
+  const classes = ["summary-block", height < ONE_LINE_PX && "one-line", ...flags(block, focused, selected)];
   return (
     <Block
       className={classes.filter(Boolean).join(" ")}
@@ -63,9 +65,9 @@ function SummaryBlock({ block, top, height, focused }: BlockProps) {
 }
 
 /** The app icon over a bar as long as the activity, the label and active time beside it. */
-function MemoryBlock({ block, top, height, focused }: BlockProps) {
+function MemoryBlock({ block, top, height, focused, selected }: BlockProps) {
   const text = height >= TEXT_MIN_PX;
-  const classes = ["memory", text && height < TWO_LINES_PX && "one-line", ...flags(block, focused)];
+  const classes = ["memory", text && height < TWO_LINES_PX && "one-line", ...flags(block, focused, selected)];
   return (
     <div className={classes.filter(Boolean).join(" ")} data-block-id={block.id} aria-label={ariaLabel(block)} style={{ top, height, ...placement(block) }}>
       <span className="memory-bar" aria-hidden="true" />

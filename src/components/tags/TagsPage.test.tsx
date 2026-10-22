@@ -9,7 +9,7 @@ import { resetStore } from "../../state/store";
 import { projectsStore, tag } from "../../test/projectFixtures";
 import { Dialogs } from "../Dialogs";
 import { Toasts } from "../Toasts";
-import { TagsSection } from "./TagsSection";
+import { TagsPage } from "./TagsPage";
 
 const mocked = vi.mocked(api, true);
 
@@ -17,15 +17,21 @@ function renderTags(tags = [tag({ name: "admin" }), tag({ name: "research", reco
   resetStore(projectsStore({ tags }));
   render(
     <>
-      <TagsSection />
+      <TagsPage />
       <Dialogs />
       <Toasts />
     </>,
   );
 }
 
-describe("TagsSection", () => {
+describe("TagsPage", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("is a page of its own titled Tags", () => {
+    renderTags();
+    expect(screen.getByRole("region", { name: "Tags" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Tags" })).toBeInTheDocument();
+  });
 
   it("lists every tag with the number of recordings that carry it", () => {
     renderTags();

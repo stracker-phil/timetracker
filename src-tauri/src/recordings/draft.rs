@@ -5,7 +5,7 @@ use chrono::TimeZone;
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::{MINUTE_MS, Span, default_span};
+use super::{MINUTE_MS, Span, default_span, snap_span};
 use crate::db::time::{Day, Ms, same_time_on_in};
 
 /// How long a span added with "Add span" starts out.
@@ -68,6 +68,104 @@ pub fn with_total<Tz: TimeZone>(spans: &[Span], total_ms: i64, tz: &Tz) -> Draft
         changed.end = end;
     }
     draft(&spans, tz)
+}
+
+/// The draft after a click on an activity block: whether the block's span joined it or left it.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct DraftToggle {
+    /// By start, none touching or overlapping another.
+    pub spans: Vec<Span>,
+    pub total_ms: i64,
+    pub included: bool,
+}
+
+/// `spans` by start, with those that touch or overlap merged into one.
+fn merged(mut spans: Vec<Span>) -> Vec<Span> {
+    spans.sort_by_key(|s| s.start);
+    let mut out: Vec<Span> = Vec::with_capacity(spans.len());
+    for span in spans {
+        match out.last_mut() {
+            Some(last) if span.start <= last.end => last.end = last.end.max(span.end),
+            _ => out.push(span),
+        }
+    }
+    out
+}
+
+/// `spans` without the time of `cut`; a span that sticks out on both sides becomes two.
+fn without(spans: &[Span], cut: Span) -> Vec<Span> {
+    spans
+        .iter()
+        .flat_map(|&s| {
+            let before = (s.start < cut.start).then(|| Span {
+                start: s.start,
+                end: s.end.min(cut.start),
+            });
+            let after = (s.end > cut.end).then(|| Span {
+                start: s.start.max(cut.end),
+                end: s.end,
+            });
+            [before, after]
+        })
+        .flatten()
+        .filter(|s| s.end > s.start)
+        .collect()
+}
+
+/// The shared time of `a` and `b`, if any.
+fn shared(a: Span, b: Span) -> Option<Span> {
+    let span = Span {
+        start: a.start.max(b.start),
+        end: a.end.min(b.end),
+    };
+    (span.end > span.start).then_some(span)
+}
+
+/// `spans` with `span` in them, merged with the spans it touches or overlaps.
+pub fn with_included<Tz: TimeZone>(spans: &[Span], span: Span, tz: &Tz) -> DraftSpans {
+    let mut spans = draft(spans, tz).spans;
+    spans.push(span);
+    draft(&merged(spans), tz)
+}
+
+/// A click on a block with the snapped span `block`: when one of `spans` covers it, its time leaves the draft
+/// (the time it shares with `others`, the other clicked blocks' snapped spans, stays); else it joins, merged
+/// with the spans it touches or overlaps.
+pub fn toggled<Tz: TimeZone>(spans: &[Span], block: Span, others: &[Span], tz: &Tz) -> DraftToggle {
+    let spans = draft(spans, tz).spans;
+    let covered = spans
+        .iter()
+        .any(|s| s.start <= block.start && block.end <= s.end);
+    let next = if covered {
+        let mut kept = without(&spans, block);
+        kept.extend(others.iter().filter_map(|&o| shared(o, block)));
+        merged(kept)
+    } else {
+        let mut joined = spans;
+        joined.push(block);
+        merged(joined)
+    };
+    let DraftSpans { spans, total_ms } = draft(&next, tz);
+    DraftToggle {
+        spans,
+        total_ms,
+        included: !covered,
+    }
+}
+
+/// `toggled` with `block` and `others` (raw activity spans) snapped to the `minutes` grid first.
+pub fn toggled_on_grid<Tz: TimeZone>(
+    spans: &[Span],
+    block: Span,
+    others: &[Span],
+    minutes: u32,
+    tz: &Tz,
+) -> DraftToggle {
+    let snapped = |s: &Span| snap_span(s.start, s.end, minutes);
+    let others: Vec<Span> = others.iter().map(snapped).collect();
+    toggled(spans, snapped(&block), &others, tz)
 }
 
 /// `spans` and a new span after the last one, else the default span before `now`.
@@ -323,6 +421,238 @@ mod tests {
                 spans: vec![span(june(15, 12, 40), june(15, 13, 10))],
                 total_ms: 30 * MIN
             }
+        );
+    }
+
+    #[test]
+    fn with_included_merges_spans_that_touch_or_overlap() {
+        let existing = [span(june(15, 9, 0), june(15, 10, 0))];
+
+        for (added, expected_end) in [
+            (span(june(15, 10, 0), june(15, 11, 0)), june(15, 11, 0)),
+            (span(june(15, 9, 30), june(15, 11, 0)), june(15, 11, 0)),
+            (span(june(15, 9, 15), june(15, 9, 45)), june(15, 10, 0)),
+        ] {
+            let drafted = with_included(&existing, added, &Vienna);
+
+            assert_eq!(
+                drafted.spans,
+                [span(june(15, 9, 0), expected_end)],
+                "{added:?}"
+            );
+            assert_eq!(drafted.total_ms, expected_end - june(15, 9, 0), "{added:?}");
+        }
+    }
+
+    #[test]
+    fn with_included_keeps_a_span_with_a_gap_separate_and_sorted() {
+        let existing = [span(june(15, 13, 0), june(15, 14, 0))];
+
+        let drafted = with_included(&existing, span(june(15, 9, 0), june(15, 10, 0)), &Vienna);
+
+        assert_eq!(
+            drafted,
+            DraftSpans {
+                spans: vec![
+                    span(june(15, 9, 0), june(15, 10, 0)),
+                    span(june(15, 13, 0), june(15, 14, 0))
+                ],
+                total_ms: 2 * HOUR
+            }
+        );
+    }
+
+    #[test]
+    fn toggling_an_uncovered_block_adds_it() {
+        let toggle = toggled(&[], span(june(15, 9, 0), june(15, 10, 0)), &[], &Vienna);
+
+        assert_eq!(
+            toggle,
+            DraftToggle {
+                spans: vec![span(june(15, 9, 0), june(15, 10, 0))],
+                total_ms: HOUR,
+                included: true
+            }
+        );
+    }
+
+    #[test]
+    fn toggling_an_uncovered_block_merges_it_with_the_spans_it_touches() {
+        let spans = [
+            span(june(15, 9, 0), june(15, 10, 0)),
+            span(june(15, 11, 0), june(15, 12, 0)),
+        ];
+
+        let toggle = toggled(&spans, span(june(15, 10, 0), june(15, 11, 0)), &[], &Vienna);
+
+        assert_eq!(
+            toggle,
+            DraftToggle {
+                spans: vec![span(june(15, 9, 0), june(15, 12, 0))],
+                total_ms: 3 * HOUR,
+                included: true
+            }
+        );
+    }
+
+    #[test]
+    fn toggling_two_separate_blocks_leaves_the_gap_unassigned() {
+        let first = span(june(15, 9, 0), june(15, 10, 0));
+        let second = span(june(15, 11, 0), june(15, 12, 0));
+
+        let after_first = toggled(&[], first, &[], &Vienna);
+        let after_second = toggled(&after_first.spans, second, &[first], &Vienna);
+
+        assert_eq!(
+            after_second,
+            DraftToggle {
+                spans: vec![first, second],
+                total_ms: 2 * HOUR,
+                included: true
+            }
+        );
+    }
+
+    #[test]
+    fn toggling_a_covered_block_removes_it() {
+        let spans = [
+            span(june(15, 9, 0), june(15, 10, 0)),
+            span(june(15, 11, 0), june(15, 12, 0)),
+        ];
+
+        let toggle = toggled(&spans, spans[1], &[], &Vienna);
+
+        assert_eq!(
+            toggle,
+            DraftToggle {
+                spans: vec![spans[0]],
+                total_ms: HOUR,
+                included: false
+            }
+        );
+    }
+
+    #[test]
+    fn toggling_a_block_inside_a_span_splits_the_span() {
+        let spans = [span(june(15, 9, 0), june(15, 12, 0))];
+
+        let toggle = toggled(&spans, span(june(15, 10, 0), june(15, 11, 0)), &[], &Vienna);
+
+        assert_eq!(
+            toggle,
+            DraftToggle {
+                spans: vec![
+                    span(june(15, 9, 0), june(15, 10, 0)),
+                    span(june(15, 11, 0), june(15, 12, 0))
+                ],
+                total_ms: 2 * HOUR,
+                included: false
+            }
+        );
+    }
+
+    #[test]
+    fn toggling_off_the_only_span_leaves_nothing() {
+        let only = span(june(15, 9, 0), june(15, 10, 0));
+
+        let toggle = toggled(&[only], only, &[], &Vienna);
+
+        assert_eq!(
+            toggle,
+            DraftToggle {
+                spans: Vec::new(),
+                total_ms: 0,
+                included: false
+            }
+        );
+    }
+
+    #[test]
+    fn removing_a_block_keeps_the_time_it_shares_with_other_blocks() {
+        let spans = [span(june(15, 9, 0), june(15, 12, 0))];
+        let block = span(june(15, 9, 30), june(15, 10, 30));
+        let other = span(june(15, 10, 0), june(15, 11, 0));
+
+        let toggle = toggled(&spans, block, &[other], &Vienna);
+
+        assert_eq!(
+            toggle,
+            DraftToggle {
+                spans: vec![
+                    span(june(15, 9, 0), june(15, 9, 30)),
+                    span(june(15, 10, 0), june(15, 12, 0))
+                ],
+                total_ms: 150 * MIN,
+                included: false
+            }
+        );
+    }
+
+    #[test]
+    fn removing_a_block_ignores_other_blocks_that_share_no_time_with_it() {
+        let spans = [span(june(15, 9, 0), june(15, 12, 0))];
+        let block = span(june(15, 9, 0), june(15, 10, 0));
+        let apart = span(june(15, 13, 0), june(15, 14, 0));
+        let touching = span(june(15, 10, 0), june(15, 10, 30));
+
+        let toggle = toggled(&spans, block, &[apart, touching], &Vienna);
+
+        assert_eq!(toggle.spans, [span(june(15, 10, 0), june(15, 12, 0))]);
+        assert_eq!(toggle.total_ms, 2 * HOUR);
+    }
+
+    #[test]
+    fn a_block_only_partly_overlapping_a_span_is_added_and_merged() {
+        let spans = [span(june(15, 9, 0), june(15, 10, 0))];
+
+        let toggle = toggled(&spans, span(june(15, 9, 30), june(15, 11, 0)), &[], &Vienna);
+
+        assert_eq!(
+            toggle,
+            DraftToggle {
+                spans: vec![span(june(15, 9, 0), june(15, 11, 0))],
+                total_ms: 2 * HOUR,
+                included: true
+            }
+        );
+    }
+
+    #[test]
+    fn an_unsnapped_block_is_added_on_the_grid_and_toggled_off_again() {
+        let raw = span(june(15, 13, 12), june(15, 13, 38));
+
+        let added = toggled_on_grid(&[], raw, &[], 5, &Vienna);
+        let removed = toggled_on_grid(&added.spans, raw, &[], 5, &Vienna);
+
+        assert_eq!(
+            added,
+            DraftToggle {
+                spans: vec![span(june(15, 13, 10), june(15, 13, 40))],
+                total_ms: 30 * MIN,
+                included: true
+            }
+        );
+        assert_eq!(
+            removed,
+            DraftToggle {
+                spans: Vec::new(),
+                total_ms: 0,
+                included: false
+            }
+        );
+    }
+
+    #[test]
+    fn a_toggle_serializes_with_camel_case_fields() {
+        let toggle = toggled(&[], span(june(15, 9, 0), june(15, 10, 0)), &[], &Vienna);
+
+        assert_eq!(
+            serde_json::to_value(&toggle).unwrap(),
+            json!({
+                "spans": [{ "start": june(15, 9, 0), "end": june(15, 10, 0) }],
+                "totalMs": HOUR,
+                "included": true
+            })
         );
     }
 }

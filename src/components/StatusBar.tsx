@@ -6,7 +6,7 @@ import { formatClock, formatHm } from "../lib/format";
 import { useApiResult } from "../lib/useApiResult";
 import { selectDayVersion, useStore } from "../state/store";
 import { useLiveReload } from "./day/useLiveReload";
-import { useCalendarPeriod, useReportRange } from "./DateNavigator";
+import { useCalendarPeriod, useReportRange } from "./shownPeriod";
 import { TrackerStatus } from "./TrackerStatus";
 
 /** `⏱ Project 1:23`; a click stops the timer. */
@@ -36,7 +36,7 @@ function TodayTotals() {
 
 const TODAY: Range = { kind: "today" };
 
-/** The period the sidebar navigator shows; today in views without one; `null` while it loads. */
+/** The period the shown view covers; today in views without one; `null` while it loads. */
 function useShownRange(): Range | null {
   const view = useStore((s) => s.view);
   const reportRange = useReportRange();
@@ -80,12 +80,14 @@ function BillableMeter({ range }: { range: Range }) {
 export function StatusBar() {
   const sidebarKeys = useBindingLabel("sidebar.toggle");
   const selection = useStore((s) => s.selectionSnap);
+  // The sidebar holds the tracker's status while it shows.
+  const sidebarHidden = useStore((s) => s.uiState.sidebarHidden);
   return (
     <footer className="statusbar">
       <button className="icon-btn status-icon" aria-label="Toggle sidebar" title={sidebarKeys ? `Toggle sidebar (${sidebarKeys})` : "Toggle sidebar"} onClick={() => runCommand("sidebar.toggle")}>
         <PanelLeft size="0.923rem" />
       </button>
-      <TrackerStatus />
+      {sidebarHidden && <TrackerStatus />}
       {selection && (
         <span className="tabular" aria-label="Selection">
           {formatClock(selection.start)}–{formatClock(selection.end)} · {formatHm(selection.end - selection.start)}

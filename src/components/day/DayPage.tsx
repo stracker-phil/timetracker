@@ -44,6 +44,8 @@ export function DayPage() {
   const live = useLiveReload(isToday(day));
   const view = useStore((s) => (s.dayView?.day === day ? s.dayView : null));
   const error = useStore((s) => s.dayError);
+  // The last loaded title stays while the next day loads, so the toolbar never blanks.
+  const label = useStore((s) => s.dayView?.label);
   const mode = useStore((s) => s.uiState.dayMode);
   const pane = usePaneSize("timesheet", Math.round(window.innerWidth * TIMESHEET.share), TIMESHEET.min, TIMESHEET.max);
 
@@ -53,7 +55,7 @@ export function DayPage() {
 
   return (
     <section className="day-page" aria-label="Day">
-      <DayHeader day={day} totals={view?.totals ?? null} />
+      <DayHeader day={day} label={label} totals={view?.totals ?? null} />
       {error && !view && <p className="settings-alert">{error.message}</p>}
       {view && (
         <div className="day-body">

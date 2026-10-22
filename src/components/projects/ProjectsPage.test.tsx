@@ -40,11 +40,17 @@ describe("ProjectsPage", () => {
   beforeEach(() => vi.clearAllMocks());
 
   describe("grouping", () => {
-    it("lists a band per client, with its projects, then No client, then the tags", () => {
+    it("lists a band per client, with its projects, then No client", () => {
       renderPage({ projects: [solo, site], clients: [acme] });
-      expect(bands()).toEqual(["Acme", "No client", "Tags"]);
+      expect(bands()).toEqual(["Acme", "No client"]);
       expect(within(screen.getByRole("region", { name: "Acme" })).getByRole("button", { name: "Website" })).toBeInTheDocument();
       expect(within(screen.getByRole("region", { name: "No client" })).getByRole("button", { name: "Solo work" })).toBeInTheDocument();
+    });
+
+    it("does not list the tags, which have their own view", () => {
+      renderPage({ projects: [site], clients: [acme] });
+      expect(screen.queryByRole("region", { name: "Tags" })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("New tag")).not.toBeInTheDocument();
     });
 
     it("says No projects under a client without projects", () => {
