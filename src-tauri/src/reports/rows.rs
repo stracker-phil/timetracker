@@ -46,6 +46,7 @@ pub(super) fn rows(
         if !wanted(filter, project, recording) {
             continue;
         }
+        let client = project.client_id.as_deref().and_then(|id| clients.get(id));
         let tag: Option<&Tag> = recording
             .tag_id
             .as_ref()
@@ -66,11 +67,9 @@ pub(super) fn rows(
                 rounded_ms: rounded(duration, filter.rounding),
                 project_id: project.id.clone(),
                 project: project.name.clone(),
-                client: project
-                    .client_id
-                    .as_deref()
-                    .and_then(|id| clients.get(id))
-                    .map(|c| c.name.clone()),
+                client: client.map(|c| c.name.clone()),
+                client_id: client.map(|c| c.id.clone()),
+                client_color: client.map(|c| c.color.clone()),
                 color: project.color.clone(),
                 shade: project.shade,
                 billable: project.billable,

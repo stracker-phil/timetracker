@@ -387,9 +387,24 @@ back from This week is Last week), anything else `Custom`.
   total), by day (`Mon 2026-10-20`), week
   (`Week 43 · 20 – 26 Oct 2026`) or month (`October 2026`). A group lists its distinct notes in the order
   they first occur, each with its days, and its rows by start.
+- Overview (`reports/mod.rs` `build`): `recordingCount` and `projectCount` (distinct), `untaggedRoundedMs`, and
+  `notes`, every note of the report as `CopiedNotes { text, count }` (`reports/notes.rs` `copied_notes`: by
+  the rows' first spans, empty notes skipped, repeated notes kept, a recording's note once even when it
+  spans days; one per line, no trailing line break).
+- Charts (`reports/charts.rs`): `ReportCharts { byClient, byProject, byTag }`, each a list of `ChartSlice`
+  (key, label, accent `color`, the project's `shade` by project, `roundedMs`, whole `percent`, and `offset` and
+  `share` as fractions of the ring), largest first with "No client" and "Untagged" last. Clients keep their
+  accent, projects their shade; tags take the accents by their place in the tag list (graphite left out), and
+  what has no client or tag is graphite.
+- Table (`reports/table.rs`): `clients: ReportClient[]`, by name with "No client" last, each with its
+  totals and `projects: ReportProject[]` (by name: label, color, shade, billable, totals, `notes` as
+  `CopiedNotes` for "Copy notes", and the rows by start). The groups above stay for the text and MCP and are
+  left out of the serialized result (`#[serde(skip)]`), so the page gets every row once, under `clients`;
+  the CLI's `--json` adds them back as `groups`.
 - `reports/text.rs` renders the text the screen copies and the CLI prints (format in [ux.md](ux.md#reports));
   the CLI adds `Billable: 6:24 of 8:00 (80 %)` below it (`reports::cli::report`) when time is recorded, so the
-  copied timesheet stays without it.
+  copied timesheet stays without it. With `output: notes` on `IpcMessage::Report` (`ReportOutput`; `timetracker report --notes`)
+  the reply's text is `result.notes.text` instead.
 - `reports/saved.rs`: saved reports in `saved_reports` (the filter as JSON; a filter this version can't read
   opens as the default). Presets stay relative, so a saved "this month" follows the calendar.
 - `reports/testing.rs` (tests only): the shared report fixtures (clients, projects, tags, recordings from
@@ -477,7 +492,10 @@ and exits ([ADR 0017](adr/0017-cli-asks-the-running-app.md)). It never opens the
 
 ### Command tree
 
-`cli/mod.rs` (clap derive). Global flags: `--hidden` (start without the window; a running instance stays
+`cli/mod.rs` (clap derive; `Cli`, `Command`, `parse` and `message`), with the larger subcommands' flags and
+messages in their own files: `cli/activity.rs` (`ActivityCommand`), `cli/record.rs` (`RecordArgs`),
+`cli/report.rs` (`ReportArgs`); `cli/batch.rs` holds `split`; `cli/testing.rs` the tests' shared helpers.
+Global flags: `--hidden` (start without the window; a running instance stays
 as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting for this run), `--json`
 (replies as JSON), `--help`, `--version`.
 

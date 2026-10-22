@@ -20,7 +20,7 @@ use crate::activity::ActivityInput;
 use crate::db::time::{Day, Ms};
 use crate::error::{AppError, ErrorKind};
 use crate::recordings::cli::RecordRequest;
-use crate::reports::cli::ReportRequest;
+use crate::reports::cli::{ReportOutput, ReportRequest};
 use crate::timers::commands::TimerStartRequest;
 use crate::tracker::PauseUntil;
 
@@ -72,6 +72,8 @@ pub enum IpcMessage {
     },
     Report {
         request: ReportRequest,
+        #[serde(default, skip_serializing_if = "ReportOutput::is_text")]
+        output: ReportOutput,
     },
     TimerStart {
         request: TimerStartRequest,
@@ -580,6 +582,7 @@ mod tests {
 
     fn report_message() -> IpcMessage {
         IpcMessage::Report {
+            output: ReportOutput::Text,
             request: ReportRequest {
                 range: Range::Custom {
                     from: day("2026-10-01"),
@@ -723,6 +726,7 @@ mod tests {
             ),
             (
                 IpcMessage::Report {
+                    output: ReportOutput::Text,
                     request: ReportRequest {
                         range: Range::LastWeek,
                         group_by: Group::Project,
@@ -739,6 +743,28 @@ mod tests {
                         "groupBy": "project", "rounding": "none",
                         "clients": [], "projects": [], "tags": []
                     }
+                }),
+            ),
+            (
+                IpcMessage::Report {
+                    output: ReportOutput::Notes,
+                    request: ReportRequest {
+                        range: Range::Today,
+                        group_by: Group::Project,
+                        rounding: Rounding::None,
+                        clients: vec![],
+                        projects: vec![],
+                        tags: vec![],
+                    },
+                },
+                serde_json::json!({
+                    "type": "report",
+                    "request": {
+                        "range": { "kind": "today" },
+                        "groupBy": "project", "rounding": "none",
+                        "clients": [], "projects": [], "tags": []
+                    },
+                    "output": "notes"
                 }),
             ),
             (

@@ -121,6 +121,12 @@ mod tests {
             total_ms: total,
             total_rounded_ms: total,
             billable: crate::reports::Billable::of(total, 0),
+            recording_count: 0,
+            project_count: 0,
+            untagged_rounded_ms: 0,
+            charts: crate::reports::ReportCharts::default(),
+            clients: vec![],
+            notes: crate::reports::CopiedNotes::default(),
         }
     }
 

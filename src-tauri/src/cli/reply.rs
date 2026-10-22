@@ -880,6 +880,7 @@ mod tests {
 
     fn report_message() -> IpcMessage {
         IpcMessage::Report {
+            output: crate::reports::cli::ReportOutput::Text,
             request: crate::reports::cli::ReportRequest {
                 range: crate::reports::Range::Today,
                 group_by: crate::store::settings::Group::Project,

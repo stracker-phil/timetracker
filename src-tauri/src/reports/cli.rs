@@ -22,7 +22,24 @@ pub struct ReportRequest {
     pub tags: Vec<String>,
 }
 
-/// The result with its text, which the CLI prints without `--json`: the copied text and the billable line.
+/// What the CLI prints without `--json`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReportOutput {
+    /// The copied text, then the billable line.
+    #[default]
+    Text,
+    /// The notes, one per line (`--notes`).
+    Notes,
+}
+
+impl ReportOutput {
+    pub fn is_text(&self) -> bool {
+        *self == Self::Text
+    }
+}
+
+/// The result with the text the CLI prints without `--json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reported {
@@ -31,21 +48,30 @@ pub struct Reported {
     pub result: serde_json::Value,
 }
 
-pub async fn report(app: &AppHandle, request: ReportRequest) -> AppResult<Reported> {
+pub async fn report(
+    app: &AppHandle,
+    request: ReportRequest,
+    output: ReportOutput,
+) -> AppResult<Reported> {
     let db = app.state::<AppState>().data.db()?;
     let filter = filter_of(&db, request).await?;
-    reported(run(&db, &filter, Day::today(), now_ms()).await?)
+    reported(run(&db, &filter, Day::today(), now_ms()).await?, output)
 }
 
-fn reported(result: ReportResult) -> AppResult<Reported> {
-    let mut text = text(&result);
-    if let Some(billable) = billable_text(&result.billable) {
-        text.push_str(&format!("Billable: {billable}\n"));
-    }
-    Ok(Reported {
-        text,
-        result: serde_json::to_value(result)?,
-    })
+fn reported(result: ReportResult, output: ReportOutput) -> AppResult<Reported> {
+    let mut json = serde_json::to_value(&result)?;
+    json["groups"] = serde_json::to_value(&result.groups)?;
+    let text = match output {
+        ReportOutput::Notes => result.notes.text,
+        ReportOutput::Text => {
+            let mut text = text(&result);
+            if let Some(billable) = billable_text(&result.billable) {
+                text.push_str(&format!("Billable: {billable}\n"));
+            }
+            text
+        }
+    };
+    Ok(Reported { text, result: json })
 }
 
 /// The request with its names resolved to ids.
@@ -258,12 +284,18 @@ mod tests {
             total_ms: ms(recorded_minutes),
             total_rounded_ms: ms(recorded_minutes),
             billable: Billable::of(ms(recorded_minutes), ms(billable_minutes)),
+            recording_count: 0,
+            project_count: 0,
+            untagged_rounded_ms: 0,
+            charts: crate::reports::ReportCharts::default(),
+            clients: vec![],
+            notes: crate::reports::CopiedNotes::default(),
         }
     }
 
     #[test]
     fn the_report_text_ends_with_the_billable_line_when_time_is_recorded() {
-        let reported = reported(result_with(480, 384)).unwrap();
+        let reported = reported(result_with(480, 384), ReportOutput::Text).unwrap();
 
         assert_eq!(
             reported.text,
@@ -277,16 +309,43 @@ mod tests {
     }
 
     #[test]
+    fn the_cli_json_carries_the_groups_in_both_outputs() {
+        for output in [ReportOutput::Text, ReportOutput::Notes] {
+            let reported = reported(result_with(480, 384), output).unwrap();
+
+            assert_eq!(reported.result["groups"][0]["key"], "Portal", "{output:?}");
+            assert_eq!(reported.result["groups"][0]["roundedMs"], 28_800_000);
+        }
+    }
+
+    #[test]
+    fn the_notes_reply_is_the_notes_text_without_report_or_billable_lines() {
+        let mut result = result_with(480, 384);
+        result.notes = crate::reports::CopiedNotes {
+            text: "fix login\nreview".into(),
+            count: 2,
+        };
+
+        let reported = reported(result, ReportOutput::Notes).unwrap();
+
+        assert_eq!(reported.text, "fix login\nreview");
+        assert_eq!(
+            reported.result["notes"],
+            json!({ "text": "fix login\nreview", "count": 2 })
+        );
+    }
+
+    #[test]
     fn the_report_text_has_no_billable_line_without_recorded_time() {
-        let reported = reported(result_with(0, 0)).unwrap();
+        let reported = reported(result_with(0, 0), ReportOutput::Text).unwrap();
 
         assert_eq!(reported.text, "Tue 2026-10-20\n\nNo recordings.\n");
     }
 
     #[test]
     fn the_json_result_carries_the_billable_share() {
-        let with_time = reported(result_with(480, 384)).unwrap();
-        let without = reported(result_with(0, 0)).unwrap();
+        let with_time = reported(result_with(480, 384), ReportOutput::Text).unwrap();
+        let without = reported(result_with(0, 0), ReportOutput::Text).unwrap();
 
         assert_eq!(
             with_time.result["billable"],

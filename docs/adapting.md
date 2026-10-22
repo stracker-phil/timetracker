@@ -85,7 +85,7 @@ by hand. Another *app* (a planner, a meeting tool) is not a source: it writes ex
 ### Dropping the MCP server
 
 `git rm -r src-tauri/src/mcp`; delete `pub mod mcp;` and the `CliOutcome::Mcp` arm in `lib.rs`; the `Mcp`
-variant of `Command` and of `CliOutcome` and its test in `cli/mod.rs` (and the `claude mcp add` line in
+variant of `Command` and of `CliOutcome` and its tests in `cli/mod.rs` (and the `claude mcp add` line in
 `EXAMPLES`); `rmcp` in `Cargo.toml`; `McpSettings` and `Settings.mcp` in `store/settings/types.rs` (old files keep
 the key harmlessly); `binary_path` in `db/commands.rs` `DataInfo`; on the page, the MCP rows of the Data page
 in `src/components/settings/pages.tsx` (`mcpAddCommand`, "Expose activity to the MCP server") and their tests

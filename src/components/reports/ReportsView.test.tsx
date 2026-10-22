@@ -1,17 +1,17 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, type ReportFilter, type Rounding } from "../../api";
+import { api, type Range, type ReportFilter, type Rounding } from "../../api";
 import { installCommands, runCommand } from "../../commands";
-import { formatDayLabel } from "../../lib/day";
+import { formatDayLabel, formatRangeLabel } from "../../lib/day";
 import { defaultFilter } from "../../state/slices/reports";
 import { resetStore, useStore } from "../../state/store";
-import { at, DAY } from "../../test/dayFixtures";
+import { DAY } from "../../test/dayFixtures";
 import { projectItem, projectsStore, tag } from "../../test/projectFixtures";
-import { reportGroup, reportResult, reportRow, savedReport } from "../../test/reportFixtures";
+import { reportClient, reportResult, savedReport } from "../../test/reportFixtures";
 import { settings } from "../../test/settings";
 import { Dialogs } from "../Dialogs";
 import { Toasts } from "../Toasts";
@@ -20,7 +20,6 @@ import { ReportsView } from "./ReportsView";
 const mocked = vi.mocked(api, true);
 
 const lastFilter = (): ReportFilter => mocked.reportRun.mock.lastCall![0];
-const total = () => within(screen.getByText("Total").parentElement!);
 
 async function renderView(patch: Parameters<typeof resetStore>[0] = {}) {
   resetStore({ settings: settings(), view: "reports", ...patch });
@@ -32,7 +31,7 @@ async function renderView(patch: Parameters<typeof resetStore>[0] = {}) {
       <Toasts />
     </>,
   );
-  await screen.findByRole("heading", { level: 1 });
+  await screen.findByLabelText("Totals");
 }
 
 describe("ReportsView", () => {
@@ -42,80 +41,31 @@ describe("ReportsView", () => {
   });
 
   describe("result", () => {
-    it("titles a one-day report with the day and shows each group with its hours and the total", async () => {
-      mocked.reportRun.mockResolvedValue(
-        reportResult({
-          groups: [reportGroup(), reportGroup({ key: "p2", label: "Docs", durationMs: 1_800_000, roundedMs: 1_800_000, rows: [] })],
-          totalMs: 4_500_000,
-          totalRoundedMs: 4_500_000,
-        }),
-      );
+    it("titles a one-day report with the day", async () => {
       await renderView();
       expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(formatDayLabel(DAY));
-      expect(within(screen.getByRole("region", { name: "Website" })).getByText("0:45 h")).toBeInTheDocument();
-      expect(within(screen.getByRole("region", { name: "Docs" })).getByText("0:30 h")).toBeInTheDocument();
-      expect(total().getByText("1:15 h")).toBeInTheDocument();
     });
 
-    it("titles a multi-day report with its first and last day", async () => {
+    it("titles a multi-day report with its range", async () => {
       mocked.reportRun.mockResolvedValue(reportResult({ from: "2026-03-09", to: "2026-03-15" }));
       await renderView();
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("2026-03-09 – 2026-03-15");
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(formatRangeLabel("2026-03-09", "2026-03-15"));
     });
 
-    it("lists the notes of a group", async () => {
-      mocked.reportRun.mockResolvedValue(reportResult({ groups: [reportGroup({ notes: [{ text: "Fixed the header", days: [DAY] }, { text: "Review", days: [DAY] }] })] }));
+    it("shows the totals, the charts and the table of the report", async () => {
       await renderView();
-      expect(screen.getByText("Fixed the header")).toBeInTheDocument();
-      expect(screen.getByText("Review")).toBeInTheDocument();
+      expect(screen.getByLabelText("Totals")).toHaveTextContent("0:45 h");
+      expect(screen.getByRole("region", { name: "By client" })).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "By tag" })).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "Recordings by project" })).toBeInTheDocument();
     });
 
-    it("says there are no recordings and shows no total when the report is empty", async () => {
-      mocked.reportRun.mockResolvedValue(reportResult({ groups: [], totalMs: 0, totalRoundedMs: 0 }));
+    it("says there are no recordings and shows neither charts nor table when the report is empty", async () => {
+      mocked.reportRun.mockResolvedValue(reportResult({ clients: [], totalMs: 0, totalRoundedMs: 0, recordingCount: 0, projectCount: 0 }));
       await renderView();
       expect(await screen.findByText("No recordings.")).toBeInTheDocument();
-      expect(screen.queryByText("Total")).not.toBeInTheDocument();
-    });
-
-    it("shows no tag overlap caveat, as a recording has at most one tag", async () => {
-      await renderView();
-      await screen.findByText("Total");
-      expect(screen.queryByText(/Tags overlap/)).not.toBeInTheDocument();
-    });
-
-    it("shows the unrounded hours muted next to rounded ones when rounding changed them", async () => {
-      mocked.reportRun.mockResolvedValue(reportResult({ groups: [reportGroup({ roundedMs: 3_600_000 })], totalRoundedMs: 3_600_000 }));
-      await renderView({ reportFilter: { ...defaultFilter(settings()), rounding: "up30" } });
-      expect(await total().findByText("1:00 h")).toBeInTheDocument();
-      expect(total().getByText("0:45")).toBeInTheDocument();
-    });
-
-    it("shows only the rounded hours when no rounding is on", async () => {
-      await renderView();
-      await screen.findByText("Total");
-      expect(total().queryByTitle("Before rounding")).not.toBeInTheDocument();
-    });
-
-    it("shows the billable hours and share below the total", async () => {
-      mocked.reportRun.mockResolvedValue(reportResult({ billable: { recordedMs: 28_800_000, billableMs: 23_040_000, percent: 80 } }));
-      await renderView();
-      expect(await screen.findByLabelText("Billable total")).toHaveTextContent("6:24 h · 80 %");
-    });
-
-    it("shows no billable total when nothing is recorded in the report", async () => {
-      await renderView();
-      await screen.findByText("Total");
-      expect(screen.queryByLabelText("Billable total")).not.toBeInTheDocument();
-    });
-
-    it("badges a billable project group only", async () => {
-      mocked.reportRun.mockResolvedValue(
-        reportResult({ groups: [reportGroup({ billable: true }), reportGroup({ key: "p2", label: "Docs", billable: false }), reportGroup({ key: "p3", label: "Mixed", billable: null })] }),
-      );
-      await renderView();
-      expect(within(await screen.findByRole("region", { name: "Website" })).getByText("billable")).toBeInTheDocument();
-      expect(within(screen.getByRole("region", { name: "Docs" })).queryByText("billable")).not.toBeInTheDocument();
-      expect(within(screen.getByRole("region", { name: "Mixed" })).queryByText("billable")).not.toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "By client" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "Recordings by project" })).not.toBeInTheDocument();
     });
 
     it("shows the error when the report fails", async () => {
@@ -124,65 +74,34 @@ describe("ReportsView", () => {
       render(<ReportsView />);
       expect(await screen.findByText("Database is locked")).toBeInTheDocument();
     });
-
-    it("reveals the recordings of a group on request", async () => {
-      mocked.reportRun.mockResolvedValue(reportResult({ groups: [reportGroup({ rows: [reportRow({ note: "Fixed the header", client: "Acme", tag: "support" })] })] }));
-      await renderView();
-      const toggle = await screen.findByRole("button", { name: "1 recording" });
-      expect(toggle).toHaveAttribute("aria-expanded", "false");
-      expect(screen.queryByRole("table")).not.toBeInTheDocument();
-      await userEvent.click(toggle);
-      expect(toggle).toHaveAttribute("aria-expanded", "true");
-      const table = screen.getByRole("table");
-      expect(within(table).getByText("09:00–09:45")).toBeInTheDocument();
-      expect(within(table).getByText("Acme / Website")).toBeInTheDocument();
-      expect(within(table).getByText("support")).toBeInTheDocument();
-      expect(within(table).getByText("Fixed the header")).toBeInTheDocument();
-    });
-
-    it("shows every span of a recording in one row, with the total duration", async () => {
-      const spans = [
-        { start: at("14:25"), end: at("15:00") },
-        { start: at("16:05"), end: at("20:15") },
-      ];
-      mocked.reportRun.mockResolvedValue(
-        reportResult({ groups: [reportGroup({ rows: [reportRow({ start: spans[0].start, end: spans[1].end, spans, durationMs: 285 * 60_000, roundedMs: 285 * 60_000 })] })] }),
-      );
-      await renderView();
-      await userEvent.click(await screen.findByRole("button", { name: "1 recording" }));
-      const row = within(screen.getByRole("table")).getAllByRole("row")[1];
-      expect(within(row).getByText("14:25–15:00, 16:05–20:15")).toBeInTheDocument();
-      expect(within(row).getByText("4:45")).toBeInTheDocument();
-    });
-
-    it("counts the recordings of a group on its toggle", async () => {
-      mocked.reportRun.mockResolvedValue(reportResult({ groups: [reportGroup({ rows: [reportRow(), reportRow({ id: "r2" })] })] }));
-      await renderView();
-      expect(await screen.findByRole("button", { name: "2 recordings" })).toBeInTheDocument();
-    });
   });
 
   describe("filters", () => {
     it("runs today's report grouped and rounded as the settings say until the filter is changed", async () => {
       resetStore({ settings: settings({ reports: { rounding: "nearest15", defaultGroup: "week" } }), view: "reports" });
       render(<ReportsView />);
-      await screen.findByText("Total");
+      await screen.findByLabelText("Totals");
       expect(lastFilter()).toEqual({ ...defaultFilter(null), range: { kind: "today" }, groupBy: "week", rounding: "nearest15" });
+      expect(screen.getByRole("combobox", { name: "Group copied text by" })).toHaveValue("week");
     });
 
-    it("runs the report again with the chosen range", async () => {
+    it.each<[string, Range["kind"]]>([
+      ["Last week", "lastWeek"],
+      ["This month", "thisMonth"],
+      ["Yesterday", "yesterday"],
+    ])("runs the report again with the period %s", async (label, kind) => {
       await renderView();
-      await userEvent.click(screen.getByRole("button", { name: "Last week" }));
-      await vi.waitFor(() => expect(lastFilter().range).toEqual({ kind: "lastWeek" }));
-      expect(screen.getByRole("button", { name: "Last week" })).toHaveAttribute("aria-pressed", "true");
+      const period = within(screen.getByRole("group", { name: "Period" }));
+      await userEvent.click(period.getByRole("button", { name: label }));
+      await vi.waitFor(() => expect(lastFilter().range).toEqual({ kind }));
+      expect(period.getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "true");
     });
 
-    it("runs the report again with the chosen grouping", async () => {
+    it("runs the report again with the grouping chosen for the copied text", async () => {
       await renderView();
-      const group = screen.getByRole("group", { name: "Group by" });
-      await userEvent.click(within(group).getByRole("button", { name: "Tag" }));
+      await userEvent.selectOptions(screen.getByRole("combobox", { name: "Group copied text by" }), "By tag");
       await vi.waitFor(() => expect(lastFilter().groupBy).toBe("tag"));
-      expect(within(group).getByRole("button", { name: "Tag" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("combobox", { name: "Group copied text by" })).toHaveValue("tag");
     });
 
     it.each<[string, Rounding]>([
@@ -204,10 +123,17 @@ describe("ReportsView", () => {
     it("starts a custom range from the days shown", async () => {
       mocked.reportRun.mockResolvedValue(reportResult({ from: "2026-03-09", to: "2026-03-15" }));
       await renderView();
-      await userEvent.click(await screen.findByRole("button", { name: "Custom" }));
+      await userEvent.click(within(screen.getByRole("group", { name: "Period" })).getByRole("button", { name: "Custom" }));
       expect(await screen.findByLabelText("From")).toHaveValue("2026-03-09");
       expect(screen.getByLabelText("To")).toHaveValue("2026-03-15");
       await vi.waitFor(() => expect(lastFilter().range).toEqual({ kind: "custom", from: "2026-03-09", to: "2026-03-15" }));
+    });
+
+    it("runs the report again with the custom dates edited", async () => {
+      await renderView({ reportFilter: { ...defaultFilter(settings()), range: { kind: "custom", from: "2026-03-09", to: "2026-03-15" } } });
+      fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-03-10" } });
+      fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-03-12" } });
+      await vi.waitFor(() => expect(lastFilter().range).toEqual({ kind: "custom", from: "2026-03-10", to: "2026-03-12" }));
     });
 
     it("hides the date inputs for a preset range", async () => {
@@ -254,6 +180,30 @@ describe("ReportsView", () => {
     });
   });
 
+  describe("copy notes", () => {
+    it("copies the notes of the report through the reports.copyNotes command", async () => {
+      mocked.reportRun.mockResolvedValue(reportResult({ notes: { text: "Fixed the header\nReview", count: 2 } }));
+      await renderView();
+      act(() => void runCommand("reports.copyNotes"));
+      expect(await screen.findByText("Copied 2 notes")).toBeInTheDocument();
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Fixed the header\nReview");
+    });
+
+    it("copies nothing and says so when the report has no notes", async () => {
+      await renderView();
+      act(() => void runCommand("reports.copyNotes"));
+      expect(await screen.findByText("No notes in the report")).toBeInTheDocument();
+      expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+    });
+
+    it("shows an error toast when the report cannot be built", async () => {
+      await renderView();
+      mocked.reportRun.mockRejectedValue({ kind: "io", message: "Disk full", code: null });
+      act(() => void runCommand("reports.copyNotes"));
+      expect(await screen.findByText(/Could not build the report: Disk full/)).toBeInTheDocument();
+    });
+  });
+
   describe("save report", () => {
     it("asks for a name and saves the shown filter under it", async () => {
       await renderView({ reportFilter: { ...defaultFilter(settings()), range: { kind: "lastMonth" } } });
@@ -288,10 +238,9 @@ describe("ReportsView", () => {
   describe("data changes", () => {
     it("runs the report again when data changed", async () => {
       await renderView();
-      await screen.findByText("Total");
-      mocked.reportRun.mockResolvedValue(reportResult({ groups: [reportGroup({ label: "Docs", key: "p2" })] }));
+      mocked.reportRun.mockResolvedValue(reportResult({ clients: [reportClient({ key: "c2", label: "Globex" })] }));
       act(() => useStore.getState().dataChanged({ kind: "recordings", day: DAY }));
-      expect(await screen.findByRole("region", { name: "Docs" })).toBeInTheDocument();
+      expect(await screen.findByText("Globex")).toBeInTheDocument();
     });
   });
 
@@ -301,7 +250,8 @@ describe("ReportsView", () => {
       const saved = savedReport({ filter: { ...defaultFilter(null), range: { kind: "lastWeek" }, groupBy: "tag" } });
       act(() => useStore.getState().openSavedReport(saved));
       await vi.waitFor(() => expect(lastFilter()).toEqual(saved.filter));
-      expect(screen.getByRole("button", { name: "Last week" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(screen.getByRole("group", { name: "Period" })).getByRole("button", { name: "Last week" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("combobox", { name: "Group copied text by" })).toHaveValue("tag");
     });
   });
 });

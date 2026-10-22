@@ -86,9 +86,11 @@ Recording an hour of activity:
 1. The Reports screen (or `timetracker report`) sends a `ReportFilter`: a range preset or days, client,
    project and tag ids (the CLI sends names, which the app resolves), the grouping and the rounding.
 2. `reports::run` resolves the range to days, reads the recordings sharing time with it and builds the
-   result: rows cut to the range and rounded one by one, grouped with their distinct notes, and totals.
+   result: rows cut to the range and rounded one by one, grouped with their distinct notes, totals and
+   counts, the donuts' slices (by client, project and tag), the client/project table and each project's
+   notes as the text "Copy notes" copies.
 3. `reports::text` renders the plain text the screen copies and the CLI prints; the screen draws the same
-   `ReportResult` itself. A `data_changed` event runs the report again.
+   `ReportResult` itself and copies a project's notes as given. A `data_changed` event runs the report again.
 
 ## A suggestion, end to end
 

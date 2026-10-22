@@ -28,8 +28,9 @@ export function ShadeSwatches({ accent, value, onChange }: { accent: string; val
   );
 }
 
+export const accentColor = (accent: string, shade?: number | null) => (shade == null ? `var(--a-${accent})` : shadeColor(accent, shade));
+
 /** A small filled circle in an accent hue, or in one of its shades, e.g. a project's color. */
-export function AccentDot({ accent, shade }: { accent: string; shade?: number }) {
-  const background = shade === undefined ? `var(--a-${accent})` : shadeColor(accent, shade);
-  return <span className="accent-dot" aria-hidden="true" style={{ background }} />;
+export function AccentDot({ accent, shade }: { accent: string; shade?: number | null }) {
+  return <span className="accent-dot" aria-hidden="true" style={{ background: accentColor(accent, shade) }} />;
 }

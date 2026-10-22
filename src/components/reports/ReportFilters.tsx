@@ -1,9 +1,8 @@
 import { Building2, FolderKanban, Tag } from "lucide-react";
-import type { Group, Range, ReportFilter, Rounding } from "../../api";
+import type { Range, ReportFilter, Rounding } from "../../api";
 import { today } from "../../lib/day";
 import { projectLabel } from "../../state/slices/projects";
 import { useStore } from "../../state/store";
-import { SegmentedControl } from "../SegmentedControl";
 import { MultiSelect } from "./MultiSelect";
 
 type RangeKind = Range["kind"];
@@ -17,8 +16,6 @@ const PRESETS: { kind: RangeKind; label: string }[] = [
   { kind: "lastMonth", label: "Last month" },
   { kind: "custom", label: "Custom" },
 ];
-
-const GROUPS: readonly Group[] = ["project", "tag", "day", "week", "month"];
 
 const ROUNDING_STEPS = [5, 6, 10, 15, 30] as const;
 const ROUNDINGS: { value: Rounding; label: string }[] = [
@@ -43,7 +40,7 @@ function RangePicker({ range, shown, onChange }: { range: Range; shown: Props["s
   const setBound = (bound: "from" | "to", day: string) => range.kind === "custom" && day && onChange({ ...range, [bound]: day });
   return (
     <div className="report-range">
-      <div className="segmented" role="group" aria-label="Range">
+      <div className="segmented" role="group" aria-label="Period">
         {PRESETS.map((p) => (
           <button key={p.kind} type="button" aria-pressed={range.kind === p.kind} onClick={() => pick(p.kind)}>
             {p.label}
@@ -61,6 +58,7 @@ function RangePicker({ range, shown, onChange }: { range: Range; shown: Props["s
   );
 }
 
+/** The slim filter bar above the report. */
 export function ReportFilters({ filter, shown, onChange }: Props) {
   const projects = useStore((s) => s.projects);
   const clients = useStore((s) => s.clients);
@@ -86,8 +84,6 @@ export function ReportFilters({ filter, shown, onChange }: Props) {
         <MultiSelect label="Tags" icon={<Tag size="1.077rem" />} items={tags.map((t) => ({ id: t.id, label: t.name }))} value={filter.tagIds} onChange={(tagIds) => onChange({ tagIds })} />
       </div>
       <div className="report-options">
-        <span className="o3">Group by</span>
-        <SegmentedControl label="Group by" options={GROUPS} value={filter.groupBy} onChange={(groupBy) => onChange({ groupBy })} />
         <select className="input" aria-label="Rounding" value={filter.rounding} onChange={(e) => onChange({ rounding: e.target.value as Rounding })}>
           {ROUNDINGS.map((r) => (
             <option key={r.value} value={r.value}>

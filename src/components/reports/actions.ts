@@ -1,12 +1,31 @@
-import { api, type SavedReport } from "../../api";
+import { api, type CopiedNotes, type SavedReport } from "../../api";
 import { copyText } from "../../lib/clipboard";
-import { defaultFilter } from "../../state/slices/reports";
+import { plural } from "../../lib/format";
+import { selectReportFilter } from "../../state/slices/reports";
 import { fail, useStore } from "../../state/store";
 
 export async function copyReport() {
-  const s = useStore.getState();
   try {
-    await copyText(await api.reportText(s.reportFilter ?? defaultFilter(s.settings)), "the report");
+    await copyText(await api.reportText(selectReportFilter(useStore.getState())), "the report");
+  } catch (e) {
+    fail(e, "Could not build the report");
+  }
+}
+
+/** Copies the notes and toasts how many, for `whose` when given. */
+export async function copyNotes(notes: CopiedNotes, whose: string | null) {
+  if (notes.count === 0) {
+    useStore.getState().toast("info", whose ? `No notes for ${whose}` : "No notes in the report");
+    return;
+  }
+  const what = plural(notes.count, "note", "notes");
+  await copyText(notes.text, whose ? `${what} for ${whose}` : what);
+}
+
+/** Every note of the shown report, in time order. */
+export async function copyReportNotes() {
+  try {
+    await copyNotes((await api.reportRun(selectReportFilter(useStore.getState()))).notes, null);
   } catch (e) {
     fail(e, "Could not build the report");
   }

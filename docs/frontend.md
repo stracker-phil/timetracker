@@ -142,7 +142,8 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   zoom the timeline (`TIMELINE_STEPS`) while the Day view shows and the text everywhere else.
 - **Projects.** `projects.new` (⌘N) and `clients.new` (no default) open the sheets while the Projects view
   shows; `view.projects` (⌘5) shows it.
-- **Reports.** `reports.copyText` (⌘⇧C), `reports.save`; `reports.rename`/`reports.delete` act on the saved
+- **Reports.** `reports.copyText` (⌘⇧C), `reports.copyNotes` (⌥⌘C: every note of the report, `result.notes`),
+  `reports.save`; `reports.rename`/`reports.delete` act on the saved
   report opened from the sidebar (`openedReport`, cleared when the filter changes).
 - **Rules.** `rules.new` (⌘N); `rules.moveUp`/`moveDown` (⌥↑ ⌥↓) move the rule whose row has the focus
   (`moveRule` in the rules slice).
@@ -325,12 +326,18 @@ The editor's `edit` request may carry `at` (a span of the recording), so views o
 ### Reports screen
 
 `components/reports/`: `ReportsView` (the `reports` view) runs `reportRun(filter)` keyed by the filter and
-`changeCount`: a header with the range, Copy as text (`reports.copyText`, ⌘⇧C: `reportText` to the
-clipboard) and Save report… (`reports.save`: the `prompt` dialog, then `saveReport`); `ReportFilters`
-(range presets and Custom dates, `MultiSelect` for clients, projects and tags, Group by, Rounding, Archived
-projects); one `ReportGroupTable` per group (color dot, label, `h:mm h`, the notes, the recordings on
-request, each with all its spans of the day: `14:25–15:00, 16:05–20:15`; a `billable` badge on a billable
-project's group); the total, then `Billable 6:24 h · 80 %` from `result.billable` when time is recorded. `actions.ts` holds the two commands' actions. The sidebar
+`changeCount`: a header with the range (`formatRangeLabel`), the grouping of the copied text, Copy as text
+(`reports.copyText`, ⌘⇧C: `reportText` to the clipboard) and Save report… (`reports.save`: the `prompt`
+dialog, then `saveReport`); `ReportFilters`, one slim row (Period presets as a segmented control, Custom revealing dates, `MultiSelect`
+for clients, projects and tags, Rounding, Archived projects). Below, all rendered from `ReportResult` as Rust
+built it: `ReportTotals` (the total large, recordings, projects, untagged time, `Billable 6:24 h · 80 %`),
+two `ReportChart`s (SVG donuts of `result.charts`, by client and by tag, each with a By select for client,
+project or tag, the total and count in the center, percentages on the ring and a legend; colors through
+`accentColor` in `Accent.tsx`), and `ReportTable` (`result.clients`: client rows, project rows that unfold
+their recordings, Expand all / Collapse all; a recording row shows its day, all its spans of the day
+`14:25–15:00, 16:05–20:15`, note and tag). A project row's Copy notes puts `project.notes.text` in the
+clipboard and toasts `Copied 4 notes for Acme / Portal` (`copyNotes` in `actions.ts`, which also
+holds the commands' actions). The sidebar
 lists saved reports under Reports: a click opens one, right-click renames (prompt) or deletes (confirm).
 
 `PromptDialog` (`dialog: prompt { title, label, initial, confirmLabel, onSubmit }`) asks for one line.

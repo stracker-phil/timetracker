@@ -124,6 +124,27 @@ export type CaptureSettings = {
  */
 excludedApps: Array<string>, excludedDomains: Array<string>, captureUrls: boolean, captureDocuments: boolean, };
 
+/**
+ * One slice of a donut, largest first; "No client" and "Untagged" come last.
+ */
+export type ChartSlice = { key: string, label: string, 
+/**
+ * An accent name (`ACCENTS`).
+ */
+color: string, 
+/**
+ * The project's shade of `color`, only by project.
+ */
+shade: number | null, roundedMs: number, 
+/**
+ * Of the total, rounded to a whole percent.
+ */
+percent: number, 
+/**
+ * Where the slice starts and how much of the ring it takes, as fractions of the whole.
+ */
+offset: number, share: number, };
+
 export type Client = { id: string, name: string, 
 /**
  * An accent name (`ACCENTS`); the hue of the client's projects.
@@ -144,6 +165,11 @@ export type ConditionInput = { field: RuleField, op: RuleOp, value: string, };
  * How long a gap may be before two activity blocks of the same kind stop merging.
  */
 export type Continuity = "off" | "short" | "regular" | "extended";
+
+/**
+ * Notes as copied text: one per line, without a trailing line break.
+ */
+export type CopiedNotes = { text: string, count: number, };
 
 export type DataChanged = { kind: DataKind, 
 /**
@@ -511,6 +537,22 @@ export type RemoteEvent = { id: string, request: RemoteRequest, };
 
 export type RemoteRequest = { "type": "showDay", day: Day, };
 
+export type ReportCharts = { byClient: Array<ChartSlice>, byProject: Array<ChartSlice>, byTag: Array<ChartSlice>, };
+
+export type ReportClient = { 
+/**
+ * The client's id, or `none` for projects without a client.
+ */
+key: string, label: string, 
+/**
+ * The client's accent; none without a client.
+ */
+color: string | null, durationMs: number, roundedMs: number, 
+/**
+ * By name.
+ */
+projects: Array<ReportProject>, };
+
 export type ReportFilter = { range: Range, 
 /**
  * Empty lists keep everything; the lists narrow together.
@@ -537,11 +579,41 @@ export type ReportNote = { text: string,
  */
 days: Array<Day>, };
 
-export type ReportResult = { filter: ReportFilter, from: Day, to: Day, groups: Array<ReportGroup>, totalMs: number, totalRoundedMs: number, 
+export type ReportProject = { id: string, name: string, 
+/**
+ * `Client / Project`, or the name without a client.
+ */
+label: string, color: string, shade: number, billable: boolean, durationMs: number, roundedMs: number, 
+/**
+ * What "Copy notes" puts in the clipboard.
+ */
+notes: CopiedNotes, 
+/**
+ * By start.
+ */
+rows: Array<ReportRow>, };
+
+export type ReportResult = { filter: ReportFilter, from: Day, to: Day, totalMs: number, totalRoundedMs: number, 
 /**
  * Of the rounded times, so it adds up with `total_rounded_ms`.
  */
-billable: Billable, };
+billable: Billable, 
+/**
+ * Distinct recordings and projects.
+ */
+recordingCount: number, projectCount: number, 
+/**
+ * The rounded time of recordings without a tag.
+ */
+untaggedRoundedMs: number, charts: ReportCharts, 
+/**
+ * The Reports screen's table: by client, then project.
+ */
+clients: Array<ReportClient>, 
+/**
+ * Every note of the report, as "Copy notes" copies a project's.
+ */
+notes: CopiedNotes, };
 
 /**
  * A recording's part in one day of the range: its spans of that day.

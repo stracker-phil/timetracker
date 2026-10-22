@@ -136,6 +136,7 @@ describe("menuState", () => {
 
     it.each<[string, View[]]>([
       ["reports.copyText", ["reports"]],
+      ["reports.copyNotes", ["reports"]],
       ["projects.new", ["projects"]],
       ["clients.new", ["projects"]],
       ["rules.new", ["rules"]],

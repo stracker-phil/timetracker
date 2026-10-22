@@ -3,12 +3,12 @@
 use chrono::Datelike;
 
 use super::range::add_days;
-use super::{ReportFilter, ReportGroup, ReportNote, ReportRow};
+use super::{ReportFilter, ReportGroup, ReportNote, ReportRow, project_label};
 use crate::db::time::Day;
 use crate::store::settings::Group;
 
-const NO_TAG_KEY: &str = "untagged";
-const NO_TAG_LABEL: &str = "Untagged";
+pub(super) const NO_TAG_KEY: &str = "untagged";
+pub(super) const NO_TAG_LABEL: &str = "Untagged";
 
 struct GroupKey {
     key: String,
@@ -54,26 +54,20 @@ pub(super) fn groups(filter: &ReportFilter, rows: &[ReportRow]) -> Vec<ReportGro
 
 fn key(group_by: Group, row: &ReportRow) -> GroupKey {
     match group_by {
-        Group::Project => {
-            let label = match &row.client {
-                Some(client) => format!("{client} / {}", row.project),
-                None => row.project.clone(),
-            };
-            GroupKey {
-                key: row.project_id.clone(),
-                order: (
-                    row.client.is_none(),
-                    row.client.as_deref().unwrap_or_default().to_lowercase(),
-                    row.project.to_lowercase(),
-                ),
-                label,
-                project: Some(GroupProject {
-                    color: row.color.clone(),
-                    shade: row.shade,
-                    billable: row.billable,
-                }),
-            }
-        }
+        Group::Project => GroupKey {
+            key: row.project_id.clone(),
+            order: (
+                row.client.is_none(),
+                row.client.as_deref().unwrap_or_default().to_lowercase(),
+                row.project.to_lowercase(),
+            ),
+            label: project_label(row),
+            project: Some(GroupProject {
+                color: row.color.clone(),
+                shade: row.shade,
+                billable: row.billable,
+            }),
+        },
         Group::Tag => match (&row.tag_id, &row.tag) {
             (Some(id), Some(name)) => GroupKey {
                 key: id.clone(),

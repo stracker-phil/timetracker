@@ -167,9 +167,10 @@ Spacing sits on a 4px grid (`--space-1` 4px to `--space-8` 32px, in rem so it zo
 | `Card` (`components/Card.tsx`) | a recording in the timesheet, the time column and the Week view | filled with `--block-fill`, text `--block-text`: the title (600), the subtitle (500), a foot with meta (the tag, with an icon) and the duration in mono on the right |
 | `Block` (`components/Block.tsx`) | a summary block on the timeline, placed by time (activity lanes draw memories, see Timeline) | `--activity-fill`, 1px `--bg` border, `--radius-block`: the app (500, `--text-strong`), the title (`--text`), the duration trailing at the bottom right (mono, `--o2`), as on a card; one line when short |
 | Buttons | `.btn` (secondary), `.btn-primary`, `.btn-danger`, `.icon-btn` | secondary: `--pop` with a `--field-line` border; primary and danger: the accent or `--style-red` with `--on-accent`; icon: a 2rem square |
-| `SegmentedControl` (`components/SegmentedControl.tsx`) | Day mode, Settings choices, report grouping | a `--track` with the pressed segment raised on `--raised` with `--shadow-small` |
+| `SegmentedControl` (`components/SegmentedControl.tsx`) | Day mode, Settings choices | a `--track` with the pressed segment raised on `--raised` with `--shadow-small` |
 | Popover | `Modal variant="popover"`: the date picker, the timeline settings | `--pop`, `--radius`, placed under its control, no scrim |
 | Sheet | `Modal` (default `variant="sheet"`) | `--pop`, `--radius-lg`, 24px padding, over `--scrim` |
+| Donut (`ReportChart` in `components/reports/`) | the Reports charts | an SVG ring of slices in accent colors on a `--band` track, percentages outside, the total in the center, a legend beside |
 
 ## Opacity levels
 
@@ -204,7 +205,7 @@ Inputs look like inputs, never like rows.
   `.input` controls (dialogs, Settings) share the frame without the icon.
 - **Segmented control** (`SegmentedControl`, `.segmented`): a `--track` without a border; segments in `--o2`
   (500), hover primary text; the pressed segment is raised on `--raised` with `--shadow-small`, its label in
-  `--text-strong`. Used for the Day mode switch, the report's range and Group by, and Settings choices.
+  `--text-strong`. Used for the Day mode switch, the report's Period and Settings choices.
 - **Switch:** a track in `--field-line` with a `--knob` thumb; on, the track is the accent and the thumb
   `--on-accent`.
 - **Key cap** (`KeyCap`): mono `--fs-caption`, `--o3`, 1px `--field-line` border, 4px radius. Key caps follow the
@@ -401,13 +402,30 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 
 ## Reports
 
-The Reports screen: the range as title, Copy as text and Save report… on the right; below, the filter bar
-(range presets, clients, projects, tags, group by, rounding, archived projects). Each group is its label
-with a color dot (by project), the hours in mono on the right, the notes in `--o2` below, and "3
-recordings" that unfolds a table; a row lists all of a recording's spans of its day (`14:25–15:00,
-16:05–20:15`), and the notes follow the recordings' first spans. The total closes the list; with rounding, the unrounded hours stand
-beside it in `--o3`. Below it, in `--o2`, `Billable 6:24 h · 80 %` (of the rounded total). Groups by project
-carry the `billable` badge of a billable project. Saved reports sit under Reports in the sidebar.
+The Reports screen follows Timely's day report, without money. The header has the period as title, then
+the grouping of the copied text (By project, tag, day, week or month), Copy as text and Save report…; below,
+one slim filter bar (Period presets as a segmented control, Custom revealing dates, clients, projects, tags, rounding, archived projects). The
+sidebar's navigator steps the period. The content sits on `--pop` cards with `--radius-lg`:
+
+1. **Totals:** `Total` with the hours large (`--text-strong`, 1.75 × `--fs-title`), then Recordings,
+   Projects, Untagged (only when there is untagged time) and `Billable 6:24 h · 80 %` (of the rounded total;
+   only when time is recorded), each a `--o2` label over its value. With rounding, the unrounded total stands
+   below in `--o3`.
+2. **Charts:** two donuts side by side, By client and By tag; a By select on each switches between client,
+   project and tag. The ring has the slices in their colors (a client's accent, a project's shade, a tag's
+   accent by its place in the tag list, graphite for No client and Untagged) on a `--band` track, the
+   percentages outside the ring in `--o2` (from 3 %), the total and the count (`2 clients`) in the center,
+   and a legend with a dot, the name and the hours.
+3. **Table:** client rows on `--band` with their hours; project rows with a color dot, the name, the
+   `billable` badge, the number of recordings, a **Copy notes** button and the hours; a click on a project
+   unfolds its recordings (Expand all / Collapse all for every project). A recording row shows its day and
+   all its spans of the day (`Wed, Oct 21 · 14:25–15:00, 16:05–20:15`), the note and the tag below. Copy
+   notes copies the project's notes for the period, by first span, one per line (empty notes skipped,
+   repeated notes kept, a recording's note once) and toasts `Copied 4 notes for Northwind / Support`; it is
+   disabled when the project has no notes. Copy Report Notes (⌥⌘C) copies every note of the report the same
+   way.
+
+No recordings: the totals at zero and `No recordings.` Saved reports sit under Reports in the sidebar.
 
 The copied text, also what `timetracker report` prints (the CLI adds `Billable: 3:30 of 4:45 (74 %)` below
 the total; the copied text leaves it out):
@@ -507,6 +525,7 @@ under `global`), active while that view shows.
 | `recording.moveToPrevDay` / `recording.moveToNextDay` | Move recording to the previous / next day | ⌥← / ⌥→ | day |
 | `recording.copyToPrevDay` / `recording.copyToNextDay` | Copy recording to the previous / next day | ⌥⇧← / ⌥⇧→ | day |
 | `reports.copyText` | Copy report as text | ⌘⇧C | reports |
+| `reports.copyNotes` | Copy report notes (every note of the report, one per line) | ⌥⌘C | reports |
 | `reports.save` | Save report… | palette | reports |
 | `reports.rename` / `reports.delete` | Rename / Delete saved report… (the one opened from the sidebar, until the filter changes) | palette | reports |
 | `projects.new` | New project… | ⌘N | projects |
@@ -555,8 +574,10 @@ From any view, with the documented default keys only:
    buttons in the recordings column: Tab to one, ↵ records it.
 9. P and N step to other days. ⌘2 shows the week (P N by week; Tab to a day head and ↵ opens it), ⌘3
    the month (by month; Tab to a day and ↵ opens it).
-10. ⌘4 shows Reports (P N step its period, O goes back to the current one): Tab to the range (This week, Last week, …) and ↵, on to the client, project and tag
-    pickers, Group by and Rounding; ⌘⇧C copies the report as text, ⌘K `> save` saves it under a name.
+10. ⌘4 shows Reports (P N step its period, O goes back to the current one): Tab to the Period presets, on
+    to the client, project and tag pickers and Rounding, then the charts' By selects and the table's project
+    rows (↵ unfolds one) and Copy notes buttons; ⌘⇧C copies the report as text, ⌥⌘C all its notes, ⌘K
+    `> save` saves it under a name.
 
 ## Menu bar
 
@@ -575,15 +596,14 @@ from every text field. The page's key handler runs them, with the rules above.
 |---|---|
 | TimeTracker | About; Settings… (`settings.toggle`; ⌘,); Launch at Login (`app.launchAtLogin`, a check item); Show Welcome Again (`welcome.show`); Services; Hide, Hide Others, Show All; Quit TimeTracker (`app.quit`; ⌘Q) |
 | File | New Recording… (`recording.new`); Start Timer… (`timer.start`; ⌘T), Stop Timer (`timer.stop`; ⌘⇧.); New Project… (`projects.new`; ⌘N), New Client… (`clients.new`), New Rule… (`rules.new`; ⌘N); Export Backup… (`data.exportBackup`); Close Window (`window.hide`; ⌘W) |
-| Edit | Undo (`edit.undo`; ⌘Z), Redo (`edit.redo`; ⌘⇧Z); Cut, Copy, Paste, Select All (native); Delete Recording (`recording.delete`; ⌫); Copy Report as Text (`reports.copyText`; ⌘⇧C) |
+| Edit | Undo (`edit.undo`; ⌘Z), Redo (`edit.redo`; ⌘⇧Z); Cut, Copy, Paste, Select All (native); Delete Recording (`recording.delete`; ⌫); Copy Report as Text (`reports.copyText`; ⌘⇧C), Copy Report Notes (`reports.copyNotes`; ⌥⌘C) |
 | View | Day … Rules (`view.day` … `view.rules`; ⌘1 … ⌘6, the active view checked); Show as List (`day.toggleList`; ⌘⇧L, checked in List mode); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); Timeline Settings… (`day.settings`); Enter Full Screen (native) |
 | Go | Previous (`nav.prev`; P), Next (`nav.next`; N), Today (`nav.today`; O), Go to Date… (`nav.goToDate`); Next Block (`day.nextBlock`; J), Previous Block (`day.prevBlock`; K); Next Recording (`recording.next`; ]), Previous Recording (`recording.prev`; [) |
 | Day | Record Selection (`recording.create`; ↵, the key of `recording.open`), Edit Recording… (`recording.edit`); Move Recording to Previous / Next Day (⌥← / ⌥→), Copy Recording to Previous / Next Day (⌥⇧← / ⌥⇧→); Accept Suggestion, Accept All Suggestions of Rule (`suggestion.*`); Delete Activity for This Day…, Delete Activity in a Range… (`activity.*`) |
 | Window | Minimize, Zoom, Bring All to Front (native) |
 | Help | Keyboard Shortcuts (`shortcuts.show`; ⇧?), Command Palette… (`palette.toggle`; ⌘K); Open Log Folder (`logs.open`), Show Data Folder (`data.reveal`), README (`help.readme`) |
 
-New Project and New Rule share ⌘N: only one of them is enabled at a time (Projects or Rules). Copy Notes
-joins the Edit menu with the Reports rework (plan step 12).
+New Project and New Rule share ⌘N: only one of them is enabled at a time (Projects or Rules).
 
 Commands left out of the menu, with keys and the palette only:
 

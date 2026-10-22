@@ -1,25 +1,34 @@
-//! Reports: recordings of a range, filtered, rounded per recording and grouped (ADR 0018). `text` renders
-//! the result as the plain text the Reports screen copies and the CLI prints.
+//! Reports: recordings of a range, filtered, rounded per recording and grouped (ADR 0018), with the totals,
+//! donuts and client/project table the Reports screen shows and each project's notes to copy. `text`
+//! renders the result as the plain text the Reports screen copies and the CLI prints.
 
 mod billable;
+mod charts;
 pub mod cli;
 pub mod commands;
 mod groups;
+mod notes;
 mod range;
 mod rows;
 pub mod saved;
+mod table;
 #[cfg(test)]
 mod testing;
 mod text;
+
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub use billable::{Billable, billable, billable_text};
+pub use charts::ReportCharts;
 pub use groups::day_label;
 pub(crate) use groups::week_label;
+pub use notes::CopiedNotes;
 pub use range::{Range, resolve, shift};
 pub use rows::rounding_step;
+use table::ReportClient;
 pub use text::text;
 
 use crate::db::clients::Client;
@@ -78,6 +87,12 @@ pub struct ReportRow {
     pub project_id: String,
     pub project: String,
     pub client: Option<String>,
+    #[serde(skip)]
+    #[ts(skip)]
+    pub client_id: Option<String>,
+    #[serde(skip)]
+    #[ts(skip)]
+    pub client_color: Option<String>,
     pub color: String,
     pub shade: u8,
     pub billable: bool,
@@ -122,11 +137,25 @@ pub struct ReportResult {
     pub filter: ReportFilter,
     pub from: Day,
     pub to: Day,
+    /// By `filter.groupBy`, for the text and MCP; left out on the wire, where `clients` carries the rows
+    /// (the CLI's `--json` adds them back).
+    #[serde(skip)]
+    #[ts(skip)]
     pub groups: Vec<ReportGroup>,
     pub total_ms: i64,
     pub total_rounded_ms: i64,
     /// Of the rounded times, so it adds up with `total_rounded_ms`.
     pub billable: Billable,
+    /// Distinct recordings and projects.
+    pub recording_count: u32,
+    pub project_count: u32,
+    /// The rounded time of recordings without a tag.
+    pub untagged_rounded_ms: i64,
+    pub charts: ReportCharts,
+    /// The Reports screen's table: by client, then project.
+    pub clients: Vec<ReportClient>,
+    /// Every note of the report, as "Copy notes" copies a project's.
+    pub notes: CopiedNotes,
 }
 
 /// What a report reads besides the recordings.
@@ -156,21 +185,42 @@ pub fn build(
     now: Ms,
 ) -> ReportResult {
     let rows = rows::rows(filter, (from, to), data, now);
-    let groups = groups::groups(filter, &rows);
+    let rounded_where = |keep: fn(&ReportRow) -> bool| -> i64 {
+        rows.iter().filter(|r| keep(r)).map(|r| r.rounded_ms).sum()
+    };
     let total_rounded_ms = rows.iter().map(|r| r.rounded_ms).sum();
-    let billable_ms = rows
-        .iter()
-        .filter(|r| r.billable)
-        .map(|r| r.rounded_ms)
-        .sum();
+    let distinct =
+        |key: fn(&ReportRow) -> &str| rows.iter().map(key).collect::<HashSet<_>>().len() as u32;
     ReportResult {
         filter: filter.clone(),
         from,
         to,
+        groups: groups::groups(filter, &rows),
         total_ms: rows.iter().map(|r| r.duration_ms).sum(),
         total_rounded_ms,
-        billable: Billable::of(total_rounded_ms, billable_ms),
-        groups,
+        billable: Billable::of(total_rounded_ms, rounded_where(|r| r.billable)),
+        recording_count: distinct(|r| &r.id),
+        project_count: distinct(|r| &r.project_id),
+        untagged_rounded_ms: rounded_where(|r| r.tag_id.is_none()),
+        charts: charts::charts(&rows, &data.tags),
+        clients: table::table(&rows),
+        notes: notes::copied_notes(&rows),
+    }
+}
+
+/// The index of the first item matching `is`, after appending `new()` when none does.
+fn index_of<T>(items: &mut Vec<T>, is: impl Fn(&T) -> bool, new: impl FnOnce() -> T) -> usize {
+    items.iter().position(is).unwrap_or_else(|| {
+        items.push(new());
+        items.len() - 1
+    })
+}
+
+/// `Client / Project`, or the project's name without a client.
+fn project_label(row: &ReportRow) -> String {
+    match &row.client {
+        Some(client) => format!("{client} / {}", row.project),
+        None => row.project.clone(),
     }
 }
 
@@ -221,34 +271,25 @@ mod tests {
             json!({ "recordedMs": minutes(90), "billableMs": 0, "percent": 0 })
         );
         assert!(wire.get("tagOverlap").is_none());
+        assert!(wire.get("groups").is_none());
         assert_eq!(
-            wire["groups"][0],
+            wire["clients"][0]["projects"][0]["rows"][0],
             json!({
-                "key": "p-portal",
-                "label": "Acme / Portal",
+                "id": "r1",
+                "day": D,
+                "start": start,
+                "end": start + minutes(90),
+                "spans": [{ "start": start, "end": start + minutes(90) }],
+                "durationMs": minutes(90),
+                "roundedMs": minutes(90),
+                "projectId": "p-portal",
+                "project": "Portal",
+                "client": "Acme",
                 "color": "blue",
                 "shade": 4,
                 "billable": false,
-                "durationMs": minutes(90),
-                "roundedMs": minutes(90),
-                "notes": [{ "text": "fix login", "days": [D] }],
-                "rows": [{
-                    "id": "r1",
-                    "day": D,
-                    "start": start,
-                    "end": start + minutes(90),
-                    "spans": [{ "start": start, "end": start + minutes(90) }],
-                    "durationMs": minutes(90),
-                    "roundedMs": minutes(90),
-                    "projectId": "p-portal",
-                    "project": "Portal",
-                    "client": "Acme",
-                    "color": "blue",
-                    "shade": 4,
-                    "billable": false,
-                    "tag": null,
-                    "note": "fix login",
-                }],
+                "tag": null,
+                "note": "fix login",
             })
         );
     }
@@ -280,6 +321,96 @@ mod tests {
     }
 
     #[test]
+    fn the_result_notes_hold_every_note_while_a_project_holds_its_own() {
+        let result = report(
+            &ReportFilter::default(),
+            D,
+            D,
+            vec![
+                with_note(
+                    rec("r1", "p-portal", at(D, 9, 0), Some(at(D, 9, 30)), "", None),
+                    "login",
+                ),
+                with_note(
+                    rec("r2", "p-site", at(D, 10, 0), Some(at(D, 10, 30)), "", None),
+                    "launch",
+                ),
+                with_note(
+                    rec(
+                        "r3",
+                        "p-portal",
+                        at(D, 11, 0),
+                        Some(at(D, 11, 30)),
+                        "",
+                        None,
+                    ),
+                    "logout",
+                ),
+            ],
+        );
+
+        assert_eq!(
+            result.notes,
+            CopiedNotes {
+                text: "login\nlaunch\nlogout".into(),
+                count: 3
+            }
+        );
+        let project_notes: Vec<(&str, &str)> = result
+            .clients
+            .iter()
+            .flat_map(|c| &c.projects)
+            .map(|p| (p.id.as_str(), p.notes.text.as_str()))
+            .collect();
+        assert_eq!(
+            project_notes,
+            [("p-portal", "login\nlogout"), ("p-site", "launch")]
+        );
+    }
+
+    #[test]
+    fn a_recording_over_several_days_counts_once() {
+        let result = report(
+            &ReportFilter::default(),
+            D,
+            "2026-10-21",
+            vec![
+                in_spans(
+                    "r1",
+                    "p-portal",
+                    &[(D, 9, 0, 10, 0), ("2026-10-21", 9, 0, 10, 0)],
+                ),
+                on("r2", "p-site", D, 30),
+                on("r3", "p-site", "2026-10-21", 30),
+            ],
+        );
+
+        assert_eq!(result.recording_count, 3);
+        assert_eq!(result.project_count, 2);
+    }
+
+    #[test]
+    fn untagged_time_is_the_rounded_time_of_recordings_without_a_tag() {
+        let filter = ReportFilter {
+            rounding: Rounding::Up15,
+            ..ReportFilter::default()
+        };
+
+        let result = report(
+            &filter,
+            D,
+            D,
+            vec![
+                with_tag(on("r1", "p-portal", D, 10), "t-admin"),
+                on("r2", "p-portal", D, 20),
+            ],
+        );
+
+        assert_eq!(result.untagged_rounded_ms, minutes(30));
+        assert_eq!(result.total_rounded_ms, minutes(45));
+    }
+
+    #[test]
     fn a_range_without_recordings_is_an_empty_report() {
         let filter = by(Group::Tag);
 
@@ -295,6 +426,12 @@ mod tests {
                 total_ms: 0,
                 total_rounded_ms: 0,
                 billable: Billable::of(0, 0),
+                recording_count: 0,
+                project_count: 0,
+                untagged_rounded_ms: 0,
+                charts: ReportCharts::default(),
+                clients: vec![],
+                notes: CopiedNotes::default(),
             }
         );
     }

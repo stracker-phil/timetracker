@@ -1,6 +1,6 @@
 import { api, TEXT_SIZES, type Settings, type Suggestion } from "../api";
 import { exportBackup, revealDataFolder, showWelcomeAgain } from "../components/settings/actions";
-import { copyReport, promptDeleteSavedReport, promptRenameSavedReport, promptSaveReport } from "../components/reports/actions";
+import { copyReport, copyReportNotes, promptDeleteSavedReport, promptRenameSavedReport, promptSaveReport } from "../components/reports/actions";
 import { VIEWS } from "../components/views";
 import { stepBlock, stepLane } from "../lib/blockFocus";
 import { addDays } from "../lib/day";
@@ -293,6 +293,7 @@ const APP_COMMANDS: Command[] = [
   { id: "edit.undo", title: "Undo recording change", scope: "global", defaultBinding: "Mod+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(false) },
   { id: "edit.redo", title: "Redo recording change", scope: "global", defaultBinding: "Mod+Shift+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(true) },
   { id: "reports.copyText", title: "Copy report as text", scope: "reports", defaultBinding: "Mod+Shift+C", menu: true, run: () => void copyReport() },
+  { id: "reports.copyNotes", title: "Copy report notes", scope: "reports", defaultBinding: "Mod+Alt+C", menu: true, run: () => void copyReportNotes() },
   { id: "reports.save", title: "Save report…", scope: "reports", run: promptSaveReport },
   { id: "reports.rename", title: "Rename saved report…", scope: "reports", when: () => useStore.getState().openedReport !== null, run: promptRenameSavedReport },
   { id: "reports.delete", title: "Delete saved report…", scope: "reports", when: () => useStore.getState().openedReport !== null, run: promptDeleteSavedReport },

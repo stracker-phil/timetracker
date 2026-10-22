@@ -126,6 +126,7 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
         .item(&build_item(app, bindings, state, "recording.delete")?)
         .separator()
         .item(&build_item(app, bindings, state, "reports.copyText")?)
+        .item(&build_item(app, bindings, state, "reports.copyNotes")?)
         .build()?;
     let view = sub(
         "View",

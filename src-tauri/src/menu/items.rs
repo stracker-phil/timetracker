@@ -54,6 +54,7 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("edit.redo", "Redo", "Mod+Shift+Z"),
     item("recording.delete", "Delete Recording", "Backspace"),
     item("reports.copyText", "Copy Report as Text", "Mod+Shift+C"),
+    item("reports.copyNotes", "Copy Report Notes", "Mod+Alt+C"),
     // View
     check("view.day", "Day", "Mod+1"),
     check("view.week", "Week", "Mod+2"),
@@ -167,6 +168,7 @@ mod tests {
         "edit.redo",
         "recording.delete",
         "reports.copyText",
+        "reports.copyNotes",
         "view.day",
         "view.week",
         "view.month",
@@ -289,6 +291,11 @@ mod tests {
         assert_eq!(default_binding("recording.edit"), None);
         assert_eq!(default_binding("settings.toggle"), Some("Mod+,"));
         assert_eq!(default_binding("unknown.command"), None);
+    }
+
+    #[test]
+    fn copying_the_report_notes_is_bound_to_mod_alt_c() {
+        assert_eq!(default_binding("reports.copyNotes"), Some("Mod+Alt+C"));
     }
 
     #[test]
