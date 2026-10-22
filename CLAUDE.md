@@ -16,6 +16,8 @@ a dark sidebar.
 - Write unit tests for every change and run them (through the `ci` agent) before every commit; tests and
   lint must be green.
 - Tests pin behavior, not internals: public interfaces only, no log assertions, no call counts.
+- Refactor continuously: when a file grows large (over ~400 lines of production code) or complex, simplify it
+  and split it into focused modules in the same step, without asking.
 - The implementation plan lives in `docs/plan/` (gitignored): `README.md` plus one file per step. Work one
   step per session, in its order; when a step is done, set its status from PENDING to DONE in
   `docs/plan/README.md` (the only change a step makes there).
