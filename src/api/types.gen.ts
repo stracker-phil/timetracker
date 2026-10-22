@@ -560,6 +560,8 @@ note: string, tagId: string | null, createdAt: number, updatedAt: number,
  */
 spans: Array<RecordingSpan>, };
 
+export type RecordingAutofill = { projectId: string, tagId: string | null, };
+
 /**
  * A span of a recording cut to the day; a recording with several spans on the day has several blocks.
  */

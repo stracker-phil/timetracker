@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ClientInput, type DateJump, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingInput, type RecordingPatch, type RecordingSpan, type ReportFilter, type RuleInput, type Settings, type SnapEdge, type Span, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ClientInput, type DateJump, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingAutofill, type RecordingInput, type RecordingPatch, type RecordingSpan, type ReportFilter, type RuleInput, type Settings, type SnapEdge, type Span, type UiState } from "../api/types";
 import { mondayOf, monthView, weekView } from "./calendarFixtures";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
@@ -115,6 +115,7 @@ export function createApiMock(): typeof realApi {
       return { ...draftSpans(next), included: !present };
     }),
     recordingProposal: vi.fn(async () => ({ projectId: null })),
+    recordingAutofill: vi.fn(async (): Promise<RecordingAutofill | null> => null),
     recordingDefaultSpan: vi.fn().mockResolvedValue({ start: 0, end: 1_800_000 }),
     undo: vi.fn().mockResolvedValue(null),
     redo: vi.fn().mockResolvedValue(null),

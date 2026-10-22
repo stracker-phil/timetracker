@@ -1,6 +1,7 @@
 use chrono::Local;
 use tauri::{AppHandle, Manager, State};
 
+use super::autofill::{self, RecordingAutofill};
 use super::draft::{self, DraftSpans, DraftToggle};
 use super::proposal::{self, RecordingProposal};
 use super::undo::UndoStatus;
@@ -237,6 +238,15 @@ pub async fn recording_proposal(
     spans: Vec<Span>,
 ) -> AppResult<RecordingProposal> {
     proposal::propose(&state.data.db()?, &spans, &state.settings.get(), now_ms()).await
+}
+
+/// The project and tag the editor's Autofill offers for `note`.
+#[tauri::command]
+pub async fn recording_autofill(
+    state: State<'_, AppState>,
+    note: String,
+) -> AppResult<Option<RecordingAutofill>> {
+    autofill::autofill(&state.data.db()?, &note).await
 }
 
 /// The default span, on `day` when given.

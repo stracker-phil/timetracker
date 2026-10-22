@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, MiniMonth, PauseUntil, Period, PeriodTotals, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, RecordingAutofill, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, MiniMonth, PauseUntil, Period, PeriodTotals, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -92,6 +92,7 @@ export const api = {
   recordingDraftAdd: (spans: Span[]) => invoke<DraftSpans>("recording_draft_add", { spans }),
   /** The activity `spans` cover and the project to propose for them. */
   recordingProposal: (spans: Span[]) => invoke<RecordingProposal>("recording_proposal", { spans }),
+  recordingAutofill: (note: string) => invoke<RecordingAutofill | null>("recording_autofill", { note }),
   /** The span New Recording opens on without a selection: the half hour up to now, snapped; on another `day` at the same clock times. */
   recordingDefaultSpan: (day: string | null = null) => invoke<Span>("recording_default_span", { day }),
   /** Undoes the last recording change; its label, or null when there was none. */

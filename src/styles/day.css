@@ -124,6 +124,10 @@
 }
 .editor-section { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); }
 .editor-section + .editor-section, .editor-logged + .editor-section { border-top: 1px solid var(--line); }
+/* The note and, when an earlier recording has the same note, Autofill beside it (Timely's). */
+.editor-note-row { flex-direction: row; align-items: flex-start; gap: var(--space-2); }
+.editor-note-row .editor-note { flex: 1; }
+.editor-autofill { flex: none; height: 2rem; gap: var(--space-1); color: var(--accent-text); }
 .editor-field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 /* The note: one box for showing and editing, its text at the fields' text; focus only adds the field's surface,
    frame and ring, so nothing moves. */

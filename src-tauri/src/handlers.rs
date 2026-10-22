@@ -70,6 +70,7 @@ pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         recordings::commands::recording_snap,
         recordings::commands::recording_default_span,
         recordings::commands::recording_proposal,
+        recordings::commands::recording_autofill,
         recordings::commands::recording_draft_spans,
         recordings::commands::recording_draft_total,
         recordings::commands::recording_draft_add,

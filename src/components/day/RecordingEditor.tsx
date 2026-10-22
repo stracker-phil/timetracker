@@ -7,6 +7,7 @@ import { TagPicker } from "../pickers/TagPicker";
 import { EditorField, LoggedTime, OverlapNotice } from "./EditorParts";
 import { EditorSpans } from "./EditorSpans";
 import { useEditorSave } from "./useEditorSave";
+import { useAutofill } from "./useAutofill";
 import { useProposal } from "./useProposal";
 
 const MINUTE_MS = 60_000;
@@ -26,6 +27,7 @@ export function RecordingEditor({ id }: { id?: string }) {
   const { errors, save, remove } = useEditorSave();
   const ref = useRef<HTMLFormElement>(null);
   const proposed = useProposal(draft?.spans ?? null);
+  const autofill = useAutofill(draft?.note ?? "");
 
   useEffect(() => {
     ref.current?.scrollIntoView?.({ block: "nearest" });
@@ -44,6 +46,7 @@ export function RecordingEditor({ id }: { id?: string }) {
   const open = editing?.spans.find((s) => s.end === null) ?? null;
   const suggestion = editor.mode === "create" ? editor.suggestion : undefined;
   const showTag = draft.projectId !== null || draft.tagId !== null;
+  const canAutofill = autofill !== null && (autofill.projectId !== draft.projectId || autofill.tagId !== draft.tagId);
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (!e.metaKey) return;
@@ -74,10 +77,21 @@ export function RecordingEditor({ id }: { id?: string }) {
           Suggested by {suggestion.ruleName}. Approve records it.
         </p>
       )}
-      <div className="editor-section">
+      <div className="editor-section editor-note-row">
         <EditorField className="editor-note" error={errors.note}>
           <NoteInput aria-label="Note" placeholder={NOTE_PLACEHOLDER} autoFocus maxLength={500} value={draft.note} onChange={(note) => patchDraft({ note })} />
         </EditorField>
+        {canAutofill && (
+          <button
+            type="button"
+            className="btn btn-quiet editor-autofill"
+            title="Use the project and tag of the last recording with this note"
+            onClick={() => patchDraft({ projectId: autofill.projectId, tagId: autofill.tagId })}
+          >
+            <Sparkles size="0.923rem" aria-hidden="true" />
+            Autofill
+          </button>
+        )}
       </div>
       <div className="editor-section">
         <EditorField error={errors.projectId}>

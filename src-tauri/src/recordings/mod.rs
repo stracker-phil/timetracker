@@ -2,6 +2,7 @@
 //! is an `ops::Op` applied in one transaction and pushed on the `UndoStack` (ADR 0010). A recording holds
 //! one or more spans; the overlap rule applies per span (ADR 0020).
 
+mod autofill;
 mod checks;
 pub mod cli;
 pub mod commands;

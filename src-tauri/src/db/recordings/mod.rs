@@ -125,6 +125,20 @@ pub async fn latest(db: &Db, limit: u32) -> AppResult<Vec<Recording>> {
     with_spans(&mut conn, rows).await
 }
 
+/// The project and tag of the recording with the latest span whose note is `note` (ignoring ASCII case), on an
+/// active project.
+pub async fn latest_with_note(db: &Db, note: &str) -> AppResult<Option<(String, Option<String>)>> {
+    Ok(sqlx::query_as(
+        r#"SELECT r.project_id, r.tag_id FROM recordings r JOIN projects p ON p.id = r.project_id
+           WHERE p.archived_at IS NULL AND r.note = ?1 COLLATE NOCASE
+           ORDER BY (SELECT max(s.start) FROM recording_spans s WHERE s.recording_id = r.id) DESC
+           LIMIT 1"#,
+    )
+    .bind(note)
+    .fetch_optional(db.pool())
+    .await?)
+}
+
 /// Recordings with a span that shares time with `[start, end)`, except the one with id `except`, by first
 /// start. Touching edges do not overlap; an open span overlaps everything after its start.
 pub async fn overlapping(

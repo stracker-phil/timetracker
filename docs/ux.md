@@ -472,7 +472,9 @@ timeline's for every app.
 - **Editor**, inline in the timesheet (Timely's): a card with a 2px accent ring at the new recording's place
   among the cards (in place of the card it edits), pushing the cards below down and scrolled into view; it is
   never a sheet over the timeline (the Week and Month views, without a timesheet, show it as a sheet). Top to bottom: the
-  note as the title field (focused, "What did you work on?"), project (the name, the client muted after it;
+  note as the title field (focused, "What did you work on?"; when an earlier recording has the same note,
+  ignoring case, an accent "✨ Autofill" beside it fills in that recording's project and tag, and hides once
+  they match), project (the name, the client muted after it;
   focus opens the list of every project once by client, type to search, "New project…"; a new recording
   starts empty, and while empty up to 5 projects show below it as rows to click: the proposed one first,
   marked "Suggested", then the recent ones), tag (only once a project is picked), "Logged time" on a tinted

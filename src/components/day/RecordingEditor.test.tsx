@@ -237,6 +237,51 @@ describe("RecordingEditor", () => {
     });
   });
 
+  describe("autofill", () => {
+    const earlier = { projectId: "p-site", tagId: "tag-research" };
+    const autofillButton = () => screen.queryByRole("button", { name: "Autofill" });
+
+    beforeEach(() => mocked.recordingAutofill.mockResolvedValue(null));
+    afterEach(() => mocked.recordingAutofill.mockResolvedValue(null));
+
+    it("asks Rust for the project and tag of the note once typing settles", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      await userEvent.type(field("Note"), "fix login");
+      await waitFor(() => expect(mocked.recordingAutofill).toHaveBeenCalledWith("fix login"));
+    });
+
+    it("fills the project and tag of the earlier recording when Autofill is clicked, then hides the button", async () => {
+      mocked.recordingAutofill.mockResolvedValue(earlier);
+      renderCreate();
+      await editorForm("New recording");
+      await userEvent.type(field("Note"), "fix login");
+      await userEvent.click(await screen.findByRole("button", { name: "Autofill" }));
+      expect(projectField()).toHaveValue("Website");
+      expect(tagField()).toHaveValue("research");
+      expect(autofillButton()).not.toBeInTheDocument();
+    });
+
+    it("offers no Autofill when Rust knows no earlier recording with the note", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      await userEvent.type(field("Note"), "fix login");
+      await waitFor(() => expect(mocked.recordingAutofill).toHaveBeenCalledWith("fix login"));
+      await act(async () => {});
+      expect(autofillButton()).not.toBeInTheDocument();
+    });
+
+    it("offers no Autofill when the draft already has that project and tag", async () => {
+      mocked.recordingAutofill.mockResolvedValue(earlier);
+      mocked.recordingsList.mockResolvedValue([standupRow]);
+      renderEditor({ mode: "edit", id: "r1" });
+      await editorForm("Edit recording");
+      await waitFor(() => expect(mocked.recordingAutofill).toHaveBeenCalledWith("standup"));
+      await act(async () => {});
+      expect(autofillButton()).not.toBeInTheDocument();
+    });
+  });
+
   describe("tag field", () => {
     it("is absent for a new recording without a project", async () => {
       renderCreate();
