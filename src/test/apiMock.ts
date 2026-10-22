@@ -81,6 +81,7 @@ export function createApiMock(): typeof realApi {
     setAppSetting: vi.fn(async () => settings()),
     appsList: vi.fn().mockResolvedValue([]),
     appsSeen: vi.fn().mockResolvedValue([]),
+    appIcons: vi.fn().mockResolvedValue({}),
     activityAdd: vi.fn().mockResolvedValue([]),
     activityStart: vi.fn().mockRejectedValue({ kind: "invalid_input", message: "Not mocked", code: null }),
     activityStop: vi.fn().mockResolvedValue(null),

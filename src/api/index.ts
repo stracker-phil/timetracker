@@ -89,6 +89,8 @@ export const api = {
   /** Apps the tracker recorded in the last `days` days, most time first. */
   appsSeen: (days: number) => invoke<AppSeen[]>("apps_seen", { days }),
   appsList: () => invoke<KnownApp[]>("apps_list"),
+  /** A PNG data URL per bundle id of an installed app; others are left out. */
+  appIcons: (bundleIds: string[]) => invoke<Record<string, string>>("app_icons", { bundleIds }),
   /** A running timer stops where the new one starts. */
   timerStart: (projectId: string, note: string, tagId: string | null) => invoke<Recording>("timer_start", { projectId, note, tagId }),
   /** `null` when no timer ran. */

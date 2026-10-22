@@ -90,3 +90,11 @@
 .accent-swatches button { width: 1.538rem; height: 1.538rem; border-radius: 50%; border: none; }
 .accent-swatches button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--pop), 0 0 0 0.308rem var(--o2); }
 .accent-dot { flex: none; width: 0.615rem; height: 0.615rem; border-radius: 50%; }
+
+/* An installed app's icon, or its initial (`AppIcon`). */
+.app-icon { flex: none; border-radius: 22%; }
+.app-icon--16 { width: 1.231rem; height: 1.231rem; }
+.app-icon--20 { width: 1.538rem; height: 1.538rem; }
+.app-icon--initial { display: inline-grid; place-items: center; background: var(--line); color: var(--o2); font-weight: 600; line-height: 1; }
+.app-icon--16.app-icon--initial { font-size: var(--fs-caption); }
+.app-icon--20.app-icon--initial { font-size: var(--fs-meta); }

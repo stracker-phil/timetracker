@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { api, type ActivityBlock } from "../../api";
 import { formatClock, formatDuration } from "../../lib/format";
 import { fail } from "../../state/store";
+import { AppIcon } from "../AppIcon";
 
 const GAP = 8;
 const EDGE = 4;
@@ -53,7 +54,10 @@ export function HoverCard({ block, anchor, onPointerEnter, onPointerLeave }: Pro
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
     >
-      <strong>{block.app}</strong>
+      <strong className="hover-card-app">
+        <AppIcon app={block.app} bundleId={block.bundleId} />
+        <span>{block.app}</span>
+      </strong>
       <p className={block.private ? "o3" : undefined}>{block.title}</p>
       {url &&
         (isWebUrl(url) ? (

@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Settings2 } from "lucide-react";
 import type { ActivityBlock as ActivityBlockData } from "../../api";
 import { formatHm } from "../../lib/format";
+import { AppIcon } from "../AppIcon";
 import { Block } from "../Block";
 
 /** Below this height (px) a block shows app and title on one line; below `TEXT_MIN_PX`, no text. */
@@ -27,7 +28,14 @@ export const ActivityBlock = memo(function ActivityBlock({ block, top, height, f
       height={height}
       left={`${(block.col / block.cols) * 100}%`}
       width={`${100 / block.cols}%`}
-      title={text ? block.app : undefined}
+      title={
+        text ? (
+          <>
+            <AppIcon app={block.app} bundleId={block.bundleId} size={16} />
+            <span>{block.app}</span>
+          </>
+        ) : undefined
+      }
       subtitle={block.label !== block.app ? block.label : undefined}
       trailing={<span className="mono">{formatHm(block.end - block.start)}</span>}
     >

@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { Plus } from "lucide-react";
-import { toAppError, type ConditionInput, type Rule, type RuleInput } from "../../api";
+import { api, toAppError, type ConditionInput, type Rule, type RuleInput } from "../../api";
+import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
 import { FormField } from "../Field";
 import { Modal } from "../Modal";
@@ -50,6 +51,8 @@ export function RuleSheet({ id, draft, onClose }: Props) {
   const setCondition = (index: number, condition: ConditionInput) => setConditions((all) => all.map((c, i) => (i === index ? condition : c)));
   const removeCondition = (index: number) => setConditions((all) => all.filter((_, i) => i !== index));
   const addCondition = () => setConditions((all) => [...all, emptyCondition()]);
+  const { data: apps } = useApiResult("apps", api.appsList);
+  const appKeyOf = (app: string) => apps?.find((a) => a.app.toLowerCase() === app.trim().toLowerCase())?.appKey ?? null;
 
   async function save() {
     setErrors({});
@@ -96,6 +99,7 @@ export function RuleSheet({ id, draft, onClose }: Props) {
                 condition={condition}
                 error={errors[`conditions.${index}.value`]}
                 onChange={(c) => setCondition(index, c)}
+                appKeyOf={appKeyOf}
                 onRemove={input.conditions.length > 1 ? () => removeCondition(index) : undefined}
               />
             ))}

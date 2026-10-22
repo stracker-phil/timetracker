@@ -11,7 +11,8 @@
 .timeline-head { position: sticky; top: 0; z-index: 3; background: var(--bg); border-bottom: 1px solid var(--line); font-size: var(--fs-meta); }
 .recordings-col-head { padding: var(--pad) var(--space-2); border-right: 1px solid var(--line); }
 .lane-heads { display: flex; }
-.lane-head { flex: 1 1 0; min-width: var(--lane-min-w); padding: var(--pad) var(--space-2); color: var(--o3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lane-head { flex: 1 1 0; min-width: var(--lane-min-w); padding: var(--pad) var(--space-2); color: var(--o3); display: flex; align-items: center; gap: var(--space-1); }
+.lane-head-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .timeline-body { position: relative; }
 .recordings-col { position: relative; border-right: 1px solid var(--line); }
 .time-axis, .lanes { z-index: 1; }

@@ -22,7 +22,8 @@ through the `Source` trait ([ADR 0008](adr/0008-capture-behind-a-source-trait.md
 
 ### macOS APIs
 
-`capture/macos.rs` is the only module that uses objc2. `MacSource::new(app)` registers its notification
+`capture/macos.rs` is the only capture module that uses objc2 (app icons, in `app_icons.rs`, are the other
+user; [backend.md](backend.md#app-icons)). `MacSource::new(app)` registers its notification
 observers on the main thread (`run_on_main_thread`), whose run loop Tauri runs. Each observer block only
 sends a `SystemEvent`, and the observers stay registered for the app's lifetime.
 

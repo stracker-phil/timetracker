@@ -115,6 +115,8 @@ otherwise. `update_settings` hands the new `tracker` and `capture` settings to `
 `SettingsStore::set_data_dir`). The tracker's `Db` sits behind an `RwLock`: a data folder move holds the
 tracker with `Tracker::suspend` and hands it the new database with `Suspended::resume`.
 
+`app_icons::AppIcons` is managed beside it as `Arc<AppIcons>` ([App icons](#app-icons)).
+
 ## Tauri commands
 
 Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives in its module.
@@ -189,6 +191,7 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `undo` / `redo` | – | the label undone or redone, `null` when there was none | `overlap`, `db` |
 | `undo_status` | – | `UndoStatus { undoLabel, redoLabel }` | – |
 | `activity_list` / `away_list` (`db/commands.rs`) | `day: Day` | `ActivityRow[]` / `AwayRow[]` of the day, cut to its bounds; open rows end now | `db`, `invalid_input` |
+| `app_icons` (`app_icons.rs`) | `bundleIds: string[]` (app keys: a name that is not a bundle id finds nothing) | `Record<string, string>`: a `data:image/png;base64,…` URL per id of an installed app; ids without an icon are left out. Runs on a blocking thread | – |
 | `apps_seen` (`db/commands.rs`) | `days: u16` | `AppSeen[] { bundleId, app, lastSeen, totalMs }`: tracker apps of the last `days` days, one per bundle id, most time first | `db` |
 | `tracker_status` (`tracker/commands.rs`) | – | `TrackerStatus` (the last one sent) | `db` (tracker off) |
 | `tracker_pause` | `until: PauseUntil` | `TrackerStatus` | `db` |
@@ -216,6 +219,26 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 To add a command: write it in its module (or `commands.rs` for app-wide ones), register it in
 `generate_handler!`, export its types with ts-rs, add the wrapper to `src/api/index.ts` and a default to
 `src/test/apiMock.ts`.
+
+## App icons
+
+`app_icons.rs`. Every activity shows its app's icon, read from the installed app, so nothing needs the
+network. `AppIcons::icon(bundle_id)` returns the PNG cached in `<config dir>/data/cache/icons/<bundle id>.png`
+(the default data folder, also when the data lives elsewhere: a cache does not belong in a moved or synced
+folder); on a miss it asks its `IconSource` and writes the file. An id the source has no icon for (an app
+that is not installed, or an app name) is remembered for the run and not asked again. Ids that are not
+bundle-id shaped (letters, digits, `.`, `-`, `_`; no leading dot) are refused before any lookup, which also
+keeps paths out of the cache's file names. `AppIcons::data_urls` serves the `app_icons` command.
+
+`app_icons::installed()` returns the macOS source (`InstalledApps`): `NSWorkspace
+URLForApplicationWithBundleIdentifier:`, `iconForFile:` on the app's path, drawn into a 64×64 px
+`NSBitmapImageRep` (32 pt at @2x, `ICON_PX`) through an `NSGraphicsContext` that is current on the calling
+thread only, then `representationUsingType: PNG`. Tests inject a fake `IconSource`.
+
+The page gets data URLs over IPC rather than files, so the CSP stays at `img-src 'self' data:`
+([Content security policy](#content-security-policy)). Cached icons are not refreshed when an app updates
+its icon; deleting the `cache/icons` folder does. External sources (CLI activity) have no bundle id and show
+their initial.
 
 ## Activity deletion
 
@@ -787,12 +810,13 @@ label and default to `MENU_ITEMS`, place it in `build()`, and list it in [ux.md]
 | `tauri-plugin-positioner` | the timer picker under the tray icon |
 | `tokio` | runtime, IPC socket, the tracker loop |
 | `rmcp` (`server`, `transport-io`, `macros`, `schemars`) | `timetracker mcp` |
-| `objc2`, `block2`, `objc2-foundation`, `objc2-app-kit`, `objc2-core-foundation`, `objc2-core-graphics`, `objc2-application-services` (macOS only) | the capture source ([capture.md](capture.md#macos-apis)) |
+| `objc2`, `block2`, `objc2-foundation`, `objc2-app-kit`, `objc2-core-foundation`, `objc2-core-graphics`, `objc2-application-services` (macOS only) | the capture source ([capture.md](capture.md#macos-apis)), app icons ([App icons](#app-icons)) |
 | `sqlx` (`sqlite` with bundled libsqlite3, `runtime-tokio`, `migrate`, `macros` for `migrate!` and `FromRow`) | the data store |
 | `serde`, `serde_json` (`preserve_order`) | IPC, stores |
 | `clap` | CLI |
 | `thiserror` | `AppError` |
 | `chrono`, `uuid`, `url` | time stamps, ids, `is_web_url` |
+| `base64` | app icons as data URLs |
 | `ts-rs` | TypeScript types for IPC |
 | `libc` | `getuid` for the IPC peer check |
 | `tempfile` (dev, and optional behind `test-util`) | store, socket and database tests |
@@ -807,7 +831,8 @@ graph. The library builds as `rlib`. The release profile uses LTO, `codegen-unit
 `app.security.csp` in `tauri.conf.json`:
 
 - `default-src 'self'`: scripts, fonts and frames come from the bundle only;
-- `img-src 'self' data:`: no view loads a remote image, even if a window title contains a URL;
+- `img-src 'self' data:`: no view loads a remote image, even if a window title contains a URL; app icons
+  arrive as `data:` URLs;
 - `style-src 'self' 'unsafe-inline'`: React `style` attributes;
 - `connect-src ipc: http://ipc.localhost`: Tauri IPC only.
 

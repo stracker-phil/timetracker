@@ -28,6 +28,7 @@
 .settings-row.stacked { flex-direction: column; align-items: stretch; gap: 0.462rem; }
 .settings-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.154rem; }
 .settings-row-text label, .settings-row-label { color: var(--text); }
+.settings-row-label.with-icon { display: flex; align-items: center; gap: var(--space-2); }
 .settings-row-desc { font-size: var(--fs-meta); color: var(--o2); line-height: 1.4; }
 .settings-alert { margin: 0 0 1rem; color: var(--style-red); line-height: 1.4; }
 .settings-row-control { flex: none; display: flex; align-items: center; gap: 0.462rem; }

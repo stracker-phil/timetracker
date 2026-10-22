@@ -1,4 +1,5 @@
 import { create, type StoreApi } from "zustand";
+import { appIconsSlice, type AppIconsSlice } from "./slices/appIcons";
 import { dataSlice, type DataSlice } from "./slices/data";
 import { daySlice, type DaySlice } from "./slices/day";
 import { navSlice, type NavSlice } from "./slices/nav";
@@ -20,7 +21,7 @@ export type { View } from "./slices/nav";
 export { TIMELINE_ZOOM } from "./slices/viewState";
 
 /** Every slice's members; modules add theirs with `declare module "../state/store" { interface Store { … } }`. */
-export interface Store extends SettingsSlice, UiSlice, NavSlice, ViewStateSlice, DataSlice, TrackerSlice, ProjectsSlice, DaySlice, RecordingsSlice, ReportsSlice, RulesSlice, TimerSlice {}
+export interface Store extends SettingsSlice, UiSlice, NavSlice, ViewStateSlice, DataSlice, TrackerSlice, ProjectsSlice, DaySlice, RecordingsSlice, ReportsSlice, RulesSlice, TimerSlice, AppIconsSlice {}
 
 type SetStore = StoreApi<Store>["setState"];
 type GetStore = StoreApi<Store>["getState"];
@@ -59,3 +60,4 @@ registerSlice(recordingsSlice);
 registerSlice(reportsSlice);
 registerSlice(rulesSlice);
 registerSlice(timerSlice);
+registerSlice(appIconsSlice);

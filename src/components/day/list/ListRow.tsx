@@ -1,6 +1,7 @@
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import type { ListRow as Row } from "../../../api";
 import { formatClock, formatHm } from "../../../lib/format";
+import { AppIcon } from "../../AppIcon";
 
 const spansText = (spans: Row["spans"]) => spans.map(([start, end]) => `${formatClock(start)}–${formatClock(end)}`).join(", ");
 
@@ -51,7 +52,10 @@ export function ListRow({ row, focused, open, dragging, onPointerDown, onKeyDown
       onFocus={onFocus}
     >
       <div className="list-row-main">
-        <span className="list-app o2">{row.app}</span>
+        <span className="list-app o2">
+          <AppIcon app={row.app} bundleId={row.bundleId} />
+          <span className="list-app-name">{row.app}</span>
+        </span>
         <button
           type="button"
           className="list-title"

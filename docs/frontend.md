@@ -57,6 +57,7 @@ error's message, returning the `AppError`.
 | `projects` | `projects` (`ProjectListItem[]`, archived included), `clients`, `tags` (`TagListItem[]`), `recent`, `projectsLoaded`; `loadProjects` (boot, and every `data_changed` of `projects` or `tags`); `saveProject(id, input)`, `archiveProject`, `saveClient`, `archiveClient`, `saveTag`, `deleteTag` reload after the write and reject on failure (toasted, unless the error has a `field` for the form). Helpers: `groupProjects(projects, clients, archived)`, `projectLabel` |
 | `tracker` | `tracker` (`TrackerStatus`, or `null` while the tracker is off), `setTracker`, `loadTracker`, `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then reloads the status), `permissionDialogHidden` |
 | `recordings` | `selection` (`{ start, end, blockIds }`, unsnapped; Rust snaps on save), `selectionSnap` (as Rust will store it), `setSelection`, `extendSelection(blockId)`, `focusedRecording`/`focusRecording`, `editor` (`create { start, end }` or `edit { id, at?, spanId? }`)/`openEditor`/`closeEditor`, `undoStatus`/`loadUndoStatus`, `createRecording(input)`, `updateRecording(id, patch)`, `updateSpan(id, spanId, span)`, `nudgeSpan(id, spanId, startSteps, endSteps)` (Rust applies the snap step), `deleteRecording(id)`, `moveRecording(id, day, spanId)`/`copyRecording(id, day, spanId)` (one span, else with `null` the whole recording), `undo`, `redo`. A write runs with `overlap: cancel`; on `overlap` it opens the overlap dialog and runs again with `replace`. One write at a time; each ends with a toast offering Undo. A field error rejects for the editor, others are toasted |
+| `appIcons` | `appIcons` (a PNG data URL per bundle id, `null` once known to have none), `requestAppIcon(bundleId)`: asks Rust once per id for the app's run; the asks of one task go out as one `api.appIcons` call, and a failure leaves the initials |
 | `viewState` | `uiState` (`UiState` from Rust), `setPaneSize`, `toggleSidebar`, `rememberDay`, `setTimelineZoom` (px per minute, `TIMELINE_ZOOM` 1–8, default 2.5), `finishOnboarding`, `showWelcome`; a debounced writer saves it, `flushUiState` writes at once |
 
 Components select narrowly (`useStore((s) => s.view)`), never the whole store. `lib/useApiResult` loads a
@@ -158,7 +159,12 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 Shell components in `components/`: `Toolbar` (title and Settings; a drag strip), `Sidebar` (a drag strip
 under the window buttons, `DateNavigator`, then the entries of `views.ts`), `StatusBar`, `EmptyView`, `Modal`
 (`variant`: `sheet`, `panel`, `popover`, `bare`), `ContextMenu`, `Toasts`, `Field` (`InsetField`, `KeyCap`),
-`Splitter`, `ErrorBoundary`, `CommandPalette` (`palette/`), `ShortcutsDialog`, `Dialogs`.
+`Splitter`, `ErrorBoundary`, `CommandPalette` (`palette/`), `ShortcutsDialog`, `Dialogs`, `AppIcon`.
+
+`AppIcon` (`app`, `bundleId`, `size` 16 or 20): the installed app's icon from the `appIcons` slice, rounded,
+or the app's initial while there is none (no bundle id, an external source, an app not installed). 16 px in
+timeline blocks and app lane heads, 20 px in the hover card, List view rows, rule conditions and Settings →
+Timeline → Apps.
 
 Design components ([ux.md](ux.md#components)):
 
@@ -226,8 +232,8 @@ Tracker components:
 | `Timeline` | the scroll box: `LaneHeader` (sticky), `Spans` (away and gap bands across the whole body), the recordings column (empty until recordings), `TimeAxis`, the lanes and the current-time line on today. Opens a day scrolled to 30 min before its first activity. Hover (one `mouseover` listener reading `data-block-id`) shows `HoverCard` after 300 ms; right-click, the gear on a hovered block, or ⌃↵ opens the block menu. With `compact` it draws the day at 60% of the zoom and adds `timeline--compact` |
 | `blockMenu.ts` | the block menu's entries: for tracker blocks Group by app, Titles: Document name / App name and Own lane, checked by the effective value (an override equal to the timeline's setting is removed), Hide (a toast with Undo); then Copy title (not for private blocks), Copy URL |
 | `Lane` | its blocks, absolutely placed: `top`/`height` from the times and the zoom, `left`/`width` from `col`/`cols`; only blocks within the visible part ± one screen (`useVisibleRange`, which moves in half-screen steps) |
-| `ActivityBlock` | a `Block`: the app as title, `label` as subtitle (none when it is the app) and the duration as meta (one line when short or compact, no text when tiny), a gear on hover; `private`, `dimmed` (covered) and `focused` classes |
-| `HoverCard` | app, title, URL (http(s) opens through `api.openUrl`) or path, time and duration, the source when external; beside the block, else below or above it |
+| `ActivityBlock` | a `Block`: the `AppIcon` (16 px) and the app as title, `label` as subtitle (none when it is the app) and the duration as meta (one line when short or compact, no text when tiny), a gear on hover; `private`, `dimmed` (covered) and `focused` classes |
+| `HoverCard` | `AppIcon` and app, title, URL (http(s) opens through `api.openUrl`) or path, time and duration, the source when external; beside the block, else below or above it |
 | `RecordingsColumn` | the day's `SuggestionBlock`s under its `RecordingBlock`s and, while a span is selected, a dashed outline where its recording would go |
 | `SuggestionBlock` | a rule's suggestion: a button outlined dashed and half filled in the project's card colors, with the project, the rule and the duration; click sends `acceptSuggestion`, ⌥-click `acceptRuleSuggestions` (the `rules` slice; Rust's `data_changed` reloads the day) |
 | `useRuleDrag` | ⌥-pressing an activity block (in `Timeline`) shows the recent projects over the top of the recordings column; releasing over one opens the `rule` dialog with `draftFromBlock`: `<app> → <project>`, `app is <app>` and `domain is <host>` for a URL block, else `title contains <title>` |
@@ -262,7 +268,7 @@ buttons in `DayHeader`, or ⌘⇧L `day.toggleList`; `viewState.setDayMode` pers
   tick, and keeps Rust's order. The search field filters the loaded rows by app, label, title, URL and path
   (`/` focuses it, Escape clears it). ↑↓ move between rows; ↵ opens the recording editor for the row's span
   without a project; Space selects the row's span and blocks and switches to the timeline.
-- `ListRow`: app, label, URL or path, the duration, `· n spans`, and a bar for the covered share. Clicking
+- `ListRow`: `AppIcon` and app, label, URL or path, the duration, `· n spans`, and a bar for the covered share. Clicking
   the title shows its details (title, URL, path, spans).
 - `ProjectStrip`: active projects, recent first, 8 chips and the rest under More…. Dragging a row onto a chip
   (`pointerDrag`, `elementFromPoint` on `[data-project-id]`) or clicking a chip with a row focused opens the
@@ -290,7 +296,8 @@ position) and their writes; a `data_changed` of kind `rules` reloads them.
   (`setRuleEnabled`), the name, the project and `conditionSummary` (`app is "Slack" · title contains "x"`).
   A row click, New rule or ⌘N (`rules.new`) opens the `rule` dialog.
 - `RuleSheet` (dialog `rule` with `id` or a `draft`): name, `ProjectPicker`, note, `TagPicker`, the
-  `ConditionRow`s (field, comparison, value, remove; Add condition) and the enable switch. Save sends
+  `ConditionRow`s (field, comparison, value, remove; Add condition; an `app` condition whose value names a
+  tracked app from `appsList()` shows its `AppIcon`, else the initial) and the enable switch. Save sends
   `saveRule`; a field error shows under its field, and `conditions.<i>.value` marks that row. Beside the
   form, `RulePreviewPanel` asks `rulePreview(input, 7)` through `useApiResult` (300 ms debounce, keeps the
   last result) once every condition has a value, and lists the hits with the total.
@@ -362,7 +369,7 @@ Enter picks, Esc closes the list without closing the sheet around it; the list c
 | Shortcuts | `ShortcutsPage`: every command with its binding; record, reset or unbind |
 | Tracking → Capture | `CapturePage` (`CapturePage.tsx`): address and document switches, excluded apps (an "Add app…" picker listing `appsSeen(30)`), excluded websites (a field; Enter adds) |
 | Tracking → Tracker | `TrackerPage`: away after (idle minutes), check every (poll seconds) |
-| Tracking → Timeline | `TimelinePage` (`TimelinePage.tsx`): `TimelineControls` (summary lane and its interval slider, show all activity, compact, group by app, continuity, noise, titles, time snapping; each saved quietly), then Apps from `appsList()`: per app Group by app and Titles (Default or a value), Hidden, Own lane |
+| Tracking → Timeline | `TimelinePage` (`TimelinePage.tsx`): `TimelineControls` (summary lane and its interval slider, show all activity, compact, group by app, continuity, noise, titles, time snapping; each saved quietly), then Apps from `appsList()`: per app its `AppIcon` (by `appKey`), Group by app and Titles (Default or a value), Hidden, Own lane |
 | System → General (order 0) | `LaunchAtLoginSwitch` (`LaunchAtLoginSwitch.tsx`, also on the welcome sheet): checked from `autostartStatus()` (the LaunchAgent, not the stored setting), changed through `setLaunchAtLogin` (`settings` slice: `api.autostartSet`, then the store's `settings.launchAtLogin` is updated so a later save keeps it); "Show welcome again" closes Settings and calls `showWelcome` |
 | System → Data | the data folder (Reveal in Finder; Move…: `chooseFolder` → a `Modal` sheet that says the database is copied, tracking pauses meanwhile and the old files stay → `dataMove` with the Move button busy (`Moving…`, Escape ignored) → toast "Data moved to …", settings and the page's `DataInfo` reload; an `invalid_input` refusal shows under the row, other errors toast), counts, first activity, size on disk, Export backup… (save panel → `backupExport`, toast "Backup written"); an alert when the store could not be opened |
 | System → Logging | log level, Open log folder |

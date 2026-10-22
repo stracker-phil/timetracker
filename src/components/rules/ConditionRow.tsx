@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import type { ConditionInput } from "../../api";
+import { AppIcon } from "../AppIcon";
 import { FIELDS, OPS } from "./conditions";
 
 interface Props {
@@ -9,11 +10,14 @@ interface Props {
   onChange: (condition: ConditionInput) => void;
   /** Absent for the last condition: a rule needs one. */
   onRemove?: () => void;
+  /** The bundle id (or name) of a tracked app by its name, for the icon of an `app` condition. */
+  appKeyOf?: (app: string) => string | null;
 }
 
 /** One condition: a field, how it compares, and the value. */
-export function ConditionRow({ index, condition, error, onChange, onRemove }: Props) {
+export function ConditionRow({ index, condition, error, onChange, onRemove, appKeyOf }: Props) {
   const label = `Condition ${index + 1}`;
+  const app = condition.field === "app" ? condition.value.trim() : "";
   return (
     <div className="condition-row" role="group" aria-label={label} aria-invalid={error ? true : undefined}>
       <select className="input" aria-label={`${label} field`} value={condition.field} onChange={(e) => onChange({ ...condition, field: e.target.value as ConditionInput["field"] })}>
@@ -30,13 +34,16 @@ export function ConditionRow({ index, condition, error, onChange, onRemove }: Pr
           </option>
         ))}
       </select>
-      <input
-        className="input mono"
-        aria-label={`${label} value`}
-        placeholder={condition.op === "pattern" ? "* any text, ? one character" : "Value"}
-        value={condition.value}
-        onChange={(e) => onChange({ ...condition, value: e.target.value })}
-      />
+      <div className="condition-value">
+        {app && <AppIcon app={app} bundleId={appKeyOf?.(app) ?? null} />}
+        <input
+          className="input mono"
+          aria-label={`${label} value`}
+          placeholder={condition.op === "pattern" ? "* any text, ? one character" : "Value"}
+          value={condition.value}
+          onChange={(e) => onChange({ ...condition, value: e.target.value })}
+        />
+      </div>
       <button type="button" className="icon-btn" aria-label={`Remove condition ${index + 1}`} disabled={!onRemove} onClick={onRemove}>
         <X size="0.923rem" aria-hidden="true" />
       </button>

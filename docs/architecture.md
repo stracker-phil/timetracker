@@ -164,6 +164,7 @@ src-tauri/
   src/test_support/          test helpers behind cfg(test) / feature test-util; seed.rs also in debug builds
   src/db/                    Db (sqlx pool), migrations, time helpers, repositories, backup, relocate.rs (moving the data folder)
   src/capture/               Source trait, Snapshot types, macos.rs (objc2), fake.rs (test-util)
+  src/app_icons.rs           installed apps' icons as cached PNGs, served as data URLs
   src/tracker/               state machine: spans, away, pause, status; the tokio task
   src/activity/              external activity (rules, commands), deletion with undo (delete.rs)
   src/autostart.rs           launch at login

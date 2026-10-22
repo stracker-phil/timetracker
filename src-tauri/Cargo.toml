@@ -29,6 +29,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 url = "2"
+base64 = "0.22"
 ts-rs = { version = "12", features = ["serde-compat", "chrono-impl", "serde-json-impl", "no-serde-warnings"] }
 libc = "0.2"
 # SQLite with bundled libsqlite3; `macros` brings `migrate!` and `FromRow` (no `query!`).
@@ -62,11 +63,11 @@ chrono-tz = "0.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # The capture source (capture/macos.rs): frontmost app, window title and document, browser addresses,
-# idle time, sleep and lock.
+# idle time, sleep and lock; app icons (app_icons.rs).
 objc2 = "0.6"
 block2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSNotification", "NSOperation", "NSString", "NSDistributedNotificationCenter", "NSAppleScript", "NSAppleEventDescriptor", "NSDictionary", "NSValue"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSWorkspace", "NSRunningApplication"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSNotification", "NSOperation", "NSString", "NSDistributedNotificationCenter", "NSAppleScript", "NSAppleEventDescriptor", "NSDictionary", "NSValue", "NSURL", "NSData", "NSGeometry"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSWorkspace", "NSRunningApplication", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSGraphics", "NSGraphicsContext"] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFString", "CFDictionary", "CFNumber"] }
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGEventSource", "CGEventTypes"] }
 objc2-application-services = { version = "0.3", default-features = false, features = ["std", "libc", "HIServices", "AXUIElement", "AXError"] }

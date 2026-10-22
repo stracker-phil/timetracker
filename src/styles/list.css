@@ -18,7 +18,8 @@
   display: grid; grid-template-columns: minmax(5rem, 10rem) minmax(0, 1fr) minmax(0, 0.7fr) auto; align-items: center; gap: var(--space-3);
   min-height: var(--row-h); box-sizing: border-box; padding: var(--pad) 0;
 }
-.list-app { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-app { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.list-app-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .list-title {
   min-width: 0; margin: 0; padding: 0; border: none; background: none; text-align: left; font-size: var(--data-font-size);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: inherit;

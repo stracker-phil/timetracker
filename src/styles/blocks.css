@@ -10,6 +10,7 @@
 .block:hover { background: var(--activity-fill-hover); }
 .block.one-line, .timeline--compact .block { flex-direction: row; gap: var(--space-2); align-items: center; padding-top: 0; padding-bottom: 0; }
 .block-title { font-weight: 500; color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; max-width: 100%; }
+.block-title .app-icon { margin-right: var(--space-1); vertical-align: -0.25em; }
 .block-subtitle { font-size: var(--data-font-size); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .block-trailing { margin-top: auto; align-self: flex-end; font-size: var(--data-font-size); color: var(--o2); white-space: nowrap; }
 .block.one-line .block-trailing, .timeline--compact .block-trailing { margin: 0 0 0 auto; align-self: center; }

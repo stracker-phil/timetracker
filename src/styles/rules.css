@@ -23,7 +23,9 @@
 .rule-sheet-form { display: flex; flex-direction: column; gap: 0.769rem; min-width: 0; }
 .conditions { display: flex; flex-direction: column; gap: 0.462rem; align-items: flex-start; }
 .condition-row { display: grid; grid-template-columns: 6.5rem 8rem minmax(0, 1fr) auto; gap: 0.462rem; align-items: center; width: 100%; }
-.condition-row[aria-invalid] .input:nth-child(3) { border-color: var(--style-red); }
+.condition-row[aria-invalid] .condition-value .input { border-color: var(--style-red); }
+.condition-value { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.condition-value .input { flex: 1; min-width: 0; }
 .condition-error { grid-column: 1 / -1; }
 .rule-enabled { display: flex; align-items: center; gap: var(--space-2); }
 .rule-preview { min-width: 0; display: flex; flex-direction: column; gap: 0.462rem; border-left: 1px solid var(--line); padding-left: var(--space-4); max-height: 70vh; overflow: auto; }

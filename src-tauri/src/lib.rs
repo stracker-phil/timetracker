@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod app_icons;
 pub mod autostart;
 pub mod away_prompt;
 pub mod calendar;
@@ -318,8 +319,15 @@ fn start_app(
     log_level: LogLevel,
     hidden: bool,
 ) {
+    let icons = app_icons::AppIcons::new(
+        db::default_data_dir(&state.config_dir)
+            .join("cache")
+            .join("icons"),
+        app_icons::installed(),
+    );
     tauri::Builder::default()
         .manage(state)
+        .manage(Arc::new(icons))
         .manage(remote::Bridge::default())
         .manage(menu::MenuSync::default())
         .manage(away_prompt::AwayPromptState::default())
@@ -398,6 +406,7 @@ fn start_app(
             day::commands::day_view,
             day::commands::day_totals,
             day::commands::apps_list,
+            app_icons::app_icons,
             tracker::commands::tracker_status,
             tracker::commands::tracker_pause,
             tracker::commands::tracker_resume,

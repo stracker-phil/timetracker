@@ -3,6 +3,7 @@ import { formatHm } from "../../lib/format";
 import { useApiResult } from "../../lib/useApiResult";
 import type { SettingsPageProps } from "../../registry/settingsPages";
 import { useStore } from "../../state/store";
+import { AppIcon } from "../AppIcon";
 import { SegmentedControl } from "../SegmentedControl";
 import { Group, Row } from "./controls";
 import { TimelineControls } from "./TimelineControls";
@@ -27,7 +28,7 @@ function AppSwitch({ label, checked, onChange }: { label: string; checked: boole
 function AppRow({ app, override }: { app: KnownApp; override: AppOverride | undefined }) {
   const set = (patch: AppSettingPatch) => void useStore.getState().setAppSetting(app.appKey, patch);
   return (
-    <Row label={app.app} description={<span className="mono">{app.totalMs > 0 ? formatHm(app.totalMs) : app.appKey}</span>} stacked>
+    <Row label={app.app} icon={<AppIcon app={app.app} bundleId={app.appKey} />} description={<span className="mono">{app.totalMs > 0 ? formatHm(app.totalMs) : app.appKey}</span>} stacked>
       <div className="app-controls">
         <span className="o3">Group by app</span>
         <SegmentedControl
