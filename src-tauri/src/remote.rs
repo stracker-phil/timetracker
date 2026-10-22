@@ -250,12 +250,15 @@ mod tests {
             recording: crate::db::recordings::Recording {
                 id: "r1".into(),
                 project_id: "p1".into(),
-                start: 1_000,
-                end: None,
                 note: "standup".into(),
                 tag_id: None,
                 created_at: 1_000,
                 updated_at: 1_000,
+                spans: vec![crate::db::recordings::RecordingSpan {
+                    id: "s1".into(),
+                    start: 1_000,
+                    end: None,
+                }],
             },
             project_name: "Acme".into(),
             color: "blue".into(),
@@ -273,8 +276,9 @@ mod tests {
             value["timer"],
             serde_json::json!({
                 "recording": {
-                    "id": "r1", "projectId": "p1", "start": 1000, "end": null,
-                    "note": "standup", "tagId": null, "createdAt": 1000, "updatedAt": 1000
+                    "id": "r1", "projectId": "p1",
+                    "note": "standup", "tagId": null, "createdAt": 1000, "updatedAt": 1000,
+                    "spans": [{ "id": "s1", "start": 1000, "end": null }]
                 },
                 "projectName": "Acme",
                 "color": "blue",

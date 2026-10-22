@@ -230,14 +230,16 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
   block (⇧J and ⇧K add the next or previous one): `--sel` fill with
   accent hairlines and the snapped `09:00–10:30` in mono accent text; the status bar repeats it with the
   duration. A dashed accent outline in the recordings column shows where the recording goes.
-- **Recording blocks** sit in the recordings column: the project's shade as a 3px bar on the left and a 22%
-  tint on `--bg`; project name (sans 500), note (mono), tag (mono `--o3`), duration bottom
-  right. A dashed top or bottom edge means the recording continues on another day. The top and bottom 6px
-  resize; the body moves. Activity under recordings (half or more) is dimmed; hover lifts it.
-- **Editor**: a sheet with project, From/To, duration, note, tag; Save, Cancel, Delete. Field errors show
-  under their field.
-- **Overlap**: a confirm sheet listing the recordings in the way; "Replace overlapped part" trims, splits
-  or deletes them.
+- **Recording blocks** sit in the recordings column, one per span: a recording can hold several separate
+  spans (14:25–15:00 and 16:05–20:15), each its own block; project, note and tag belong to the recording.
+  The project's shade as a 3px bar on the left and a 22% tint on `--bg`; project name (sans 500), note
+  (mono), tag (mono `--o3`), duration bottom right. A dashed top or bottom edge means the span continues on
+  another day. The top and bottom 6px resize the span; the body moves it. Activity under recordings (half or
+  more) is dimmed; hover lifts it.
+- **Editor**: a sheet with project, From/To of the span it was opened on, duration, the other spans
+  read-only ("Also 14:25–15:00"), note, tag; Save, Cancel, Delete. Field errors show under their field.
+- **Overlap**: a confirm sheet listing the recordings in the way, each with its spans; "Replace overlapped
+  part" trims or cuts their spans, and deletes a recording left without any.
 - Every change ends in a toast with Undo.
 
 ## Welcome
@@ -285,8 +287,9 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 
 ## Timer
 
-- A running recording grows to now in the Day view, with a pulsing accent dot at its top right (still with
-  reduced motion); it has no grips. The menu bar item's title reads `⏱ 1:23 Acme` while it runs, and the
+- A running recording's open span grows to now in the Day view, with a pulsing accent dot at its top right
+  (still with reduced motion); it has no grips. Starting the timer for a project, note and tag already
+  recorded today continues that recording with a new span. The menu bar item's title reads `⏱ 1:23 Acme` while it runs, and the
   status bar shows `⏱ Acme 1:23` (a click stops it).
 - The picker (⌘⇧T from any app, ⌘T in the window, Start Timer… in the tray) is a small floating panel on
   `--pop` under the tray icon: project, note, tag, Start (↵), Cancel (Escape), and the recent timers below.
@@ -296,7 +299,7 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 
 - **Week**: the time axis and seven day columns (`--lane-min-w` like lanes); each head shows `Mon 20` and the
   day's recorded hours, today's in accent text; today's column has a faint tint. Recordings look and drag
-  as in the Day view; dropped on another column they move there, with ⌥ they are copied. A double-click on
+  as in the Day view; a span dropped on another column moves there, with ⌥ it is copied as a new recording. A double-click on
   an empty spot records an hour there. The header totals read `recorded 32:10 · tracked 41:05`.
 - **Month**: a calendar of whole weeks; each day a cell with its number (`--o3` outside the month, accent
   on today), the recorded hours in mono, and a 3 px strip along the bottom of the three projects with the
@@ -307,7 +310,8 @@ timeline), Hidden (gone from every lane; the header popover lists hidden apps wi
 The Reports screen: the range as title, Copy as text and Save report… on the right; below, the filter bar
 (range presets, clients, projects, tags, group by, rounding, archived projects). Each group is its label
 with a color dot (by project), the hours in mono on the right, the notes in `--o2` below, and "3
-recordings" that unfolds a table. The total closes the list; with rounding, the unrounded hours stand
+recordings" that unfolds a table; a row lists all of a recording's spans of its day (`14:25–15:00,
+16:05–20:15`), and the notes follow the recordings' first spans. The total closes the list; with rounding, the unrounded hours stand
 beside it in `--o3`. Saved reports sit under Reports in the sidebar.
 
 The copied text, also what `timetracker report` prints:

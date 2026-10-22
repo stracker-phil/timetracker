@@ -12,7 +12,7 @@ const mocked = vi.mocked(api, true);
 const state = () => useStore.getState();
 const toastMessages = () => state().toasts.map((t) => t.message);
 
-const input = { projectId: "p-site", start: at("09:00"), end: at("09:45"), note: "", tagId: null };
+const input = { projectId: "p-site", spans: [{ start: at("09:00"), end: at("09:45") }], note: "", tagId: null };
 const inTheWay = recording({ id: "r9", start: at("09:15"), end: at("09:30") });
 const overlapError = { kind: "overlap", message: "Overlaps", code: null, details: [inTheWay] };
 
@@ -27,7 +27,6 @@ async function overlapDialog() {
 describe("recordings slice", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocked.recordingCreate.mockImplementation(async (i) => recording({ ...i, id: "recording-new" }));
     resetStore({ day: "2026-03-10", ...projectsStore({ projects: [projectItem({ project: { id: "p-site", name: "Website" } })] }) });
   });
 
@@ -62,7 +61,7 @@ describe("recordings slice", () => {
 
   describe("createRecording", () => {
     it("saves with overlap cancel, toasts with Undo and clears the selection", async () => {
-      state().setSelection({ start: input.start, end: input.end, blockIds: [] });
+      state().setSelection({ ...input.spans[0], blockIds: [] });
       await state().createRecording(input);
       expect(mocked.recordingCreate).toHaveBeenCalledWith(input, "cancel");
       expect(toastMessages()).toContain("Recorded 45 min for Website");
@@ -120,8 +119,9 @@ describe("recordings slice", () => {
 
   describe("updateRecording and deleteRecording", () => {
     it("sends the patch with overlap cancel and toasts", async () => {
-      await state().updateRecording("r1", { end: at("10:00") });
-      expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { end: at("10:00") }, "cancel");
+      const patch = { spans: [{ start: at("09:00"), end: at("10:00") }] };
+      await state().updateRecording("r1", patch);
+      expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", patch, "cancel");
       expect(toastMessages()).toContain("Recording changed");
     });
 
@@ -142,38 +142,109 @@ describe("recordings slice", () => {
     });
   });
 
+  describe("updateSpan", () => {
+    const span = { start: at("09:00"), end: at("10:00") };
+
+    it("sends the span with overlap cancel and toasts with Undo", async () => {
+      await state().updateSpan("r1", "r1-s2", span);
+      expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s2", span, "cancel");
+      expect(toastMessages()).toEqual(["Recording changed"]);
+      expect(state().toasts[0].action?.label).toBe("Undo");
+    });
+
+    it("asks before replacing on an overlap and retries with replace on Replace", async () => {
+      mocked.recordingUpdateSpan.mockRejectedValueOnce(overlapError);
+      const writing = state().updateSpan("r1", "r1-s2", span);
+      (await overlapDialog()).onReplace();
+      await writing;
+      expect(mocked.recordingUpdateSpan).toHaveBeenLastCalledWith("r1", "r1-s2", span, "replace");
+      expect(toastMessages()).toEqual(["Recording changed"]);
+    });
+
+    it("changes nothing and says nothing when the overlap is cancelled", async () => {
+      mocked.recordingUpdateSpan.mockRejectedValueOnce(overlapError);
+      const writing = state().updateSpan("r1", "r1-s2", span);
+      (await overlapDialog()).onCancel();
+      await expect(writing).resolves.toBeNull();
+      expect(toastMessages()).toEqual([]);
+    });
+
+    it("toasts any other error", async () => {
+      mocked.recordingUpdateSpan.mockRejectedValueOnce({ kind: "db", message: "Database locked", code: null });
+      await state().updateSpan("r1", "r1-s2", span);
+      expect(toastMessages()).toEqual(["Could not change the recording: Database locked"]);
+    });
+  });
+
+  describe("nudgeSpan", () => {
+    it("sends the step counts with overlap cancel and toasts with Undo", async () => {
+      await state().nudgeSpan("r1", "r1-s2", 1, 1);
+      expect(mocked.recordingNudge).toHaveBeenCalledWith("r1", "r1-s2", 1, 1, "cancel");
+      expect(toastMessages()).toEqual(["Recording changed"]);
+      expect(state().toasts[0].action?.label).toBe("Undo");
+    });
+
+    it("asks before replacing on an overlap and retries with replace on Replace", async () => {
+      mocked.recordingNudge.mockRejectedValueOnce(overlapError);
+      const writing = state().nudgeSpan("r1", "r1-s2", 0, 1);
+      (await overlapDialog()).onReplace();
+      await writing;
+      expect(mocked.recordingNudge).toHaveBeenLastCalledWith("r1", "r1-s2", 0, 1, "replace");
+      expect(toastMessages()).toEqual(["Recording changed"]);
+    });
+
+    it("changes nothing and says nothing when the overlap is cancelled", async () => {
+      mocked.recordingNudge.mockRejectedValueOnce(overlapError);
+      const writing = state().nudgeSpan("r1", "r1-s2", 0, 1);
+      (await overlapDialog()).onCancel();
+      await expect(writing).resolves.toBeNull();
+      expect(toastMessages()).toEqual([]);
+    });
+
+    it("toasts any other error", async () => {
+      mocked.recordingNudge.mockRejectedValueOnce({ kind: "db", message: "Database locked", code: null });
+      await state().nudgeSpan("r1", "r1-s2", -1, -1);
+      expect(toastMessages()).toEqual(["Could not change the recording: Database locked"]);
+    });
+  });
+
   describe.each([
     { name: "moveRecording", call: "recordingMove", done: "Recording moved", failed: "Could not move the recording" },
     { name: "copyRecording", call: "recordingCopy", done: "Recording copied", failed: "Could not copy the recording" },
   ] as const)("$name", ({ name, call, done, failed }) => {
     it("sends the day with overlap cancel and toasts with Undo", async () => {
-      await state()[name]("r1", "2026-03-12");
-      expect(mocked[call]).toHaveBeenCalledWith("r1", "2026-03-12", "cancel");
+      await state()[name]("r1", "2026-03-12", null);
+      expect(mocked[call]).toHaveBeenCalledWith("r1", null, "2026-03-12", "cancel");
       expect(toastMessages()).toEqual([done]);
       expect(state().toasts[0].action?.label).toBe("Undo");
     });
 
+    it("sends the span id when one span is meant", async () => {
+      await state()[name]("r1", "2026-03-12", "r1-s2");
+      expect(mocked[call]).toHaveBeenCalledWith("r1", "r1-s2", "2026-03-12", "cancel");
+    });
+
     it("asks before replacing on an overlap and retries with replace on Replace", async () => {
       mocked[call].mockRejectedValueOnce(overlapError);
-      const writing = state()[name]("r1", "2026-03-12");
+      const writing = state()[name]("r1", "2026-03-12", null);
       (await overlapDialog()).onReplace();
       await writing;
-      expect(mocked[call]).toHaveBeenLastCalledWith("r1", "2026-03-12", "replace");
+      expect(mocked[call]).toHaveBeenLastCalledWith("r1", null, "2026-03-12", "replace");
       expect(toastMessages()).toEqual([done]);
     });
 
     it("changes nothing and says nothing when the overlap is cancelled", async () => {
       mocked[call].mockRejectedValueOnce(overlapError);
-      const writing = state()[name]("r1", "2026-03-12");
+      const writing = state()[name]("r1", "2026-03-12", null);
       (await overlapDialog()).onCancel();
       await writing;
-      expect(mocked[call]).not.toHaveBeenCalledWith("r1", "2026-03-12", "replace");
+      expect(mocked[call]).not.toHaveBeenCalledWith("r1", null, "2026-03-12", "replace");
       expect(toastMessages()).toEqual([]);
     });
 
     it("toasts any other error", async () => {
       mocked[call].mockRejectedValueOnce({ kind: "db", message: "Database locked", code: null });
-      await state()[name]("r1", "2026-03-12");
+      await state()[name]("r1", "2026-03-12", null);
       expect(toastMessages()).toEqual([`${failed}: Database locked`]);
     });
   });

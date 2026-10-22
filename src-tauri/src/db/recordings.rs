@@ -1,13 +1,51 @@
-//! Recordings, each with at most one tag (ADR 0019). Every write is one transaction. The rule that
-//! recordings never overlap lives in the recordings feature; `overlapping` is only the query.
+//! Recordings, each with at most one tag (ADR 0019) and one or more spans of time (ADR 0020). Every write
+//! is one transaction. The rule that recordings never overlap lives in the recordings feature;
+//! `overlapping` is only the query.
+
+use std::collections::HashMap;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::SqliteConnection;
 use ts_rs::TS;
 
-use super::Db;
 use super::time::{Ms, now_ms};
+use super::{Db, new_id};
 use crate::error::{AppError, AppResult};
+
+/// A closed stretch of time, `[start, end)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct Span {
+    pub start: Ms,
+    pub end: Ms,
+}
+
+/// One stretch of a recording's time.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct RecordingSpan {
+    pub id: String,
+    pub start: Ms,
+    /// `None` only for the running timer's span.
+    pub end: Option<Ms>,
+}
+
+impl RecordingSpan {
+    pub fn new(start: Ms, end: Option<Ms>) -> Self {
+        Self {
+            id: new_id(),
+            start,
+            end,
+        }
+    }
+
+    /// Its length; an open span counts until `now`.
+    pub fn duration(&self, now: Ms) -> Ms {
+        (self.end.unwrap_or(now) - self.start).max(0)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -15,28 +53,60 @@ use crate::error::{AppError, AppResult};
 pub struct Recording {
     pub id: String,
     pub project_id: String,
-    pub start: Ms,
-    /// `None` only for the running timer.
-    pub end: Option<Ms>,
     /// One line (ADR 0018).
     pub note: String,
     pub tag_id: Option<String>,
     pub created_at: Ms,
     pub updated_at: Ms,
+    /// At least one, by start, never overlapping each other.
+    #[sqlx(skip)]
+    pub spans: Vec<RecordingSpan>,
 }
 
-/// The caller picks the id, so an undo can restore a deleted recording under its old id.
+impl Recording {
+    /// The start of its first span.
+    pub fn start(&self) -> Ms {
+        self.spans.first().map_or(0, |s| s.start)
+    }
+
+    /// The end of its last span; `None` while it runs.
+    pub fn end(&self) -> Option<Ms> {
+        self.spans.last().and_then(|s| s.end)
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.spans.iter().any(|s| s.end.is_none())
+    }
+
+    /// The open span of the running timer.
+    pub fn open_span(&self) -> Option<&RecordingSpan> {
+        self.spans.iter().find(|s| s.end.is_none())
+    }
+
+    /// The sum of its spans; an open one counts until `now`.
+    pub fn duration(&self, now: Ms) -> Ms {
+        self.spans.iter().map(|s| s.duration(now)).sum()
+    }
+
+    pub fn span(&self, span_id: &str) -> AppResult<&RecordingSpan> {
+        self.spans
+            .iter()
+            .find(|s| s.id == span_id)
+            .ok_or_else(|| AppError::NotFound(format!("No span {span_id}")))
+    }
+}
+
+/// The caller picks the id, so an undo can restore a deleted recording under its old id. Spans get new ids.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewRecording {
     pub id: String,
     pub project_id: String,
-    pub start: Ms,
-    pub end: Option<Ms>,
+    pub spans: Vec<(Ms, Option<Ms>)>,
     pub note: String,
     pub tag_id: Option<String>,
 }
 
-/// Absent fields stay as they are; `end: null` makes the recording running, `tagId: null` removes the tag.
+/// Absent fields stay as they are; `spans` replaces every span, `tagId: null` removes the tag.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -44,10 +114,7 @@ pub struct RecordingPatch {
     #[ts(optional)]
     pub project_id: Option<String>,
     #[ts(optional)]
-    pub start: Option<Ms>,
-    #[serde(default, deserialize_with = "present")]
-    #[ts(optional)]
-    pub end: Option<Option<Ms>>,
+    pub spans: Option<Vec<Span>>,
     #[ts(optional)]
     pub note: Option<String>,
     #[serde(default, deserialize_with = "present")]
@@ -60,27 +127,52 @@ fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Optio
     T::deserialize(d).map(Some)
 }
 
+/// `spans` as the spans of `current`, by start: the n-th keeps the id of the n-th current span.
+pub fn respanned(current: &[RecordingSpan], spans: &[Span]) -> Vec<RecordingSpan> {
+    let mut sorted = spans.to_vec();
+    sorted.sort_by_key(|s| s.start);
+    sorted
+        .iter()
+        .enumerate()
+        .map(|(i, s)| RecordingSpan {
+            id: current.get(i).map_or_else(new_id, |c| c.id.clone()),
+            start: s.start,
+            end: Some(s.end),
+        })
+        .collect()
+}
+
+/// Orders recordings by the start of their first span.
+macro_rules! by_first_start {
+    () => {
+        " ORDER BY (SELECT min(s.start) FROM recording_spans s WHERE s.recording_id = r.id), r.id"
+    };
+}
+
 pub async fn insert(db: &Db, new: NewRecording) -> AppResult<Recording> {
-    let note = checked_note(&new.note)?;
-    check_span(new.start, new.end)?;
+    let note = checked_note(&new.note)?.to_string();
+    let mut spans: Vec<RecordingSpan> = new
+        .spans
+        .iter()
+        .map(|&(start, end)| RecordingSpan::new(start, end))
+        .collect();
+    spans.sort_by_key(|s| s.start);
+    check_spans(&spans)?;
     let mut tx = db.pool().begin().await?;
     check_project(&mut tx, &new.project_id).await?;
     ensure_tag(&mut tx, new.tag_id.as_deref()).await?;
     let now = now_ms();
-    sqlx::query(
-        r#"INSERT INTO recordings (id, project_id, start, "end", note, tag_id, created_at, updated_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)"#,
-    )
-    .bind(&new.id)
-    .bind(&new.project_id)
-    .bind(new.start)
-    .bind(new.end)
-    .bind(note)
-    .bind(&new.tag_id)
-    .bind(now)
-    .execute(&mut *tx)
-    .await?;
-    let recording = fetch(&mut tx, &new.id).await?;
+    let recording = Recording {
+        id: new.id,
+        project_id: new.project_id,
+        note,
+        tag_id: new.tag_id,
+        created_at: now,
+        updated_at: now,
+        spans,
+    };
+    write(&mut tx, &recording).await?;
+    let recording = fetch(&mut tx, &recording.id).await?;
     tx.commit().await?;
     Ok(recording)
 }
@@ -92,28 +184,23 @@ pub async fn get(db: &Db, id: &str) -> AppResult<Recording> {
 pub async fn update(db: &Db, id: &str, patch: RecordingPatch) -> AppResult<Recording> {
     let mut tx = db.pool().begin().await?;
     let current = fetch(&mut tx, id).await?;
-    let project_id = patch.project_id.unwrap_or(current.project_id);
-    let start = patch.start.unwrap_or(current.start);
-    let end = patch.end.unwrap_or(current.end);
-    let note = checked_note(patch.note.as_deref().unwrap_or(&current.note))?;
-    let tag_id = patch.tag_id.unwrap_or(current.tag_id);
-    check_span(start, end)?;
-    check_project(&mut tx, &project_id).await?;
-    ensure_tag(&mut tx, tag_id.as_deref()).await?;
-    sqlx::query(
-        r#"UPDATE recordings SET project_id = ?2, start = ?3, "end" = ?4, note = ?5, tag_id = ?6,
-             updated_at = ?7
-           WHERE id = ?1"#,
-    )
-    .bind(id)
-    .bind(&project_id)
-    .bind(start)
-    .bind(end)
-    .bind(note)
-    .bind(&tag_id)
-    .bind(now_ms())
-    .execute(&mut *tx)
-    .await?;
+    let spans = match &patch.spans {
+        Some(spans) => respanned(&current.spans, spans),
+        None => current.spans.clone(),
+    };
+    check_spans(&spans)?;
+    let note = checked_note(patch.note.as_deref().unwrap_or(&current.note))?.to_string();
+    let updated = Recording {
+        project_id: patch.project_id.unwrap_or(current.project_id),
+        note,
+        tag_id: patch.tag_id.unwrap_or(current.tag_id),
+        updated_at: now_ms(),
+        spans,
+        ..current
+    };
+    check_project(&mut tx, &updated.project_id).await?;
+    ensure_tag(&mut tx, updated.tag_id.as_deref()).await?;
+    write(&mut tx, &updated).await?;
     let recording = fetch(&mut tx, id).await?;
     tx.commit().await?;
     Ok(recording)
@@ -123,40 +210,49 @@ pub async fn update(db: &Db, id: &str, patch: RecordingPatch) -> AppResult<Recor
 pub async fn delete(db: &Db, id: &str) -> AppResult<Recording> {
     let mut tx = db.pool().begin().await?;
     let recording = fetch(&mut tx, id).await?;
-    sqlx::query("DELETE FROM recordings WHERE id = ?1")
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
+    remove_on(&mut tx, id).await?;
     tx.commit().await?;
     Ok(recording)
 }
 
-/// Recordings that share time with `[from, to)`, the running one included, by start.
+/// Recordings with a span that shares time with `[from, to)`, the running one included, by first start.
+/// Every span is included, also those outside the range.
 pub async fn list_for_range(db: &Db, from: Ms, to: Ms) -> AppResult<Vec<Recording>> {
     overlapping(db, from, to, None).await
 }
 
-/// The running timer: the recording without an end.
+/// The running timer: the recording with an open span.
 pub async fn running(db: &Db) -> AppResult<Option<Recording>> {
-    Ok(sqlx::query_as(
-        r#"SELECT r.* FROM recordings r WHERE r."end" IS NULL ORDER BY r.start DESC LIMIT 1"#,
+    let mut conn = db.pool().acquire().await?;
+    let row: Option<Recording> = sqlx::query_as(
+        r#"SELECT r.* FROM recordings r JOIN recording_spans s ON s.recording_id = r.id
+           WHERE s."end" IS NULL ORDER BY s.start DESC LIMIT 1"#,
     )
-    .fetch_optional(db.pool())
-    .await?)
+    .fetch_optional(&mut *conn)
+    .await?;
+    Ok(with_spans(&mut conn, row.into_iter().collect())
+        .await?
+        .pop())
 }
 
-/// Finished recordings, the latest first.
+/// Finished recordings, the one with the latest span first.
 pub async fn latest(db: &Db, limit: u32) -> AppResult<Vec<Recording>> {
-    Ok(sqlx::query_as(
-        r#"SELECT r.* FROM recordings r WHERE r."end" IS NOT NULL ORDER BY r.start DESC LIMIT ?1"#,
+    let mut conn = db.pool().acquire().await?;
+    let rows = sqlx::query_as(
+        r#"SELECT r.* FROM recordings r
+           WHERE NOT EXISTS (SELECT 1 FROM recording_spans s WHERE s.recording_id = r.id
+             AND s."end" IS NULL)
+           ORDER BY (SELECT max(s.start) FROM recording_spans s WHERE s.recording_id = r.id) DESC
+           LIMIT ?1"#,
     )
     .bind(limit)
-    .fetch_all(db.pool())
-    .await?)
+    .fetch_all(&mut *conn)
+    .await?;
+    with_spans(&mut conn, rows).await
 }
 
-/// Recordings that share time with `[start, end)`, except the one with id `except`. Touching edges
-/// do not overlap; the running recording overlaps everything after its start.
+/// Recordings with a span that shares time with `[start, end)`, except the one with id `except`, by first
+/// start. Touching edges do not overlap; an open span overlaps everything after its start.
 pub async fn overlapping(
     db: &Db,
     start: Ms,
@@ -172,42 +268,63 @@ pub async fn overlapping_on(
     end: Ms,
     except: Option<&str>,
 ) -> AppResult<Vec<Recording>> {
-    Ok(sqlx::query_as(
+    let rows = sqlx::query_as(concat!(
         r#"SELECT r.* FROM recordings r
-           WHERE r.start < ?2 AND (r."end" IS NULL OR r."end" > ?1) AND (?3 IS NULL OR r.id != ?3)
-           ORDER BY r.start, r.id"#,
-    )
+           WHERE EXISTS (SELECT 1 FROM recording_spans s WHERE s.recording_id = r.id
+             AND s.start < ?2 AND (s."end" IS NULL OR s."end" > ?1))
+           AND (?3 IS NULL OR r.id != ?3)"#,
+        by_first_start!()
+    ))
     .bind(start)
     .bind(end)
     .bind(except)
-    .fetch_all(conn)
-    .await?)
+    .fetch_all(&mut *conn)
+    .await?;
+    with_spans(conn, rows).await
 }
 
-/// Writes `recording` exactly as given (timestamps and tag included), creating or replacing the row,
-/// so an undo restores what was there. The caller validates.
+/// Writes `recording` exactly as given (timestamps, tag and spans included), creating or replacing the
+/// row and its spans, so an undo restores what was there. The caller validates.
 pub async fn put_on(conn: &mut SqliteConnection, recording: &Recording) -> AppResult<()> {
     ensure_tag(conn, recording.tag_id.as_deref()).await?;
+    write(conn, recording).await
+}
+
+async fn write(conn: &mut SqliteConnection, recording: &Recording) -> AppResult<()> {
     sqlx::query(
-        r#"INSERT INTO recordings (id, project_id, start, "end", note, tag_id, created_at, updated_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-           ON CONFLICT(id) DO UPDATE SET project_id = ?2, start = ?3, "end" = ?4, note = ?5,
-             tag_id = ?6, created_at = ?7, updated_at = ?8"#,
+        r#"INSERT INTO recordings (id, project_id, note, tag_id, created_at, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+           ON CONFLICT(id) DO UPDATE SET project_id = ?2, note = ?3, tag_id = ?4, created_at = ?5,
+             updated_at = ?6"#,
     )
     .bind(&recording.id)
     .bind(&recording.project_id)
-    .bind(recording.start)
-    .bind(recording.end)
     .bind(&recording.note)
     .bind(&recording.tag_id)
     .bind(recording.created_at)
     .bind(recording.updated_at)
     .execute(&mut *conn)
     .await?;
+    sqlx::query("DELETE FROM recording_spans WHERE recording_id = ?1")
+        .bind(&recording.id)
+        .execute(&mut *conn)
+        .await?;
+    for span in &recording.spans {
+        sqlx::query(
+            r#"INSERT INTO recording_spans (id, recording_id, start, "end") VALUES (?1, ?2, ?3, ?4)
+               ON CONFLICT(id) DO UPDATE SET recording_id = ?2, start = ?3, "end" = ?4"#,
+        )
+        .bind(&span.id)
+        .bind(&recording.id)
+        .bind(span.start)
+        .bind(span.end)
+        .execute(&mut *conn)
+        .await?;
+    }
     Ok(())
 }
 
-/// Deletes the row; `not_found` when there is none.
+/// Deletes the row, and its spans with it (`ON DELETE CASCADE`); `not_found` when there is none.
 pub async fn remove_on(conn: &mut SqliteConnection, id: &str) -> AppResult<()> {
     let done = sqlx::query("DELETE FROM recordings WHERE id = ?1")
         .bind(id)
@@ -230,19 +347,49 @@ pub async fn count(db: &Db) -> AppResult<i64> {
 }
 
 pub(super) async fn all(conn: &mut SqliteConnection) -> AppResult<Vec<Recording>> {
-    Ok(
-        sqlx::query_as("SELECT r.* FROM recordings r ORDER BY r.start, r.id")
-            .fetch_all(conn)
-            .await?,
-    )
+    let rows = sqlx::query_as(concat!("SELECT r.* FROM recordings r", by_first_start!()))
+        .fetch_all(&mut *conn)
+        .await?;
+    with_spans(conn, rows).await
 }
 
 async fn fetch(conn: &mut SqliteConnection, id: &str) -> AppResult<Recording> {
-    sqlx::query_as("SELECT r.* FROM recordings r WHERE r.id = ?1")
+    let row: Recording = sqlx::query_as("SELECT r.* FROM recordings r WHERE r.id = ?1")
         .bind(id)
-        .fetch_optional(conn)
+        .fetch_optional(&mut *conn)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("No recording {id}")))
+        .ok_or_else(|| AppError::NotFound(format!("No recording {id}")))?;
+    let mut rows = with_spans(conn, vec![row]).await?;
+    Ok(rows.remove(0))
+}
+
+/// `rows` with their spans, by start.
+async fn with_spans(
+    conn: &mut SqliteConnection,
+    mut rows: Vec<Recording>,
+) -> AppResult<Vec<Recording>> {
+    if rows.is_empty() {
+        return Ok(rows);
+    }
+    let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+    let spans: Vec<(String, String, Ms, Option<Ms>)> = sqlx::query_as(
+        r#"SELECT recording_id, id, start, "end" FROM recording_spans
+           WHERE recording_id IN (SELECT value FROM json_each(?1)) ORDER BY start, id"#,
+    )
+    .bind(serde_json::to_string(&ids)?)
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut by_recording: HashMap<String, Vec<RecordingSpan>> = HashMap::new();
+    for (recording_id, id, start, end) in spans {
+        by_recording
+            .entry(recording_id)
+            .or_default()
+            .push(RecordingSpan { id, start, end });
+    }
+    for row in &mut rows {
+        row.spans = by_recording.remove(&row.id).unwrap_or_default();
+    }
+    Ok(rows)
 }
 
 async fn ensure_tag(conn: &mut SqliteConnection, tag_id: Option<&str>) -> AppResult<()> {
@@ -285,13 +432,33 @@ fn checked_note(note: &str) -> AppResult<&str> {
     Ok(note.trim())
 }
 
-fn check_span(start: Ms, end: Option<Ms>) -> AppResult<()> {
-    match end {
-        Some(end) if end <= start => Err(AppError::InvalidInput(
-            "A recording must end after it starts".into(),
-        )),
-        _ => Ok(()),
+/// At least one span, each ending after it starts, by start without overlaps (`spans`); only the last may
+/// be open. The one check of a recording's own spans, for the repository and the service.
+pub fn check_spans(spans: &[RecordingSpan]) -> AppResult<()> {
+    if spans.is_empty() {
+        return Err(AppError::InvalidInput(
+            "A recording needs at least one span".into(),
+        ));
     }
+    for span in spans {
+        if span.end.is_some_and(|end| end <= span.start) {
+            return Err(AppError::InvalidInput(
+                "A recording must end after it starts".into(),
+            ));
+        }
+    }
+    for pair in spans.windows(2) {
+        match pair[0].end {
+            Some(end) if end <= pair[1].start => {}
+            _ => {
+                return Err(AppError::InvalidField {
+                    field: "spans".into(),
+                    message: "must not overlap each other".into(),
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -302,11 +469,14 @@ mod tests {
     use crate::test_support::{project, recording};
 
     fn new(project_id: &str, start: Ms, end: Option<Ms>) -> NewRecording {
+        new_spans(project_id, &[(start, end)])
+    }
+
+    fn new_spans(project_id: &str, spans: &[(Ms, Option<Ms>)]) -> NewRecording {
         NewRecording {
             id: uuid::Uuid::new_v4().to_string(),
             project_id: project_id.into(),
-            start,
-            end,
+            spans: spans.to_vec(),
             note: String::new(),
             tag_id: None,
         }
@@ -314,6 +484,18 @@ mod tests {
 
     fn ids(recordings: Vec<Recording>) -> Vec<String> {
         recordings.into_iter().map(|r| r.id).collect()
+    }
+
+    fn times(recording: &Recording) -> Vec<(Ms, Option<Ms>)> {
+        recording.spans.iter().map(|s| (s.start, s.end)).collect()
+    }
+
+    fn span(start: Ms, end: Ms) -> Span {
+        Span { start, end }
+    }
+
+    async fn multi(db: &Db, project_id: &str, spans: &[(Ms, Option<Ms>)]) -> Recording {
+        insert(db, new_spans(project_id, spans)).await.unwrap()
     }
 
     #[tokio::test]
@@ -335,7 +517,7 @@ mod tests {
 
         assert_eq!(rec.tag_id, Some(zeta.id));
         assert_eq!(rec.note, "wrote docs");
-        assert_eq!((rec.start, rec.end), (100, Some(200)));
+        assert_eq!((rec.start(), rec.end()), (100, Some(200)));
         assert_eq!(rec.created_at, rec.updated_at);
         assert_eq!(get(&db, &rec.id).await.unwrap(), rec);
         assert_eq!(count(&db).await.unwrap(), 1);
@@ -401,23 +583,121 @@ mod tests {
             let err = insert(&db, new(&p.id, 100, Some(end))).await.unwrap_err();
             assert_eq!(err.kind(), ErrorKind::InvalidInput, "insert end {end}");
             let patch = RecordingPatch {
-                end: Some(Some(end)),
+                spans: Some(vec![span(100, end)]),
                 ..Default::default()
             };
             let err = update(&db, &rec.id, patch).await.unwrap_err();
             assert_eq!(err.kind(), ErrorKind::InvalidInput, "update end {end}");
         }
+        assert_eq!(get(&db, &rec.id).await.unwrap(), rec);
+    }
+
+    #[test]
+    fn spans_must_be_non_empty_ordered_and_closed_except_the_last() {
+        fn spans(times: &[(Ms, Option<Ms>)]) -> Vec<RecordingSpan> {
+            times
+                .iter()
+                .map(|&(s, e)| RecordingSpan::new(s, e))
+                .collect()
+        }
+        let valid: [&[(Ms, Option<Ms>)]; 4] = [
+            &[(100, Some(200))],
+            &[(100, Some(200)), (200, Some(300))],
+            &[(100, Some(200)), (300, None)],
+            &[(100, None)],
+        ];
+        for case in valid {
+            assert!(check_spans(&spans(case)).is_ok(), "{case:?}");
+        }
+        let invalid: [&[(Ms, Option<Ms>)]; 7] = [
+            &[],
+            &[(100, Some(100))],
+            &[(100, Some(50))],
+            &[(100, Some(300)), (200, Some(400))],
+            &[(100, Some(300)), (150, Some(200))],
+            &[(100, None), (200, Some(300))],
+            &[(100, None), (200, None)],
+        ];
+        for case in invalid {
+            let err = check_spans(&spans(case)).unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{case:?}");
+        }
     }
 
     #[tokio::test]
-    async fn a_recording_without_end_is_the_running_one() {
+    async fn invalid_span_lists_are_rejected_on_insert_and_update() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+        let rec = recording(&db, &p.id, 100, Some(200)).await;
+        let cases: [&[(Ms, Option<Ms>)]; 3] = [
+            &[],
+            &[(100, Some(300)), (200, Some(400))],
+            &[(100, None), (200, Some(300))],
+        ];
+        for case in cases {
+            let err = insert(&db, new_spans(&p.id, case)).await.unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "insert {case:?}");
+        }
+        let overlapping = RecordingPatch {
+            spans: Some(vec![span(100, 300), span(200, 400)]),
+            ..Default::default()
+        };
+        let err = update(&db, &rec.id, overlapping).await.unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        let empty = RecordingPatch {
+            spans: Some(vec![]),
+            ..Default::default()
+        };
+        let err = update(&db, &rec.id, empty).await.unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(get(&db, &rec.id).await.unwrap(), rec);
+        assert_eq!(count(&db).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn insert_sorts_the_spans_and_allows_touching_ones() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+
+        let rec = multi(
+            &db,
+            &p.id,
+            &[(300, Some(400)), (100, Some(200)), (200, Some(300))],
+        )
+        .await;
+
+        assert_eq!(
+            times(&rec),
+            [(100, Some(200)), (200, Some(300)), (300, Some(400))]
+        );
+        assert_eq!((rec.start(), rec.end()), (100, Some(400)));
+        assert_eq!(rec.duration(10_000), 300);
+        assert_eq!(get(&db, &rec.id).await.unwrap(), rec);
+    }
+
+    #[tokio::test]
+    async fn a_recording_with_an_open_span_is_the_running_one() {
         let db = Db::open_memory().await.unwrap();
         let p = project(&db, "P").await;
         assert_eq!(running(&db).await.unwrap(), None);
         recording(&db, &p.id, 100, Some(200)).await;
         let timer = recording(&db, &p.id, 300, None).await;
-        assert_eq!(timer.end, None);
+        assert_eq!(timer.end(), None);
         assert_eq!(running(&db).await.unwrap(), Some(timer));
+    }
+
+    #[tokio::test]
+    async fn running_finds_the_open_span_of_a_multi_span_recording() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+        multi(&db, &p.id, &[(10, Some(20)), (30, Some(40))]).await;
+        let timer = multi(&db, &p.id, &[(100, Some(200)), (300, None)]).await;
+
+        let found = running(&db).await.unwrap().unwrap();
+
+        assert_eq!(found, timer);
+        assert_eq!(found.open_span().unwrap().id, timer.spans[1].id);
+        assert_eq!(found.spans.len(), 2);
     }
 
     #[tokio::test]
@@ -460,7 +740,7 @@ mod tests {
 
         let patch = RecordingPatch {
             project_id: Some(other.id.clone()),
-            start: Some(150),
+            spans: Some(vec![span(150, 200)]),
             ..Default::default()
         };
         let updated = update(&db, &rec.id, patch).await.unwrap();
@@ -468,7 +748,11 @@ mod tests {
         assert_eq!(
             Recording {
                 project_id: other.id,
-                start: 150,
+                spans: vec![RecordingSpan {
+                    id: rec.spans[0].id.clone(),
+                    start: 150,
+                    end: Some(200),
+                }],
                 updated_at: updated.updated_at,
                 ..rec.clone()
             },
@@ -479,7 +763,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_can_clear_the_tag_and_make_the_recording_running() {
+    async fn update_can_clear_the_tag_and_trims_the_note() {
         let db = Db::open_memory().await.unwrap();
         let p = project(&db, "P").await;
         let tag = tags::insert(&db, "focus").await.unwrap();
@@ -495,16 +779,57 @@ mod tests {
 
         let patch = RecordingPatch {
             tag_id: Some(None),
-            end: Some(None),
             note: Some(" new ".into()),
             ..Default::default()
         };
         let updated = update(&db, &rec.id, patch).await.unwrap();
 
         assert_eq!(updated.tag_id, None);
-        assert_eq!(updated.end, None);
         assert_eq!(updated.note, "new");
-        assert_eq!(running(&db).await.unwrap().unwrap().id, rec.id);
+        assert_eq!(updated.spans, rec.spans);
+    }
+
+    #[tokio::test]
+    async fn update_with_spans_keeps_the_ids_by_position() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+        let rec = multi(&db, &p.id, &[(100, Some(200)), (300, Some(400))]).await;
+        let (first, second) = (rec.spans[0].id.clone(), rec.spans[1].id.clone());
+
+        let patch = RecordingPatch {
+            spans: Some(vec![span(700, 800), span(500, 600), span(100, 200)]),
+            ..Default::default()
+        };
+        let grown = update(&db, &rec.id, patch).await.unwrap();
+
+        assert_eq!(
+            times(&grown),
+            [(100, Some(200)), (500, Some(600)), (700, Some(800))]
+        );
+        assert_eq!(grown.spans[0].id, first);
+        assert_eq!(grown.spans[1].id, second);
+        assert!(![&first, &second].contains(&&grown.spans[2].id));
+        assert_eq!(get(&db, &rec.id).await.unwrap(), grown);
+
+        let patch = RecordingPatch {
+            spans: Some(vec![span(900, 950)]),
+            ..Default::default()
+        };
+        let shrunk = update(&db, &rec.id, patch).await.unwrap();
+
+        assert_eq!(
+            shrunk.spans,
+            [RecordingSpan {
+                id: first,
+                start: 900,
+                end: Some(950),
+            }]
+        );
+        let stored: i64 = sqlx::query_scalar("SELECT count(*) FROM recording_spans")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(stored, 1);
     }
 
     #[tokio::test]
@@ -558,7 +883,7 @@ mod tests {
         let rec = recording(&db, &p.id, 100, Some(200)).await;
 
         let bad_tag = RecordingPatch {
-            start: Some(10),
+            spans: Some(vec![span(10, 200)]),
             tag_id: Some(Some("nope".into())),
             ..Default::default()
         };
@@ -579,14 +904,14 @@ mod tests {
     }
 
     #[test]
-    fn patch_distinguishes_a_null_end_from_an_absent_one() {
-        let null: RecordingPatch = serde_json::from_str(r#"{"end": null}"#).unwrap();
-        assert_eq!(null.end, Some(None));
-        let set: RecordingPatch = serde_json::from_str(r#"{"end": 5}"#).unwrap();
-        assert_eq!(set.end, Some(Some(5)));
+    fn patch_reads_spans_and_leaves_them_absent_by_default() {
+        let set: RecordingPatch =
+            serde_json::from_str(r#"{"spans": [{"start": 1, "end": 2}, {"start": 3, "end": 4}]}"#)
+                .unwrap();
+        assert_eq!(set.spans, Some(vec![span(1, 2), span(3, 4)]));
         let absent: RecordingPatch = serde_json::from_str("{}").unwrap();
         assert_eq!(absent, RecordingPatch::default());
-        assert_eq!(absent.end, None);
+        assert_eq!(absent.spans, None);
     }
 
     #[test]
@@ -621,6 +946,93 @@ mod tests {
             ErrorKind::NotFound
         );
         assert_eq!(count(&db).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn delete_returns_a_multi_span_recording_and_removes_its_spans() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+        let rec = multi(&db, &p.id, &[(100, Some(200)), (300, Some(400))]).await;
+
+        assert_eq!(delete(&db, &rec.id).await.unwrap(), rec);
+
+        let stored: i64 = sqlx::query_scalar("SELECT count(*) FROM recording_spans")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(stored, 0);
+    }
+
+    #[tokio::test]
+    async fn put_on_replaces_the_spans_and_restores_a_deleted_recording() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+        let rec = multi(&db, &p.id, &[(100, Some(200)), (300, Some(400))]).await;
+        let edited = Recording {
+            note: "edited".into(),
+            spans: vec![RecordingSpan::new(500, Some(600))],
+            ..rec.clone()
+        };
+        let mut conn = db.pool().acquire().await.unwrap();
+
+        put_on(&mut conn, &edited).await.unwrap();
+        assert_eq!(get_on(&mut conn, &rec.id).await.unwrap(), edited);
+
+        remove_on(&mut conn, &rec.id).await.unwrap();
+        put_on(&mut conn, &rec).await.unwrap();
+        assert_eq!(get_on(&mut conn, &rec.id).await.unwrap(), rec);
+    }
+
+    #[tokio::test]
+    async fn remove_on_deletes_the_spans_and_reports_a_missing_recording() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+        let rec = multi(&db, &p.id, &[(100, Some(200)), (300, Some(400))]).await;
+        let mut conn = db.pool().acquire().await.unwrap();
+
+        remove_on(&mut conn, &rec.id).await.unwrap();
+
+        let stored: i64 = sqlx::query_scalar("SELECT count(*) FROM recording_spans")
+            .fetch_one(&mut *conn)
+            .await
+            .unwrap();
+        assert_eq!(stored, 0);
+        let err = remove_on(&mut conn, &rec.id).await.unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+    }
+
+    #[tokio::test]
+    async fn list_for_range_returns_a_multi_span_recording_whole_when_any_span_hits() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+        let late = multi(&db, &p.id, &[(1_000, Some(1_100))]).await;
+        let split = multi(&db, &p.id, &[(100, Some(200)), (500, Some(600))]).await;
+        let early = multi(&db, &p.id, &[(0, Some(50))]).await;
+
+        let first = list_for_range(&db, 550, 560).await.unwrap();
+        assert_eq!(ids(first.clone()), [split.id.clone()]);
+        assert_eq!(first[0].spans, split.spans);
+
+        assert_eq!(
+            ids(list_for_range(&db, 0, 2_000).await.unwrap()),
+            [early.id, split.id.clone(), late.id]
+        );
+        assert!(list_for_range(&db, 250, 450).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn latest_skips_the_running_recording_and_orders_by_the_latest_span() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+        let spread = multi(&db, &p.id, &[(100, Some(150)), (1_000, Some(1_100))]).await;
+        let middle = multi(&db, &p.id, &[(500, Some(600))]).await;
+        multi(&db, &p.id, &[(50, Some(60)), (2_000, None)]).await;
+
+        assert_eq!(
+            ids(latest(&db, 10).await.unwrap()),
+            [spread.id.clone(), middle.id]
+        );
+        assert_eq!(ids(latest(&db, 1).await.unwrap()), [spread.id]);
     }
 
     #[tokio::test]
@@ -668,6 +1080,32 @@ mod tests {
             let found = ids(overlapping(&db, start, end, except).await.unwrap());
             assert_eq!(found, expected, "[{start}, {end}) except {except:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn overlapping_matches_per_span_so_gaps_do_not_count() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "P").await;
+        let split = multi(&db, &p.id, &[(100, Some(200)), (400, Some(500))]).await;
+        let open = multi(&db, &p.id, &[(10, Some(20)), (900, None)]).await;
+
+        let (split_id, open_id) = (split.id.as_str(), open.id.as_str());
+        let cases: [(Ms, Ms, Option<&str>, Vec<&str>); 8] = [
+            (200, 400, None, vec![]),
+            (250, 350, None, vec![]),
+            (150, 450, None, vec![split_id]),
+            (450, 460, None, vec![split_id]),
+            (500, 900, None, vec![]),
+            (0, 15, None, vec![open_id]),
+            (950, 960, None, vec![open_id]),
+            (0, 2_000, Some(split_id), vec![open_id]),
+        ];
+        for (start, end, except, expected) in cases {
+            let found = overlapping(&db, start, end, except).await.unwrap();
+            assert_eq!(ids(found), expected, "[{start}, {end}) except {except:?}");
+        }
+        let found = overlapping(&db, 450, 460, None).await.unwrap();
+        assert_eq!(found[0].spans, split.spans);
     }
 
     #[tokio::test]

@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ClientInput, type DateJump, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingInput, type RecordingPatch, type ReportFilter, type RuleInput, type Settings, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ClientInput, type DateJump, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingInput, type RecordingPatch, type RecordingSpan, type ReportFilter, type RuleInput, type Settings, type Span, type UiState } from "../api/types";
 import { mondayOf, monthView, weekView } from "./calendarFixtures";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
@@ -13,6 +13,9 @@ import { rule, rulePreview } from "./ruleFixtures";
 import { settings } from "./settings";
 
 const noUnlisten = () => Promise.resolve(() => {});
+
+/** Spans as Rust returns them: with ids. */
+const withIds = (recordingId: string, spans: Span[], from = 1): RecordingSpan[] => spans.map((s, i) => ({ id: `${recordingId}-s${from + i}`, ...s }));
 
 /** An `api` where every call resolves to a valid default; override per test with mockResolvedValue. */
 export function createApiMock(): typeof realApi {
@@ -57,8 +60,17 @@ export function createApiMock(): typeof realApi {
     calendarJumps: vi.fn(async (): Promise<DateJump[]> => []),
     recordingMove: vi.fn(async (id: string) => recording({ id })),
     recordingCopy: vi.fn(async () => recording({ id: "recording-copy" })),
-    recordingCreate: vi.fn(async (input: RecordingInput) => recording({ ...input, id: "recording-new" })),
-    recordingUpdate: vi.fn(async (id: string, patch: RecordingPatch) => recording({ ...patch, id })),
+    recordingCreate: vi.fn(async (input: RecordingInput) => recording({ ...input, id: "recording-new", spans: withIds("recording-new", input.spans) })),
+    recordingUpdate: vi.fn(async (id: string, patch: RecordingPatch) => {
+      const { spans, ...rest } = patch;
+      return recording({ ...rest, id, ...(spans ? { spans: withIds(id, spans) } : {}) });
+    }),
+    recordingAddSpan: vi.fn(async (id: string, span: Span) => recording({ id, spans: [...recording({ id }).spans, ...withIds(id, [span], 2)] })),
+    recordingUpdateSpan: vi.fn(async (id: string, spanId: string, span: Span) => recording({ id, spans: [{ id: spanId, ...span }] })),
+    recordingRemoveSpan: vi.fn().mockResolvedValue(null),
+    recordingSplitSpan: vi.fn(async (id: string) => recording({ id })),
+    recordingMerge: vi.fn(async (into: string) => recording({ id: into })),
+    recordingNudge: vi.fn(async (id: string) => recording({ id })),
     recordingDelete: vi.fn().mockResolvedValue(undefined),
     recordingsList: vi.fn().mockResolvedValue([]),
     recordingSnap: vi.fn(async (start: number, end: number) => ({ start, end })),
@@ -93,14 +105,14 @@ export function createApiMock(): typeof realApi {
     savedReportSave: vi.fn(async (name: string, filter: ReportFilter) => savedReport({ name, filter })),
     savedReportRename: vi.fn(async (id: string, name: string) => savedReport({ id, name })),
     savedReportDelete: vi.fn().mockResolvedValue(null),
-    timerStart: vi.fn(async (projectId: string, note: string, tagId: string | null) => recording({ id: "recording-timer", projectId, note, tagId, end: null })),
+    timerStart: vi.fn(async (projectId: string, note: string, tagId: string | null) => recording({ id: "recording-timer", projectId, note, tagId, spans: [{ id: "recording-timer-s1", start: 0, end: null }] })),
     timerStop: vi.fn().mockResolvedValue(null),
     timerStatus: vi.fn().mockResolvedValue({ running: null }),
     timersRecent: vi.fn().mockResolvedValue([]),
     timerPickerOpen: vi.fn().mockResolvedValue(null),
     timerPickerClose: vi.fn().mockResolvedValue(null),
     awayPromptCurrent: vi.fn().mockResolvedValue(null),
-    awayPromptAnswer: vi.fn(async (input: RecordingInput) => recording({ ...input, id: "recording-away" })),
+    awayPromptAnswer: vi.fn(async (input: RecordingInput) => recording({ ...input, id: "recording-away", spans: withIds("recording-away", input.spans) })),
     awayPromptSkip: vi.fn().mockResolvedValue(undefined),
     listView: vi.fn(async (day: string) => listView({ day })),
     rulesList: vi.fn().mockResolvedValue([]),
@@ -109,7 +121,7 @@ export function createApiMock(): typeof realApi {
     rulesReorder: vi.fn().mockResolvedValue([]),
     ruleSetEnabled: vi.fn(async (id: string, enabled: boolean) => rule({ id, enabled })),
     rulePreview: vi.fn().mockResolvedValue(rulePreview()),
-    suggestionAccept: vi.fn(async () => recording({ id: "recording-suggested" })),
+    suggestionAccept: vi.fn(async () => ({ recording: recording({ id: "recording-suggested" }), durationMs: 2_700_000 })),
     suggestionsAcceptRule: vi.fn().mockResolvedValue([]),
     onLaunch: vi.fn(noUnlisten),
     onCommand: vi.fn(noUnlisten),

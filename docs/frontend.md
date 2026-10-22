@@ -55,7 +55,7 @@ error's message, returning the `AppError`.
 | `data` | `dataVersion` (every day changed), `dayVersions` (per day), `changeCount` (every event, for views over many days), `dataChanged(event)` (called on every `data_changed` event); `selectDayVersion(day)` changes when that day's data may have changed |
 | `projects` | `projects` (`ProjectListItem[]`, archived included), `clients`, `tags` (`TagListItem[]`), `recent`, `projectsLoaded`; `loadProjects` (boot, and every `data_changed` of `projects` or `tags`); `saveProject(id, input)`, `archiveProject`, `saveClient`, `archiveClient`, `saveTag`, `deleteTag` reload after the write and reject on failure (toasted, unless the error has a `field` for the form). Helpers: `groupProjects(projects, clients, archived)`, `projectLabel` |
 | `tracker` | `tracker` (`TrackerStatus`, or `null` while the tracker is off), `setTracker`, `loadTracker`, `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then reloads the status), `permissionDialogHidden` |
-| `recordings` | `selection` (`{ start, end, blockIds }`, unsnapped; Rust snaps on save), `selectionSnap` (as Rust will store it), `setSelection`, `extendSelection(blockId)`, `focusedRecording`/`focusRecording`, `editor` (`create { start, end }` or `edit { id }`)/`openEditor`/`closeEditor`, `undoStatus`/`loadUndoStatus`, `createRecording(input)`, `updateRecording(id, patch)`, `deleteRecording(id)`, `undo`, `redo`. A write runs with `overlap: cancel`; on `overlap` it opens the overlap dialog and runs again with `replace`. One write at a time; each ends with a toast offering Undo. A field error rejects for the editor, others are toasted |
+| `recordings` | `selection` (`{ start, end, blockIds }`, unsnapped; Rust snaps on save), `selectionSnap` (as Rust will store it), `setSelection`, `extendSelection(blockId)`, `focusedRecording`/`focusRecording`, `editor` (`create { start, end }` or `edit { id, at?, spanId? }`)/`openEditor`/`closeEditor`, `undoStatus`/`loadUndoStatus`, `createRecording(input)`, `updateRecording(id, patch)`, `updateSpan(id, spanId, span)`, `nudgeSpan(id, spanId, startSteps, endSteps)` (Rust applies the snap step), `deleteRecording(id)`, `moveRecording(id, day, spanId)`/`copyRecording(id, day, spanId)` (one span, else with `null` the whole recording), `undo`, `redo`. A write runs with `overlap: cancel`; on `overlap` it opens the overlap dialog and runs again with `replace`. One write at a time; each ends with a toast offering Undo. A field error rejects for the editor, others are toasted |
 | `viewState` | `uiState` (`UiState` from Rust), `setPaneSize`, `toggleSidebar`, `rememberDay`, `setTimelineZoom` (px per minute, `TIMELINE_ZOOM` 1–8, default 2.5), `finishOnboarding`, `showWelcome`; a debounced writer saves it, `flushUiState` writes at once |
 
 Components select narrowly (`useStore((s) => s.view)`), never the whole store. `lib/useApiResult` loads a
@@ -129,9 +129,10 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   `recording.new` (File → New Recording…, from any view) opens the editor on the Day view's selection, else
   for the span `recording_default_span` proposes (the half hour up to now) on today's Day view (or this week's Week view);
   `recording.delete` (⌫);
-  `recording.nudgeEarlier`/`nudgeLater` (⌥↑ ⌥↓) move the focused recording and `recording.extend`/`shrink`
-  (⌥⇧↓ ⌥⇧↑) change its end, by one snap step; `recording.moveToPrevDay`/`moveToNextDay` (⌥← ⌥→) and
-  `recording.copyToPrevDay`/`copyToNextDay` (⌥⇧← ⌥⇧→) take it to the adjacent day at the same time. `edit.undo` (⌘Z) and `edit.redo` (⌘⇧Z) are global
+  `recording.nudgeEarlier`/`nudgeLater` (⌥↑ ⌥↓) move the focused recording's first span of the day and
+  `recording.extend`/`shrink` (⌥⇧↓ ⌥⇧↑) change its end, by one snap step (`nudgeSpan`: the page sends step counts, `recording_nudge` computes the times);
+  `recording.moveToPrevDay`/`moveToNextDay` (⌥← ⌥→) and `recording.copyToPrevDay`/`copyToNextDay` (⌥⇧← ⌥⇧→)
+  take the whole recording to the adjacent day at the same time. `edit.undo` (⌘Z) and `edit.redo` (⌘⇧Z) are global
   and replace the native Edit items: in a text field they undo its typing (`document.execCommand`), also in
   dialogs and the editor; elsewhere the last recording change, but not while an overlay is open. The
   palette's search field is left out, so the palette never lists them for it. While the editor is open, only
@@ -213,8 +214,8 @@ Tracker components:
 | `RecordingsColumn` | the day's `SuggestionBlock`s under its `RecordingBlock`s and, while a span is selected, a dashed outline where its recording would go |
 | `SuggestionBlock` | a rule's suggestion: a button, dashed in the project's shade, with the project, the rule and the duration; click sends `acceptSuggestion`, ⌥-click `acceptRuleSuggestions` (the `rules` slice; Rust's `data_changed` reloads the day) |
 | `useRuleDrag` | ⌥-pressing an activity block (in `Timeline`) shows the recent projects over the top of the recordings column; releasing over one opens the `rule` dialog with `draftFromBlock`: `<app> → <project>`, `app is <app>` and `domain is <host>` for a URL block, else `title contains <title>` |
-| `RecordingBlock` | the project's shade as a 3px bar and a 22% tint, project, note, tag and duration; dashed top or bottom edge when clipped to the day. Click focuses, double-click edits; dragging the body moves it and an edge resizes it (`pointerDrag`, pointer capture), with the ghost from `useSnappedSpan`; release sends `updateRecording` |
-| `RecordingEditor` | an optional warning (the List view's gaps), project (`ProjectPicker`; focus starts on the note when one is given), From and To (`HH:MM`, ↑↓ step by the snap interval; an end before the start is on the next day), duration, note (one line; pasted line breaks become spaces), tag (`TagPicker`); Save (↵ or ⌘↵), Cancel, Delete (⌘⌫) when editing. It edits the whole recording, also when the day shows a part of it |
+| `RecordingBlock` | one span of a recording (`spanId`; a recording with several spans has several blocks, all focused together): the project's shade as a 3px bar and a 22% tint, project, note, tag and duration; dashed top or bottom edge when clipped to the day. Click focuses the recording, double-click edits it at this span; dragging the body moves the span and an edge resizes it (`pointerDrag`, pointer capture), with the ghost from `useSnappedSpan`; release sends `updateSpan` |
+| `RecordingEditor` | an optional warning (the List view's gaps), project (`ProjectPicker`; focus starts on the note when one is given), From and To of one span (`HH:MM`, ↑↓ step by the snap interval; an end before the start is on the next day), duration, the recording's other spans read-only ("Also 14:25–15:00"), note (one line; pasted line breaks become spaces), tag (`TagPicker`); Save (↵ or ⌘↵) sends every span with the edited one changed (`withSpanEdited`; a running recording shows "Stop the timer first" instead), Cancel, Delete (⌘⌫) when editing. It edits the whole span, also when the day shows a part of it; `useRecordingDraft` picks the span: `editor.spanId`, else the shown day's first, else the first |
 | `OverlapDialog` | the recordings in the way, "Replace overlapped part" or Cancel |
 | `selectionPress` | the press on the lanes and the axis: a drag selects a span (auto-scrolling near the edges) and dropped on the recordings column opens the editor; a click selects a block's span, ⇧-click extends the selection, a click on nothing clears it |
 | `useSnappedSpan` | a span as Rust will snap it (`api.recordingSnap`, at most once per frame; the raw span stands in until the answer) |
@@ -282,9 +283,9 @@ position) and their writes; a `data_changed` of kind `rules` reloads them.
 `components/calendar/`: `CalendarHeader` (the title, totals). `WeekView` runs `weekView(day)` keyed
 by the day and `changeCount`: day heads (label and total; a click opens the day) over a `TimeAxis` and seven
 columns that place each day's `RecordingBlock`s from the column's bounds. A block keeps its vertical move
-and resize; released over another column (`onDrop`, found with `elementFromPoint`) it moves there, with ⌥ it
-is copied (`moveRecording`/`copyRecording` in the `recordings` slice, which ask about overlaps like every
-write). A double-click on an empty spot opens the editor for an hour from there. `MonthView` runs
+and resize; released over another column (`onDrop`, found with `elementFromPoint`) its span moves there, with ⌥
+it is copied as a new recording (`moveRecording`/`copyRecording` with the block's `spanId`, in the `recordings`
+slice, which ask about overlaps like every write). A double-click on an empty spot opens the editor for an hour from there. `MonthView` runs
 `monthView(day)`: a seven-column grid of `DayCell`s (day number, recorded `h:mm`, a 3 px strip of the top
 three projects' shades by time); a click opens the day.
 
@@ -297,7 +298,7 @@ The editor's `edit` request may carry `at` (a span of the recording), so views o
 clipboard) and Save report… (`reports.save`: the `prompt` dialog, then `saveReport`); `ReportFilters`
 (range presets and Custom dates, `MultiSelect` for clients, projects and tags, Group by, Rounding, Archived
 projects); one `ReportGroupTable` per group (color dot, label, `h:mm h`, the notes, the recordings on
-request); the total. `actions.ts` holds the two commands' actions. The sidebar
+request, each with all its spans of the day: `14:25–15:00, 16:05–20:15`); the total. `actions.ts` holds the two commands' actions. The sidebar
 lists saved reports under Reports: a click opens one, right-click renames (prompt) or deletes (confirm).
 
 `PromptDialog` (`dialog: prompt { title, label, initial, confirmLabel, onSubmit }`) asks for one line.

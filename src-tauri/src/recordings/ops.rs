@@ -57,7 +57,7 @@ impl Op {
         }
     }
 
-    /// Every span the op touches, before and after.
+    /// Every recording the op touches, before and after.
     pub fn recordings(&self) -> Vec<&Recording> {
         match self {
             Op::Create { recording } | Op::Delete { recording } => vec![recording],
@@ -67,8 +67,8 @@ impl Op {
     }
 }
 
-/// Applies `op` in one transaction and refuses it with `overlap` when a recording it writes would share
-/// time with another; then nothing changes.
+/// Applies `op` in one transaction and refuses it with `overlap` when a span it writes would share time
+/// with another recording's; then nothing changes.
 pub async fn apply(db: &Db, op: &Op) -> AppResult<()> {
     let mut tx = db.pool().begin().await?;
     run(&mut tx, op).await?;
@@ -99,11 +99,13 @@ async fn check_no_overlap(conn: &mut SqliteConnection, op: &Op) -> AppResult<()>
         if !seen.insert(recording.id.as_str()) {
             continue;
         }
-        let end = recording.end.unwrap_or(i64::MAX);
-        let others =
-            recordings::overlapping_on(conn, recording.start, end, Some(&recording.id)).await?;
-        if !others.is_empty() {
-            return Err(overlap_error(others));
+        for span in &recording.spans {
+            let end = span.end.unwrap_or(i64::MAX);
+            let others =
+                recordings::overlapping_on(conn, span.start, end, Some(&recording.id)).await?;
+            if !others.is_empty() {
+                return Err(overlap_error(others));
+            }
         }
     }
     Ok(())
@@ -124,7 +126,7 @@ pub fn overlap_error(recordings: Vec<Recording>) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::recordings::NewRecording;
+    use crate::db::recordings::{NewRecording, RecordingSpan};
     use crate::error::ErrorKind;
     use crate::recordings::testing::*;
     use crate::test_support;
@@ -162,14 +164,30 @@ mod tests {
             NewRecording {
                 id: crate::db::new_id(),
                 project_id: w.project.id.clone(),
-                start,
-                end: Some(end),
+                spans: vec![(start, Some(end))],
                 note: "note".into(),
                 tag_id,
             },
         )
         .await
         .unwrap()
+    }
+
+    /// One closed span under `id`.
+    fn one_span(id: &str, start: i64, end: i64) -> Vec<RecordingSpan> {
+        vec![RecordingSpan {
+            id: id.into(),
+            start,
+            end: Some(end),
+        }]
+    }
+
+    /// `recording` with its only span's id kept and its times replaced.
+    fn retimed(recording: &Recording, start: i64, end: i64) -> Recording {
+        Recording {
+            spans: one_span(&recording.spans[0].id, start, end),
+            ..recording.clone()
+        }
     }
 
     /// Not stored; belongs to the world's project.
@@ -184,9 +202,8 @@ mod tests {
     fn the_inverse_of_each_op_undoes_it() {
         let (a, b, c) = (row("a", 0, 10), row("b", 20, 30), row("c", 40, 50));
         let moved = Recording {
-            start: 5,
             updated_at: 3_000,
-            ..a.clone()
+            ..retimed(&a, 5, 10)
         };
         let cases = [
             ("create", create(&a), delete(&a)),
@@ -243,13 +260,11 @@ mod tests {
         let before = saved(&w, Some(w.alpha.id.clone()), at(10, 0), at(11, 0)).await;
         let after = Recording {
             project_id: w.other.id.clone(),
-            start: at(10, 30),
-            end: Some(at(11, 30)),
             note: "changed".into(),
             tag_id: Some(w.beta.id.clone()),
             created_at: before.created_at + 1,
             updated_at: before.updated_at + 1_000,
-            ..before.clone()
+            ..retimed(&before, at(10, 30), at(11, 30))
         };
         let op = update(&before, &after);
 
@@ -280,14 +295,12 @@ mod tests {
         let removed = saved(&w, Some(w.beta.id.clone()), at(11, 0), at(12, 0)).await;
         let before = w.rows().await;
         let shorter = Recording {
-            end: Some(at(10, 30)),
             updated_at: trimmed.updated_at + 1_000,
-            ..trimmed.clone()
+            ..retimed(&trimmed, at(10, 0), at(10, 30))
         };
         let added = Recording {
             id: "added".into(),
-            start: at(10, 30),
-            end: Some(at(12, 0)),
+            spans: one_span("added-span", at(10, 30), at(12, 0)),
             tag_id: None,
             ..shorter.clone()
         };
@@ -330,8 +343,7 @@ mod tests {
         let second = saved(&w, None, at(12, 0), at(13, 0)).await;
         let overlapping = Recording {
             id: "new".into(),
-            start: at(10, 30),
-            end: Some(at(12, 30)),
+            spans: one_span("new-span", at(10, 30), at(12, 30)),
             tag_id: None,
             ..first.clone()
         };
@@ -339,13 +351,7 @@ mod tests {
             ("create", create(&overlapping)),
             (
                 "update",
-                update(
-                    &second,
-                    &Recording {
-                        start: at(10, 30),
-                        ..second.clone()
-                    },
-                ),
+                update(&second, &retimed(&second, at(10, 30), at(13, 0))),
             ),
             ("batch", batch(vec![delete(&second), create(&overlapping)])),
         ];
@@ -364,8 +370,7 @@ mod tests {
         let first = saved(&w, Some(w.alpha.id.clone()), at(10, 0), at(11, 0)).await;
         let overlapping = Recording {
             id: "new".into(),
-            start: at(10, 30),
-            end: Some(at(11, 30)),
+            spans: one_span("new-span", at(10, 30), at(11, 30)),
             ..first.clone()
         };
 
@@ -386,14 +391,10 @@ mod tests {
         let existing = saved(&w, None, at(10, 0), at(11, 0)).await;
         let new = Recording {
             id: "new".into(),
-            start: at(10, 30),
-            end: Some(at(11, 30)),
+            spans: one_span("new-span", at(10, 30), at(11, 30)),
             ..existing.clone()
         };
-        let trimmed = Recording {
-            end: Some(at(10, 30)),
-            ..existing.clone()
-        };
+        let trimmed = retimed(&existing, at(10, 0), at(10, 30));
         let op = batch(vec![create(&new), update(&existing, &trimmed)]);
 
         apply(&w.db, &op).await.unwrap();
@@ -435,13 +436,91 @@ mod tests {
             Some(&serde_json::json!([{
                 "id": "a",
                 "projectId": "p",
-                "start": 0,
-                "end": 10,
                 "note": "",
                 "tagId": null,
                 "createdAt": 1_000,
-                "updatedAt": 2_000
+                "updatedAt": 2_000,
+                "spans": [{"id": "a-span", "start": 0, "end": 10}]
             }]))
         );
+    }
+
+    #[tokio::test]
+    async fn a_second_span_that_overlaps_another_recording_refuses_the_op() {
+        let w = World::new().await;
+        let existing = saved(&w, None, at(14, 0), at(15, 0)).await;
+        let two_spans = Recording {
+            id: "new".into(),
+            spans: vec![
+                RecordingSpan {
+                    id: "s1".into(),
+                    start: at(10, 0),
+                    end: Some(at(11, 0)),
+                },
+                RecordingSpan {
+                    id: "s2".into(),
+                    start: at(14, 30),
+                    end: Some(at(16, 0)),
+                },
+            ],
+            ..existing.clone()
+        };
+
+        let err = apply(&w.db, &create(&two_spans)).await.unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::Overlap);
+        assert_eq!(w.rows().await, [existing]);
+    }
+
+    #[tokio::test]
+    async fn the_spans_of_one_recording_never_conflict_with_each_other_or_its_older_self() {
+        let w = World::new().await;
+        let before = w
+            .create_spans(&[(at(10, 0), at(11, 0)), (at(11, 0), at(12, 0))])
+            .await;
+        let grown = Recording {
+            spans: vec![
+                RecordingSpan {
+                    end: Some(at(11, 30)),
+                    ..before.spans[0].clone()
+                },
+                RecordingSpan {
+                    start: at(11, 30),
+                    ..before.spans[1].clone()
+                },
+            ],
+            ..before.clone()
+        };
+
+        apply(&w.db, &update(&before, &grown)).await.unwrap();
+
+        assert_eq!(w.rows().await, [grown]);
+    }
+
+    #[tokio::test]
+    async fn a_cut_span_and_its_inverse_restore_the_exact_span_ids() {
+        let w = World::new().await;
+        let before = w.create(at(10, 0), at(11, 0)).await;
+        let cut = Recording {
+            spans: vec![
+                RecordingSpan {
+                    end: Some(at(10, 20)),
+                    ..before.spans[0].clone()
+                },
+                RecordingSpan {
+                    id: "right".into(),
+                    start: at(10, 40),
+                    end: Some(at(11, 0)),
+                },
+            ],
+            ..before.clone()
+        };
+        let op = update(&before, &cut);
+
+        apply(&w.db, &op).await.unwrap();
+        assert_eq!(w.rows().await, [cut]);
+
+        apply(&w.db, &op.inverse()).await.unwrap();
+        assert_eq!(w.rows().await, [before]);
     }
 }

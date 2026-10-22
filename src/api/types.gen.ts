@@ -176,7 +176,7 @@ export type DayMode = "timeline" | "list";
 
 export type DayTotals = { 
 /**
- * The day's part of its recordings.
+ * The day's part of its recordings' spans.
  */
 recordedMs: number, 
 /**
@@ -391,7 +391,7 @@ shade: number | null, };
  */
 export type ProjectListItem = { project: Project, client: Client | null, 
 /**
- * The start of its latest recording.
+ * The start of its latest recording span.
  */
 lastUsed: number | null, 
 /**
@@ -411,39 +411,60 @@ export type Range = { "kind": "today" } | { "kind": "yesterday" } | { "kind": "t
  */
 export type RecentTimer = { projectId: string, projectName: string, color: string, shade: number, note: string, tagId: string | null, lastUsed: number, };
 
-export type Recording = { id: string, projectId: string, start: number, 
-/**
- * `None` only for the running timer.
- */
-end: number | null, 
+export type Recording = { id: string, projectId: string, 
 /**
  * One line (ADR 0018).
  */
-note: string, tagId: string | null, createdAt: number, updatedAt: number, };
+note: string, tagId: string | null, createdAt: number, updatedAt: number, 
+/**
+ * At least one, by start, never overlapping each other.
+ */
+spans: Array<RecordingSpan>, };
 
 /**
- * A recording cut to the day.
+ * A span of a recording cut to the day; a recording with several spans on the day has several blocks.
  */
-export type RecordingBlock = { id: string, start: number, end: number, projectId: string, projectName: string, clientName: string | null, 
+export type RecordingBlock = { 
+/**
+ * The recording's id.
+ */
+id: string, spanId: string, 
+/**
+ * How many spans the recording has, on any day.
+ */
+spanCount: number, start: number, end: number, projectId: string, projectName: string, clientName: string | null, 
 /**
  * The project's accent and shade.
  */
 color: string, shade: number, note: string, tag: string | null, 
 /**
- * The timer, still recording.
+ * The timer's open span, still recording.
  */
 running: boolean, 
 /**
- * The recording starts on an earlier day or ends on a later one.
+ * The span starts on an earlier day or ends on a later one.
  */
 clippedStart: boolean, clippedEnd: boolean, };
 
-export type RecordingInput = { projectId: string, start: number, end: number, note: string, tagId: string | null, };
+export type RecordingInput = { projectId: string, 
+/**
+ * At least one; they must not overlap each other.
+ */
+spans: Array<Span>, note: string, tagId: string | null, };
 
 /**
- * Absent fields stay as they are; `end: null` makes the recording running, `tagId: null` removes the tag.
+ * Absent fields stay as they are; `spans` replaces every span, `tagId: null` removes the tag.
  */
-export type RecordingPatch = { projectId?: string, start?: number, end?: number | null, note?: string, tagId?: string | null, };
+export type RecordingPatch = { projectId?: string, spans?: Array<Span>, note?: string, tagId?: string | null, };
+
+/**
+ * One stretch of a recording's time.
+ */
+export type RecordingSpan = { id: string, start: number, 
+/**
+ * `None` only for the running timer's span.
+ */
+end: number | null, };
 
 export type RemoteEvent = { id: string, request: RemoteRequest, };
 
@@ -478,9 +499,17 @@ days: Array<Day>, };
 export type ReportResult = { filter: ReportFilter, from: Day, to: Day, groups: Array<ReportGroup>, totalMs: number, totalRoundedMs: number, };
 
 /**
- * A recording's part in one day of the range.
+ * A recording's part in one day of the range: its spans of that day.
  */
-export type ReportRow = { id: string, day: Day, start: number, end: number, durationMs: number, roundedMs: number, projectId: string, project: string, client: string | null, color: string, shade: number, tag: string | null, note: string, };
+export type ReportRow = { id: string, day: Day, 
+/**
+ * The start of the first span and the end of the last one.
+ */
+start: number, end: number, 
+/**
+ * The day's parts of its spans, by start.
+ */
+spans: Array<Span>, durationMs: number, roundedMs: number, projectId: string, project: string, client: string | null, color: string, shade: number, tag: string | null, note: string, };
 
 export type ReportSettings = { rounding: Rounding, defaultGroup: Group, };
 
@@ -548,6 +577,9 @@ fontMono: string | null, logLevel: LogLevel, launchAtLogin: boolean,
  */
 dataDir: string | null, tracker: TrackerSettings, capture: CaptureSettings, timeline: TimelineSettings, apps: { [key in string]: AppOverride }, reports: ReportSettings, timerShortcut: string, mcp: McpSettings, };
 
+/**
+ * A closed stretch of time, `[start, end)`.
+ */
 export type Span = { start: number, end: number, };
 
 /**
@@ -563,6 +595,11 @@ export type Suggestion = {
  * `<rule id>:<start>:<end>`: the same after a reload.
  */
 id: string, ruleId: string, ruleName: string, projectId: string, projectName: string, color: string, shade: number, start: number, end: number, note: string, tagId: string | null, };
+
+/**
+ * An accepted suggestion: the new recording and how long it is, for the page's toast.
+ */
+export type SuggestionAccepted = { recording: Recording, durationMs: number, };
 
 export type Tag = { id: string, 
 /**

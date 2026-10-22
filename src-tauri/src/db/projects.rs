@@ -241,7 +241,8 @@ pub async fn resolve(db: &Db, name_or_id: &str) -> AppResult<Project> {
 pub async fn recent(db: &Db, limit: u32) -> AppResult<Vec<Project>> {
     Ok(sqlx::query_as(
         "SELECT p.* FROM projects p JOIN recordings r ON r.project_id = p.id
-         WHERE p.archived_at IS NULL GROUP BY p.id ORDER BY max(r.start) DESC, p.name LIMIT ?1",
+         JOIN recording_spans s ON s.recording_id = r.id
+         WHERE p.archived_at IS NULL GROUP BY p.id ORDER BY max(s.start) DESC, p.name LIMIT ?1",
     )
     .bind(limit)
     .fetch_all(db.pool())
@@ -255,7 +256,7 @@ pub async fn recent(db: &Db, limit: u32) -> AppResult<Vec<Project>> {
 pub struct ProjectListItem {
     pub project: Project,
     pub client: Option<Client>,
-    /// The start of its latest recording.
+    /// The start of its latest recording span.
     pub last_used: Option<Ms>,
     /// Recorded time in the 30 days before now; a running recording counts until now.
     pub recorded_ms_30d: i64,
@@ -263,12 +264,12 @@ pub struct ProjectListItem {
 
 const USAGE_WINDOW: Ms = 30 * 24 * 3_600_000;
 
-/// Per project: the latest recording start and the time recorded in the window before `now`.
+/// Per project: the latest span start and the time its spans recorded in the window before `now`.
 async fn usage_by_project(db: &Db, now: Ms) -> AppResult<HashMap<String, (Option<Ms>, i64)>> {
     let rows: Vec<(String, Option<Ms>, i64)> = sqlx::query_as(
-        r#"SELECT project_id, max(start),
-             coalesce(sum(max(0, min(coalesce("end", ?1), ?1) - max(start, ?2))), 0)
-           FROM recordings GROUP BY project_id"#,
+        r#"SELECT r.project_id, max(s.start),
+             coalesce(sum(max(0, min(coalesce(s."end", ?1), ?1) - max(s.start, ?2))), 0)
+           FROM recordings r JOIN recording_spans s ON s.recording_id = r.id GROUP BY r.project_id"#,
     )
     .bind(now)
     .bind(now - USAGE_WINDOW)
@@ -811,6 +812,76 @@ mod tests {
 
     const DAY: Ms = 24 * 3_600_000;
     const HOUR: Ms = 3_600_000;
+
+    async fn record_spans(db: &Db, project_id: &str, spans: &[(Ms, Option<Ms>)]) {
+        crate::db::recordings::insert(
+            db,
+            crate::db::recordings::NewRecording {
+                id: uuid::Uuid::new_v4().to_string(),
+                project_id: project_id.into(),
+                spans: spans.to_vec(),
+                note: String::new(),
+                tag_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn recent_orders_by_the_latest_span_of_a_recording() {
+        let db = Db::open_memory().await.unwrap();
+        let spread = insert(&db, input("Spread")).await.unwrap();
+        let single = insert(&db, input("Single")).await.unwrap();
+        record_spans(
+            &db,
+            &spread.id,
+            &[(1_000, Some(2_000)), (9_000, Some(9_500))],
+        )
+        .await;
+        record_spans(&db, &single.id, &[(5_000, Some(6_000))]).await;
+
+        assert_eq!(names(recent(&db, 10).await.unwrap()), ["Spread", "Single"]);
+    }
+
+    #[tokio::test]
+    async fn list_items_count_every_span_of_a_recording_in_the_last_30_days() {
+        let db = Db::open_memory().await.unwrap();
+        let now = 100 * DAY;
+        let window_start = now - 30 * DAY;
+        let split = insert(&db, input("Split")).await.unwrap();
+        let timer = insert(&db, input("Timer")).await.unwrap();
+        record_spans(
+            &db,
+            &split.id,
+            &[
+                (window_start - HOUR, Some(window_start + HOUR)),
+                (75 * DAY, Some(75 * DAY + 2 * HOUR)),
+                (90 * DAY, Some(90 * DAY + HOUR / 2)),
+            ],
+        )
+        .await;
+        record_spans(
+            &db,
+            &timer.id,
+            &[(20 * DAY, Some(20 * DAY + HOUR)), (now - HOUR, None)],
+        )
+        .await;
+
+        let items = list_items(&db, false, now).await.unwrap();
+
+        let summary: Vec<_> = items
+            .iter()
+            .map(|i| (i.project.id.as_str(), i.last_used, i.recorded_ms_30d))
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                (split.id.as_str(), Some(90 * DAY), 3 * HOUR + HOUR / 2),
+                (timer.id.as_str(), Some(now - HOUR), HOUR),
+            ]
+        );
+    }
 
     #[tokio::test]
     async fn list_items_attach_clients_last_use_and_the_last_30_days() {

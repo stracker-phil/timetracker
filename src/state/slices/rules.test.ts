@@ -148,7 +148,7 @@ describe("rules slice", () => {
   describe("acceptSuggestion", () => {
     it("accepts the suggestion on the shown day and offers Undo", async () => {
       const s = suggestion({ projectName: "Website" });
-      mocked.suggestionAccept.mockResolvedValueOnce(recording());
+      mocked.suggestionAccept.mockResolvedValueOnce({ recording: recording(), durationMs: 45 * 60_000 });
       await state().acceptSuggestion(s);
       expect(mocked.suggestionAccept).toHaveBeenCalledWith("2026-03-10", s.id);
       expect(toastMessages()).toEqual(["Recorded 45 min for Website"]);

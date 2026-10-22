@@ -168,12 +168,16 @@ pub struct ActivityBlock {
     pub private: bool,
 }
 
-/// A recording cut to the day.
+/// A span of a recording cut to the day; a recording with several spans on the day has several blocks.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct RecordingBlock {
+    /// The recording's id.
     pub id: String,
+    pub span_id: String,
+    /// How many spans the recording has, on any day.
+    pub span_count: u32,
     pub start: Ms,
     pub end: Ms,
     pub project_id: String,
@@ -184,9 +188,9 @@ pub struct RecordingBlock {
     pub shade: u8,
     pub note: String,
     pub tag: Option<String>,
-    /// The timer, still recording.
+    /// The timer's open span, still recording.
     pub running: bool,
-    /// The recording starts on an earlier day or ends on a later one.
+    /// The span starts on an earlier day or ends on a later one.
     pub clipped_start: bool,
     pub clipped_end: bool,
 }
@@ -214,7 +218,7 @@ pub struct Gap {
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct DayTotals {
-    /// The day's part of its recordings.
+    /// The day's part of its recordings' spans.
     pub recorded_ms: i64,
     /// Tracker activity, overlaps counted once, hidden apps and noise included; external sources are not
     /// tracked time.
@@ -229,7 +233,8 @@ pub fn totals(input: &DayInput) -> DayTotals {
         recorded_ms: input
             .recordings
             .iter()
-            .filter_map(|r| clipped(r.start, r.end))
+            .flat_map(|r| &r.spans)
+            .filter_map(|s| clipped(s.start, s.end))
             .map(|(start, end)| end - start)
             .sum(),
         tracked_ms: tracked_ms(&input.activities, input.bounds, input.now),
@@ -317,7 +322,7 @@ fn hidden_apps(rows: &[ActivityBlock], settings: &ViewSettings) -> Vec<HiddenApp
     hidden
 }
 
-/// `recordings` cut to `bounds`, by start; a running one ends at `now`.
+/// The spans of `recordings` cut to `bounds`, one block each, by start; an open span ends at `now`.
 pub fn recording_blocks(
     recordings: &[Recording],
     names: &Names,
@@ -326,11 +331,14 @@ pub fn recording_blocks(
 ) -> Vec<RecordingBlock> {
     let mut blocks: Vec<RecordingBlock> = recordings
         .iter()
-        .filter_map(|r| {
-            let (start, end) = clip(r.start, r.end, bounds, now)?;
+        .flat_map(|r| r.spans.iter().map(move |s| (r, s)))
+        .filter_map(|(r, s)| {
+            let (start, end) = clip(s.start, s.end, bounds, now)?;
             let project = names.projects.get(&r.project_id);
             Some(RecordingBlock {
                 id: r.id.clone(),
+                span_id: s.id.clone(),
+                span_count: u32::try_from(r.spans.len()).unwrap_or(u32::MAX),
                 start,
                 end,
                 project_id: r.project_id.clone(),
@@ -340,9 +348,9 @@ pub fn recording_blocks(
                 shade: project.map_or(4, |p| p.shade),
                 note: r.note.clone(),
                 tag: r.tag_id.as_ref().and_then(|id| names.tags.get(id).cloned()),
-                running: r.end.is_none(),
-                clipped_start: r.start < bounds.0,
-                clipped_end: r.end.unwrap_or(now) > bounds.1,
+                running: s.end.is_none(),
+                clipped_start: s.start < bounds.0,
+                clipped_end: s.end.unwrap_or(now) > bounds.1,
             })
         })
         .collect();
@@ -475,6 +483,7 @@ fn gaps(activity: &[(Ms, Ms)], away: &[(Ms, Ms)]) -> Vec<Gap> {
 mod tests {
     use super::testing::*;
     use super::*;
+    use crate::db::recordings::RecordingSpan;
     use serde_json::json;
 
     fn lane<'a>(view: &'a DayView, id: &str) -> &'a Lane {
@@ -1164,6 +1173,122 @@ mod tests {
     }
 
     #[test]
+    fn a_recording_with_spans_on_two_days_has_one_block_per_span_on_each_day() {
+        let midnight = DAY_LENGTH;
+        let rows = vec![recording_of_spans(
+            "r",
+            &[
+                (midnight - 3 * HOUR, midnight - 2 * HOUR),
+                (midnight - HOUR, midnight + HOUR),
+                (midnight + 5 * HOUR, midnight + 6 * HOUR),
+            ],
+        )];
+        let first = DayInput {
+            bounds: (0, midnight),
+            ..input_with_recordings(rows.clone())
+        };
+        let second = DayInput {
+            bounds: (midnight, 2 * midnight),
+            ..input_with_recordings(rows)
+        };
+
+        let first = view(&first, &settings());
+        let second = view(&second, &settings());
+
+        let shape = |view: &DayView| {
+            assert!(view.recordings.iter().all(|b| b.id == "r"));
+            view.recordings
+                .iter()
+                .map(|b| {
+                    let clipped = (b.clipped_start, b.clipped_end);
+                    (b.span_id.clone(), b.span_count, b.start, b.end, clipped)
+                })
+                .collect::<Vec<_>>()
+        };
+        let at = |hours: i64| midnight + hours * HOUR;
+        let id = String::from;
+        assert_eq!(
+            shape(&first),
+            [
+                (id("r-span0"), 3, at(-3), at(-2), (false, false)),
+                (id("r-span1"), 3, at(-1), at(0), (false, true)),
+            ]
+        );
+        assert_eq!(
+            shape(&second),
+            [
+                (id("r-span1"), 3, at(0), at(1), (true, false)),
+                (id("r-span2"), 3, at(5), at(6), (false, false)),
+            ]
+        );
+    }
+
+    #[test]
+    fn recorded_time_of_a_day_counts_only_the_parts_of_spans_inside_it() {
+        let midnight = DAY_LENGTH;
+        let rows = vec![recording_of_spans(
+            "r",
+            &[
+                (midnight - 3 * HOUR, midnight - 2 * HOUR),
+                (midnight - HOUR, midnight + HOUR),
+                (midnight + 5 * HOUR, midnight + 6 * HOUR),
+            ],
+        )];
+
+        let totals_on = |bounds| {
+            totals(&DayInput {
+                bounds,
+                ..input_with_recordings(rows.clone())
+            })
+            .recorded_ms
+        };
+
+        assert_eq!(totals_on((0, midnight)), 2 * HOUR);
+        assert_eq!(totals_on((midnight, 2 * midnight)), 2 * HOUR);
+        assert_eq!(totals_on((midnight - 2 * HOUR, midnight - HOUR)), 0);
+    }
+
+    #[test]
+    fn a_running_span_after_closed_ones_is_the_only_running_block() {
+        let mut r = recording_of_spans("r", &[(HOUR, 2 * HOUR)]);
+        r.spans.push(RecordingSpan {
+            id: "r-open".into(),
+            start: 3 * HOUR,
+            end: None,
+        });
+        let input = DayInput {
+            now: 4 * HOUR,
+            ..input_with_recordings(vec![r])
+        };
+
+        let view = view(&input, &settings());
+
+        let blocks: Vec<_> = view
+            .recordings
+            .iter()
+            .map(|b| (b.span_id.as_str(), b.end, b.running))
+            .collect();
+        assert_eq!(
+            blocks,
+            [("r-span0", 2 * HOUR, false), ("r-open", 4 * HOUR, true)]
+        );
+        assert_eq!(view.totals.recorded_ms, 2 * HOUR);
+    }
+
+    #[test]
+    fn blocks_of_different_recordings_are_ordered_by_start_across_their_spans() {
+        let input = input_with_recordings(vec![
+            recording_of_spans("a", &[(HOUR, 2 * HOUR), (5 * HOUR, 6 * HOUR)]),
+            recording_of_spans("b", &[(3 * HOUR, 4 * HOUR)]),
+        ]);
+
+        let view = view(&input, &settings());
+
+        let ids: Vec<_> = view.recordings.iter().map(|b| b.id.as_str()).collect();
+        assert_eq!(ids, ["a", "b", "a"]);
+    }
+
+    #[test]
     fn a_recording_block_carries_the_project_and_the_tag_name() {
         let mut input = input_with_recordings(vec![
             Recording {
@@ -1191,6 +1316,8 @@ mod tests {
             [
                 RecordingBlock {
                     id: "early".into(),
+                    span_id: "early-span".into(),
+                    span_count: 1,
                     start: mins(60),
                     end: mins(90),
                     project_id: "p1".into(),
@@ -1206,6 +1333,8 @@ mod tests {
                 },
                 RecordingBlock {
                     id: "late".into(),
+                    span_id: "late-span".into(),
+                    span_count: 1,
                     start: mins(120),
                     end: mins(150),
                     project_id: "p1".into(),
@@ -1353,6 +1482,8 @@ mod tests {
             serde_json::to_value(&view.recordings).unwrap(),
             json!([{
                 "id": "r1",
+                "spanId": "r1-span",
+                "spanCount": 1,
                 "start": HOUR,
                 "end": 2 * HOUR,
                 "projectId": "p1",

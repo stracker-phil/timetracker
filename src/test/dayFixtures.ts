@@ -43,6 +43,8 @@ export function block(patch: Partial<ActivityBlock> = {}): ActivityBlock {
 export function recordingBlock(patch: Partial<RecordingBlock> = {}): RecordingBlock {
   return {
     id: "r1",
+    spanId: `${patch.id ?? "r1"}-s1`,
+    spanCount: 1,
     start: at("09:00"),
     end: at("09:45"),
     projectId: "project-1",

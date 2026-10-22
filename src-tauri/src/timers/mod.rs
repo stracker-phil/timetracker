@@ -70,6 +70,11 @@ impl From<RecentTimer> for TimerInput {
     }
 }
 
+/// Where the running recording's open span starts.
+pub fn open_start(running: &Recording) -> Ms {
+    running.open_span().map_or(running.start(), |s| s.start)
+}
+
 pub async fn status(db: &Db, now: Ms) -> AppResult<TimerStatus> {
     let Some(recording) = recordings::running(db).await? else {
         return Ok(TimerStatus::default());
@@ -77,7 +82,7 @@ pub async fn status(db: &Db, now: Ms) -> AppResult<TimerStatus> {
     let project = projects::get(db, &recording.project_id).await?;
     Ok(TimerStatus {
         running: Some(RunningTimer {
-            elapsed_ms: (now - recording.start).max(0),
+            elapsed_ms: (now - open_start(&recording)).max(0),
             project_name: project.name,
             color: project.color,
             shade: project.shade,
@@ -108,7 +113,7 @@ pub async fn recent(db: &Db, limit: usize) -> AppResult<Vec<RecentTimer>> {
                 shade: project.shade,
                 note: r.note,
                 tag_id: r.tag_id,
-                last_used: r.start,
+                last_used: r.spans.last().map_or(0, |s| s.start),
             });
         }
     }
@@ -184,19 +189,28 @@ mod tests {
         note: &str,
         tag_id: Option<&str>,
     ) {
+        record_spans(db, p, &[(start, end)], note, tag_id).await;
+    }
+
+    async fn record_spans(
+        db: &Db,
+        p: &Project,
+        spans: &[(Ms, Option<Ms>)],
+        note: &str,
+        tag_id: Option<&str>,
+    ) -> Recording {
         recordings::insert(
             db,
             NewRecording {
                 id: crate::db::new_id(),
                 project_id: p.id.clone(),
-                start,
-                end,
+                spans: spans.to_vec(),
                 note: note.into(),
                 tag_id: tag_id.map(str::to_string),
             },
         )
         .await
-        .expect("insert recording");
+        .expect("insert recording")
     }
 
     #[tokio::test]
@@ -269,7 +283,94 @@ mod tests {
         assert_eq!(running["projectName"], "Acme");
         assert_eq!(running["elapsedMs"], MIN);
         assert_eq!(running["recording"]["projectId"], json!(p.id));
-        assert_eq!(running["recording"]["end"], json!(null));
+        assert_eq!(running["recording"]["spans"][0]["start"], json!(T0));
+        assert_eq!(running["recording"]["spans"][0]["end"], json!(null));
+    }
+
+    #[tokio::test]
+    async fn elapsed_time_counts_from_the_open_span_of_a_recording_with_several_spans() {
+        let db = db().await;
+        let p = project(&db, "Acme").await;
+        record_spans(
+            &db,
+            &p,
+            &[(T0, Some(T0 + HOUR)), (T0 + 3 * HOUR, None)],
+            "",
+            None,
+        )
+        .await;
+
+        let timer = status(&db, T0 + 3 * HOUR + 10 * MIN)
+            .await
+            .unwrap()
+            .running
+            .unwrap();
+
+        assert_eq!(timer.elapsed_ms, 10 * MIN);
+    }
+
+    #[test]
+    fn the_open_start_is_where_the_open_span_begins() {
+        let mut recording = Recording {
+            id: "r".into(),
+            project_id: "p".into(),
+            note: String::new(),
+            tag_id: None,
+            created_at: 0,
+            updated_at: 0,
+            spans: vec![
+                recordings::RecordingSpan {
+                    id: "a".into(),
+                    start: T0,
+                    end: Some(T0 + HOUR),
+                },
+                recordings::RecordingSpan {
+                    id: "b".into(),
+                    start: T0 + 3 * HOUR,
+                    end: None,
+                },
+            ],
+        };
+
+        assert_eq!(open_start(&recording), T0 + 3 * HOUR);
+
+        recording.spans.remove(1);
+
+        assert_eq!(open_start(&recording), T0);
+    }
+
+    #[tokio::test]
+    async fn recent_takes_last_used_from_the_last_span_of_a_recording() {
+        let db = db().await;
+        let p = project(&db, "Acme").await;
+        record_spans(
+            &db,
+            &p,
+            &[
+                (T0, Some(T0 + MIN)),
+                (T0 + 5 * HOUR, Some(T0 + 5 * HOUR + MIN)),
+            ],
+            "split",
+            None,
+        )
+        .await;
+        record(
+            &db,
+            &p,
+            T0 + 2 * HOUR,
+            Some(T0 + 2 * HOUR + MIN),
+            "single",
+            None,
+        )
+        .await;
+
+        let recent = recent(&db, RECENT).await.unwrap();
+
+        let used: Vec<(&str, Ms)> = recent
+            .iter()
+            .map(|t| (t.note.as_str(), t.last_used))
+            .collect();
+        assert_eq!(used, [("split", T0 + 5 * HOUR), ("single", T0 + 2 * HOUR)]);
     }
 
     #[tokio::test]

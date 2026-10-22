@@ -74,7 +74,7 @@ describe("RecordingEditor", () => {
       await userEvent.type(tagField(), "res{Enter}");
       await userEvent.click(button("Save"));
       await waitFor(() =>
-        expect(mocked.recordingCreate).toHaveBeenCalledWith({ projectId: "p-site", start: START, end: END, note: "fix login", tagId: "tag-research" }, "cancel"),
+        expect(mocked.recordingCreate).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: START, end: END }], note: "fix login", tagId: "tag-research" }, "cancel"),
       );
       expect(await screen.findByText("Recorded 1 h 30 min for Website")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
@@ -170,7 +170,7 @@ describe("RecordingEditor", () => {
       await chooseWebsite();
       await userEvent.clear(field("To"));
       await userEvent.type(field("To"), "11:15{Enter}");
-      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ start: START, end: at("11:15") }), "cancel"));
+      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: START, end: at("11:15") }] }), "cancel"));
     });
 
     it("updates the length while a valid time is typed, before the field is left", async () => {
@@ -217,7 +217,7 @@ describe("RecordingEditor", () => {
       await userEvent.tab();
       expect(screen.getByText("23 h 00 min")).toBeInTheDocument();
       await userEvent.click(button("Save"));
-      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ start: START, end: at("08:00", "2026-03-11") }), "cancel"));
+      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: START, end: at("08:00", "2026-03-11") }] }), "cancel"));
     });
   });
 
@@ -238,10 +238,27 @@ describe("RecordingEditor", () => {
       expect(dialog.getByText(/^09:15–09:45 Website/)).toHaveTextContent("09:15–09:45 Website · fix login");
     });
 
+    it("lists every span of a recording in the way", async () => {
+      const sittings = recording({
+        ...inTheWay,
+        spans: [
+          { id: "r9-s1", start: at("09:15"), end: at("09:45") },
+          { id: "r9-s2", start: at("16:05"), end: at("20:15") },
+        ],
+      });
+      mocked.recordingCreate.mockRejectedValueOnce({ kind: "overlap", message: "Overlaps a recording", code: null, details: [sittings] });
+      renderCreate();
+      await editorDialog("New recording");
+      await chooseWebsite();
+      await userEvent.click(button("Save"));
+      const dialog = within(await screen.findByRole("dialog", { name: "This overlaps a recording" }));
+      expect(dialog.getByText(/^09:15–09:45, 16:05–20:15 Website/)).toHaveTextContent("09:15–09:45, 16:05–20:15 Website · fix login");
+    });
+
     it("saves again with overlap replace when Replace is chosen, then closes the editor", async () => {
       const dialog = await saveIntoOverlap();
       await userEvent.click(dialog.getByRole("button", { name: "Replace overlapped part" }));
-      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenLastCalledWith({ projectId: "p-site", start: START, end: END, note: "", tagId: null }, "replace"));
+      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenLastCalledWith({ projectId: "p-site", spans: [{ start: START, end: END }], note: "", tagId: null }, "replace"));
       await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     });
 
@@ -310,7 +327,7 @@ describe("RecordingEditor", () => {
       await waitFor(() =>
         expect(mocked.recordingUpdate).toHaveBeenCalledWith(
           "r1",
-          { projectId: "p-site", start: standupBlock.start, end: standupBlock.end, note: "standup notes", tagId: "tag-research" },
+          { projectId: "p-site", spans: [{ start: standupBlock.start, end: standupBlock.end }], note: "standup notes", tagId: "tag-research" },
           "cancel",
         ),
       );
@@ -331,6 +348,71 @@ describe("RecordingEditor", () => {
       await editorDialog("Edit recording");
       await userEvent.keyboard("{Meta>}{Backspace}{/Meta}");
       await waitFor(() => expect(mocked.recordingDelete).toHaveBeenCalledWith("r1"));
+    });
+
+    describe("with several spans", () => {
+      const morning = { id: "r1-s1", start: at("09:00"), end: at("09:30") };
+      const noon = { id: "r1-s2", start: at("11:00"), end: at("11:45") };
+      const evening = { id: "r1-s3", start: at("16:00"), end: at("17:00") };
+      const sittings = recording({ ...standupRow, spans: [morning, noon, evening] });
+      const noonBlock = { ...standupBlock, spanId: noon.id, spanCount: 3 };
+
+      beforeEach(() => mocked.recordingsList.mockResolvedValue([sittings]));
+
+      it("shows the span of the opened block and lists the other spans as Also", async () => {
+        renderEditor({ mode: "edit", id: "r1" }, { dayView: dayView({ recordings: [noonBlock] }) });
+        await editorDialog("Edit recording");
+        expect(field("From")).toHaveValue("11:00");
+        expect(field("To")).toHaveValue("11:45");
+        expect(screen.getByText("Also 09:00–09:30, 16:00–17:00")).toBeInTheDocument();
+      });
+
+      it("shows the span the editor was opened with", async () => {
+        renderEditor({ mode: "edit", id: "r1", spanId: evening.id }, { dayView: dayView({ recordings: [noonBlock] }) });
+        await editorDialog("Edit recording");
+        expect(field("From")).toHaveValue("16:00");
+        expect(field("To")).toHaveValue("17:00");
+        expect(screen.getByText("Also 09:00–09:30, 11:00–11:45")).toBeInTheDocument();
+      });
+
+      it("saves all spans with only the edited one changed", async () => {
+        renderEditor({ mode: "edit", id: "r1" }, { dayView: dayView({ recordings: [noonBlock] }) });
+        await editorDialog("Edit recording");
+        await userEvent.clear(field("To"));
+        await userEvent.type(field("To"), "12:00");
+        await userEvent.click(button("Save"));
+        await waitFor(() =>
+          expect(mocked.recordingUpdate).toHaveBeenCalledWith(
+            "r1",
+            expect.objectContaining({
+              spans: [
+                { start: morning.start, end: morning.end },
+                { start: noon.start, end: at("12:00") },
+                { start: evening.start, end: evening.end },
+              ],
+            }),
+            "cancel",
+          ),
+        );
+      });
+
+      it("asks to stop the timer first when a span is still open, and saves nothing", async () => {
+        const running = recording({ ...standupRow, spans: [morning, { id: "r1-s2", start: at("11:00"), end: null }] });
+        mocked.recordingsList.mockResolvedValue([running]);
+        renderEditor({ mode: "edit", id: "r1", spanId: morning.id }, { dayView: dayView({ recordings: [{ ...standupBlock, spanId: morning.id, spanCount: 2 }] }) });
+        await editorDialog("Edit recording");
+        await userEvent.click(button("Save"));
+        expect(await screen.findByText("Stop the timer first")).toBeInTheDocument();
+        expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+        expect(screen.getByRole("dialog", { name: "Edit recording" })).toBeInTheDocument();
+      });
+
+      it("shows no Also line for a recording with one span", async () => {
+        mocked.recordingsList.mockResolvedValue([standupRow]);
+        renderEditor({ mode: "edit", id: "r1" });
+        await editorDialog("Edit recording");
+        expect(screen.queryByText(/^Also /)).not.toBeInTheDocument();
+      });
     });
 
     it("shows nothing and an error when the recording cannot be loaded", async () => {

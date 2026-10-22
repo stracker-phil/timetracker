@@ -18,6 +18,7 @@ use crate::remote::StatusReport;
 use crate::reports::cli::{ReportRequest, filter_of};
 use crate::reports::{self, Range, ReportFilter, ReportGroup, ReportResult, ReportRow};
 use crate::store::settings::{Group, Rounding, Settings};
+use crate::timers::open_start;
 use crate::tracker::TrackerState;
 
 pub const DEFAULT_RECORDINGS: u32 = 500;
@@ -68,12 +69,15 @@ pub struct NoteOut {
     pub days: Vec<Day>,
 }
 
+/// A recording's part in one day: its spans of that day.
 #[derive(Serialize)]
 pub struct RecordingOut {
     pub id: String,
     pub day: Day,
+    /// The start of the first span and the end of the last one.
     pub start_iso: String,
     pub end_iso: String,
+    pub spans: Vec<RecordingSpanOut>,
     pub duration_min: f64,
     pub project: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,6 +85,12 @@ pub struct RecordingOut {
     pub note: String,
     /// `null` when untagged.
     pub tag: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct RecordingSpanOut {
+    pub start_iso: String,
+    pub end_iso: String,
 }
 
 #[derive(Serialize)]
@@ -298,6 +308,14 @@ impl Core {
             .map(|row| RecordingOut {
                 start_iso: to_local_iso(row.start),
                 end_iso: to_local_iso(row.end),
+                spans: row
+                    .spans
+                    .iter()
+                    .map(|s| RecordingSpanOut {
+                        start_iso: to_local_iso(s.start),
+                        end_iso: to_local_iso(s.end),
+                    })
+                    .collect(),
                 duration_min: minutes(row.duration_ms),
                 id: row.id,
                 day: row.day,
@@ -460,9 +478,9 @@ pub fn status_out(report: StatusReport, expose_activity: bool) -> StatusOut {
             current: tracker.current.map(|row| current_out(row, expose_activity)),
         }),
         timer: report.timer.map(|timer| TimerOut {
+            start_iso: to_local_iso(open_start(&timer.recording)),
             project: timer.project_name,
             note: timer.recording.note,
-            start_iso: to_local_iso(timer.recording.start),
             elapsed_min: minutes(timer.elapsed_ms),
         }),
         window_visible: report.window_visible,
@@ -490,10 +508,11 @@ mod tests {
     use crate::db::activities::NewActivity;
     use crate::db::away::{AwayReason, NewAway};
     use crate::db::projects::{Project, ProjectInput};
-    use crate::db::recordings::{self, NewRecording, Recording};
+    use crate::db::recordings::{self, NewRecording, Recording, RecordingSpan};
     use crate::db::tags::Tag;
     use crate::error::ErrorKind;
     use crate::test_support::{client, project, temp_config_dir, temp_db};
+    use crate::timers::RunningTimer;
 
     const DAY: &str = "2026-10-20";
 
@@ -520,13 +539,25 @@ mod tests {
         note: &str,
         tag: Option<&Tag>,
     ) -> Recording {
+        add_spanned(db, project, &[(start, end)], note, tag).await
+    }
+
+    async fn add_spanned(
+        db: &Db,
+        project: &Project,
+        spans: &[(Ms, Ms)],
+        note: &str,
+        tag: Option<&Tag>,
+    ) -> Recording {
         recordings::insert(
             db,
             NewRecording {
                 id: uuid::Uuid::new_v4().to_string(),
                 project_id: project.id.clone(),
-                start,
-                end: Some(end),
+                spans: spans
+                    .iter()
+                    .map(|&(start, end)| (start, Some(end)))
+                    .collect(),
                 note: note.into(),
                 tag_id: tag.map(|t| t.id.clone()),
             },
@@ -918,6 +949,7 @@ mod tests {
                 "day": DAY,
                 "start_iso": iso(9, 0),
                 "end_iso": iso(10, 30),
+                "spans": [{"start_iso": iso(9, 0), "end_iso": iso(10, 30)}],
                 "duration_min": 90.0,
                 "project": "Portal",
                 "client": "Acme",
@@ -928,6 +960,121 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&rows[0]).unwrap()["duration_min"],
             25.0
+        );
+    }
+
+    #[tokio::test]
+    async fn a_recording_with_several_spans_on_a_day_lists_them_with_the_summed_minutes() {
+        let seed = seeded().await;
+        let split = add_spanned(
+            &seed.db,
+            &seed.podcast,
+            &[(at(16, 0), at(17, 0)), (at(18, 0), at(18, 30))],
+            "mixing",
+            None,
+        )
+        .await;
+
+        let rows = seed
+            .core
+            .recordings(recordings_query(None, None, None))
+            .await
+            .unwrap();
+
+        let row = rows.iter().find(|r| r.id == split.id).unwrap();
+        assert_eq!(
+            serde_json::to_value(row).unwrap(),
+            json!({
+                "id": split.id,
+                "day": DAY,
+                "start_iso": iso(16, 0),
+                "end_iso": iso(18, 30),
+                "spans": [
+                    {"start_iso": iso(16, 0), "end_iso": iso(17, 0)},
+                    {"start_iso": iso(18, 0), "end_iso": iso(18, 30)},
+                ],
+                "duration_min": 90.0,
+                "project": "Podcast",
+                "note": "mixing",
+                "tag": null,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_recording_with_spans_on_two_days_is_listed_once_per_day_with_that_days_spans() {
+        let seed = seeded().await;
+        let next = Day::parse("2026-10-21").unwrap().bounds().0;
+        let split = add_spanned(
+            &seed.db,
+            &seed.podcast,
+            &[
+                (at(19, 0), at(20, 0)),
+                (next + 9 * 3_600_000, next + 10 * 3_600_000),
+            ],
+            "two days",
+            None,
+        )
+        .await;
+        let mut query = recordings_query(None, None, None);
+        query.to = "2026-10-21".into();
+
+        let rows = seed.core.recordings(query).await.unwrap();
+
+        let parts: Vec<(String, usize, f64)> = rows
+            .iter()
+            .filter(|r| r.id == split.id)
+            .map(|r| (r.day.to_string(), r.spans.len(), r.duration_min))
+            .collect();
+        let expected = [
+            (DAY.to_string(), 1, 60.0),
+            ("2026-10-21".to_string(), 1, 60.0),
+        ];
+        assert_eq!(parts, expected);
+    }
+
+    #[test]
+    fn the_status_timer_starts_at_the_start_of_its_open_span() {
+        let span = |id: &str, start: Ms, end: Option<Ms>| RecordingSpan {
+            id: id.into(),
+            start,
+            end,
+        };
+        let recording = Recording {
+            id: "r1".into(),
+            project_id: "p1".into(),
+            note: "tooling".into(),
+            tag_id: None,
+            created_at: 0,
+            updated_at: 0,
+            spans: vec![
+                span("s1", at(9, 0), Some(at(10, 0))),
+                span("s2", at(14, 0), None),
+            ],
+        };
+        let report = StatusReport {
+            version: "1.0.0".into(),
+            tracker: None,
+            timer: Some(RunningTimer {
+                recording,
+                project_name: "Portal".into(),
+                color: "blue".into(),
+                shade: 4,
+                elapsed_ms: 30 * 60_000,
+            }),
+            window_visible: false,
+        };
+
+        let out = serde_json::to_value(status_out(report, false)).unwrap();
+
+        assert_eq!(
+            out["timer"],
+            json!({
+                "project": "Portal",
+                "note": "tooling",
+                "start_iso": iso(14, 0),
+                "elapsed_min": 30.0,
+            })
         );
     }
 
@@ -1042,10 +1189,18 @@ mod tests {
         let seed = seeded().await;
         sqlx::query(
             r#"WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5010)
-               INSERT INTO recordings (id, project_id, start, "end", note, created_at, updated_at)
-               SELECT 'bulk-' || i, ?1, ?2 + i * 1000, ?2 + i * 1000 + 500, '', 0, 0 FROM n"#,
+               INSERT INTO recordings (id, project_id, note, created_at, updated_at)
+               SELECT 'bulk-' || i, ?1, '', 0, 0 FROM n"#,
         )
         .bind(&seed.podcast.id)
+        .execute(seed.db.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5010)
+               INSERT INTO recording_spans (id, recording_id, start, "end")
+               SELECT 'bulk-span-' || i, 'bulk-' || i, ?1 + i * 1000, ?1 + i * 1000 + 500 FROM n"#,
+        )
         .bind(at(15, 0))
         .execute(seed.db.pool())
         .await

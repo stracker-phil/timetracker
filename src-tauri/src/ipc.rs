@@ -398,7 +398,7 @@ fn same_user(stream: &tokio::net::UnixStream) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::recordings::Overlap;
+    use crate::recordings::{Overlap, Span};
     use crate::reports::Range;
     use crate::store::settings::{Group, Rounding};
     use crate::test_support::temp_config_dir;
@@ -603,8 +603,16 @@ mod tests {
         IpcMessage::Record {
             request: RecordRequest {
                 project: "acme".into(),
-                start: 1_000,
-                end: 2_000,
+                spans: vec![
+                    Span {
+                        start: 1_000,
+                        end: 2_000,
+                    },
+                    Span {
+                        start: 3_000,
+                        end: 4_000,
+                    },
+                ],
                 note: "fix login".into(),
                 tag: Some("internal meeting".into()),
                 overlap: Overlap::Replace,
@@ -692,7 +700,12 @@ mod tests {
                 serde_json::json!({
                     "type": "record",
                     "request": {
-                        "project": "acme", "start": 1000, "end": 2000, "note": "fix login",
+                        "project": "acme",
+                        "spans": [
+                            { "start": 1000, "end": 2000 },
+                            { "start": 3000, "end": 4000 }
+                        ],
+                        "note": "fix login",
                         "tag": "internal meeting", "overlap": "replace"
                     }
                 }),

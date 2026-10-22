@@ -9,6 +9,7 @@ export function reportRow(patch: Partial<ReportRow> = {}): ReportRow {
     day: DAY,
     start: at("09:00"),
     end: at("09:45"),
+    spans: [{ start: patch.start ?? at("09:00"), end: patch.end ?? at("09:45") }],
     durationMs: 2_700_000,
     roundedMs: 2_700_000,
     projectId: "project-1",

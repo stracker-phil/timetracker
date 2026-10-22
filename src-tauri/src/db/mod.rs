@@ -384,6 +384,97 @@ mod tests {
         }
     }
 
+    async fn migrated_from_recordings_with_start_and_end() -> (tempfile::TempDir, Db) {
+        let tmp = temp_config_dir();
+        let file = tmp.path().join(DB_FILE);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&file)
+                    .create_if_missing(true)
+                    .foreign_keys(true),
+            )
+            .await
+            .unwrap();
+        let migrator = sqlx::migrate!("./migrations");
+        migrator.run_to(6, &pool).await.unwrap();
+        sqlx::raw_sql(
+            "INSERT INTO projects (id, name, color, created_at) VALUES ('p', 'P', 'blue', 1);
+             INSERT INTO recordings (id, project_id, start, \"end\", note, created_at, updated_at) VALUES
+               ('done', 'p', 1000, 3500, 'n', 1, 1),
+               ('timer', 'p', 9000, NULL, '', 1, 1);",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+        let db = Db::open(&file).await.unwrap();
+        (tmp, db)
+    }
+
+    #[tokio::test]
+    async fn the_spans_migration_turns_each_recording_into_one_span_under_its_id() {
+        let (_tmp, db) = migrated_from_recordings_with_start_and_end().await;
+
+        let spans: Vec<(String, String, i64, Option<i64>)> = sqlx::query_as(
+            "SELECT id, recording_id, start, \"end\" FROM recording_spans ORDER BY start",
+        )
+        .fetch_all(db.pool())
+        .await
+        .unwrap();
+
+        assert_eq!(
+            spans,
+            [
+                ("done".to_string(), "done".to_string(), 1000, Some(3500)),
+                ("timer".to_string(), "timer".to_string(), 9000, None),
+            ]
+        );
+        let done = recordings::get(&db, "done").await.unwrap();
+        assert_eq!((done.start(), done.end()), (1000, Some(3500)));
+        assert_eq!(done.duration(0), 2500);
+        assert_eq!(done.note, "n");
+        let timer = recordings::running(&db).await.unwrap().unwrap();
+        assert_eq!(timer.id, "timer");
+        assert_eq!(timer.open_span().unwrap().start, 9000);
+    }
+
+    #[tokio::test]
+    async fn the_spans_migration_drops_the_start_and_end_columns_and_their_index() {
+        let (_tmp, db) = migrated_from_recordings_with_start_and_end().await;
+
+        let columns: Vec<String> =
+            sqlx::query_scalar("SELECT name FROM pragma_table_info('recordings') ORDER BY cid")
+                .fetch_all(db.pool())
+                .await
+                .unwrap();
+        assert_eq!(
+            columns,
+            [
+                "id",
+                "project_id",
+                "note",
+                "created_at",
+                "updated_at",
+                "tag_id"
+            ]
+        );
+        let indexes: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%'",
+        )
+        .fetch_all(db.pool())
+        .await
+        .unwrap();
+        assert!(
+            !indexes.iter().any(|i| i == "recordings_start"),
+            "{indexes:?}"
+        );
+        for index in ["recording_spans_start", "recording_spans_recording"] {
+            assert!(indexes.iter().any(|i| i == index), "{index} in {indexes:?}");
+        }
+    }
+
     #[tokio::test]
     async fn the_client_colors_migration_derives_colors_and_shades_from_existing_projects() {
         let pool = sqlx::sqlite::SqlitePoolOptions::new()

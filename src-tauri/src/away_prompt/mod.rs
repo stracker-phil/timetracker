@@ -87,7 +87,8 @@ pub async fn answer(
         return Err(AppError::NotFound("No away prompt is open".into()));
     }
     let first_day = (1..ANSWER_DAYS).fold(Day::of(now), |day, _| day.prev());
-    if input.start < first_day.bounds().0 || input.end > now + MINUTE_MS {
+    let outside = |s: &Span| s.start < first_day.bounds().0 || s.end > now + MINUTE_MS;
+    if input.spans.iter().any(outside) {
         return Err(AppError::InvalidField {
             field: "start".into(),
             message: format!("must lie within the last {ANSWER_DAYS} days"),
@@ -348,19 +349,26 @@ mod tests {
         fn input(&self, start: Ms, end: Ms) -> RecordingInput {
             RecordingInput {
                 project_id: self.project_id.clone(),
-                start,
-                end,
+                spans: vec![Span { start, end }],
                 note: String::new(),
                 tag_id: None,
             }
         }
 
         async fn stored(&self) -> Vec<(Ms, Option<Ms>)> {
+            self.stored_spans()
+                .await
+                .into_iter()
+                .map(|spans| (spans[0].0, spans[spans.len() - 1].1))
+                .collect()
+        }
+
+        async fn stored_spans(&self) -> Vec<Vec<(Ms, Option<Ms>)>> {
             crate::db::recordings::list_for_range(&self.db, Ms::MIN, Ms::MAX)
                 .await
                 .unwrap()
                 .into_iter()
-                .map(|r| (r.start, r.end))
+                .map(|r| r.spans.iter().map(|s| (s.start, s.end)).collect())
                 .collect()
         }
     }
@@ -422,6 +430,84 @@ mod tests {
                 Some("start"),
                 "{name}"
             );
+        }
+        assert!(world.stored().await.is_empty());
+        assert_eq!(prompts.current(), Some(prompt()));
+    }
+
+    #[tokio::test]
+    async fn an_answer_with_several_spans_is_recorded_as_one_recording() {
+        let world = World::new().await;
+        let prompts = AwayPromptState::default();
+        prompts.set(prompt());
+        let input = RecordingInput {
+            spans: vec![
+                Span {
+                    start: T - 4 * HOUR,
+                    end: T - 3 * HOUR,
+                },
+                Span {
+                    start: T - 2 * HOUR,
+                    end: T - HOUR,
+                },
+            ],
+            ..world.input(0, 0)
+        };
+
+        answer(&prompts, &world.service(), input, T).await.unwrap();
+
+        assert_eq!(
+            world.stored_spans().await,
+            [vec![
+                (T - 4 * HOUR, Some(T - 3 * HOUR)),
+                (T - 2 * HOUR, Some(T - HOUR)),
+            ]]
+        );
+        assert_eq!(prompts.current(), None);
+    }
+
+    #[tokio::test]
+    async fn every_span_of_an_answer_must_lie_within_the_last_seven_days() {
+        let world = World::new().await;
+        let prompts = AwayPromptState::default();
+        prompts.set(prompt());
+        let earliest = Day::of(T).bounds().0 - 6 * 24 * HOUR;
+        let inside = Span {
+            start: T - 2 * HOUR,
+            end: T - HOUR,
+        };
+
+        for (name, outside) in [
+            (
+                "an early span",
+                Span {
+                    start: earliest - 2 * HOUR,
+                    end: earliest - HOUR,
+                },
+            ),
+            (
+                "a span in the future",
+                Span {
+                    start: T + MIN,
+                    end: T + 2 * MIN,
+                },
+            ),
+        ] {
+            let input = RecordingInput {
+                spans: vec![outside, inside],
+                ..world.input(0, 0)
+            };
+            let swapped = RecordingInput {
+                spans: vec![inside, outside],
+                ..world.input(0, 0)
+            };
+
+            for input in [input, swapped] {
+                let err = answer(&prompts, &world.service(), input, T)
+                    .await
+                    .unwrap_err();
+                assert_eq!(err.kind(), ErrorKind::InvalidInput, "{name}");
+            }
         }
         assert!(world.stored().await.is_empty());
         assert_eq!(prompts.current(), Some(prompt()));

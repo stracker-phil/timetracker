@@ -17,8 +17,9 @@ use crate::error::{AppError, AppResult};
 use crate::reports::saved::{self, SavedReport};
 use crate::rules::{self, types::Rule};
 
-/// 2: recordings and rules carry `tagId` instead of `tagIds` (ADR 0019).
-pub const BACKUP_VERSION: u32 = 2;
+/// 2: recordings and rules carry `tagId` instead of `tagIds` (ADR 0019). 3: recordings carry `spans`
+/// instead of `start` and `end` (ADR 0020).
+pub const BACKUP_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -117,8 +118,7 @@ mod tests {
             NewRecording {
                 id: "rec-1".into(),
                 project_id: p.id,
-                start: 1_000,
-                end: Some(2_000),
+                spans: vec![(1_000, Some(2_000)), (3_000, Some(4_000))],
                 note: "work".into(),
                 tag_id: Some(tag.id.clone()),
             },
@@ -152,7 +152,7 @@ mod tests {
                 "version",
             ]
         );
-        assert_eq!(backup["version"], 2);
+        assert_eq!(backup["version"], 3);
         assert!(backup["exportedAt"].as_i64().unwrap() > 0);
         assert_eq!(backup["rules"], json!([]));
         assert_eq!(backup["savedReports"], json!([]));
@@ -194,6 +194,38 @@ mod tests {
         assert_eq!(backup["recordings"][0]["tagId"], json!(tag_id));
         assert_eq!(backup["recordings"][0].get("tagIds"), None);
         assert_eq!(backup["recordings"][0]["id"], "rec-1");
+    }
+
+    #[tokio::test]
+    async fn export_carries_the_spans_of_a_recording_instead_of_start_and_end() {
+        let (db, backup, _, _) = fixture().await;
+        let stored = recordings::get(&db, "rec-1").await.unwrap();
+
+        let recording = &backup["recordings"][0];
+
+        assert_eq!(
+            recording["spans"],
+            json!([
+                { "id": stored.spans[0].id, "start": 1_000, "end": 2_000 },
+                { "id": stored.spans[1].id, "start": 3_000, "end": 4_000 },
+            ])
+        );
+        assert_eq!(recording.get("start"), None);
+        assert_eq!(recording.get("end"), None);
+    }
+
+    #[tokio::test]
+    async fn export_has_a_null_end_for_the_running_recordings_open_span() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "Website").await;
+        let timer = crate::test_support::recording(&db, &p.id, 5_000, None).await;
+
+        let backup = serde_json::to_value(export(&db).await.unwrap()).unwrap();
+
+        assert_eq!(
+            backup["recordings"][0]["spans"],
+            json!([{ "id": timer.spans[0].id, "start": 5_000, "end": null }])
+        );
     }
 
     #[tokio::test]
@@ -262,7 +294,7 @@ mod tests {
         let bytes = std::fs::read(&target).unwrap();
         assert_eq!(written.bytes, bytes.len() as u64);
         let json: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["version"], 2);
+        assert_eq!(json["version"], 3);
         assert!(!dir.path().join("backup.json.tmp").exists());
     }
 

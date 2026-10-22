@@ -88,8 +88,8 @@ export const rulesSlice: Slice<RulesSlice> = {
 
       async acceptSuggestion(suggestion) {
         try {
-          const recording = await api.suggestionAccept(get().day, suggestion.id);
-          undoToast(`Recorded ${formatDuration((recording.end ?? recording.start) - recording.start)} for ${suggestion.projectName}`);
+          const { durationMs } = await api.suggestionAccept(get().day, suggestion.id);
+          undoToast(`Recorded ${formatDuration(durationMs)} for ${suggestion.projectName}`);
         } catch (e) {
           fail(e, "Could not accept the suggestion");
         }

@@ -111,6 +111,8 @@ pub fn names(projects: &[&str], tags: &[&str]) -> Names {
 pub fn recorded(start: i64, end: i64) -> RecordingBlock {
     RecordingBlock {
         id: format!("rec{start}"),
+        span_id: format!("rec{start}-span"),
+        span_count: 1,
         start: start * MIN,
         end: end * MIN,
         project_id: "p1".into(),

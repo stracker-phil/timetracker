@@ -1,5 +1,5 @@
 import type { Recording } from "../../api";
-import { formatClock } from "../../lib/format";
+import { spansText } from "../../lib/recordings";
 import { useStore } from "../../state/store";
 import { Modal } from "../Modal";
 
@@ -24,7 +24,7 @@ export function OverlapDialog({ recordings, onReplace, onCancel }: Props) {
       <ul className="overlap-list">
         {recordings.map((r) => (
           <li key={r.id} className="mono">
-            {formatClock(r.start)}–{r.end === null ? "now" : formatClock(r.end)} {nameOf(r.projectId)}
+            {spansText(r.spans)} {nameOf(r.projectId)}
             {r.note && <span className="o2"> · {r.note}</span>}
           </li>
         ))}

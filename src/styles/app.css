@@ -513,6 +513,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .recording-times { display: flex; align-items: flex-end; gap: 0.769rem; }
 .time-input { width: 5.5rem; }
 .recording-length { padding-bottom: 0.462rem; }
+.recording-other-spans { margin: 0; color: var(--o2); }
 .overlap-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.308rem; }
 
 /* ---------- reports ---------- */

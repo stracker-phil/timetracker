@@ -198,6 +198,7 @@ mod tests {
 
     use super::*;
     use crate::day::ProjectRef;
+    use crate::db::recordings::RecordingSpan;
 
     const MIN: Ms = 60_000;
     const HOUR: Ms = 60 * MIN;
@@ -233,15 +234,26 @@ mod tests {
     }
 
     fn recording(id: &str, project: &str, start: Ms, end: Option<Ms>) -> Recording {
+        spanned(id, project, &[(start, end)])
+    }
+
+    fn spanned(id: &str, project: &str, spans: &[(Ms, Option<Ms>)]) -> Recording {
         Recording {
             id: id.into(),
             project_id: project.into(),
-            start,
-            end,
             note: String::new(),
             tag_id: None,
             created_at: 0,
             updated_at: 0,
+            spans: spans
+                .iter()
+                .enumerate()
+                .map(|(i, &(start, end))| RecordingSpan {
+                    id: format!("{id}-span{i}"),
+                    start,
+                    end,
+                })
+                .collect(),
         }
     }
 
@@ -642,6 +654,61 @@ mod tests {
         assert_eq!(cell(&view, "2026-10-05").recorded_ms, HOUR);
         assert_eq!(cell(&view, "2026-10-06").recorded_ms, 2 * HOUR);
         assert_eq!(view.total_ms, 3 * HOUR);
+    }
+
+    #[test]
+    fn a_recording_with_spans_on_several_days_counts_each_days_parts_in_the_week() {
+        let (mon, tue) = (start_of("2026-10-19"), start_of("2026-10-20"));
+        let recordings = vec![spanned(
+            "a",
+            "p1",
+            &[
+                (mon + 9 * HOUR, Some(mon + 10 * HOUR)),
+                (mon + 14 * HOUR, Some(mon + 14 * HOUR + 30 * MIN)),
+                (tue - HOUR, Some(tue + HOUR)),
+            ],
+        )];
+
+        let view = week(day("2026-10-21"), &input(recordings, vec![]));
+
+        let per_day: Vec<(usize, Ms)> = view
+            .days
+            .iter()
+            .take(3)
+            .map(|d| (d.recordings.len(), d.total_ms))
+            .collect();
+        assert_eq!(per_day, [(3, 2 * HOUR + 30 * MIN), (1, HOUR), (0, 0)]);
+        assert_eq!(view.total_ms, 3 * HOUR + 30 * MIN);
+    }
+
+    #[test]
+    fn spans_of_one_recording_add_up_in_the_month_cell_and_the_total() {
+        let (d, next) = (start_of("2026-10-07"), start_of("2026-10-08"));
+        let recordings = vec![
+            spanned(
+                "a",
+                "p1",
+                &[
+                    (d + 9 * HOUR, Some(d + 10 * HOUR)),
+                    (d + 13 * HOUR, Some(d + 15 * HOUR)),
+                    (next - HOUR, Some(next + 30 * MIN)),
+                ],
+            ),
+            recording("b", "p2", d + 16 * HOUR, Some(d + 17 * HOUR)),
+        ];
+
+        let view = month(day("2026-10-21"), &input(recordings, vec![]));
+
+        let seventh = cell(&view, "2026-10-07");
+        assert_eq!(seventh.recorded_ms, 5 * HOUR);
+        let shares: Vec<(&str, Ms)> = seventh
+            .projects
+            .iter()
+            .map(|p| (p.project_id.as_str(), p.ms))
+            .collect();
+        assert_eq!(shares, [("p1", 4 * HOUR), ("p2", HOUR)]);
+        assert_eq!(cell(&view, "2026-10-08").recorded_ms, 30 * MIN);
+        assert_eq!(view.total_ms, 5 * HOUR + 30 * MIN);
     }
 
     #[test]

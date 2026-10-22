@@ -1,5 +1,6 @@
 //! Recordings as the user makes them: validated, snapped, kept free of overlaps, and undoable. Every write
-//! is an `ops::Op` applied in one transaction and pushed on the `UndoStack` (ADR 0010).
+//! is an `ops::Op` applied in one transaction and pushed on the `UndoStack` (ADR 0010). A recording holds
+//! one or more spans; the overlap rule applies per span (ADR 0020).
 
 pub mod cli;
 pub mod commands;
@@ -15,7 +16,8 @@ use tokio::sync::Mutex;
 use ts_rs::TS;
 
 use crate::db::projects::{self, Project};
-use crate::db::recordings::{self, Recording, RecordingPatch};
+pub use crate::db::recordings::Span;
+use crate::db::recordings::{self, Recording, RecordingPatch, RecordingSpan, respanned};
 use crate::db::time::{Day, Ms, now_ms, same_time_on};
 use crate::db::{Db, new_id, tags};
 use crate::error::{AppError, AppResult};
@@ -31,8 +33,8 @@ const MAX_NOTE_CHARS: usize = 500;
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct RecordingInput {
     pub project_id: String,
-    pub start: Ms,
-    pub end: Ms,
+    /// At least one; they must not overlap each other.
+    pub spans: Vec<Span>,
     pub note: String,
     pub tag_id: Option<String>,
 }
@@ -42,18 +44,10 @@ pub struct RecordingInput {
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub enum Overlap {
-    /// Trims, splits or deletes the recordings in the way.
+    /// Trims, cuts or deletes the spans in the way.
     Replace,
-    /// Refuses with `overlap`, listing them.
+    /// Refuses with `overlap`, listing their recordings.
     Cancel,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct Span {
-    pub start: Ms,
-    pub end: Ms,
 }
 
 /// A write's result and the days whose views changed.
@@ -166,6 +160,79 @@ fn check_length(span: Span) -> AppResult<()> {
     Ok(())
 }
 
+/// `span` checked and snapped.
+fn snapped_span(span: Span, snap_minutes: u32) -> AppResult<Span> {
+    if span.end <= span.start {
+        return Err(invalid("end", "must be after the start"));
+    }
+    let span = snap_span(span.start, span.end, snap_minutes);
+    check_length(span)?;
+    Ok(span)
+}
+
+/// Each span checked and snapped, by start; refused when there is none. Whether they overlap each other
+/// is `recordings::check_spans`'s call once they belong to a recording.
+fn snapped_spans(spans: &[Span], snap_minutes: u32) -> AppResult<Vec<Span>> {
+    if spans.is_empty() {
+        return Err(invalid("spans", "must hold at least one span"));
+    }
+    let mut snapped = spans
+        .iter()
+        .map(|&span| snapped_span(span, snap_minutes))
+        .collect::<AppResult<Vec<_>>>()?;
+    snapped.sort_by_key(|s| s.start);
+    Ok(snapped)
+}
+
+/// Closed spans with new ids.
+fn new_spans(spans: &[Span]) -> Vec<RecordingSpan> {
+    spans
+        .iter()
+        .map(|s| RecordingSpan::new(s.start, Some(s.end)))
+        .collect()
+}
+
+/// Refuses the running timer: only finished recordings are edited.
+fn require_finished(recording: &Recording) -> AppResult<()> {
+    if recording.is_running() {
+        return Err(timer_running());
+    }
+    Ok(())
+}
+
+/// `spans` with the span `span_id` set to `[start, end)`, keeping its id.
+fn with_span_set(spans: &[RecordingSpan], span_id: &str, start: Ms, end: Ms) -> Vec<RecordingSpan> {
+    spans
+        .iter()
+        .map(|s| {
+            if s.id == span_id {
+                RecordingSpan {
+                    id: s.id.clone(),
+                    start,
+                    end: Some(end),
+                }
+            } else {
+                s.clone()
+            }
+        })
+        .collect()
+}
+
+/// The closed spans of a finished recording.
+fn closed_spans(recording: &Recording) -> AppResult<Vec<Span>> {
+    recording
+        .spans
+        .iter()
+        .map(|s| {
+            s.end.map(|end| Span {
+                start: s.start,
+                end,
+            })
+        })
+        .collect::<Option<_>>()
+        .ok_or_else(timer_running)
+}
+
 /// The project; an archived one only when the recording already belongs to it.
 async fn usable_project(db: &Db, id: &str, current: Option<&str>) -> AppResult<Project> {
     let project = projects::get(db, id).await?;
@@ -209,55 +276,100 @@ fn days_touched(op: &Op, now: Ms) -> Vec<Day> {
     let mut days: Vec<Day> = op
         .recordings()
         .iter()
-        .flat_map(|r| days_of(r.start, r.end.unwrap_or(now)))
+        .flat_map(|r| &r.spans)
+        .flat_map(|s| days_of(s.start, s.end.unwrap_or(now)))
         .collect();
     days.sort();
     days.dedup();
     days
 }
 
-/// What clears `span` of `other`: deleted when inside it, trimmed when it sticks out on one side, split
-/// around it (the right part a new recording) when it sticks out on both.
-fn clear_op(other: Recording, span: Span, now: Ms) -> AppResult<Vec<Op>> {
-    let Some(other_end) = other.end else {
-        return Err(timer_running());
-    };
-    let trimmed = |start: Ms, end: Ms| Recording {
-        start,
-        end: Some(end),
+/// `[start, end)` without `cut`: nothing, one piece or two.
+fn without(start: Ms, end: Ms, cut: Span) -> Vec<(Ms, Ms)> {
+    if cut.end <= start || cut.start >= end {
+        return vec![(start, end)];
+    }
+    let mut pieces = Vec::new();
+    if start < cut.start {
+        pieces.push((start, cut.start));
+    }
+    if end > cut.end {
+        pieces.push((cut.end, end));
+    }
+    pieces
+}
+
+/// What clears `cut` of `other`'s spans: a span inside it goes, one sticking out is trimmed, one around it
+/// is cut in two (both stay spans of `other`). Without spans left, `other` is deleted.
+fn clear_op(other: Recording, cut: &[Span], now: Ms) -> AppResult<Op> {
+    let mut rest = Vec::new();
+    for span in &other.spans {
+        let Some(end) = span.end else {
+            if cut.iter().any(|c| c.end > span.start) {
+                return Err(timer_running());
+            }
+            rest.push(span.clone());
+            continue;
+        };
+        let mut pieces = vec![(span.start, end)];
+        for &c in cut {
+            pieces = pieces
+                .into_iter()
+                .flat_map(|(s, e)| without(s, e, c))
+                .collect();
+        }
+        for (i, (start, end)) in pieces.into_iter().enumerate() {
+            let id = if i == 0 { span.id.clone() } else { new_id() };
+            rest.push(RecordingSpan {
+                id,
+                start,
+                end: Some(end),
+            });
+        }
+    }
+    if rest.is_empty() {
+        return Ok(Op::Delete { recording: other });
+    }
+    rest.sort_by_key(|s| s.start);
+    let after = Recording {
+        spans: rest,
         updated_at: now,
         ..other.clone()
     };
-    let ops = match (other.start < span.start, other_end > span.end) {
-        (false, false) => vec![Op::Delete { recording: other }],
-        (true, false) => vec![Op::Update {
-            after: trimmed(other.start, span.start),
-            before: other,
-        }],
-        (false, true) => vec![Op::Update {
-            after: trimmed(span.end, other_end),
-            before: other,
-        }],
-        (true, true) => {
-            let right = Recording {
-                id: new_id(),
-                created_at: now,
-                ..trimmed(span.end, other_end)
-            };
-            vec![
-                Op::Update {
-                    after: trimmed(other.start, span.start),
-                    before: other,
-                },
-                Op::Create { recording: right },
-            ]
+    Ok(Op::Update {
+        before: other,
+        after,
+    })
+}
+
+/// The time `recording` claims: its spans, an open one up to the end of time.
+fn claimed(recording: &Recording) -> Vec<Span> {
+    recording
+        .spans
+        .iter()
+        .map(|s| Span {
+            start: s.start,
+            end: s.end.unwrap_or(Ms::MAX),
+        })
+        .collect()
+}
+
+/// Other recordings with a span sharing time with one of `spans`, each once.
+async fn in_the_way(db: &Db, spans: &[Span], except: &str) -> AppResult<Vec<Recording>> {
+    let mut others: Vec<Recording> = Vec::new();
+    for span in spans {
+        for other in recordings::overlapping(db, span.start, span.end, Some(except)).await? {
+            if !others.iter().any(|o| o.id == other.id) {
+                others.push(other);
+            }
         }
-    };
-    Ok(ops)
+    }
+    others.sort_by_key(Recording::start);
+    Ok(others)
 }
 
 /// `base` as is when nothing is in the way of `new`, else per `overlap`: refused, or batched after what
-/// clears its span.
+/// clears its spans.
 async fn clearing(
     db: &Db,
     base: Op,
@@ -265,11 +377,8 @@ async fn clearing(
     overlap: Overlap,
     label: &str,
 ) -> AppResult<Op> {
-    let span = Span {
-        start: new.start,
-        end: new.end.unwrap_or(Ms::MAX),
-    };
-    let others = recordings::overlapping(db, span.start, span.end, Some(&new.id)).await?;
+    let cut = claimed(new);
+    let others = in_the_way(db, &cut, &new.id).await?;
     if others.is_empty() {
         return Ok(base);
     }
@@ -279,7 +388,7 @@ async fn clearing(
     let now = now_ms();
     let mut ops = Vec::new();
     for other in others {
-        ops.extend(clear_op(other, span, now)?);
+        ops.push(clear_op(other, &cut, now)?);
     }
     ops.push(base);
     Ok(Op::Batch {
@@ -288,29 +397,14 @@ async fn clearing(
     })
 }
 
-/// `current` with `patch` applied: changed times snapped, the rest validated.
+/// `current` with `patch` applied: changed spans snapped, the rest validated.
 fn patched(current: &Recording, patch: RecordingPatch, snap_minutes: u32) -> AppResult<Recording> {
-    let Some(current_end) = current.end else {
-        return Err(timer_running());
+    require_finished(current)?;
+    let spans = match &patch.spans {
+        Some(spans) => respanned(&current.spans, &snapped_spans(spans, snap_minutes)?),
+        None => current.spans.clone(),
     };
-    let end = match patch.end {
-        Some(None) => return Err(invalid("end", "is required")),
-        Some(Some(end)) => snap(end, snap_minutes),
-        None => current_end,
-    };
-    if patch
-        .start
-        .zip(patch.end.flatten())
-        .is_some_and(|(s, e)| e <= s)
-    {
-        return Err(invalid("end", "must be after the start"));
-    }
-    let start = patch.start.map_or(current.start, |s| snap(s, snap_minutes));
-    let span = Span {
-        start,
-        end: past_start(start, end, snap_minutes),
-    };
-    check_length(span)?;
+    recordings::check_spans(&spans)?;
     let note = match &patch.note {
         Some(note) => checked_note(note)?,
         None => current.note.clone(),
@@ -319,8 +413,7 @@ fn patched(current: &Recording, patch: RecordingPatch, snap_minutes: u32) -> App
         project_id: patch
             .project_id
             .unwrap_or_else(|| current.project_id.clone()),
-        start: span.start,
-        end: Some(span.end),
+        spans,
         note,
         tag_id: patch.tag_id.unwrap_or_else(|| current.tag_id.clone()),
         updated_at: now_ms(),
@@ -328,20 +421,63 @@ fn patched(current: &Recording, patch: RecordingPatch, snap_minutes: u32) -> App
     })
 }
 
-/// The span `recording` would have on `day`: the same local start time, the same length. A recording over
-/// midnight moves with the day it starts on.
-fn span_on_day(recording: &Recording, day: Day) -> AppResult<(Ms, Ms)> {
-    let end = recording.end.ok_or_else(timer_running)?;
-    let start = same_time_on(recording.start, day);
-    Ok((start, start + (end - recording.start)))
+/// `recording` with `spans` in place of its own, by start; refused when two overlap.
+fn with_spans(recording: &Recording, mut spans: Vec<RecordingSpan>) -> AppResult<Recording> {
+    spans.sort_by_key(|s| s.start);
+    let after = Recording {
+        spans,
+        updated_at: now_ms(),
+        ..recording.clone()
+    };
+    recordings::check_spans(&after.spans)?;
+    Ok(after)
 }
 
-/// The undo label of an update: moved (same length), resized, or edited (same times).
+/// `span` on `day`: the same local start time, the same length.
+fn span_on_day(span: Span, day: Day) -> Span {
+    let start = same_time_on(span.start, day);
+    Span {
+        start,
+        end: start + (span.end - span.start),
+    }
+}
+
+/// Every span of `recording` moved by whole days so that its first span lands on `day`, each at its own
+/// local start time and length.
+fn spans_on_day(recording: &Recording, day: Day) -> AppResult<Vec<Span>> {
+    let spans = closed_spans(recording)?;
+    let offset = day.date() - Day::of(recording.start()).date();
+    Ok(spans
+        .into_iter()
+        .map(|span| span_on_day(span, Day::from_date(Day::of(span.start).date() + offset)))
+        .collect())
+}
+
+/// The span `span_id` of `recording` on `day`.
+fn moved_span(recording: &Recording, span_id: &str, day: Day) -> AppResult<Span> {
+    let span = recording.span(span_id)?;
+    let end = span.end.ok_or_else(timer_running)?;
+    Ok(span_on_day(
+        Span {
+            start: span.start,
+            end,
+        },
+        day,
+    ))
+}
+
+/// The undo label of an update: moved (same lengths), resized, or edited (same times).
 fn update_label(before: &Recording, after: &Recording) -> &'static str {
-    let length = |r: &Recording| r.end.map(|end| end - r.start);
-    if (after.start, after.end) == (before.start, before.end) {
+    let times = |r: &Recording| r.spans.iter().map(|s| (s.start, s.end)).collect::<Vec<_>>();
+    let lengths = |r: &Recording| {
+        r.spans
+            .iter()
+            .map(|s| s.end.map(|end| end - s.start))
+            .collect::<Vec<_>>()
+    };
+    if times(after) == times(before) {
         "Edit recording"
-    } else if length(after) == length(before) {
+    } else if lengths(after) == lengths(before) {
         "Move recording"
     } else {
         "Resize recording"
@@ -366,7 +502,7 @@ impl Recordings<'_> {
         let (recording, project) = self.new_recording(input).await?;
         let label = format!(
             "Record {} for {}",
-            duration_text(recording.end.unwrap_or(recording.start) - recording.start),
+            duration_text(recording.duration(recording.start())),
             project.name
         );
         let base = Op::Create {
@@ -376,8 +512,8 @@ impl Recordings<'_> {
         self.commit(&mut undo, label, op, &recording.id).await
     }
 
-    /// New recordings as one undoable change; one that would overlap a recording, or one created before it,
-    /// is left out.
+    /// New recordings as one undoable change; one with a span that would overlap a recording, or one
+    /// created before it, is left out.
     pub async fn create_all(
         &self,
         inputs: Vec<RecordingInput>,
@@ -411,15 +547,12 @@ impl Recordings<'_> {
         let mut kept: Vec<Recording> = Vec::new();
         for input in inputs {
             let (recording, _) = self.new_recording(input).await?;
-            let (start, end) = (recording.start, recording.end.unwrap_or(recording.start));
+            let spans = claimed(&recording);
             let overlaps_kept = kept
                 .iter()
-                .any(|r| r.start < end && r.end.is_some_and(|e| e > start));
-            if overlaps_kept
-                || !recordings::overlapping(self.db, start, end, None)
-                    .await?
-                    .is_empty()
-            {
+                .flat_map(claimed)
+                .any(|k| spans.iter().any(|s| k.start < s.end && k.end > s.start));
+            if overlaps_kept || !in_the_way(self.db, &spans, &recording.id).await?.is_empty() {
                 continue;
             }
             kept.push(recording);
@@ -429,11 +562,8 @@ impl Recordings<'_> {
 
     /// `input` validated and snapped, with its project; not stored yet.
     async fn new_recording(&self, input: RecordingInput) -> AppResult<(Recording, Project)> {
-        if input.end <= input.start {
-            return Err(invalid("end", "must be after the start"));
-        }
-        let span = snap_span(input.start, input.end, self.snap_minutes);
-        check_length(span)?;
+        let spans = new_spans(&snapped_spans(&input.spans, self.snap_minutes)?);
+        recordings::check_spans(&spans)?;
         let note = checked_note(&input.note)?;
         let project = usable_project(self.db, &input.project_id, None).await?;
         check_tag(self.db, input.tag_id.as_deref()).await?;
@@ -441,12 +571,11 @@ impl Recordings<'_> {
         let recording = Recording {
             id: new_id(),
             project_id: project.id.clone(),
-            start: span.start,
-            end: Some(span.end),
             note,
             tag_id: input.tag_id,
             created_at: now,
             updated_at: now,
+            spans,
         };
         Ok((recording, project))
     }
@@ -466,44 +595,198 @@ impl Recordings<'_> {
             check_tag(self.db, after.tag_id.as_deref()).await?;
         }
         let label = update_label(&current, &after);
-        let base = Op::Update {
-            before: current,
-            after: after.clone(),
-        };
-        let op = clearing(self.db, base, &after, overlap, label).await?;
-        self.commit(&mut undo, label.to_string(), op, &after.id)
+        self.replace(&mut undo, current, after, overlap, label)
             .await
     }
 
-    /// Moves the recording to `day` at the same local time, keeping its length.
+    /// Adds `span` to the recording.
+    pub async fn add_span(
+        &self,
+        id: &str,
+        span: Span,
+        overlap: Overlap,
+    ) -> AppResult<Change<Recording>> {
+        let mut undo = self.undo.lock().await;
+        let current = recordings::get(self.db, id).await?;
+        require_finished(&current)?;
+        let span = snapped_span(span, self.snap_minutes)?;
+        let mut spans = current.spans.clone();
+        spans.push(RecordingSpan::new(span.start, Some(span.end)));
+        let after = with_spans(&current, spans)?;
+        self.replace(&mut undo, current, after, overlap, "Add span")
+            .await
+    }
+
+    /// Gives the span `span_id` the times of `span`.
+    pub async fn update_span(
+        &self,
+        id: &str,
+        span_id: &str,
+        span: Span,
+        overlap: Overlap,
+    ) -> AppResult<Change<Recording>> {
+        let mut undo = self.undo.lock().await;
+        let current = recordings::get(self.db, id).await?;
+        require_finished(&current)?;
+        current.span(span_id)?;
+        let span = snapped_span(span, self.snap_minutes)?;
+        let spans = with_span_set(&current.spans, span_id, span.start, span.end);
+        let after = with_spans(&current, spans)?;
+        let label = update_label(&current, &after);
+        self.replace(&mut undo, current, after, overlap, label)
+            .await
+    }
+
+    /// Moves the start and the end of the span `span_id` by whole snap steps each.
+    pub async fn nudge_span(
+        &self,
+        id: &str,
+        span_id: &str,
+        start_steps: i32,
+        end_steps: i32,
+        overlap: Overlap,
+    ) -> AppResult<Change<Recording>> {
+        let current = recordings::get(self.db, id).await?;
+        let span = current.span(span_id)?;
+        let end = span.end.ok_or_else(timer_running)?;
+        let step = i64::from(self.snap_minutes.max(1)) * MINUTE_MS;
+        let nudged = Span {
+            start: span.start + i64::from(start_steps) * step,
+            end: end + i64::from(end_steps) * step,
+        };
+        self.update_span(id, span_id, nudged, overlap).await
+    }
+
+    /// Removes the span `span_id`; removing the last one deletes the recording (then `None`).
+    pub async fn remove_span(
+        &self,
+        id: &str,
+        span_id: &str,
+    ) -> AppResult<Change<Option<Recording>>> {
+        let mut undo = self.undo.lock().await;
+        let current = recordings::get(self.db, id).await?;
+        require_finished(&current)?;
+        current.span(span_id)?;
+        if current.spans.len() == 1 {
+            let op = Op::Delete { recording: current };
+            let days = self
+                .apply_and_push(&mut undo, "Delete recording".into(), op)
+                .await?;
+            return Ok(Change { value: None, days });
+        }
+        let spans = current
+            .spans
+            .iter()
+            .filter(|s| s.id != span_id)
+            .cloned()
+            .collect();
+        let after = with_spans(&current, spans)?;
+        let op = Op::Update {
+            before: current,
+            after: after.clone(),
+        };
+        let change = self
+            .commit(&mut undo, "Remove span".into(), op, &after.id)
+            .await?;
+        Ok(change.map(Some))
+    }
+
+    /// Cuts the span `span_id` in two at `at` (snapped); both halves stay spans of the recording.
+    pub async fn split_span(
+        &self,
+        id: &str,
+        span_id: &str,
+        at: Ms,
+    ) -> AppResult<Change<Recording>> {
+        let mut undo = self.undo.lock().await;
+        let current = recordings::get(self.db, id).await?;
+        require_finished(&current)?;
+        let span = current.span(span_id)?.clone();
+        let at = snap(at, self.snap_minutes);
+        if at <= span.start || span.end.is_none_or(|end| at >= end) {
+            return Err(invalid("at", "must lie inside the span"));
+        }
+        let mut spans = with_span_set(&current.spans, span_id, span.start, at);
+        spans.push(RecordingSpan::new(at, span.end));
+        let after = with_spans(&current, spans)?;
+        let op = Op::Update {
+            before: current,
+            after: after.clone(),
+        };
+        self.commit(&mut undo, "Split span".into(), op, &after.id)
+            .await
+    }
+
+    /// The spans of `from` join `into`, which keeps its project, note and tag; `from` goes.
+    pub async fn merge(&self, into: &str, from: &str) -> AppResult<Change<Recording>> {
+        if into == from {
+            return Err(invalid("from", "must be another recording"));
+        }
+        let mut undo = self.undo.lock().await;
+        let target = recordings::get(self.db, into).await?;
+        let source = recordings::get(self.db, from).await?;
+        require_finished(&target)?;
+        require_finished(&source)?;
+        let mut spans = target.spans.clone();
+        spans.extend(source.spans.iter().cloned());
+        let after = with_spans(&target, spans)?;
+        // The source goes first: its spans keep their ids in the target.
+        let op = Op::Batch {
+            label: "Merge recordings".into(),
+            ops: vec![
+                Op::Delete { recording: source },
+                Op::Update {
+                    before: target,
+                    after: after.clone(),
+                },
+            ],
+        };
+        self.commit(&mut undo, "Merge recordings".into(), op, &after.id)
+            .await
+    }
+
+    /// Moves the recording to `day` at the same local times, keeping its lengths: the span `span_id`
+    /// alone, else every span by the days between its first span's day and `day`.
     pub async fn move_to_day(
         &self,
         id: &str,
+        span_id: Option<&str>,
         day: Day,
         overlap: Overlap,
     ) -> AppResult<Change<Recording>> {
-        let (start, end) = span_on_day(&recordings::get(self.db, id).await?, day)?;
-        let patch = RecordingPatch {
-            start: Some(start),
-            end: Some(Some(end)),
-            ..RecordingPatch::default()
-        };
-        self.update(id, patch, overlap).await
+        let current = recordings::get(self.db, id).await?;
+        match span_id {
+            Some(span_id) => {
+                let moved = moved_span(&current, span_id, day)?;
+                self.update_span(id, span_id, moved, overlap).await
+            }
+            None => {
+                let patch = RecordingPatch {
+                    spans: Some(spans_on_day(&current, day)?),
+                    ..RecordingPatch::default()
+                };
+                self.update(id, patch, overlap).await
+            }
+        }
     }
 
-    /// A new recording like `id` on `day` at the same local time.
+    /// A new recording like `id` on `day` at the same local times: of the span `span_id` alone, else of
+    /// every span as `move_to_day` places them.
     pub async fn copy_to_day(
         &self,
         id: &str,
+        span_id: Option<&str>,
         day: Day,
         overlap: Overlap,
     ) -> AppResult<Change<Recording>> {
         let original = recordings::get(self.db, id).await?;
-        let (start, end) = span_on_day(&original, day)?;
+        let spans = match span_id {
+            Some(span_id) => vec![moved_span(&original, span_id, day)?],
+            None => spans_on_day(&original, day)?,
+        };
         let input = RecordingInput {
+            spans,
             project_id: original.project_id,
-            start,
-            end,
             note: original.note,
             tag_id: original.tag_id,
         };
@@ -556,6 +839,23 @@ impl Recordings<'_> {
             value: Some(entry.label),
             days: days_touched(&entry.op, now_ms()),
         })
+    }
+
+    /// Writes `after` over `before`, clearing its spans of other recordings per `overlap`.
+    async fn replace(
+        &self,
+        undo: &mut UndoStack,
+        before: Recording,
+        after: Recording,
+        overlap: Overlap,
+        label: &str,
+    ) -> AppResult<Change<Recording>> {
+        let base = Op::Update {
+            before,
+            after: after.clone(),
+        };
+        let op = clearing(self.db, base, &after, overlap, label).await?;
+        self.commit(undo, label.to_string(), op, &after.id).await
     }
 
     /// Applies a new change and makes it undoable; returns the days it touched.
@@ -623,6 +923,27 @@ mod tests {
         let mut patch = RecordingPatch::default();
         f(&mut patch);
         patch
+    }
+
+    fn span(start: Ms, end: Ms) -> Span {
+        Span { start, end }
+    }
+
+    fn respan(start: Ms, end: Ms) -> RecordingPatch {
+        patch(|p| p.spans = Some(vec![span(start, end)]))
+    }
+
+    fn input_of(w: &World, spans: &[(Ms, Ms)]) -> RecordingInput {
+        RecordingInput {
+            spans: spans.iter().map(|&(s, e)| span(s, e)).collect(),
+            ..w.input(0, 0)
+        }
+    }
+
+    fn overlap_ids(err: &AppError) -> Vec<String> {
+        let in_the_way: Vec<Recording> =
+            serde_json::from_value(err.details().unwrap().clone()).unwrap();
+        in_the_way.into_iter().map(|r| r.id).collect()
     }
 
     #[test]
@@ -821,12 +1142,15 @@ mod tests {
             Recording {
                 id: saved.id.clone(),
                 project_id: w.project.id.clone(),
-                start: at(10, 0),
-                end: Some(at(11, 0)),
                 note: "fix login".into(),
                 tag_id: Some(w.alpha.id.clone()),
                 created_at: saved.created_at,
                 updated_at: saved.updated_at,
+                spans: vec![RecordingSpan {
+                    id: saved.spans[0].id.clone(),
+                    start: at(10, 0),
+                    end: Some(at(11, 0)),
+                }],
             }
         );
         assert_eq!(saved.created_at, saved.updated_at);
@@ -844,7 +1168,7 @@ mod tests {
             .unwrap()
             .value;
 
-        assert_eq!((saved.start, saved.end), (at(10, 0), Some(at(10, 45))));
+        assert_eq!(times(&saved), [(at(10, 0), at(10, 45))]);
     }
 
     #[tokio::test]
@@ -853,7 +1177,7 @@ mod tests {
 
         let saved = w.create(at(10, 0), at(10, 1)).await;
 
-        assert_eq!((saved.start, saved.end), (at(10, 0), Some(at(10, 5))));
+        assert_eq!(times(&saved), [(at(10, 0), at(10, 5))]);
     }
 
     #[tokio::test]
@@ -872,7 +1196,7 @@ mod tests {
             .value;
 
         assert_eq!(saved.note.chars().count(), 500);
-        assert_eq!(saved.end, Some(at(0, 0) + 24 * HOUR));
+        assert_eq!(times(&saved), [(at(0, 0), at(0, 0) + 24 * HOUR)]);
     }
 
     #[tokio::test]
@@ -909,27 +1233,34 @@ mod tests {
             ),
             (
                 "an end before the start",
-                RecordingInput {
-                    end: at(9, 0),
-                    ..valid.clone()
-                },
+                input_of(&w, &[(at(10, 0), at(9, 0))]),
                 "end",
             ),
             (
                 "an end equal to the start",
-                RecordingInput {
-                    end: at(10, 0),
-                    ..valid.clone()
-                },
+                input_of(&w, &[(at(10, 0), at(10, 0))]),
                 "end",
             ),
             (
                 "a span longer than 24 h",
-                RecordingInput {
-                    end: at(10, 0) + 24 * HOUR + 5 * MIN,
-                    ..valid.clone()
-                },
+                input_of(&w, &[(at(10, 0), at(10, 0) + 24 * HOUR + 5 * MIN)]),
                 "end",
+            ),
+            (
+                "a good span next to a bad one",
+                input_of(&w, &[(at(8, 0), at(9, 0)), (at(12, 0), at(11, 0))]),
+                "end",
+            ),
+            ("no span", input_of(&w, &[]), "spans"),
+            (
+                "spans overlapping each other",
+                input_of(&w, &[(at(10, 0), at(11, 0)), (at(10, 30), at(12, 0))]),
+                "spans",
+            ),
+            (
+                "spans that overlap once snapped",
+                input_of(&w, &[(at(10, 0), at(10, 1)), (at(10, 2), at(11, 0))]),
+                "spans",
             ),
             (
                 "an archived project",
@@ -997,24 +1328,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_with_several_spans_snaps_and_sorts_them_into_one_recording() {
+        let w = World::new().await;
+        let input = input_of(&w, &[(at(16, 7), at(20, 13)), (at(14, 23), at(15, 2))]);
+
+        let saved = w
+            .service()
+            .create(input, Overlap::Cancel)
+            .await
+            .unwrap()
+            .value;
+
+        assert_eq!(
+            times(&saved),
+            [(at(14, 25), at(15, 0)), (at(16, 5), at(20, 15))]
+        );
+        assert_eq!(w.rows().await, [saved]);
+    }
+
+    #[tokio::test]
+    async fn spans_that_only_touch_each_other_are_accepted() {
+        let w = World::new().await;
+
+        let saved = w
+            .create_spans(&[(at(10, 0), at(11, 0)), (at(11, 0), at(12, 0))])
+            .await;
+
+        assert_eq!(
+            times(&saved),
+            [(at(10, 0), at(11, 0)), (at(11, 0), at(12, 0))]
+        );
+    }
+
+    #[tokio::test]
+    async fn the_label_of_a_recording_with_several_spans_sums_them() {
+        let w = World::new().await;
+
+        w.create_spans(&[(at(14, 25), at(15, 0)), (at(16, 5), at(20, 15))])
+            .await;
+
+        assert_eq!(w.status().await, undo_label("Record 4 h 45 min for Acme"));
+    }
+
+    #[tokio::test]
     async fn update_labels_name_what_changed() {
         let cases = [
             (
                 "both ends shifted",
-                patch(|p| {
-                    p.start = Some(at(10, 30));
-                    p.end = Some(Some(at(11, 30)));
-                }),
+                respan(at(10, 30), at(11, 30)),
                 "Move recording",
             ),
             (
                 "end changed",
-                patch(|p| p.end = Some(Some(at(11, 30)))),
+                respan(at(10, 0), at(11, 30)),
                 "Resize recording",
             ),
             (
                 "start changed",
-                patch(|p| p.start = Some(at(9, 30))),
+                respan(at(9, 30), at(11, 0)),
                 "Resize recording",
             ),
             (
@@ -1027,13 +1398,13 @@ mod tests {
                 patch(|p| p.project_id = Some("other".into())),
                 "Edit recording",
             ),
+            ("same times", respan(at(10, 0), at(11, 0)), "Edit recording"),
             (
-                "same times",
+                "a span added",
                 patch(|p| {
-                    p.start = Some(at(10, 0));
-                    p.end = Some(Some(at(11, 0)));
+                    p.spans = Some(vec![span(at(10, 0), at(11, 0)), span(at(12, 0), at(13, 0))]);
                 }),
-                "Edit recording",
+                "Resize recording",
             ),
         ];
         for (name, mut patch, label) in cases {
@@ -1057,10 +1428,7 @@ mod tests {
     async fn update_snaps_the_new_times_and_returns_the_saved_recording() {
         let w = World::new().await;
         let saved = w.create(at(10, 0), at(11, 0)).await;
-        let change = patch(|p| {
-            p.start = Some(at(10, 32));
-            p.end = Some(Some(at(11, 27)));
-        });
+        let change = respan(at(10, 32), at(11, 27));
 
         let updated = w
             .service()
@@ -1072,9 +1440,12 @@ mod tests {
         assert_eq!(
             updated,
             Recording {
-                start: at(10, 30),
-                end: Some(at(11, 25)),
                 updated_at: updated.updated_at,
+                spans: vec![RecordingSpan {
+                    id: saved.spans[0].id.clone(),
+                    start: at(10, 30),
+                    end: Some(at(11, 25)),
+                }],
                 ..saved
             }
         );
@@ -1103,10 +1474,8 @@ mod tests {
             .unwrap()
             .value;
 
-        assert_eq!(
-            (updated.start, updated.end, updated.note.as_str()),
-            (stored.start, stored.end, "later")
-        );
+        assert_eq!(updated.spans, stored.spans);
+        assert_eq!(updated.note, "later");
         assert_eq!(w.status().await, undo_label("Edit recording"));
     }
 
@@ -1220,14 +1589,18 @@ mod tests {
             .unwrap();
         let saved = w.create(at(10, 0), at(11, 0)).await;
         let cases = [
-            ("the end removed", patch(|p| p.end = Some(None)), "end"),
             (
                 "an end before the start",
-                patch(|p| {
-                    p.start = Some(at(12, 0));
-                    p.end = Some(Some(at(11, 0)));
-                }),
+                respan(at(12, 0), at(11, 0)),
                 "end",
+            ),
+            ("no span", patch(|p| p.spans = Some(Vec::new())), "spans"),
+            (
+                "spans overlapping each other",
+                patch(|p| {
+                    p.spans = Some(vec![span(at(8, 0), at(9, 30)), span(at(9, 0), at(10, 0))]);
+                }),
+                "spans",
             ),
             (
                 "a note with a line break",
@@ -1246,7 +1619,7 @@ mod tests {
             ),
             (
                 "a span longer than 24 h",
-                patch(|p| p.end = Some(Some(at(10, 0) + 25 * HOUR))),
+                respan(at(10, 0), at(10, 0) + 25 * HOUR),
                 "end",
             ),
         ];
@@ -1341,7 +1714,39 @@ mod tests {
             serde_json::from_value(err.details().unwrap().clone()).unwrap();
         assert_eq!(in_the_way, [first.clone(), second.clone()]);
         assert_eq!(w.rows().await, [first, second]);
-        assert_eq!(w.status().await, undo_label("Record 1 h 00 min for Acme"));
+    }
+
+    #[tokio::test]
+    async fn cancel_lists_a_neighbour_with_several_spans_in_the_way_once() {
+        let w = World::new().await;
+        let neighbour = w
+            .create_spans(&[(at(10, 0), at(11, 0)), (at(12, 0), at(13, 0))])
+            .await;
+
+        let err = w
+            .service()
+            .create(
+                input_of(&w, &[(at(10, 30), at(10, 45)), (at(12, 15), at(12, 30))]),
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::Overlap);
+        assert_eq!(overlap_ids(&err), [neighbour.id.clone()]);
+        assert_eq!(w.rows().await, [neighbour]);
+    }
+
+    #[tokio::test]
+    async fn a_span_in_the_gap_between_a_neighbours_spans_is_not_in_the_way() {
+        let w = World::new().await;
+        let neighbour = w
+            .create_spans(&[(at(10, 0), at(11, 0)), (at(13, 0), at(14, 0))])
+            .await;
+
+        let saved = w.create(at(11, 0), at(13, 0)).await;
+
+        assert_eq!(w.rows().await, [neighbour, saved]);
     }
 
     #[tokio::test]
@@ -1444,7 +1849,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_right_part_of_a_split_keeps_project_note_and_tag_under_a_new_id() {
+    async fn cutting_a_span_sticking_out_on_both_sides_leaves_two_spans_of_the_same_recording() {
         let w = World::new().await;
         let original = w
             .service()
@@ -1467,29 +1872,114 @@ mod tests {
             .unwrap();
 
         let rows = w.rows().await;
-        assert_eq!(rows.len(), 3);
-        let (left, middle, right) = (&rows[0], &rows[1], &rows[2]);
+        assert_eq!(rows.len(), 2);
+        let (cut, new) = (&rows[0], &rows[1]);
+        assert_eq!(cut.id, original.id);
         assert_eq!(
-            *left,
+            *cut,
             Recording {
-                end: Some(at(10, 20)),
-                updated_at: left.updated_at,
+                updated_at: cut.updated_at,
+                spans: vec![
+                    RecordingSpan {
+                        id: original.spans[0].id.clone(),
+                        start: at(10, 0),
+                        end: Some(at(10, 20)),
+                    },
+                    RecordingSpan {
+                        id: cut.spans[1].id.clone(),
+                        start: at(10, 40),
+                        end: Some(at(11, 0)),
+                    },
+                ],
                 ..original.clone()
             }
         );
-        assert_eq!(middle.project_id, w.project.id);
-        assert_ne!(right.id, original.id);
-        assert_eq!(right.tag_id, Some(w.alpha.id.clone()));
+        assert_ne!(cut.spans[1].id, original.spans[0].id);
+        assert_eq!(new.project_id, w.project.id);
+        assert_eq!(times(new), [(at(10, 20), at(10, 40))]);
+    }
+
+    #[tokio::test]
+    async fn replace_deletes_inside_spans_trims_edge_spans_and_cuts_a_span_in_two() {
+        let w = World::new().await;
+        let one = w
+            .create_spans(&[(at(8, 0), at(9, 0)), (at(10, 0), at(11, 0))])
+            .await;
+        let two = w
+            .create_spans(&[(at(12, 0), at(13, 0)), (at(14, 0), at(15, 0))])
+            .await;
+
+        w.service()
+            .create(
+                input_of(&w, &[(at(10, 30), at(10, 45)), (at(12, 30), at(16, 0))]),
+                Overlap::Replace,
+            )
+            .await
+            .unwrap();
+
+        let rows = w.rows().await;
+        assert_eq!(rows.len(), 3);
+        let one_after = rows.iter().find(|r| r.id == one.id).unwrap();
+        let two_after = rows.iter().find(|r| r.id == two.id).unwrap();
         assert_eq!(
-            *right,
-            Recording {
-                id: right.id.clone(),
-                start: at(10, 40),
-                created_at: right.created_at,
-                updated_at: right.updated_at,
-                ..original
-            }
+            times(one_after),
+            [
+                (at(8, 0), at(9, 0)),
+                (at(10, 0), at(10, 30)),
+                (at(10, 45), at(11, 0))
+            ]
         );
+        assert_eq!(times(two_after), [(at(12, 0), at(12, 30))]);
+        assert_eq!(one_after.spans[0].id, one.spans[0].id);
+        assert_eq!(one_after.spans[1].id, one.spans[1].id);
+        assert!(no_two_overlap(&rows));
+    }
+
+    #[tokio::test]
+    async fn replace_deletes_a_recording_left_without_spans() {
+        let w = World::new().await;
+        w.create_spans(&[(at(10, 0), at(10, 30)), (at(11, 0), at(11, 30))])
+            .await;
+
+        w.service()
+            .create(w.input(at(9, 0), at(12, 0)), Overlap::Replace)
+            .await
+            .unwrap();
+
+        assert_eq!(spans(&w.rows().await), [(at(9, 0), at(12, 0))]);
+        assert_eq!(w.rows().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn undoing_and_redoing_a_replace_restores_the_exact_span_ids() {
+        let w = World::new().await;
+        let one = w
+            .create_spans(&[(at(10, 0), at(11, 0)), (at(12, 0), at(13, 0))])
+            .await;
+        let two = w.create(at(14, 0), at(15, 0)).await;
+        let before = w.rows().await;
+        w.service()
+            .create(
+                input_of(&w, &[(at(10, 20), at(10, 40)), (at(12, 0), at(15, 0))]),
+                Overlap::Replace,
+            )
+            .await
+            .unwrap();
+        let replaced = w.rows().await;
+        assert!(replaced.iter().all(|r| r.id != two.id));
+
+        w.service().undo().await.unwrap();
+
+        let restored = w.rows().await;
+        assert_eq!(restored, before);
+        assert_eq!(
+            span_ids(restored.iter().find(|r| r.id == one.id).unwrap()),
+            span_ids(&one)
+        );
+
+        w.service().redo().await.unwrap();
+
+        assert_eq!(w.rows().await, replaced);
     }
 
     #[tokio::test]
@@ -1553,7 +2043,7 @@ mod tests {
 
         let saved = w.create(at(10, 0), at(11, 0)).await;
 
-        assert_eq!(saved.end, Some(at(11, 0)));
+        assert_eq!(times(&saved), [(at(10, 0), at(11, 0))]);
         assert_eq!(w.rows().await.len(), 2);
     }
 
@@ -1562,7 +2052,7 @@ mod tests {
         let w = World::new().await;
         let first = w.create(at(10, 0), at(11, 0)).await;
         let second = w.create(at(12, 0), at(13, 0)).await;
-        let earlier = || patch(|p| p.start = Some(at(10, 30)));
+        let earlier = || respan(at(10, 30), at(13, 0));
 
         let err = w
             .service()
@@ -1591,16 +2081,12 @@ mod tests {
 
         let updated = w
             .service()
-            .update(
-                &saved.id,
-                patch(|p| p.end = Some(Some(at(11, 30)))),
-                Overlap::Cancel,
-            )
+            .update(&saved.id, respan(at(10, 0), at(11, 30)), Overlap::Cancel)
             .await
             .unwrap()
             .value;
 
-        assert_eq!(updated.end, Some(at(11, 30)));
+        assert_eq!(times(&updated), [(at(10, 0), at(11, 30))]);
         assert_eq!(w.rows().await, [updated]);
     }
 
@@ -1657,7 +2143,7 @@ mod tests {
             .value;
         let change = patch(|p| {
             p.note = Some("after".into());
-            p.start = Some(at(10, 30));
+            p.spans = Some(vec![span(at(10, 30), at(11, 0))]);
             p.tag_id = Some(Some(w.beta.id.clone()));
             p.project_id = Some(w.other.id.clone());
         });
@@ -1714,14 +2200,7 @@ mod tests {
         let w = World::new().await;
         let saved = w.create(at(10, 0), at(11, 0)).await;
         w.service()
-            .update(
-                &saved.id,
-                patch(|p| {
-                    p.start = Some(at(12, 0));
-                    p.end = Some(Some(at(13, 0)));
-                }),
-                Overlap::Cancel,
-            )
+            .update(&saved.id, respan(at(12, 0), at(13, 0)), Overlap::Cancel)
             .await
             .unwrap();
         let newer =
@@ -1789,10 +2268,7 @@ mod tests {
             .service()
             .update(
                 &saved.id,
-                patch(|p| {
-                    p.start = Some(midnight + HOUR);
-                    p.end = Some(Some(midnight + 2 * HOUR));
-                }),
+                respan(midnight + HOUR, midnight + 2 * HOUR),
                 Overlap::Cancel,
             )
             .await
@@ -1811,10 +2287,7 @@ mod tests {
             .service()
             .update(
                 &saved.id,
-                patch(|p| {
-                    p.start = Some(midnight - 3 * HOUR);
-                    p.end = Some(Some(midnight - 2 * HOUR));
-                }),
+                respan(midnight - 3 * HOUR, midnight - 2 * HOUR),
                 Overlap::Cancel,
             )
             .await
@@ -1836,14 +2309,14 @@ mod tests {
 
         let moved = w
             .service()
-            .move_to_day(&saved.id, next_day(), Overlap::Cancel)
+            .move_to_day(&saved.id, None, next_day(), Overlap::Cancel)
             .await
             .unwrap();
 
         assert_eq!(moved.value.id, saved.id);
         assert_eq!(
-            (moved.value.start, moved.value.end),
-            (at(12, 0) + NEXT_DAY, Some(at(13, 30) + NEXT_DAY))
+            times(&moved.value),
+            [(at(12, 0) + NEXT_DAY, at(13, 30) + NEXT_DAY)]
         );
         assert_eq!(moved.days, [Day::of(at(12, 0)), next_day()]);
         assert_eq!(w.rows().await, [moved.value]);
@@ -1869,7 +2342,7 @@ mod tests {
 
         let moved = w
             .service()
-            .move_to_day(&saved.id, next_day(), Overlap::Cancel)
+            .move_to_day(&saved.id, None, next_day(), Overlap::Cancel)
             .await
             .unwrap()
             .value;
@@ -1885,7 +2358,7 @@ mod tests {
         let w = World::new().await;
         let saved = w.create(at(12, 0), at(13, 0)).await;
         w.service()
-            .move_to_day(&saved.id, next_day(), Overlap::Cancel)
+            .move_to_day(&saved.id, None, next_day(), Overlap::Cancel)
             .await
             .unwrap();
 
@@ -1909,14 +2382,14 @@ mod tests {
 
         let err = w
             .service()
-            .move_to_day(&saved.id, next_day(), Overlap::Cancel)
+            .move_to_day(&saved.id, None, next_day(), Overlap::Cancel)
             .await
             .unwrap_err();
         assert_eq!(err.kind(), ErrorKind::Overlap);
         assert_eq!(w.rows().await, [saved.clone(), blocker]);
 
         w.service()
-            .move_to_day(&saved.id, next_day(), Overlap::Replace)
+            .move_to_day(&saved.id, None, next_day(), Overlap::Replace)
             .await
             .unwrap();
         assert_eq!(
@@ -1935,7 +2408,7 @@ mod tests {
 
         let err = w
             .service()
-            .move_to_day(&timer.id, next_day(), Overlap::Cancel)
+            .move_to_day(&timer.id, None, next_day(), Overlap::Cancel)
             .await
             .unwrap_err();
 
@@ -1950,7 +2423,7 @@ mod tests {
 
         let err = w
             .service()
-            .move_to_day("nope", next_day(), Overlap::Cancel)
+            .move_to_day("nope", None, next_day(), Overlap::Cancel)
             .await
             .unwrap_err();
 
@@ -1976,16 +2449,13 @@ mod tests {
 
         let copied = w
             .service()
-            .copy_to_day(&original.id, next_day(), Overlap::Cancel)
+            .copy_to_day(&original.id, None, next_day(), Overlap::Cancel)
             .await
             .unwrap();
 
         let copy = &copied.value;
         assert_ne!(copy.id, original.id);
-        assert_eq!(
-            (copy.start, copy.end),
-            (at(12, 0) + NEXT_DAY, Some(at(13, 30) + NEXT_DAY))
-        );
+        assert_eq!(times(copy), [(at(12, 0) + NEXT_DAY, at(13, 30) + NEXT_DAY)]);
         assert_eq!(
             (&copy.project_id, &copy.note, &copy.tag_id),
             (&original.project_id, &original.note, &original.tag_id)
@@ -2000,7 +2470,7 @@ mod tests {
         let w = World::new().await;
         let original = w.create(at(12, 0), at(13, 0)).await;
         w.service()
-            .copy_to_day(&original.id, next_day(), Overlap::Cancel)
+            .copy_to_day(&original.id, None, next_day(), Overlap::Cancel)
             .await
             .unwrap();
 
@@ -2023,14 +2493,14 @@ mod tests {
 
         let err = w
             .service()
-            .copy_to_day(&original.id, next_day(), Overlap::Cancel)
+            .copy_to_day(&original.id, None, next_day(), Overlap::Cancel)
             .await
             .unwrap_err();
         assert_eq!(err.kind(), ErrorKind::Overlap);
         assert_eq!(w.rows().await, [original.clone(), blocker]);
 
         w.service()
-            .copy_to_day(&original.id, next_day(), Overlap::Replace)
+            .copy_to_day(&original.id, None, next_day(), Overlap::Replace)
             .await
             .unwrap();
         assert_eq!(
@@ -2050,13 +2520,764 @@ mod tests {
 
         let err = w
             .service()
-            .copy_to_day(&timer.id, next_day(), Overlap::Cancel)
+            .copy_to_day(&timer.id, None, next_day(), Overlap::Cancel)
             .await
             .unwrap_err();
 
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(w.rows().await, [timer]);
         assert_eq!(w.status().await, no_status());
+    }
+
+    fn local_time(ms: Ms) -> NaiveTime {
+        chrono::DateTime::from_timestamp_millis(ms)
+            .unwrap()
+            .with_timezone(&Local)
+            .time()
+    }
+
+    #[tokio::test]
+    async fn move_to_day_without_a_span_shifts_every_span_by_the_same_days_at_its_local_time() {
+        let w = World::new().await;
+        let first_day = Day::of(at(10, 0));
+        let saved = w
+            .create_spans(&[
+                (at(10, 0), at(11, 0)),
+                (at(14, 0) + NEXT_DAY, at(15, 30) + NEXT_DAY),
+            ])
+            .await;
+        let target = Day::parse("2026-11-03").unwrap();
+
+        let moved = w
+            .service()
+            .move_to_day(&saved.id, None, target, Overlap::Cancel)
+            .await
+            .unwrap()
+            .value;
+
+        let days_apart = target.date() - first_day.date();
+        assert_eq!(moved.spans.len(), 2);
+        for (before, after) in saved.spans.iter().zip(&moved.spans) {
+            assert_eq!(after.id, before.id);
+            assert_eq!(local_time(after.start), local_time(before.start));
+            assert_eq!(
+                Day::of(after.start).date() - Day::of(before.start).date(),
+                days_apart
+            );
+            assert_eq!(
+                after.end.unwrap() - after.start,
+                before.end.unwrap() - before.start
+            );
+        }
+        assert_eq!(Day::of(moved.start()), target);
+        assert_eq!(w.status().await, undo_label("Move recording"));
+    }
+
+    #[tokio::test]
+    async fn move_to_day_with_a_span_moves_only_that_span() {
+        let w = World::new().await;
+        let saved = w
+            .create_spans(&[(at(10, 0), at(11, 0)), (at(14, 0), at(15, 0))])
+            .await;
+
+        let moved = w
+            .service()
+            .move_to_day(
+                &saved.id,
+                Some(saved.spans[1].id.as_str()),
+                next_day(),
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap()
+            .value;
+
+        assert_eq!(moved.spans[0], saved.spans[0]);
+        assert_eq!(moved.spans[1].id, saved.spans[1].id);
+        assert_eq!(Day::of(moved.spans[1].start), next_day());
+        assert_eq!(
+            local_time(moved.spans[1].start),
+            local_time(saved.spans[1].start)
+        );
+        assert_eq!(moved.spans[1].end.unwrap() - moved.spans[1].start, HOUR);
+        assert_eq!(w.rows().await, [moved]);
+    }
+
+    #[tokio::test]
+    async fn copy_to_day_with_a_span_creates_a_single_span_recording() {
+        let w = World::new().await;
+        let original = w
+            .service()
+            .create(
+                RecordingInput {
+                    note: "copy me".into(),
+                    tag_id: Some(w.alpha.id.clone()),
+                    ..input_of(&w, &[(at(10, 0), at(11, 0)), (at(14, 0), at(15, 30))])
+                },
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap()
+            .value;
+
+        let copy = w
+            .service()
+            .copy_to_day(
+                &original.id,
+                Some(original.spans[1].id.as_str()),
+                next_day(),
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap()
+            .value;
+
+        assert_ne!(copy.id, original.id);
+        assert_eq!(
+            times(&copy),
+            [(at(14, 0) + NEXT_DAY, at(15, 30) + NEXT_DAY)]
+        );
+        assert_ne!(copy.spans[0].id, original.spans[1].id);
+        assert_eq!(
+            (&copy.project_id, &copy.note, &copy.tag_id),
+            (&original.project_id, &original.note, &original.tag_id)
+        );
+        assert_eq!(w.rows().await, [original, copy]);
+        assert_eq!(w.status().await, undo_label("Record 1 h 30 min for Acme"));
+    }
+
+    #[tokio::test]
+    async fn copy_to_day_without_a_span_copies_every_span_into_a_new_recording() {
+        let w = World::new().await;
+        let original = w
+            .create_spans(&[(at(10, 0), at(11, 0)), (at(14, 0), at(15, 0))])
+            .await;
+
+        let copy = w
+            .service()
+            .copy_to_day(&original.id, None, next_day(), Overlap::Cancel)
+            .await
+            .unwrap()
+            .value;
+
+        assert_ne!(copy.id, original.id);
+        assert_eq!(
+            times(&copy),
+            [
+                (at(10, 0) + NEXT_DAY, at(11, 0) + NEXT_DAY),
+                (at(14, 0) + NEXT_DAY, at(15, 0) + NEXT_DAY)
+            ]
+        );
+        assert!(
+            copy.spans
+                .iter()
+                .all(|c| original.spans.iter().all(|o| o.id != c.id))
+        );
+        assert_eq!(w.rows().await, [original, copy]);
+    }
+
+    #[tokio::test]
+    async fn moving_or_copying_the_open_span_of_a_running_recording_asks_to_stop_the_timer() {
+        let w = World::new().await;
+        let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
+        let open = timer.spans[0].id.clone();
+
+        let moved = w
+            .service()
+            .move_to_day(&timer.id, Some(open.as_str()), next_day(), Overlap::Cancel)
+            .await
+            .unwrap_err();
+        let copied = w
+            .service()
+            .copy_to_day(&timer.id, Some(open.as_str()), next_day(), Overlap::Cancel)
+            .await
+            .unwrap_err();
+
+        for err in [moved, copied] {
+            assert!(matches!(&err, AppError::InvalidInput(m) if m == "Stop the timer first"));
+        }
+        assert_eq!(w.rows().await, [timer]);
+    }
+
+    /// Undoes and redoes the change `label` made on top of the rows `before`.
+    async fn assert_round_trip(w: &World, label: &str, before: &[Recording]) {
+        let after = w.rows().await;
+        assert_eq!(w.status().await.undo_label.as_deref(), Some(label));
+
+        let undone = w.service().undo().await.unwrap();
+        assert_eq!(undone.value.as_deref(), Some(label));
+        assert_eq!(w.rows().await, before);
+
+        let redone = w.service().redo().await.unwrap();
+        assert_eq!(redone.value.as_deref(), Some(label));
+        assert_eq!(w.rows().await, after);
+    }
+
+    #[tokio::test]
+    async fn add_span_joins_a_snapped_span_to_the_recording() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+        let before = w.rows().await;
+
+        let added = w
+            .service()
+            .add_span(&saved.id, span(at(12, 3), at(12, 58)), Overlap::Cancel)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            times(&added.value),
+            [(at(10, 0), at(11, 0)), (at(12, 5), at(13, 0))]
+        );
+        assert_eq!(added.value.spans[0].id, saved.spans[0].id);
+        assert_eq!(w.rows().await, [added.value.clone()]);
+        assert!(added.days.contains(&Day::of(at(12, 5))));
+        assert_round_trip(&w, "Add span", &before).await;
+    }
+
+    #[tokio::test]
+    async fn add_span_refuses_a_span_overlapping_the_recordings_own_or_an_invalid_one() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+
+        for (name, new, field) in [
+            ("inside its own span", span(at(10, 30), at(12, 0)), "spans"),
+            ("an end before the start", span(at(13, 0), at(12, 0)), "end"),
+            (
+                "longer than 24 h",
+                span(at(13, 0), at(13, 0) + 25 * HOUR),
+                "end",
+            ),
+        ] {
+            let err = w
+                .service()
+                .add_span(&saved.id, new, Overlap::Replace)
+                .await
+                .unwrap_err();
+            assert_eq!(field_of(&err).as_deref(), Some(field), "{name}");
+        }
+
+        assert_eq!(w.rows().await, [saved]);
+    }
+
+    #[tokio::test]
+    async fn add_span_follows_the_overlap_mode_for_other_recordings() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+        let neighbour = w.create(at(12, 0), at(13, 0)).await;
+
+        let err = w
+            .service()
+            .add_span(&saved.id, span(at(12, 30), at(14, 0)), Overlap::Cancel)
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Overlap);
+        assert_eq!(overlap_ids(&err), [neighbour.id.clone()]);
+        assert_eq!(w.rows().await, [saved.clone(), neighbour]);
+
+        w.service()
+            .add_span(&saved.id, span(at(12, 30), at(14, 0)), Overlap::Replace)
+            .await
+            .unwrap();
+        assert_eq!(
+            spans(&w.rows().await),
+            [
+                (at(10, 0), at(11, 0)),
+                (at(12, 0), at(12, 30)),
+                (at(12, 30), at(14, 0))
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn update_span_changes_only_that_span_and_keeps_its_id() {
+        let w = World::new().await;
+        let saved = w
+            .create_spans(&[(at(10, 0), at(11, 0)), (at(13, 0), at(14, 0))])
+            .await;
+        let before = w.rows().await;
+
+        let updated = w
+            .service()
+            .update_span(
+                &saved.id,
+                &saved.spans[1].id,
+                span(at(13, 2), at(14, 28)),
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap()
+            .value;
+
+        assert_eq!(
+            times(&updated),
+            [(at(10, 0), at(11, 0)), (at(13, 0), at(14, 30))]
+        );
+        assert_eq!(span_ids(&updated), span_ids(&saved));
+        assert_round_trip(&w, "Resize recording", &before).await;
+    }
+
+    #[tokio::test]
+    async fn update_span_to_the_same_length_is_labelled_a_move() {
+        let w = World::new().await;
+        let saved = w
+            .create_spans(&[(at(10, 0), at(11, 0)), (at(13, 0), at(14, 0))])
+            .await;
+        let before = w.rows().await;
+
+        w.service()
+            .update_span(
+                &saved.id,
+                &saved.spans[1].id,
+                span(at(15, 0), at(16, 0)),
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap();
+
+        assert_round_trip(&w, "Move recording", &before).await;
+    }
+
+    #[tokio::test]
+    async fn update_span_refuses_overlapping_a_sibling_and_unknown_spans() {
+        let w = World::new().await;
+        let saved = w
+            .create_spans(&[(at(10, 0), at(11, 0)), (at(13, 0), at(14, 0))])
+            .await;
+
+        let sibling = w
+            .service()
+            .update_span(
+                &saved.id,
+                &saved.spans[1].id,
+                span(at(10, 30), at(14, 0)),
+                Overlap::Replace,
+            )
+            .await
+            .unwrap_err();
+        let unknown = w
+            .service()
+            .update_span(
+                &saved.id,
+                "nope",
+                span(at(15, 0), at(16, 0)),
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(field_of(&sibling).as_deref(), Some("spans"));
+        assert_eq!(unknown.kind(), ErrorKind::NotFound);
+        assert_eq!(w.rows().await, [saved]);
+        assert_eq!(
+            w.status().await.undo_label.as_deref(),
+            Some("Record 2 h 00 min for Acme")
+        );
+    }
+
+    #[tokio::test]
+    async fn update_span_follows_the_overlap_mode_for_other_recordings() {
+        let w = World::new().await;
+        let saved = w
+            .create_spans(&[(at(8, 0), at(9, 0)), (at(10, 0), at(11, 0))])
+            .await;
+        let neighbour = w.create(at(12, 0), at(13, 0)).await;
+
+        let err = w
+            .service()
+            .update_span(
+                &saved.id,
+                &saved.spans[1].id,
+                span(at(10, 0), at(12, 30)),
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Overlap);
+        assert_eq!(w.rows().await, [saved.clone(), neighbour]);
+
+        w.service()
+            .update_span(
+                &saved.id,
+                &saved.spans[1].id,
+                span(at(10, 0), at(12, 30)),
+                Overlap::Replace,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            spans(&w.rows().await),
+            [
+                (at(8, 0), at(9, 0)),
+                (at(10, 0), at(12, 30)),
+                (at(12, 30), at(13, 0))
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn nudge_span_moves_the_start_and_the_end_by_whole_snap_steps() {
+        let cases = [
+            (5, 1, 1, (at(10, 5), at(11, 5)), "Move recording"),
+            (5, -2, -2, (at(9, 50), at(10, 50)), "Move recording"),
+            (5, 0, 1, (at(10, 0), at(11, 5)), "Resize recording"),
+            (5, 0, -1, (at(10, 0), at(10, 55)), "Resize recording"),
+            (5, 1, 0, (at(10, 5), at(11, 0)), "Resize recording"),
+            (5, -1, 2, (at(9, 55), at(11, 10)), "Resize recording"),
+            (15, 1, 1, (at(10, 15), at(11, 15)), "Move recording"),
+            (15, 0, -1, (at(10, 0), at(10, 45)), "Resize recording"),
+            (1, 0, 1, (at(10, 0), at(11, 1)), "Resize recording"),
+        ];
+        for (snap_minutes, start_steps, end_steps, expected, label) in cases {
+            let w = World::new().await;
+            let saved = w
+                .create_spans(&[(at(8, 0), at(9, 0)), (at(10, 0), at(11, 0))])
+                .await;
+            let before = w.rows().await;
+
+            let nudged = w
+                .snapping(snap_minutes)
+                .nudge_span(
+                    &saved.id,
+                    &saved.spans[1].id,
+                    start_steps,
+                    end_steps,
+                    Overlap::Cancel,
+                )
+                .await
+                .unwrap()
+                .value;
+
+            let name = format!("{snap_minutes} min, ({start_steps}, {end_steps})");
+            assert_eq!(times(&nudged), [(at(8, 0), at(9, 0)), expected], "{name}");
+            assert_eq!(span_ids(&nudged), span_ids(&saved), "{name}");
+            assert_round_trip(&w, label, &before).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn nudge_span_refuses_a_span_that_would_end_before_it_starts() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+
+        let err = w
+            .service()
+            .nudge_span(&saved.id, &saved.spans[0].id, 12, 0, Overlap::Cancel)
+            .await
+            .unwrap_err();
+
+        assert_eq!(field_of(&err).as_deref(), Some("end"));
+        assert_eq!(w.rows().await, [saved]);
+    }
+
+    #[tokio::test]
+    async fn nudge_span_refuses_the_open_span_of_a_running_recording() {
+        let w = World::new().await;
+        let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
+
+        let err = w
+            .service()
+            .nudge_span(&timer.id, &timer.spans[0].id, 1, 1, Overlap::Cancel)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(&err, AppError::InvalidInput(m) if m == "Stop the timer first"));
+        assert_eq!(w.rows().await, [timer]);
+        assert_eq!(w.status().await, no_status());
+    }
+
+    #[tokio::test]
+    async fn nudge_span_of_unknown_ids_is_not_found() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+
+        let span = w
+            .service()
+            .nudge_span(&saved.id, "nope", 1, 1, Overlap::Cancel)
+            .await
+            .unwrap_err();
+        let recording = w
+            .service()
+            .nudge_span("nope", &saved.spans[0].id, 1, 1, Overlap::Cancel)
+            .await
+            .unwrap_err();
+
+        assert_eq!(span.kind(), ErrorKind::NotFound);
+        assert_eq!(recording.kind(), ErrorKind::NotFound);
+    }
+
+    #[tokio::test]
+    async fn nudge_span_follows_the_overlap_mode() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+        let neighbour = w.create(at(11, 0), at(12, 0)).await;
+
+        let err = w
+            .service()
+            .nudge_span(&saved.id, &saved.spans[0].id, 0, 2, Overlap::Cancel)
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Overlap);
+        assert_eq!(overlap_ids(&err), [neighbour.id.clone()]);
+        assert_eq!(w.rows().await, [saved.clone(), neighbour]);
+
+        w.service()
+            .nudge_span(&saved.id, &saved.spans[0].id, 0, 2, Overlap::Replace)
+            .await
+            .unwrap();
+        assert_eq!(
+            spans(&w.rows().await),
+            [(at(10, 0), at(11, 10)), (at(11, 10), at(12, 0))]
+        );
+    }
+
+    #[tokio::test]
+    async fn remove_span_keeps_the_other_spans() {
+        let w = World::new().await;
+        let saved = w
+            .create_spans(&[(at(10, 0), at(11, 0)), (at(13, 0), at(14, 0))])
+            .await;
+        let before = w.rows().await;
+
+        let change = w
+            .service()
+            .remove_span(&saved.id, &saved.spans[0].id)
+            .await
+            .unwrap();
+
+        let rest = change.value.unwrap();
+        assert_eq!(times(&rest), [(at(13, 0), at(14, 0))]);
+        assert_eq!(rest.spans[0].id, saved.spans[1].id);
+        assert_eq!(w.rows().await, [rest]);
+        assert_round_trip(&w, "Remove span", &before).await;
+    }
+
+    #[tokio::test]
+    async fn removing_the_last_span_deletes_the_recording_and_returns_none() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+        let before = w.rows().await;
+
+        let change = w
+            .service()
+            .remove_span(&saved.id, &saved.spans[0].id)
+            .await
+            .unwrap();
+
+        assert_eq!(change.value, None);
+        assert_eq!(change.days, [Day::of(at(10, 0))]);
+        assert!(w.rows().await.is_empty());
+        assert_round_trip(&w, "Delete recording", &before).await;
+    }
+
+    #[tokio::test]
+    async fn remove_span_of_an_unknown_span_or_recording_is_not_found() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+
+        let span_err = w
+            .service()
+            .remove_span(&saved.id, "nope")
+            .await
+            .unwrap_err();
+        let recording_err = w
+            .service()
+            .remove_span("nope", &saved.spans[0].id)
+            .await
+            .unwrap_err();
+
+        assert_eq!(span_err.kind(), ErrorKind::NotFound);
+        assert_eq!(recording_err.kind(), ErrorKind::NotFound);
+        assert_eq!(w.rows().await, [saved]);
+    }
+
+    #[tokio::test]
+    async fn split_span_cuts_a_span_in_two_at_the_snapped_instant() {
+        let w = World::new().await;
+        let saved = w
+            .create_spans(&[(at(8, 0), at(9, 0)), (at(10, 0), at(12, 0))])
+            .await;
+        let before = w.rows().await;
+
+        let split = w
+            .service()
+            .split_span(&saved.id, &saved.spans[1].id, at(11, 2))
+            .await
+            .unwrap()
+            .value;
+
+        assert_eq!(
+            times(&split),
+            [
+                (at(8, 0), at(9, 0)),
+                (at(10, 0), at(11, 0)),
+                (at(11, 0), at(12, 0))
+            ]
+        );
+        assert_eq!(split.spans[1].id, saved.spans[1].id);
+        assert_ne!(split.spans[2].id, saved.spans[1].id);
+        assert_round_trip(&w, "Split span", &before).await;
+    }
+
+    #[tokio::test]
+    async fn split_span_outside_the_span_is_refused_on_the_at_field() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+        let span_id = saved.spans[0].id.clone();
+
+        for (name, at_ms) in [
+            ("before the span", at(9, 0)),
+            ("at the start", at(10, 0)),
+            ("snapping onto the start", at(10, 1)),
+            ("at the end", at(11, 0)),
+            ("snapping onto the end", at(10, 59)),
+            ("after the span", at(12, 0)),
+        ] {
+            let err = w
+                .service()
+                .split_span(&saved.id, &span_id, at_ms)
+                .await
+                .unwrap_err();
+            assert_eq!(field_of(&err).as_deref(), Some("at"), "{name}");
+        }
+
+        assert_eq!(w.rows().await, [saved]);
+        assert_eq!(
+            w.status().await.undo_label.as_deref(),
+            Some("Record 1 h 00 min for Acme")
+        );
+    }
+
+    #[tokio::test]
+    async fn merge_moves_the_spans_of_the_source_into_the_target_and_deletes_the_source() {
+        let w = World::new().await;
+        let target = w
+            .service()
+            .create(
+                RecordingInput {
+                    note: "keep".into(),
+                    tag_id: Some(w.alpha.id.clone()),
+                    ..input_of(&w, &[(at(10, 0), at(11, 0))])
+                },
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap()
+            .value;
+        let source = w
+            .service()
+            .create(
+                RecordingInput {
+                    project_id: w.other.id.clone(),
+                    note: "drop".into(),
+                    tag_id: Some(w.beta.id.clone()),
+                    ..input_of(&w, &[(at(8, 0), at(9, 0)), (at(12, 0), at(13, 0))])
+                },
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap()
+            .value;
+        let before = w.rows().await;
+
+        let merged = w
+            .service()
+            .merge(&target.id, &source.id)
+            .await
+            .unwrap()
+            .value;
+
+        assert_eq!(merged.id, target.id);
+        assert_eq!(
+            (&merged.project_id, &merged.note, &merged.tag_id),
+            (&target.project_id, &target.note, &target.tag_id)
+        );
+        assert_eq!(
+            times(&merged),
+            [
+                (at(8, 0), at(9, 0)),
+                (at(10, 0), at(11, 0)),
+                (at(12, 0), at(13, 0))
+            ]
+        );
+        assert_eq!(
+            span_ids(&merged),
+            [
+                source.spans[0].id.clone(),
+                target.spans[0].id.clone(),
+                source.spans[1].id.clone()
+            ]
+        );
+        assert_eq!(w.rows().await, [merged]);
+        assert_round_trip(&w, "Merge recordings", &before).await;
+    }
+
+    #[tokio::test]
+    async fn merge_refuses_the_same_recording_and_unknown_ones() {
+        let w = World::new().await;
+        let saved = w.create(at(10, 0), at(11, 0)).await;
+
+        let same = w.service().merge(&saved.id, &saved.id).await.unwrap_err();
+        let no_source = w.service().merge(&saved.id, "nope").await.unwrap_err();
+        let no_target = w.service().merge("nope", &saved.id).await.unwrap_err();
+
+        assert_eq!(same.kind(), ErrorKind::InvalidInput);
+        assert_eq!(field_of(&same).as_deref(), Some("from"));
+        assert_eq!(no_source.kind(), ErrorKind::NotFound);
+        assert_eq!(no_target.kind(), ErrorKind::NotFound);
+        assert_eq!(w.rows().await, [saved]);
+        assert_eq!(
+            w.status().await.undo_label.as_deref(),
+            Some("Record 1 h 00 min for Acme")
+        );
+    }
+
+    #[tokio::test]
+    async fn merge_of_recordings_whose_spans_overlap_is_refused() {
+        let w = World::new().await;
+        let target =
+            test_support::recording(&w.db, &w.project.id, at(10, 0), Some(at(11, 0))).await;
+        let source =
+            test_support::recording(&w.db, &w.project.id, at(10, 30), Some(at(12, 0))).await;
+
+        let err = w.service().merge(&target.id, &source.id).await.unwrap_err();
+
+        assert_eq!(field_of(&err).as_deref(), Some("spans"));
+        assert_eq!(w.rows().await, [target, source]);
+        assert_eq!(w.status().await, no_status());
+    }
+
+    #[tokio::test]
+    async fn span_operations_on_a_running_recording_ask_to_stop_the_timer() {
+        let w = World::new().await;
+        let other = w.create(at(7, 0), at(8, 0)).await;
+        let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
+        let id = timer.id.as_str();
+        let span_id = timer.spans[0].id.as_str();
+        let service = w.service();
+
+        let errors = [
+            service
+                .add_span(id, span(at(12, 0), at(13, 0)), Overlap::Cancel)
+                .await
+                .unwrap_err(),
+            service
+                .update_span(id, span_id, span(at(12, 0), at(13, 0)), Overlap::Cancel)
+                .await
+                .unwrap_err(),
+            service.remove_span(id, span_id).await.unwrap_err(),
+            service
+                .split_span(id, span_id, at(10, 30))
+                .await
+                .unwrap_err(),
+            service.merge(id, &other.id).await.unwrap_err(),
+            service.merge(&other.id, id).await.unwrap_err(),
+        ];
+
+        for err in errors {
+            assert!(matches!(&err, AppError::InvalidInput(m) if m == "Stop the timer first"));
+        }
+        assert_eq!(w.rows().await, [other, timer]);
     }
 
     #[tokio::test]

@@ -214,7 +214,7 @@ describe("ListView", () => {
       await editorDialog();
       await userEvent.click(screen.getByRole("button", { name: "Save" }));
       await waitFor(() =>
-        expect(mocked.recordingCreate).toHaveBeenCalledWith({ projectId: "p-site", start: at("09:00"), end: at("10:00"), note: "", tagId: null }, "cancel"),
+        expect(mocked.recordingCreate).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: at("09:00"), end: at("10:00") }], note: "", tagId: null }, "cancel"),
       );
     });
 

@@ -1,5 +1,6 @@
 import { api, toAppError, type Overlap, type Recording, type RecordingInput, type RecordingPatch, type Span, type UndoStatus } from "../../api";
 import { formatDuration } from "../../lib/format";
+import { recordedMs } from "../../lib/recordings";
 import { fail } from "../requests";
 import type { Slice, Store } from "../store";
 
@@ -13,10 +14,11 @@ export interface Selection {
 /**
  * `projectId`: preselected for a new recording; `warning`: shown above the fields.
  * `at`: a span of the recording, to find it by; the shown day's block when absent.
+ * `spanId`: the span whose times the editor shows; the first one when absent.
  */
 export type Editor =
   | { mode: "create"; start: number; end: number; projectId?: string; warning?: string }
-  | { mode: "edit"; id: string; at?: { start: number; end: number } };
+  | { mode: "edit"; id: string; at?: { start: number; end: number }; spanId?: string };
 
 export interface RecordingsSlice {
   selection: Selection | null;
@@ -37,17 +39,19 @@ export interface RecordingsSlice {
   /** Saves; an overlap asks first whether to replace. Rejects with the error when a form field shows it. */
   createRecording: (input: RecordingInput) => Promise<Recording | null>;
   updateRecording: (id: string, patch: RecordingPatch) => Promise<Recording | null>;
+  /** New times for one span of the recording. */
+  updateSpan: (id: string, spanId: string, span: Span) => Promise<Recording | null>;
+  /** Moves the span's start and end by whole snap steps each. */
+  nudgeSpan: (id: string, spanId: string, startSteps: number, endSteps: number) => Promise<Recording | null>;
   deleteRecording: (id: string) => Promise<void>;
-  /** To `day` at the same time of day. */
-  moveRecording: (id: string, day: string) => Promise<void>;
-  /** A copy on `day` at the same time of day. */
-  copyRecording: (id: string, day: string) => Promise<void>;
+  /** The span `spanId`, else (null) the whole recording, to `day` at the same time of day. */
+  moveRecording: (id: string, day: string, spanId: string | null) => Promise<void>;
+  /** A copy of the span `spanId`, else (null) of the whole recording, on `day` at the same time of day. */
+  copyRecording: (id: string, day: string, spanId: string | null) => Promise<void>;
   undo: () => Promise<void>;
   redo: () => Promise<void>;
 }
 
-/** A saved recording's length; a running one has none yet. */
-const recordedMs = (r: Recording) => (r.end === null ? 0 : r.end - r.start);
 
 const NOTHING_TO_UNDO: UndoStatus = { undoLabel: null, redoLabel: null };
 
@@ -168,13 +172,25 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
         return saved;
       },
 
-      async moveRecording(id, day) {
-        const moved = await writing("Could not move the recording", (overlap) => api.recordingMove(id, day, overlap));
+      async updateSpan(id, spanId, span) {
+        const saved = await writing("Could not change the recording", (overlap) => api.recordingUpdateSpan(id, spanId, span, overlap));
+        if (saved) undoToast("Recording changed");
+        return saved;
+      },
+
+      async nudgeSpan(id, spanId, startSteps, endSteps) {
+        const saved = await writing("Could not change the recording", (overlap) => api.recordingNudge(id, spanId, startSteps, endSteps, overlap));
+        if (saved) undoToast("Recording changed");
+        return saved;
+      },
+
+      async moveRecording(id, day, spanId) {
+        const moved = await writing("Could not move the recording", (overlap) => api.recordingMove(id, spanId, day, overlap));
         if (moved) undoToast("Recording moved");
       },
 
-      async copyRecording(id, day) {
-        const copy = await writing("Could not copy the recording", (overlap) => api.recordingCopy(id, day, overlap));
+      async copyRecording(id, day, spanId) {
+        const copy = await writing("Could not copy the recording", (overlap) => api.recordingCopy(id, spanId, day, overlap));
         if (copy) undoToast("Recording copied");
       },
 

@@ -89,7 +89,7 @@ describe("AwayPrompt", () => {
     it("answers with the last used project, the suggested times and the trimmed note on Enter", async () => {
       await renderPrompt();
       await userEvent.type(field("Note"), "  lunch {Enter}");
-      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", start: at("12:05"), end: at("12:45"), note: "lunch", tagId: null });
+      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: at("12:05"), end: at("12:45") }], note: "lunch", tagId: null });
     });
 
     it("answers with the edited times and the chosen tag when Record is clicked", async () => {
@@ -100,7 +100,7 @@ describe("AwayPrompt", () => {
       await userEvent.type(field("To"), "12:40");
       await userEvent.type(screen.getByRole("combobox", { name: "Tag" }), "res{Enter}");
       await userEvent.click(recordButton());
-      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", start: at("12:10"), end: at("12:40"), note: "", tagId: "tag-research" });
+      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: at("12:10"), end: at("12:40") }], note: "", tagId: "tag-research" });
     });
 
     it("takes an end before the start as the next day", async () => {
@@ -108,7 +108,7 @@ describe("AwayPrompt", () => {
       await userEvent.clear(field("To"));
       await userEvent.type(field("To"), "08:00");
       await userEvent.click(recordButton());
-      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ start: at("12:05"), end: at("08:00", "2026-03-11") }));
+      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: at("12:05"), end: at("08:00", "2026-03-11") }] }));
     });
 
     it("asks for a project and answers nothing while none is known", async () => {
@@ -167,6 +167,21 @@ describe("AwayPrompt", () => {
       expect(await screen.findByRole("alert")).toHaveTextContent("Recordings already cover 12:10–12:30 (Website), 12:35–12:40 (Website)");
     });
 
+    it("lists every span of a recording in the way", async () => {
+      const sittings = recording({
+        id: "r11",
+        projectId: "p-site",
+        spans: [
+          { id: "r11-s1", start: at("12:10"), end: at("12:20") },
+          { id: "r11-s2", start: at("12:30"), end: at("12:40") },
+        ],
+      });
+      mocked.awayPromptAnswer.mockRejectedValueOnce({ kind: "overlap", message: "Overlaps", code: null, details: [sittings] });
+      await renderPrompt();
+      await userEvent.click(recordButton());
+      expect(await screen.findByRole("alert")).toHaveTextContent("A recording already covers 12:10–12:20, 12:30–12:40 (Website)");
+    });
+
     it("answers again with the adjusted times after an overlap", async () => {
       mocked.awayPromptAnswer.mockRejectedValueOnce({ kind: "overlap", message: "Overlaps", code: null, details: [inTheWay] });
       await renderPrompt();
@@ -175,7 +190,7 @@ describe("AwayPrompt", () => {
       await userEvent.clear(field("From"));
       await userEvent.type(field("From"), "12:30");
       await userEvent.click(recordButton());
-      expect(mocked.awayPromptAnswer).toHaveBeenLastCalledWith(expect.objectContaining({ start: at("12:30"), end: at("12:45") }));
+      expect(mocked.awayPromptAnswer).toHaveBeenLastCalledWith(expect.objectContaining({ spans: [{ start: at("12:30"), end: at("12:45") }] }));
     });
 
     it.each([
@@ -226,7 +241,7 @@ describe("AwayPrompt", () => {
       emitChanged(newer);
       await screen.findByRole("heading", { name: "You were away 20 min" });
       await userEvent.click(recordButton());
-      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ start: at("15:00"), end: at("15:20") }));
+      expect(mocked.awayPromptAnswer).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: at("15:00"), end: at("15:20") }] }));
     });
 
     it("reloads the prompt when the window gains focus", async () => {

@@ -37,13 +37,13 @@ function DayColumn({ column, pxPerMinute, focused }: { column: Column; pxPerMinu
     const day = dayAt(e);
     if (!day || day === column.day) return false;
     const { moveRecording, copyRecording } = useStore.getState();
-    void (e.altKey ? copyRecording(block.id, day) : moveRecording(block.id, day));
+    void (e.altKey ? copyRecording(block.id, day, block.spanId) : moveRecording(block.id, day, block.spanId));
     return true;
   };
   return (
     <div className={column.isToday ? "week-column week-column--today" : "week-column"} data-day={column.day} aria-label={column.label} onDoubleClick={create}>
       {column.recordings.map((r) => (
-        <RecordingBlock key={r.id} block={r} y={y} pxPerMinute={pxPerMinute} focused={r.id === focused} onDrop={onDrop} />
+        <RecordingBlock key={r.spanId} block={r} y={y} pxPerMinute={pxPerMinute} focused={r.id === focused} onDrop={onDrop} />
       ))}
     </div>
   );

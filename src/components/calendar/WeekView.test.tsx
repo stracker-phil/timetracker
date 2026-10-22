@@ -153,17 +153,27 @@ describe("WeekView", () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
       drag(recordingEl(), column("Wed 11"));
-      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenCalledWith("r1", NEXT_DAY, "cancel"));
+      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenCalledWith("r1", "r1-s1", NEXT_DAY, "cancel"));
       expect(await screen.findByText("Recording moved")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
-      expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+      expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
+    });
+
+    it("moves only the dropped block's span when the recording has several", async () => {
+      const second = { ...standup, spanId: "r1-s2", spanCount: 2 };
+      const base = weekView();
+      const days = base.days.map((d) => (d.day === DAY ? dayColumn({ ...d, recordings: [second] }) : d));
+      renderWeek(weekView({ days }));
+      await screen.findAllByRole("columnheader");
+      drag(recordingEl(), column("Wed 11"));
+      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenCalledWith("r1", "r1-s2", NEXT_DAY, "cancel"));
     });
 
     it("copies it there when ⌥ is held", async () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
       drag(recordingEl(), column("Wed 11"), { altKey: true });
-      await vi.waitFor(() => expect(mocked.recordingCopy).toHaveBeenCalledWith("r1", NEXT_DAY, "cancel"));
+      await vi.waitFor(() => expect(mocked.recordingCopy).toHaveBeenCalledWith("r1", "r1-s1", NEXT_DAY, "cancel"));
       expect(await screen.findByText("Recording copied")).toBeInTheDocument();
       expect(mocked.recordingMove).not.toHaveBeenCalled();
     });
@@ -174,7 +184,7 @@ describe("WeekView", () => {
       const inner = document.createElement("span");
       column("Fri 13").append(inner);
       drag(recordingEl(), inner);
-      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenCalledWith("r1", "2026-03-13", "cancel"));
+      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenCalledWith("r1", "r1-s1", "2026-03-13", "cancel"));
     });
 
     it("asks before replacing on an overlap and retries with replace", async () => {
@@ -186,14 +196,14 @@ describe("WeekView", () => {
       const dialog = within(await screen.findByRole("dialog"));
       expect(dialog.getByText("This overlaps a recording")).toBeInTheDocument();
       await userEvent.click(dialog.getByRole("button", { name: "Replace overlapped part" }));
-      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenLastCalledWith("r1", NEXT_DAY, "replace"));
+      await vi.waitFor(() => expect(mocked.recordingMove).toHaveBeenLastCalledWith("r1", "r1-s1", NEXT_DAY, "replace"));
     });
 
     it("moves it in time when released over its own day", async () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
       drag(recordingEl(), column("Tue 10"), { dx: 0, dy: 25 });
-      await vi.waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { start: at("09:10"), end: at("09:55") }, "cancel"));
+      await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at("09:10"), end: at("09:55") }, "cancel"));
       expect(mocked.recordingMove).not.toHaveBeenCalled();
       expect(mocked.recordingCopy).not.toHaveBeenCalled();
     });
@@ -202,7 +212,7 @@ describe("WeekView", () => {
       renderWeek(recordedWeek());
       await screen.findAllByRole("columnheader");
       drag(recordingEl(), null, { dx: 0, dy: 25 });
-      await vi.waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { start: at("09:10"), end: at("09:55") }, "cancel"));
+      await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at("09:10"), end: at("09:55") }, "cancel"));
       expect(mocked.recordingMove).not.toHaveBeenCalled();
     });
 
@@ -211,7 +221,7 @@ describe("WeekView", () => {
       await screen.findAllByRole("columnheader");
       drag(recordingEl(), column("Wed 11"), { dx: 0 });
       expect(mocked.recordingMove).not.toHaveBeenCalled();
-      expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+      expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
     });
   });
 

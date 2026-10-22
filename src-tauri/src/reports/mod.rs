@@ -16,7 +16,7 @@ pub use text::text;
 
 use crate::db::clients::Client;
 use crate::db::projects::Project;
-use crate::db::recordings::Recording;
+use crate::db::recordings::{Recording, Span};
 use crate::db::tags::Tag;
 use crate::db::time::{Day, Ms, clip};
 use crate::db::{Db, clients, projects, recordings, tags};
@@ -69,15 +69,18 @@ impl Default for ReportFilter {
     }
 }
 
-/// A recording's part in one day of the range.
+/// A recording's part in one day of the range: its spans of that day.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct ReportRow {
     pub id: String,
     pub day: Day,
+    /// The start of the first span and the end of the last one.
     pub start: Ms,
     pub end: Ms,
+    /// The day's parts of its spans, by start.
+    pub spans: Vec<Span>,
     pub duration_ms: i64,
     pub rounded_ms: i64,
     pub project_id: String,
@@ -292,7 +295,8 @@ fn wanted(filter: &ReportFilter, project: &Project, recording: &Recording) -> bo
         && (filter.include_archived || project.archived_at.is_none())
 }
 
-/// One row per recording and day: a recording over midnight counts on both days, as in the Day view.
+/// One row per recording and day, with its spans of the day: a span over midnight counts on both days, as
+/// in the Day view.
 fn rows(
     filter: &ReportFilter,
     (from, to): (Day, Day),
@@ -311,23 +315,24 @@ fn rows(
         if !wanted(filter, project, recording) {
             continue;
         }
-        let Some((start, end)) = clip(recording.start, recording.end, range, now) else {
-            continue;
-        };
         let tag: Option<&Tag> = recording
             .tag_id
             .as_ref()
             .and_then(|id| data.tags.iter().find(|t| &t.id == id));
-        let mut day = Day::of(start);
-        while day.bounds().0 < end {
-            let (part_start, part_end) = (start.max(day.bounds().0), end.min(day.bounds().1));
+        for (day, spans) in parts_by_day(recording, range, now) {
+            let (Some(first), Some(last)) = (spans.first(), spans.last()) else {
+                continue;
+            };
+            let (start, end) = (first.start, last.end);
+            let duration: Ms = spans.iter().map(|s| s.end - s.start).sum();
             rows.push(ReportRow {
                 id: recording.id.clone(),
                 day,
-                start: part_start,
-                end: part_end,
-                duration_ms: part_end - part_start,
-                rounded_ms: rounded(part_end - part_start, filter.rounding),
+                start,
+                end,
+                spans,
+                duration_ms: duration,
+                rounded_ms: rounded(duration, filter.rounding),
                 project_id: project.id.clone(),
                 project: project.name.clone(),
                 client: project
@@ -341,11 +346,34 @@ fn rows(
                 tag_id: tag.map(|t| t.id.clone()),
                 note: recording.note.trim().to_string(),
             });
-            day = day.next();
         }
     }
     rows.sort_by(|a, b| a.start.cmp(&b.start).then_with(|| a.id.cmp(&b.id)));
     rows
+}
+
+/// The parts of `recording`'s spans inside `range`, cut at midnight and gathered per day, by day.
+fn parts_by_day(recording: &Recording, range: (Ms, Ms), now: Ms) -> Vec<(Day, Vec<Span>)> {
+    let mut days: Vec<(Day, Vec<Span>)> = Vec::new();
+    for span in &recording.spans {
+        let Some((start, end)) = clip(span.start, span.end, range, now) else {
+            continue;
+        };
+        let mut day = Day::of(start);
+        while day.bounds().0 < end {
+            let part = Span {
+                start: start.max(day.bounds().0),
+                end: end.min(day.bounds().1),
+            };
+            match days.iter_mut().find(|(d, _)| *d == day) {
+                Some((_, spans)) => spans.push(part),
+                None => days.push((day, vec![part])),
+            }
+            day = day.next();
+        }
+    }
+    days.sort_by_key(|(day, _)| *day);
+    days
 }
 
 /// The rounding step in minutes and whether it rounds up; `None` without rounding.
@@ -518,7 +546,7 @@ mod tests {
 
     use super::*;
     use crate::db::projects::ProjectInput;
-    use crate::db::recordings::NewRecording;
+    use crate::db::recordings::{NewRecording, RecordingSpan};
     use crate::error::ErrorKind;
     use crate::test_support::client;
 
@@ -549,16 +577,42 @@ mod tests {
         note: &str,
         tag_id: Option<&str>,
     ) -> Recording {
+        spanned(id, project, &[(start, end)], note, tag_id)
+    }
+
+    fn spanned(
+        id: &str,
+        project: &str,
+        spans: &[(Ms, Option<Ms>)],
+        note: &str,
+        tag_id: Option<&str>,
+    ) -> Recording {
         Recording {
             id: id.into(),
             project_id: project.into(),
-            start,
-            end,
             note: note.into(),
             tag_id: tag_id.map(String::from),
             created_at: 0,
             updated_at: 0,
+            spans: spans
+                .iter()
+                .enumerate()
+                .map(|(i, &(start, end))| RecordingSpan {
+                    id: format!("{id}-s{i}"),
+                    start,
+                    end,
+                })
+                .collect(),
         }
+    }
+
+    /// `id` with closed spans, each given as `(day, start hour, start minute, end hour, end minute)`.
+    fn in_spans(id: &str, project: &str, parts: &[(&str, i64, i64, i64, i64)]) -> Recording {
+        let spans: Vec<(Ms, Option<Ms>)> = parts
+            .iter()
+            .map(|&(d, sh, sm, eh, em)| (at(d, sh, sm), Some(at(d, eh, em))))
+            .collect();
+        spanned(id, project, &spans, "", None)
     }
 
     /// `id` on project `project` for `len` minutes from 09:00 on `d`.
@@ -812,6 +866,7 @@ mod tests {
                     "day": D,
                     "start": start,
                     "end": start + minutes(90),
+                    "spans": [{ "start": start, "end": start + minutes(90) }],
                     "durationMs": minutes(90),
                     "roundedMs": minutes(90),
                     "projectId": "p-portal",
@@ -1787,6 +1842,248 @@ mod tests {
         assert_eq!(result.total_ms, 0);
     }
 
+    #[test]
+    fn a_recording_with_several_spans_on_a_day_is_one_row_with_all_of_them() {
+        let r = with_note(
+            in_spans(
+                "r1",
+                "p-portal",
+                &[(D, 9, 0, 10, 0), (D, 11, 0, 11, 30), (D, 16, 5, 17, 5)],
+            ),
+            "tooling",
+        );
+
+        let result = report(&by(Group::Project), D, D, vec![r]);
+
+        let rows = &result.groups[0].rows;
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "r1");
+        assert_eq!(
+            rows[0].spans,
+            [
+                Span {
+                    start: at(D, 9, 0),
+                    end: at(D, 10, 0)
+                },
+                Span {
+                    start: at(D, 11, 0),
+                    end: at(D, 11, 30)
+                },
+                Span {
+                    start: at(D, 16, 5),
+                    end: at(D, 17, 5)
+                },
+            ]
+        );
+        assert_eq!((rows[0].start, rows[0].end), (at(D, 9, 0), at(D, 17, 5)));
+        assert_eq!(rows[0].duration_ms, minutes(150));
+        assert_eq!(result.total_ms, minutes(150));
+        assert_eq!(result.groups[0].notes.len(), 1);
+    }
+
+    #[test]
+    fn a_recording_with_spans_on_two_days_is_one_row_per_day_with_that_days_parts() {
+        let r = in_spans(
+            "r1",
+            "p-portal",
+            &[(D, 9, 0, 10, 0), ("2026-10-21", 14, 0, 14, 45)],
+        );
+
+        let result = report(&by(Group::Project), D, "2026-10-21", vec![r.clone()]);
+        let one_day = report(&by(Group::Project), "2026-10-21", "2026-10-21", vec![r]);
+
+        let rows: Vec<_> = result.groups[0]
+            .rows
+            .iter()
+            .map(|r| (r.day, r.start, r.end, r.spans.len(), r.duration_ms))
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                (day(D), at(D, 9, 0), at(D, 10, 0), 1, minutes(60)),
+                (
+                    day("2026-10-21"),
+                    at("2026-10-21", 14, 0),
+                    at("2026-10-21", 14, 45),
+                    1,
+                    minutes(45)
+                ),
+            ]
+        );
+        assert_eq!(result.total_ms, minutes(105));
+        assert_eq!(one_day.total_ms, minutes(45));
+    }
+
+    #[test]
+    fn a_span_over_midnight_and_a_later_span_share_the_second_days_row() {
+        let midnight = day("2026-10-21").bounds().0;
+        let r = spanned(
+            "r1",
+            "p-portal",
+            &[
+                (at(D, 22, 0), Some(midnight + minutes(60))),
+                (at("2026-10-21", 9, 0), Some(at("2026-10-21", 10, 0))),
+            ],
+            "",
+            None,
+        );
+
+        let result = report(&by(Group::Day), D, "2026-10-21", vec![r]);
+
+        let first = &result.groups[0].rows[0];
+        assert_eq!(
+            first.spans,
+            [Span {
+                start: at(D, 22, 0),
+                end: midnight
+            }]
+        );
+        assert_eq!(first.duration_ms, minutes(120));
+        let second = &result.groups[1].rows[0];
+        assert_eq!(
+            second.spans,
+            [
+                Span {
+                    start: midnight,
+                    end: midnight + minutes(60)
+                },
+                Span {
+                    start: at("2026-10-21", 9, 0),
+                    end: at("2026-10-21", 10, 0)
+                },
+            ]
+        );
+        assert_eq!(
+            (second.start, second.end),
+            (midnight, at("2026-10-21", 10, 0))
+        );
+        assert_eq!(second.duration_ms, minutes(120));
+    }
+
+    #[test]
+    fn an_open_span_after_closed_ones_ends_at_now() {
+        let r = spanned(
+            "r1",
+            "p-portal",
+            &[(at(D, 9, 0), Some(at(D, 10, 0))), (at(D, 11, 0), None)],
+            "",
+            None,
+        );
+
+        let result = build(
+            &by(Group::Project),
+            (day(D), day(D)),
+            &data(vec![r]),
+            at(D, 11, 20),
+        );
+
+        let row = &result.groups[0].rows[0];
+        assert_eq!(row.end, at(D, 11, 20));
+        assert_eq!(row.spans.len(), 2);
+        assert_eq!(row.duration_ms, minutes(80));
+    }
+
+    #[test]
+    fn rounding_applies_to_a_rows_summed_spans_not_to_each_span() {
+        let filter = ReportFilter {
+            rounding: Rounding::Nearest15,
+            ..by(Group::Project)
+        };
+        let one = in_spans("one", "p-portal", &[(D, 9, 0, 9, 7), (D, 10, 0, 10, 7)]);
+        let two = vec![
+            in_spans("a", "p-portal", &[(D, 9, 0, 9, 7)]),
+            in_spans("b", "p-portal", &[(D, 10, 0, 10, 7)]),
+        ];
+
+        let single = report(&filter, D, D, vec![one]);
+        let separate = report(&filter, D, D, two);
+
+        assert_eq!(single.groups[0].rows[0].duration_ms, minutes(14));
+        assert_eq!(single.total_rounded_ms, minutes(15));
+        assert_eq!(separate.total_ms, minutes(14));
+        assert_eq!(separate.total_rounded_ms, minutes(30));
+    }
+
+    #[test]
+    fn each_day_of_a_multi_span_recording_is_rounded_on_its_own() {
+        let filter = ReportFilter {
+            rounding: Rounding::Nearest15,
+            ..by(Group::Project)
+        };
+        let r = in_spans(
+            "r1",
+            "p-portal",
+            &[(D, 9, 0, 9, 7), ("2026-10-21", 9, 0, 9, 7)],
+        );
+
+        let result = report(&filter, D, "2026-10-21", vec![r]);
+
+        let rounded: Vec<_> = result.groups[0].rows.iter().map(|r| r.rounded_ms).collect();
+        assert_eq!(rounded, [minutes(15), minutes(15)]);
+        assert_eq!(result.total_rounded_ms, minutes(30));
+    }
+
+    #[test]
+    fn notes_follow_the_rows_by_their_first_span() {
+        let result = report(
+            &by(Group::Project),
+            D,
+            D,
+            vec![
+                with_note(
+                    in_spans("late", "p-portal", &[(D, 12, 0, 12, 30)]),
+                    "afternoon",
+                ),
+                with_note(
+                    in_spans("split", "p-portal", &[(D, 9, 0, 9, 30), (D, 16, 0, 17, 0)]),
+                    "tooling",
+                ),
+                with_note(
+                    in_spans("middle", "p-portal", &[(D, 10, 0, 11, 0)]),
+                    "review",
+                ),
+            ],
+        );
+
+        let notes: Vec<_> = result.groups[0]
+            .notes
+            .iter()
+            .map(|n| n.text.as_str())
+            .collect();
+        assert_eq!(notes, ["tooling", "review", "afternoon"]);
+    }
+
+    #[tokio::test]
+    async fn run_reports_the_spans_of_a_stored_recording() {
+        let db = Db::open_memory().await.unwrap();
+        let p = crate::test_support::project(&db, "Solo").await;
+        recordings::insert(
+            &db,
+            NewRecording {
+                id: "r1".into(),
+                project_id: p.id.clone(),
+                spans: vec![
+                    (at("2026-10-21", 14, 25), Some(at("2026-10-21", 15, 0))),
+                    (at("2026-10-21", 16, 5), Some(at("2026-10-21", 20, 15))),
+                ],
+                note: "WEB-214".into(),
+                tag_id: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let result = run(&db, &ReportFilter::default(), day("2026-10-21"), now())
+            .await
+            .unwrap();
+
+        let rows = &result.groups[0].rows;
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].spans.len(), 2);
+        assert_eq!(rows[0].duration_ms, minutes(285));
+        assert_eq!(result.total_ms, minutes(285));
+    }
+
     #[tokio::test]
     async fn run_reads_the_database_and_resolves_the_range_against_today() {
         let db = Db::open_memory().await.unwrap();
@@ -1809,8 +2106,7 @@ mod tests {
             NewRecording {
                 id: "r1".into(),
                 project_id: portal.id.clone(),
-                start,
-                end: Some(start + minutes(90)),
+                spans: vec![(start, Some(start + minutes(90)))],
                 note: " fix login ".into(),
                 tag_id: Some(admin.id.clone()),
             },
@@ -1822,8 +2118,7 @@ mod tests {
             NewRecording {
                 id: "r2".into(),
                 project_id: portal.id.clone(),
-                start: at("2026-10-20", 9, 0),
-                end: Some(at("2026-10-20", 10, 0)),
+                spans: vec![(at("2026-10-20", 9, 0), Some(at("2026-10-20", 10, 0)))],
                 note: String::new(),
                 tag_id: None,
             },

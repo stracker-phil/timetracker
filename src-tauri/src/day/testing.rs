@@ -3,7 +3,7 @@
 use super::{DayInput, DayView, Lane, Names, ProjectRef, ViewSettings, view};
 use crate::db::activities::ActivityRow;
 use crate::db::away::{AwayReason, AwayRow};
-use crate::db::recordings::Recording;
+use crate::db::recordings::{Recording, RecordingSpan};
 use crate::db::time::{Day, Ms};
 use crate::store::settings::{AppOverride, Continuity, Noise, TimelineSettings};
 
@@ -178,17 +178,36 @@ pub fn input_with_recordings(recordings: Vec<Recording>) -> DayInput {
     }
 }
 
-/// A recording of project `p1` without note or tag; `end: None` is the running timer.
+/// A recording of project `p1` with one span, without note or tag; `end: None` is the running timer.
 pub fn recording(id: &str, start: Ms, end: Option<Ms>) -> Recording {
     Recording {
         id: id.into(),
         project_id: "p1".into(),
-        start,
-        end,
         note: String::new(),
         tag_id: None,
         created_at: 0,
         updated_at: 0,
+        spans: vec![RecordingSpan {
+            id: format!("{id}-span"),
+            start,
+            end,
+        }],
+    }
+}
+
+/// A recording of project `p1` with closed spans `(start, end)`; span ids are `<id>-span<index>`.
+pub fn recording_of_spans(id: &str, spans: &[(Ms, Ms)]) -> Recording {
+    Recording {
+        spans: spans
+            .iter()
+            .enumerate()
+            .map(|(i, &(start, end))| RecordingSpan {
+                id: format!("{id}-span{i}"),
+                start,
+                end: Some(end),
+            })
+            .collect(),
+        ..recording(id, 0, None)
     }
 }
 

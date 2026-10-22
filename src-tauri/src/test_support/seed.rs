@@ -306,15 +306,22 @@ async fn write(db: &Db, plan: &DayPlan) -> AppResult<()> {
     for r in &plan.recordings {
         let id = uuid::Uuid::new_v4().to_string();
         sqlx::query(
-            r#"INSERT INTO recordings (id, project_id, start, "end", note, tag_id, created_at, updated_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?4, ?4)"#,
+            r#"INSERT INTO recordings (id, project_id, note, tag_id, created_at, updated_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?5)"#,
         )
         .bind(&id)
         .bind(&r.project_id)
-        .bind(r.start)
-        .bind(r.end)
         .bind(r.note)
         .bind(&r.tag_id)
+        .bind(r.end)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"INSERT INTO recording_spans (id, recording_id, start, "end") VALUES (?1, ?1, ?2, ?3)"#,
+        )
+        .bind(&id)
+        .bind(r.start)
+        .bind(r.end)
         .execute(&mut *tx)
         .await?;
     }
@@ -506,7 +513,7 @@ mod tests {
                 weekend.date()
             );
             assert!(away_of(&db).await.iter().all(|a| a.start < from));
-            assert!(recordings_of(&db).await.iter().all(|r| r.start < from));
+            assert!(recordings_of(&db).await.iter().all(|r| r.start() < from));
         }
     }
 
@@ -531,7 +538,7 @@ mod tests {
                 "{label}"
             );
             assert_eq!(
-                in_day(&recordings, &day, |r| (r.start, r.end.unwrap())).len(),
+                in_day(&recordings, &day, |r| (r.start(), r.end().unwrap())).len(),
                 RECORDINGS_PER_DAY,
                 "{label}"
             );
@@ -566,10 +573,19 @@ mod tests {
         let recordings = recordings_of(&db).await;
         for r in &recordings {
             assert!(projects.iter().any(|p| p.id == r.project_id));
-            assert!(r.end.unwrap() > r.start);
+            assert!(r.end().unwrap() > r.start());
         }
         for pair in recordings.windows(2) {
-            assert!(pair[0].end.unwrap() <= pair[1].start, "{pair:?}");
+            assert!(pair[0].end().unwrap() <= pair[1].start(), "{pair:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn every_seeded_recording_has_one_closed_span() {
+        let (db, _) = seeded_week(3).await;
+        for r in recordings_of(&db).await {
+            assert_eq!(r.spans.len(), 1, "{}", r.id);
+            assert!(r.spans[0].end.is_some(), "{}", r.id);
         }
     }
 
@@ -590,12 +606,13 @@ mod tests {
                 .await
                 .into_iter()
                 .map(|r| {
+                    let (start, end) = (r.start(), r.end());
                     let project = projects.iter().find(|p| p.id == r.project_id).unwrap();
                     let tag = r
                         .tag_id
                         .and_then(|id| all_tags.iter().find(|t| t.id == id))
                         .map(|t| t.name.clone());
-                    (project.name.clone(), r.start, r.end, r.note, tag)
+                    (project.name.clone(), start, end, r.note, tag)
                 })
                 .collect()
         }

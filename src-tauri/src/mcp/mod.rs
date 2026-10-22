@@ -160,7 +160,7 @@ impl TimeTrackerServer {
     }
 
     #[tool(
-        description = "The recordings of a range of days by start: project, client, note, tag (or null), local start and end, minutes; a recording across midnight is listed once per day"
+        description = "The recordings of a range of days by start: project, client, note, tag (or null), local start and end, its spans of the day (local start and end each), minutes (their sum); a recording with spans on several days is listed once per day"
     )]
     async fn recordings(
         &self,

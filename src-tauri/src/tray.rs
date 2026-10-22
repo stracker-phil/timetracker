@@ -363,12 +363,15 @@ mod tests {
             recording: crate::db::recordings::Recording {
                 id: "r1".into(),
                 project_id: "p1".into(),
-                start: 0,
-                end: None,
                 note: String::new(),
                 tag_id: None,
                 created_at: 0,
                 updated_at: 0,
+                spans: vec![crate::db::recordings::RecordingSpan {
+                    id: "s1".into(),
+                    start: 0,
+                    end: None,
+                }],
             },
             project_name: project_name.into(),
             color: "blue".into(),

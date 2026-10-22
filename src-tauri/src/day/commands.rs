@@ -317,14 +317,14 @@ mod tests {
             NewRecording {
                 id: "r1".into(),
                 project_id: portal.id.clone(),
-                start,
-                end: Some(start + HOUR),
+                spans: vec![(start, Some(start + HOUR))],
                 note: "fix login".into(),
                 tag_id: Some(alpha.id),
             },
         )
         .await
         .unwrap();
+        let span_id = saved.spans[0].id.clone();
 
         let view = load(&db, today, &Settings::default(), start + 5 * HOUR)
             .await
@@ -334,6 +334,8 @@ mod tests {
             view.recordings,
             [RecordingBlock {
                 id: saved.id,
+                span_id,
+                span_count: 1,
                 start,
                 end: start + HOUR,
                 project_id: portal.id,
@@ -389,6 +391,67 @@ mod tests {
             !blocks.is_empty() && blocks.iter().all(|b| b.covered)
         };
         assert!(covered(&first) && covered(&second));
+    }
+
+    #[tokio::test]
+    async fn a_stored_recording_with_spans_on_two_days_shows_one_block_per_span_on_each_day() {
+        use crate::db::recordings::{NewRecording, insert};
+
+        let db = Db::open_memory().await.unwrap();
+        let (monday, tuesday) = (day("2026-01-05"), day("2026-01-06"));
+        let midnight = tuesday.bounds().0;
+        let p = project(&db, "Portal").await;
+        let saved = insert(
+            &db,
+            NewRecording {
+                id: "r1".into(),
+                project_id: p.id,
+                spans: vec![
+                    (midnight - 3 * HOUR, Some(midnight - 2 * HOUR)),
+                    (midnight - HOUR, Some(midnight + HOUR)),
+                    (midnight + 5 * HOUR, Some(midnight + 6 * HOUR)),
+                ],
+                note: String::new(),
+                tag_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let now = midnight + 10 * HOUR;
+
+        let first = load(&db, monday, &Settings::default(), now).await.unwrap();
+        let second = load(&db, tuesday, &Settings::default(), now).await.unwrap();
+
+        let shape = |view: &DayView| {
+            assert!(view.recordings.iter().all(|b| b.id == "r1"));
+            view.recordings
+                .iter()
+                .map(|b| {
+                    let clipped = (b.clipped_start, b.clipped_end);
+                    (b.span_id.clone(), b.span_count, b.start, b.end, clipped)
+                })
+                .collect::<Vec<_>>()
+        };
+        let span = |i: usize| saved.spans[i].id.clone();
+        let at = |hours: i64| midnight + hours * HOUR;
+        assert_eq!(
+            shape(&first),
+            [
+                (span(0), 3, at(-3), at(-2), (false, false)),
+                (span(1), 3, at(-1), at(0), (false, true)),
+            ]
+        );
+        assert_eq!(
+            shape(&second),
+            [
+                (span(1), 3, at(0), at(1), (true, false)),
+                (span(2), 3, at(5), at(6), (false, false)),
+            ]
+        );
+        assert_eq!(
+            (first.totals.recorded_ms, second.totals.recorded_ms),
+            (2 * HOUR, 2 * HOUR)
+        );
     }
 
     #[tokio::test]

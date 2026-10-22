@@ -76,7 +76,8 @@ A backup is the JSON export below, or a copy of the folder while the app is not 
 | `tags` | `id` (UUID), `name` (unique, ignoring case), `created_at` |
 | `activities` | one span in one app and window: `id` (AUTOINCREMENT), `source` (`tracker` or `external:<name>`), `start`, `end` (NULL while open), `app`, `bundle_id`, `title`, `url`, `path`, `private`; indexed on `start` and `(source, start)` |
 | `away_spans` | no input, sleep, lock or pause: `id` (AUTOINCREMENT), `start`, `end`, `reason` (`idle`, `sleep`, `lock`, `paused`); indexed on `start` |
-| `recordings` | time confirmed for a project: `id` (UUID), `project_id`, `start`, `end` (NULL only for the running timer), `note`, `tag_id` (NULL without a tag; deleting the tag sets it NULL), `created_at`, `updated_at`; indexed on `start` |
+| `recordings` | time confirmed for a project: `id` (UUID), `project_id`, `note`, `tag_id` (NULL without a tag; deleting the tag sets it NULL), `created_at`, `updated_at`; the time is in its spans |
+| `recording_spans` | the time of a recording ([ADR 0020](adr/0020-recordings-have-spans.md)): `id` (UUID), `recording_id` (deleting the recording deletes them), `start`, `end` (NULL only for the running timer's span); indexed on `start` and `(recording_id, start)` |
 | `saved_reports` | `id`, `name`, `filter` (a `ReportFilter` as JSON), `position` |
 | `rules` | `id`, `name`, `project_id`, `position` (the lowest wins), `enabled`, `note`, `tag_id` (as for recordings) |
 | `rule_conditions` | `id`, `rule_id` (deleting the rule deletes them), `position`, `field`, `op`, `value` (the serde names of `RuleField` and `RuleOp`) |
@@ -96,10 +97,15 @@ deleted id is never reused and an undo can restore rows by id.
   [backend.md](backend.md#activity-deletion).
 - Spans are stored unsplit. A reader clips them to the range it shows, so a span across midnight shows on
   both days.
-- Recordings never overlap each other; the running timer is the one recording without `end`, and it counts
-  as overlapping everything after its start. Stopping it sets `end` to `stop_time`: the snapped now, at least
-  a minute after the start. The recordings
-  feature enforces this; the repository only offers the `overlapping` query.
+- A recording has at least one span; its spans never overlap each other (touching is fine), and no span shares
+  time with a span of another recording ([ADR 0020](adr/0020-recordings-have-spans.md)). A recording's
+  duration is the sum of its spans; it belongs to every day one of its spans touches, and a day counts only
+  the parts of the spans inside it. The running timer is the one recording with an open span (`end` NULL,
+  always its last), which counts as overlapping everything after its start. Stopping it sets the span's
+  `end` to `stop_time`: the snapped now, at least a minute after the span's start. The recordings feature
+  enforces this; the repository only checks a recording's own spans and offers the `overlapping` query.
+- `recordings` keeps no cached start or end: readers that sort by time use the first span
+  (`min(recording_spans.start)`), so there is one source of truth for the time.
 - A note is one line ([ADR 0018](adr/0018-one-line-notes-tags-copyable-reports.md)).
 - A recording or rule has at most one tag ([ADR 0019](adr/0019-one-tag-per-recording.md)).
 
@@ -160,12 +166,14 @@ there are no `query!` macros (they need a database at compile time).
 | `tags.rs` | `list`, `list_with_usage`, `insert(name)`, `rename(id, name)`, `delete(id)`, `resolve_name(name)`, `resolve_optional_name(name?)` (the id, or `None` without a name), `seed_defaults` | names unique ignoring case: `insert` of a taken name returns the existing tag, `rename` to it is `invalid_input`; `DEFAULT_TAGS` are seeded once per data store (`meta.tags_seeded`), so deleting them all does not bring them back |
 | `activities.rs` | `apps_seen(from, now)`, `list_clipped(from, to, now)`, `close_stale(source, duration)`, `replace_open(id, NewActivity)`, `insert(NewActivity) -> id`, `close_open(source, end)`, `open_by_source`, `overlapping(source, start, end)`, `sources_with_prefix(prefix)` (latest first); `insert_on`, `get_on`, `close_open_on`, `open_by_source_on`, `overlapping_on` take a connection so a caller can combine them in a transaction; `list_for_range(from, to)`, `list_sources(from, to)`, `delete_range(from, to)`, `count_range(from, to)`, `count`, `first_start`; `take_range_on(from, to)` deletes and returns the rows, `restore_on(row)` inserts one under its id | ranges are `[from, to)` and include open spans; touching edges do not overlap; results are not clipped; `close_open` never sets an end before the start |
 | `away.rs` | `insert(NewAway) -> id`, `close_open(end)`, `open`, `list_for_range`, `delete_range`, `count_range`, `take_range_on`, `restore_on` | as for activities; `AwayReason` is stored and sent as `idle`, `sleep`, `lock`, `paused` |
-| `recordings.rs` | `insert(NewRecording)`, `get`, `update(id, RecordingPatch)`, `delete(id) -> Recording`, `list_for_range`, `running`, `overlapping(start, end, except)`, `count` | one transaction per write; the project and the tag (`tag_id`, optional) must exist (`not_found`); a note with a line break is `invalid_input`, notes are stored trimmed; `end` must be after `start`; `delete` returns the row so it can be restored under its id |
+| `recordings.rs` | `insert(NewRecording)`, `get`, `update(id, RecordingPatch)`, `delete(id) -> Recording`, `list_for_range`, `running`, `latest(limit)`, `overlapping(start, end, except)`, `count`; `put_on(recording)` writes a row with all its spans, `remove_on`, `get_on`, `overlapping_on` take a connection; `check_spans`, `respanned` | one transaction per write; the project and the tag (`tag_id`, optional) must exist (`not_found`); a note with a line break is `invalid_input`, notes are stored trimmed; a recording needs a span, each ending after it starts, none overlapping another of the recording, only the last open; a query returns whole recordings with every span (also those outside the range) by first span; `delete` returns the row so it can be restored under its id |
 | `backup.rs` | `export(db) -> Backup`, `write_to(db, path)` | every table, read in one transaction |
 | `one_tag.rs` | `back_up(migrator, pool, dir) -> Option<TagsDropped>`, `TagsDropped::message` | see [Migrations](#migrations) |
 
-`RecordingPatch` leaves absent fields as they are; `end: null` makes a recording running and `tagId: null`
-removes the tag (both `Option<Option<…>>`).
+`Recording` carries `spans: RecordingSpan[]` (`{ id, start, end }`, by start); `start()`, `end()`,
+`duration(now)`, `is_running()`, `open_span()` and `span(id)` read them. `RecordingPatch` leaves absent fields
+as they are; `spans` (closed `Span`s) replaces every span, the n-th by start keeping the id of the n-th current
+one (`respanned`); `tagId: null` removes the tag (`Option<Option<…>>`).
 
 Errors: `From<sqlx::Error>` maps a database error to `db` with SQLite's extended result code as `code`
 (`2067` unique, `787` foreign key), `RowNotFound` to `not_found`, anything else to `db`; a failed migration is
@@ -207,18 +215,19 @@ the field:
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "exportedAt": 1792540800000,
   "clients": [], "projects": [], "tags": [],
   "activities": [], "awaySpans": [],
-  "recordings": [{ "id": "…", "projectId": "…", "start": 0, "end": 0, "note": "", "tagId": null, "createdAt": 0, "updatedAt": 0 }],
+  "recordings": [{ "id": "…", "projectId": "…", "note": "", "tagId": null, "createdAt": 0, "updatedAt": 0, "spans": [{ "id": "…", "start": 0, "end": 0 }] }],
   "rules": [{ "id": "…", "name": "Slack → Acme", "projectId": "…", "position": 0, "enabled": true, "note": "", "tagId": null, "conditions": [{ "id": "…", "field": "app", "op": "is", "value": "Slack" }] }], "savedReports": [{ "id": "…", "name": "This month", "filter": { "range": { "kind": "thisMonth" }, "…": "…" }, "position": 0 }]
 }
 ```
 
 Rows have the shape of their IPC types (`Client`, `Project`, `Tag`, `ActivityRow`, `AwayRow`, `Recording`,
 `Rule`, `SavedReport`). Version 1 (before migration 0006) had `tagIds` arrays on recordings and rules
-instead of `tagId`; the pre-0006 backup is written in it. There is no import yet; one would map a version 1
+instead of `tagId`; the pre-0006 backup is written in it. Version 2 (before migration 0007) had `start` and
+`end` on recordings instead of `spans`. There is no import yet; one would map a version 1
 row to its first tag by name.
 
 ## Migrations
@@ -241,11 +250,15 @@ no tag is dropped without one. `TagsDropped { recordings, rules, backup }` comes
 `Db::open_migrating`; `AppState::open` queues its `message()` as a `LaunchEvent::Notice`, which the page shows
 as an info toast: "One tag per recording: 3 recordings lost tags (each kept its first by name). Backup: …".
 
+`0007_recording_spans.sql` ([ADR 0020](adr/0020-recordings-have-spans.md)) adds `recording_spans`, gives every
+recording one span with its `start` and `end` under the recording's own id, and drops `recordings.start`,
+`recordings.end` and the `recordings_start` index. Nothing is lost, so it needs no backup.
+
 ## Tests
 
 `test_support/` has `temp_db()` (a migrated file database in a temp dir, so WAL and migrations run as in the
 app) and fixtures `activity(db, start, end, app, title)`, `project(db, name)`, `recording(db, project_id, start,
-end)`. Repository tests use `Db::open_memory()` (one connection that never closes). See
+end)` (one span). Repository tests use `Db::open_memory()` (one connection that never closes). See
 [testing.md](testing.md#rust).
 
 ### Seed fixture and performance

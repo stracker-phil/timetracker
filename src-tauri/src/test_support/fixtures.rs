@@ -95,8 +95,7 @@ pub async fn recording(db: &Db, project_id: &str, start: Ms, end: Option<Ms>) ->
         NewRecording {
             id: uuid::Uuid::new_v4().to_string(),
             project_id: project_id.into(),
-            start,
-            end,
+            spans: vec![(start, end)],
             note: String::new(),
             tag_id: None,
         },

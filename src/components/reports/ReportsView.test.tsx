@@ -9,7 +9,7 @@ import { installCommands, runCommand } from "../../commands";
 import { formatDayLabel } from "../../lib/day";
 import { defaultFilter } from "../../state/slices/reports";
 import { resetStore, useStore } from "../../state/store";
-import { DAY } from "../../test/dayFixtures";
+import { at, DAY } from "../../test/dayFixtures";
 import { projectItem, projectsStore, tag } from "../../test/projectFixtures";
 import { reportGroup, reportResult, reportRow, savedReport } from "../../test/reportFixtures";
 import { settings } from "../../test/settings";
@@ -116,6 +116,21 @@ describe("ReportsView", () => {
       expect(within(table).getByText("Acme / Website")).toBeInTheDocument();
       expect(within(table).getByText("support")).toBeInTheDocument();
       expect(within(table).getByText("Fixed the header")).toBeInTheDocument();
+    });
+
+    it("shows every span of a recording in one row, with the total duration", async () => {
+      const spans = [
+        { start: at("14:25"), end: at("15:00") },
+        { start: at("16:05"), end: at("20:15") },
+      ];
+      mocked.reportRun.mockResolvedValue(
+        reportResult({ groups: [reportGroup({ rows: [reportRow({ start: spans[0].start, end: spans[1].end, spans, durationMs: 285 * 60_000, roundedMs: 285 * 60_000 })] })] }),
+      );
+      await renderView();
+      await userEvent.click(await screen.findByRole("button", { name: "1 recording" }));
+      const row = within(screen.getByRole("table")).getAllByRole("row")[1];
+      expect(within(row).getByText("14:25–15:00, 16:05–20:15")).toBeInTheDocument();
+      expect(within(row).getByText("4:45")).toBeInTheDocument();
     });
 
     it("counts the recordings of a group on its toggle", async () => {

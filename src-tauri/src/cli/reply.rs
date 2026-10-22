@@ -11,11 +11,11 @@ use crate::db::activities::ActivityRow;
 use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms};
 use crate::ipc::IpcMessage;
-use crate::recordings::cli::Recorded;
+use crate::recordings::cli::{Recorded, spans_text};
 use crate::remote::StatusReport;
 use crate::reports::cli::Reported;
-use crate::timers::RunningTimer;
 use crate::timers::commands::TimerStarted;
+use crate::timers::{RunningTimer, open_start};
 use crate::tracker::{TrackerState, TrackerStatus};
 
 /// The text for `result`, the reply to `message`; `None` when the subcommand prints nothing.
@@ -77,17 +77,15 @@ pub fn render<Tz: TimeZone>(
         IpcMessage::Record { .. } => {
             let recorded = read::<Recorded>(result)?;
             let r = &recorded.recording;
-            let end = r.end.unwrap_or(now);
             let note = if r.note.is_empty() {
                 String::new()
             } else {
                 format!(" · {}", r.note)
             };
             Some(format!(
-                "recorded {}–{} ({}) for {}{note}",
-                clock(r.start, tz),
-                clock(end, tz),
-                hours(end - r.start),
+                "recorded {} ({}) for {}{note}",
+                spans_text(&r.spans, |ms| clock(ms, tz)),
+                hours(r.duration(now)),
                 recorded.project_name
             ))
         }
@@ -96,19 +94,19 @@ pub fn render<Tz: TimeZone>(
             Some(format!(
                 "started {} at {}",
                 started.project_name,
-                clock(started.recording.start, tz)
+                clock(open_start(&started.recording), tz)
             ))
         }
         IpcMessage::TimerStop => Some(match read::<Option<Recording>>(result)? {
-            Some(r) => {
-                let end = r.end.unwrap_or(now);
-                format!(
-                    "stopped {}–{} ({})",
-                    clock(r.start, tz),
-                    clock(end, tz),
-                    hours(end - r.start)
-                )
-            }
+            // The span the stop closed: the recording's last.
+            Some(r) => match r.spans.last() {
+                Some(closed) => format!(
+                    "stopped {} ({})",
+                    spans_text(std::slice::from_ref(closed), |ms| clock(ms, tz)),
+                    hours(closed.duration(now))
+                ),
+                None => "stopped".into(),
+            },
             None => "no timer running".into(),
         }),
         IpcMessage::Report { .. } => Some(read::<Reported>(result)?.text.trim_end().to_string()),
@@ -191,7 +189,7 @@ fn timer(timer: Option<&RunningTimer>, now: Ms) -> String {
     if !t.recording.note.is_empty() {
         parts.push(t.recording.note.clone());
     }
-    parts.push(hours(now - t.recording.start));
+    parts.push(hours(now - open_start(&t.recording)));
     parts.join(" · ")
 }
 
@@ -250,9 +248,9 @@ mod tests {
     use crate::activity::ActivityInput;
     use crate::capture::PermissionStatus;
     use crate::db::away::AwayReason;
-    use crate::db::recordings::Recording;
-    use crate::recordings::Overlap;
+    use crate::db::recordings::{Recording, RecordingSpan};
     use crate::recordings::cli::RecordRequest;
+    use crate::recordings::{Overlap, Span};
     use crate::tracker::PauseUntil;
 
     const MINUTE: Ms = 60_000;
@@ -548,8 +546,7 @@ mod tests {
         IpcMessage::Record {
             request: RecordRequest {
                 project: "ac".into(),
-                start: 0,
-                end: 1,
+                spans: vec![Span { start: 0, end: 1 }],
                 note: String::new(),
                 tag: None,
                 overlap: Overlap::Cancel,
@@ -557,21 +554,53 @@ mod tests {
         }
     }
 
-    fn recorded(note: &str, start: &str, end: Option<&str>) -> Value {
-        serde_json::to_value(Recorded {
-            recording: Recording {
-                id: "r1".into(),
-                project_id: "p1".into(),
+    fn spans_of(spans: &[(&str, Option<&str>)]) -> Vec<RecordingSpan> {
+        spans
+            .iter()
+            .enumerate()
+            .map(|(i, &(start, end))| RecordingSpan {
+                id: format!("s{i}"),
                 start: ms(start),
                 end: end.map(ms),
-                note: note.into(),
-                tag_id: None,
-                created_at: 0,
-                updated_at: 0,
-            },
+            })
+            .collect()
+    }
+
+    fn recorded(note: &str, start: &str, end: Option<&str>) -> Value {
+        recorded_spans(note, &[(start, end)])
+    }
+
+    fn recorded_spans(note: &str, spans: &[(&str, Option<&str>)]) -> Value {
+        serde_json::to_value(Recorded {
+            recording: timer_recording_spans(note, spans),
             project_name: "Acme".into(),
         })
         .unwrap()
+    }
+
+    #[test]
+    fn record_lists_every_span_and_the_total_of_them() {
+        let result = recorded_spans(
+            "WEB-214: Checkout validation",
+            &[
+                (
+                    "2026-10-21T14:25:00+02:00",
+                    Some("2026-10-21T15:00:00+02:00"),
+                ),
+                (
+                    "2026-10-21T16:05:00+02:00",
+                    Some("2026-10-21T20:15:00+02:00"),
+                ),
+            ],
+        );
+
+        assert_eq!(
+            render_at_now(&record_message(), &result),
+            Ok(Some(
+                "recorded 14:25–15:00, 16:05–20:15 (4:45) for Acme · WEB-214: Checkout validation"
+                    .into()
+            ))
+        );
     }
 
     #[test]
@@ -619,15 +648,18 @@ mod tests {
     }
 
     fn timer_recording(note: &str, start: &str, end: Option<&str>) -> Recording {
+        timer_recording_spans(note, &[(start, end)])
+    }
+
+    fn timer_recording_spans(note: &str, spans: &[(&str, Option<&str>)]) -> Recording {
         Recording {
             id: "r1".into(),
             project_id: "p1".into(),
-            start: ms(start),
-            end: end.map(ms),
             note: note.into(),
             tag_id: None,
             created_at: 0,
             updated_at: 0,
+            spans: spans_of(spans),
         }
     }
 
@@ -667,6 +699,52 @@ mod tests {
         assert_eq!(
             render_at_now(&IpcMessage::TimerStop, &result),
             Ok(Some("stopped 09:15–10:40 (1:25)".into()))
+        );
+    }
+
+    #[test]
+    fn timer_stop_of_a_continued_recording_prints_only_the_closed_span() {
+        let result = serde_json::to_value(timer_recording_spans(
+            "",
+            &[
+                (
+                    "2026-10-21T09:00:00+02:00",
+                    Some("2026-10-21T10:00:00+02:00"),
+                ),
+                (
+                    "2026-10-21T14:00:00+02:00",
+                    Some("2026-10-21T14:45:00+02:00"),
+                ),
+            ],
+        ))
+        .unwrap();
+
+        assert_eq!(
+            render_at_now(&IpcMessage::TimerStop, &result),
+            Ok(Some("stopped 14:00–14:45 (0:45)".into()))
+        );
+    }
+
+    #[test]
+    fn timer_start_of_a_continued_recording_prints_where_the_open_span_starts() {
+        let result = serde_json::to_value(TimerStarted {
+            recording: timer_recording_spans(
+                "",
+                &[
+                    (
+                        "2026-10-21T09:00:00+02:00",
+                        Some("2026-10-21T10:00:00+02:00"),
+                    ),
+                    ("2026-10-21T14:15:00+02:00", None),
+                ],
+            ),
+            project_name: "Acme".into(),
+        })
+        .unwrap();
+
+        assert_eq!(
+            render_at_now(&timer_message(), &result),
+            Ok(Some("started Acme at 14:15".into()))
         );
     }
 
@@ -725,7 +803,18 @@ mod tests {
                 tracker: None,
                 timer: Some(RunningTimer {
                     recording: Recording {
-                        start,
+                        spans: vec![
+                            RecordingSpan {
+                                id: "s0".into(),
+                                start: start - 120 * MINUTE,
+                                end: Some(start - 60 * MINUTE),
+                            },
+                            RecordingSpan {
+                                id: "s1".into(),
+                                start,
+                                end: None,
+                            },
+                        ],
                         ..timer_recording(note, "2026-10-21T11:35:00+02:00", None)
                     },
                     project_name: "Acme".into(),

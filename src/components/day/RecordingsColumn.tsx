@@ -24,7 +24,7 @@ export function RecordingsColumn({ ref, recordings, suggestions, y, pxPerMinute,
         <SuggestionBlock key={s.id} suggestion={s} y={y} />
       ))}
       {recordings.map((r) => (
-        <RecordingBlock key={r.id} block={r} y={y} pxPerMinute={pxPerMinute} focused={r.id === focused} />
+        <RecordingBlock key={r.spanId} block={r} y={y} pxPerMinute={pxPerMinute} focused={r.id === focused} />
       ))}
     </div>
   );

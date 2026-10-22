@@ -6,6 +6,7 @@ import { TimeField } from "../../components/day/TimeField";
 import { ProjectPicker } from "../../components/pickers/ProjectPicker";
 import { TagPicker } from "../../components/pickers/TagPicker";
 import { formatClock, formatDuration, MINUTE_MS } from "../../lib/format";
+import { spansText } from "../../lib/recordings";
 import { applyAppearance } from "../../lib/theme";
 import { useStore } from "../../state/store";
 
@@ -45,7 +46,7 @@ function usePrompt(): [Prompt | null | undefined, () => void] {
 
 function overlapMessage(recordings: Recording[], projects: ProjectListItem[]): string {
   const nameOf = (id: string) => projects.find((p) => p.project.id === id)?.project.name ?? "Unknown project";
-  const spans = recordings.map((r) => `${formatClock(r.start)}–${r.end === null ? "now" : formatClock(r.end)} (${nameOf(r.projectId)})`).join(", ");
+  const spans = recordings.map((r) => `${spansText(r.spans)} (${nameOf(r.projectId)})`).join(", ");
   return recordings.length === 1 ? `A recording already covers ${spans}` : `Recordings already cover ${spans}`;
 }
 
@@ -91,7 +92,7 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
     setFailure(null);
     setSaving(true);
     try {
-      await api.awayPromptAnswer({ projectId, start, end, note: note.trim(), tagId });
+      await api.awayPromptAnswer({ projectId, spans: [{ start, end }], note: note.trim(), tagId });
     } catch (e) {
       const failed = answerFailure(toAppError(e), projects);
       if (failed.kind === "gone") onGone();

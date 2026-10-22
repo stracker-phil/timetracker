@@ -15,7 +15,7 @@ use crate::db::Db;
 use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms, now_ms};
 use crate::error::{AppError, AppResult};
-use crate::recordings::{Change, Overlap, RecordingInput, Recordings};
+use crate::recordings::{Change, Overlap, RecordingInput, Recordings, Span};
 use crate::store::settings::Settings;
 use matching::{Compiled, matches};
 use types::{PreviewHit, RuleInput, RulePreview, Suggestion};
@@ -109,8 +109,10 @@ pub async fn preview(
 fn input_of(suggestion: Suggestion) -> RecordingInput {
     RecordingInput {
         project_id: suggestion.project_id,
-        start: suggestion.start,
-        end: suggestion.end,
+        spans: vec![Span {
+            start: suggestion.start,
+            end: suggestion.end,
+        }],
         note: suggestion.note,
         tag_id: suggestion.tag_id,
     }
@@ -246,8 +248,8 @@ mod tests {
         assert_eq!(
             (
                 recording.project_id.as_str(),
-                recording.start,
-                recording.end,
+                recording.start(),
+                recording.end(),
                 recording.note.as_str(),
                 recording.tag_id.clone(),
             ),
@@ -259,9 +261,29 @@ mod tests {
                 Some(w.tag_id.clone()),
             )
         );
+        assert_eq!(recording.spans.len(), 1);
         assert_eq!(suggestion.rule_id, rule.id);
         assert_eq!(w.recordings().await, [recording]);
         assert!(change.days.contains(&today));
+    }
+
+    #[tokio::test]
+    async fn an_accepted_suggestion_reports_the_length_of_its_recorded_span() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.app_rule("Slack").await;
+        w.work(today, "Slack", (9, 0), (10, 15)).await;
+        let id = w.suggestions(today).await.remove(0).id;
+
+        let change = accept(&w.service(), &w.settings, today, &id).await.unwrap();
+
+        let accepted = commands::SuggestionAccepted {
+            duration_ms: change.value.duration(on(today, 23, 0)),
+            recording: change.value,
+        };
+        let wire = serde_json::to_value(&accepted).unwrap();
+        assert_eq!(wire["durationMs"], 75 * MIN);
+        assert_eq!(wire["recording"]["spans"].as_array().unwrap().len(), 1);
     }
 
     #[tokio::test]
@@ -315,12 +337,16 @@ mod tests {
             .await
             .unwrap();
 
-        let spans: Vec<(Ms, Option<Ms>)> = change.value.iter().map(|r| (r.start, r.end)).collect();
+        let spans: Vec<Vec<(Ms, Option<Ms>)>> = change
+            .value
+            .iter()
+            .map(|r| r.spans.iter().map(|s| (s.start, s.end)).collect())
+            .collect();
         assert_eq!(
             spans,
             [
-                (on(today, 9, 0), Some(on(today, 10, 0))),
-                (on(today, 13, 0), Some(on(today, 14, 0))),
+                vec![(on(today, 9, 0), Some(on(today, 10, 0)))],
+                vec![(on(today, 13, 0), Some(on(today, 14, 0)))],
             ]
         );
         assert!(change.value.iter().all(|r| r.note == "Slack work"));

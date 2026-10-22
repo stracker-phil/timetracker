@@ -5,10 +5,10 @@ use chrono::{TimeZone, Utc};
 use tokio::sync::Mutex;
 
 use super::undo::{UndoStack, UndoStatus};
-use super::{RecordingInput, Recordings};
+use super::{RecordingInput, Recordings, Span};
 use crate::db::Db;
 use crate::db::projects::Project;
-use crate::db::recordings::{self, Recording};
+use crate::db::recordings::{self, Recording, RecordingSpan};
 use crate::db::tags::{self, Tag};
 use crate::db::time::{Day, Ms};
 use crate::error::AppError;
@@ -76,12 +76,11 @@ impl World {
         }
     }
 
-    /// For `project`, without note or tags.
+    /// For `project`, one span, without note or tag.
     pub fn input(&self, start: Ms, end: Ms) -> RecordingInput {
         RecordingInput {
             project_id: self.project.id.clone(),
-            start,
-            end,
+            spans: vec![Span { start, end }],
             note: String::new(),
             tag_id: None,
         }
@@ -91,6 +90,22 @@ impl World {
     pub async fn create(&self, start: Ms, end: Ms) -> Recording {
         self.service()
             .create(self.input(start, end), super::Overlap::Cancel)
+            .await
+            .expect("create recording")
+            .value
+    }
+
+    /// Saves a recording of `project` with several spans through the service.
+    pub async fn create_spans(&self, spans: &[(Ms, Ms)]) -> Recording {
+        let input = RecordingInput {
+            spans: spans
+                .iter()
+                .map(|&(start, end)| Span { start, end })
+                .collect(),
+            ..self.input(0, 0)
+        };
+        self.service()
+            .create(input, super::Overlap::Cancel)
             .await
             .expect("create recording")
             .value
@@ -108,17 +123,42 @@ impl World {
     }
 }
 
-pub fn spans(rows: &[Recording]) -> Vec<(Ms, Ms)> {
-    rows.iter()
-        .map(|r| (r.start, r.end.expect("a closed recording")))
-        .collect()
+/// The closed spans of one recording, by start.
+pub fn times(recording: &Recording) -> Vec<(Ms, Ms)> {
+    spans(std::slice::from_ref(recording))
 }
 
+/// The span ids of one recording, by start.
+pub fn span_ids(recording: &Recording) -> Vec<String> {
+    recording.spans.iter().map(|s| s.id.clone()).collect()
+}
+
+/// Every span of `rows`, closed, by start.
+pub fn spans(rows: &[Recording]) -> Vec<(Ms, Ms)> {
+    let mut spans: Vec<(Ms, Ms)> = rows
+        .iter()
+        .flat_map(|r| &r.spans)
+        .map(|s| (s.start, s.end.expect("a closed span")))
+        .collect();
+    spans.sort_unstable();
+    spans
+}
+
+/// No span of one recording shares time with a span of another.
 pub fn no_two_overlap(rows: &[Recording]) -> bool {
+    let spans_of = |r: &Recording| -> Vec<(Ms, Ms)> {
+        r.spans
+            .iter()
+            .map(|s| (s.start, s.end.unwrap_or(Ms::MAX)))
+            .collect()
+    };
     rows.iter().enumerate().all(|(i, a)| {
         rows[i + 1..].iter().all(|b| {
-            let (a_end, b_end) = (a.end.unwrap_or(Ms::MAX), b.end.unwrap_or(Ms::MAX));
-            a_end <= b.start || b_end <= a.start
+            spans_of(a).iter().all(|&(a_start, a_end)| {
+                spans_of(b)
+                    .iter()
+                    .all(|&(b_start, b_end)| a_end <= b_start || b_end <= a_start)
+            })
         })
     })
 }
@@ -133,11 +173,14 @@ pub fn row(id: &str, start: Ms, end: Ms) -> Recording {
     Recording {
         id: id.into(),
         project_id: "p".into(),
-        start,
-        end: Some(end),
         note: String::new(),
         tag_id: None,
         created_at: 1_000,
         updated_at: 2_000,
+        spans: vec![RecordingSpan {
+            id: format!("{id}-span"),
+            start,
+            end: Some(end),
+        }],
     }
 }

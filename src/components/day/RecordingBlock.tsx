@@ -44,7 +44,7 @@ export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinu
   const press = (grip: Grip) => (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    const { focusRecording, updateRecording } = useStore.getState();
+    const { focusRecording, updateSpan } = useStore.getState();
     focusRecording(block.id);
     if (!movable) return;
     pointerDrag(e, {
@@ -54,7 +54,7 @@ export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinu
         if (!dragged) return;
         if (grip === "move" && onDrop?.(block, ev)) return;
         // Other failures were toasted by the store; a field error (a span over 24 h) has no form here.
-        void updateRecording(block.id, spanAfterDrag(block, grip, dy, pxPerMinute)).catch((err: unknown) => fail(err, "Could not change the recording"));
+        void updateSpan(block.id, block.spanId, spanAfterDrag(block, grip, dy, pxPerMinute)).catch((err: unknown) => fail(err, "Could not change the recording"));
       },
     });
   };
@@ -69,7 +69,7 @@ export const RecordingBlock = memo(function RecordingBlock({ block, y, pxPerMinu
       aria-label={`${block.projectName}${block.note ? `: ${block.note}` : ""}`}
       style={{ top, height, "--rec": color } as CSSProperties}
       onPointerDown={press("move")}
-      onDoubleClick={() => useStore.getState().openEditor({ mode: "edit", id: block.id, at: { start: block.start, end: block.end } })}
+      onDoubleClick={() => useStore.getState().openEditor({ mode: "edit", id: block.id, at: { start: block.start, end: block.end }, spanId: block.spanId })}
     >
       {movable && <span className="grip start" aria-label="Drag to change the start" onPointerDown={press("start")} />}
       <span className="recording-project">{block.projectName}</span>

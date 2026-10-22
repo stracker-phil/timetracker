@@ -1,7 +1,8 @@
 import { useId, useState, type KeyboardEvent } from "react";
 import { NoteInput } from "../NoteInput";
-import { toAppError } from "../../api";
+import { toAppError, type RecordingSpan, type Span } from "../../api";
 import { formatDuration } from "../../lib/format";
+import { spansText } from "../../lib/recordings";
 import { useStore } from "../../state/store";
 import type { Editor } from "../../state/slices/recordings";
 import { FormField } from "../Field";
@@ -16,11 +17,22 @@ const DAY_MS = 24 * 60 * MINUTE_MS;
 
 /** Without line breaks: a note is one line (ADR 0018); pasted ones turn into spaces. */
 
+/** Every span of a recording, the one `spanId` with the `edited` times; null for a running recording,
+ *  whose open span has no end to send (Rust refuses to edit it too). */
+function withSpanEdited(spans: RecordingSpan[], spanId: string | null, edited: Span): Span[] | null {
+  const closed: Span[] = [];
+  for (const s of spans) {
+    if (s.end === null) return null;
+    closed.push(s.id === spanId ? edited : { start: s.start, end: s.end });
+  }
+  return closed;
+}
+
 /** Create a recording for a span, or edit one: project, times, note and tag. Rust snaps the times on save. */
 export function RecordingEditor({ editor }: { editor: Editor }) {
   const step = useStore((s) => s.settings?.timeline.snapMinutes ?? 5) * MINUTE_MS;
   const { closeEditor, createRecording, updateRecording, deleteRecording } = useStore.getState();
-  const { existing, draft, patch } = useRecordingDraft(editor);
+  const { existing, spanId, otherSpans, draft, patch } = useRecordingDraft(editor);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const ids = { start: useId(), end: useId(), note: useId() };
 
@@ -35,7 +47,13 @@ export function RecordingEditor({ editor }: { editor: Editor }) {
       return;
     }
     setErrors({});
-    const fields = { projectId: draft.projectId, start: draft.start, end, note: draft.note, tagId: draft.tagId };
+    const edited = { start: draft.start, end };
+    const spans = existing ? withSpanEdited(existing.spans, spanId, edited) : [edited];
+    if (!spans) {
+      setErrors({ end: "Stop the timer first" });
+      return;
+    }
+    const fields = { projectId: draft.projectId, spans, note: draft.note, tagId: draft.tagId };
     try {
       const saved = existing ? await updateRecording(existing.id, fields) : await createRecording(fields);
       if (saved) closeEditor();
@@ -90,6 +108,7 @@ export function RecordingEditor({ editor }: { editor: Editor }) {
           </FormField>
           <span className="recording-length mono o2">{formatDuration(end - draft.start)}</span>
         </div>
+        {otherSpans.length > 0 && <p className="recording-other-spans">Also {spansText(otherSpans)}</p>}
         <FormField label="Note" htmlFor={ids.note} error={errors.note}>
           <NoteInput
             id={ids.note}

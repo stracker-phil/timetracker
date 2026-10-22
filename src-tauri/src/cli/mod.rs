@@ -17,8 +17,8 @@ use crate::activity::ActivityInput;
 use crate::activity::external;
 use crate::db::time::Ms;
 use crate::ipc::{IpcMessage, MAX_MESSAGE_BYTES};
-use crate::recordings::Overlap;
 use crate::recordings::cli::RecordRequest;
+use crate::recordings::{Overlap, Span};
 use crate::store::settings::LogLevel;
 use crate::timers::commands::TimerStartRequest;
 use report::ReportArgs;
@@ -34,6 +34,7 @@ const EXAMPLES: &str = "Examples:
   timetracker activity stop --source planner
   timetracker activity delete today   delete today's activity (undo within 30 s: activity undo)
   timetracker record --project acme --from 09:00 --to 09:30 --note standup --tag \"internal meeting\"
+  timetracker record --project acme --span 14:25-15:00 --span 16:05-20:15
   timetracker report last-week --by tag --round 15
   timetracker start acme --note \"weekly call\" --tag \"external meeting\"
   timetracker stop
@@ -96,11 +97,18 @@ enum Command {
         #[arg(long)]
         project: String,
         /// 2026-10-21T09:30 (local, or with Z or ±hh:mm), 09:30 (today) or now
-        #[arg(long)]
-        from: String,
+        #[arg(long, requires = "to")]
+        from: Option<String>,
         /// Like --from
-        #[arg(long)]
-        to: String,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
+        /// A span of the recording, like 14:25-15:00 (each end like --from); repeat for several
+        #[arg(
+            long = "span",
+            value_name = "FROM-TO",
+            required_unless_present = "from"
+        )]
+        spans: Vec<String>,
         /// One line
         #[arg(long, default_value = "")]
         note: String,
@@ -355,14 +363,14 @@ fn message<Tz: TimeZone>(
             project,
             from,
             to,
+            spans,
             note,
             tag,
             replace,
         } => IpcMessage::Record {
             request: RecordRequest {
                 project,
-                start: time::instant(&from, now, tz)?,
-                end: time::instant(&to, now, tz)?,
+                spans: record_spans(from.zip(to), &spans, now, tz)?,
                 note,
                 tag,
                 overlap: if replace {
@@ -401,6 +409,26 @@ fn message<Tz: TimeZone>(
 }
 
 /// The span of the flags, or with `--json` and no span flags the array on stdin.
+/// `--from`/`--to` as one span, then every `--span`.
+fn record_spans<Tz: TimeZone>(
+    from_to: Option<(String, String)>,
+    spans: &[String],
+    now: Ms,
+    tz: &Tz,
+) -> Result<Vec<Span>, String> {
+    let mut all = Vec::new();
+    if let Some((from, to)) = from_to {
+        all.push(Span {
+            start: time::instant(&from, now, tz)?,
+            end: time::instant(&to, now, tz)?,
+        });
+    }
+    for text in spans {
+        all.push(time::span(text, now, tz)?);
+    }
+    Ok(all)
+}
+
 fn add_items<Tz: TimeZone>(
     span: SpanArgs,
     end: Option<String>,
@@ -977,12 +1005,144 @@ mod tests {
         IpcMessage::Record {
             request: RecordRequest {
                 project: "ac".into(),
-                start: ms("2026-10-21T09:00:00+02:00"),
-                end: ms(end),
+                spans: vec![Span {
+                    start: ms("2026-10-21T09:00:00+02:00"),
+                    end: ms(end),
+                }],
                 note: note.into(),
                 tag: tag.map(str::to_string),
                 overlap,
             },
+        }
+    }
+
+    fn spans_request(spans: &[(&str, &str)]) -> IpcMessage {
+        IpcMessage::Record {
+            request: RecordRequest {
+                project: "ac".into(),
+                spans: spans
+                    .iter()
+                    .map(|&(start, end)| Span {
+                        start: ms(start),
+                        end: ms(end),
+                    })
+                    .collect(),
+                note: String::new(),
+                tag: None,
+                overlap: Overlap::Cancel,
+            },
+        }
+    }
+
+    #[test]
+    fn record_takes_every_span_flag_in_order() {
+        let (message, ..) = remote(&[
+            "record",
+            "--project",
+            "ac",
+            "--span",
+            "14:25-15:00",
+            "--span",
+            "16:05-20:15",
+        ]);
+
+        assert_eq!(
+            message,
+            spans_request(&[
+                ("2026-10-21T14:25:00+02:00", "2026-10-21T15:00:00+02:00"),
+                ("2026-10-21T16:05:00+02:00", "2026-10-21T20:15:00+02:00"),
+            ])
+        );
+    }
+
+    #[test]
+    fn record_puts_the_from_to_span_before_the_span_flags() {
+        let (message, ..) = remote(&[
+            "record",
+            "--project",
+            "ac",
+            "--span",
+            "16:05-20:15",
+            "--from",
+            "09:00",
+            "--to",
+            "10:30",
+        ]);
+
+        assert_eq!(
+            message,
+            spans_request(&[
+                ("2026-10-21T09:00:00+02:00", "2026-10-21T10:30:00+02:00"),
+                ("2026-10-21T16:05:00+02:00", "2026-10-21T20:15:00+02:00"),
+            ])
+        );
+    }
+
+    #[test]
+    fn a_span_flag_reads_the_en_dash_dates_offsets_and_now() {
+        let (message, ..) = remote(&[
+            "record",
+            "--project",
+            "ac",
+            "--span",
+            "14:25–15:00",
+            "--span",
+            "2026-10-20T22:00-2026-10-21T01:00",
+            "--span",
+            "2026-10-21T09:30Z-2026-10-21T10:00Z",
+            "--span",
+            "11:00-now",
+        ]);
+
+        assert_eq!(
+            message,
+            spans_request(&[
+                ("2026-10-21T14:25:00+02:00", "2026-10-21T15:00:00+02:00"),
+                ("2026-10-20T22:00:00+02:00", "2026-10-21T01:00:00+02:00"),
+                ("2026-10-21T09:30:00Z", "2026-10-21T10:00:00Z"),
+                ("2026-10-21T11:00:00+02:00", "2026-10-21T12:00:00+02:00"),
+            ])
+        );
+    }
+
+    #[test]
+    fn record_needs_from_and_to_together_or_a_span() {
+        let cases: Vec<(Vec<&str>, &str)> = vec![
+            (vec!["record", "--project", "ac"], "--span"),
+            (vec!["record", "--project", "ac", "--from", "09:00"], "--to"),
+            (
+                vec![
+                    "record",
+                    "--project",
+                    "ac",
+                    "--span",
+                    "14:25-15:00",
+                    "--to",
+                    "10:00",
+                ],
+                "--from",
+            ),
+            (
+                vec!["record", "--project", "ac", "--span", "14:25"],
+                "Not a span: `14:25`",
+            ),
+            (
+                vec![
+                    "record",
+                    "--project",
+                    "ac",
+                    "--span",
+                    "14:25-15:00",
+                    "--span",
+                    "later",
+                ],
+                "Not a span: `later`",
+            ),
+        ];
+        for (args, expected) in cases {
+            let err = run(&args).unwrap_err();
+            assert!(!err.in_app, "{args:?}");
+            assert!(err.message.contains(expected), "{args:?}: {}", err.message);
         }
     }
 

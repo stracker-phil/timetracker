@@ -96,7 +96,7 @@ function extendToBlock(by: 1 | -1) {
 function stepRecording(by: 1 | -1) {
   const s = useStore.getState();
   if (s.dayView?.day !== s.day) return;
-  const ids = [...s.dayView.recordings].sort((a, b) => a.start - b.start).map((r) => r.id);
+  const ids = [...new Set([...s.dayView.recordings].sort((a, b) => a.start - b.start).map((r) => r.id))];
   if (ids.length === 0) return;
   const at = s.focusedRecording === null ? -1 : ids.indexOf(s.focusedRecording);
   const next = at === -1 ? (by === 1 ? ids[0] : ids[ids.length - 1]) : ids[Math.max(0, Math.min(ids.length - 1, at + by))];
@@ -160,13 +160,12 @@ function clearDayFocus() {
   s.focusRecording(null);
 }
 
-/** Moves the focused recording's start and end by whole snap steps. */
+/** Moves the start and end of the focused recording's first span of the day by whole snap steps; Rust knows the step. */
 function shiftRecording(startSteps: number, endSteps: number) {
   const s = useStore.getState();
   const block = s.dayView?.recordings.find((r) => r.id === s.focusedRecording);
   if (!block || block.clippedStart || block.clippedEnd || block.running) return;
-  const step = (s.settings?.timeline.snapMinutes ?? 5) * 60_000;
-  void s.updateRecording(block.id, { start: block.start + startSteps * step, end: block.end + endSteps * step }).catch(() => {});
+  void s.nudgeSpan(block.id, block.spanId, startSteps, endSteps).catch(() => {});
 }
 
 /** Moves (or copies) the focused recording to the day before (-1) or after (1), at the same time of day. */
@@ -175,7 +174,7 @@ function recordingToDay(by: 1 | -1, copy: boolean) {
   const id = s.focusedRecording;
   if (id === null) return;
   const day = addDays(s.day, by);
-  void (copy ? s.copyRecording(id, day) : s.moveRecording(id, day));
+  void (copy ? s.copyRecording(id, day, null) : s.moveRecording(id, day, null));
 }
 
 /** The rule whose row holds the keyboard focus on the Rules screen. */

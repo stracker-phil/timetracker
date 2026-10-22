@@ -1,9 +1,11 @@
+use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
+use ts_rs::TS;
 
 use super::types::{Rule, RuleInput, RulePreview, Suggestion};
 use super::{accept, accept_rule, preview, store, suggestions_of};
 use crate::db::recordings::Recording;
-use crate::db::time::Day;
+use crate::db::time::{Day, Ms, now_ms};
 use crate::error::AppResult;
 use crate::events::{self, DataKind};
 use crate::recordings::commands::changing;
@@ -76,11 +78,28 @@ pub async fn suggestions(state: State<'_, AppState>, day: Day) -> AppResult<Vec<
     suggestions_of(&state.data.db()?, day, &state.settings.get()).await
 }
 
+/// An accepted suggestion: the new recording and how long it is, for the page's toast.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct SuggestionAccepted {
+    pub recording: Recording,
+    pub duration_ms: Ms,
+}
+
 /// Records the suggestion `id` of `day`; refused with `overlap` when a recording took its time meanwhile.
 #[tauri::command]
-pub async fn suggestion_accept(app: AppHandle, day: Day, id: String) -> AppResult<Recording> {
+pub async fn suggestion_accept(
+    app: AppHandle,
+    day: Day,
+    id: String,
+) -> AppResult<SuggestionAccepted> {
     let settings = app.state::<AppState>().settings.get();
-    changing(&app, async |s| accept(s, &settings, day, &id).await).await
+    let recording = changing(&app, async |s| accept(s, &settings, day, &id).await).await?;
+    Ok(SuggestionAccepted {
+        duration_ms: recording.duration(now_ms()),
+        recording,
+    })
 }
 
 /// Records every suggestion of the rule on `day` as one undoable change.

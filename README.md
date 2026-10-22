@@ -68,6 +68,7 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 | `timetracker activity delete <DAY>` / `activity delete <FROM> <TO>` | deletes the activity and away spans of a day or range (whole when they cross it; recordings stay) |
 | `timetracker activity undo` | restores the last delete, within 30 s of it |
 | `timetracker record --project P --from T --to T [--note N] [--tag T] [--replace]` | records time for a project (by id, name or a unique start of its name; one tag by name); refuses to overlap another recording unless `--replace` |
+| `timetracker record --project P --span 14:25-15:00 --span 16:05-20:15 …` | one recording with several separate spans (`--from`/`--to` counts as one more) |
 | `timetracker report [RANGE] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30 [--up]]` | prints the hours and notes of today (or `yesterday`, `week`, `last-week`, `month`, `last-month`, a day, or two days `FROM TO`), ready to paste into a timesheet |
 | `timetracker start PROJECT [--note N] [--tag T]` / `timetracker stop` | starts a timer now (a running one stops) / stops it |
 | `timetracker mcp` | serves the read-only MCP server on stdin/stdout, see [MCP](#mcp) |

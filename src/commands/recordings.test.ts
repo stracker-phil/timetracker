@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { api } from "../api";
 import { resetStore, useStore } from "../state/store";
 import { at, DAY, dayView, recordingBlock } from "../test/dayFixtures";
+import { settings } from "../test/settings";
 import { conflicts, getCommand, handleKeydown, installCommands, runCommand, runMenuCommand } from "./index";
 
 const mocked = vi.mocked(api, true);
@@ -125,6 +126,60 @@ describe("recording commands", () => {
       await press("n");
       expect(state().focusedRecording).toBe("r1");
       expect(state().day).toBe("2026-03-11");
+    });
+  });
+
+  describe("a recording with several spans on the day", () => {
+    const morning = recordingBlock({ id: "r1", spanId: "r1-s1", spanCount: 2, start: at("09:00"), end: at("09:30") });
+    const evening = recordingBlock({ id: "r1", spanId: "r1-s2", spanCount: 2, start: at("13:00"), end: at("13:30") });
+    const between = recordingBlock({ id: "r2", start: at("11:00"), end: at("12:00") });
+
+    beforeEach(() => {
+      resetStore({ view: "day", day: DAY, settings: settings(), dayView: dayView({ recordings: [morning, between, evening] }) });
+    });
+
+    async function press(keys: string) {
+      window.addEventListener("keydown", handleKeydown, true);
+      try {
+        await userEvent.keyboard(keys);
+      } finally {
+        window.removeEventListener("keydown", handleKeydown, true);
+      }
+    }
+
+    it("] visits it once and stops at the last recording", async () => {
+      await press("]");
+      await press("]");
+      await press("]");
+      expect(state().focusedRecording).toBe("r2");
+    });
+
+    it("[ starts from the last recording, not from its last span", async () => {
+      await press("[[");
+      expect(state().focusedRecording).toBe("r2");
+      await press("[[");
+      expect(state().focusedRecording).toBe("r1");
+    });
+
+    it.each([
+      ["recording.nudgeLater", 1, 1],
+      ["recording.nudgeEarlier", -1, -1],
+      ["recording.extend", 0, 1],
+      ["recording.shrink", 0, -1],
+    ] as const)("%s nudges its first span of the day by %i and %i steps", async (id, startSteps, endSteps) => {
+      state().focusRecording("r1");
+      expect(runCommand(id)).toBe(true);
+      await vi.waitFor(() => expect(mocked.recordingNudge).toHaveBeenCalledWith("r1", "r1-s1", startSteps, endSteps, "cancel"));
+      expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["recording.moveToNextDay", "recordingMove", "2026-03-11"],
+      ["recording.copyToPrevDay", "recordingCopy", "2026-03-09"],
+    ] as const)("%s acts on the whole recording", async (id, call, day) => {
+      state().focusRecording("r1");
+      expect(runCommand(id)).toBe(true);
+      await vi.waitFor(() => expect(mocked[call]).toHaveBeenCalledWith("r1", null, day, "cancel"));
     });
   });
 

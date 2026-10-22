@@ -154,7 +154,7 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `day_totals` (`day/commands.rs`) | `day: Day` | `DayTotals { recordedMs, trackedMs, awayMs }` (`day::totals`, without building the view; the status bar's today) | `invalid_input`, `db` |
 | `list_view` (`day/commands.rs`) | `day: String` | `ListView { day, rows: ListRow[], totalMs }` (see [List view](#list-view)) | `invalid_input`, `db` |
 | `away_prompt_current` (`away_prompt/commands.rs`) | – | `AwayPrompt \| null` | – |
-| `away_prompt_answer` | `input: RecordingInput` | `Recording`, created with `overlap: cancel` (undoable); closes the window | `not_found` (no prompt), `invalid_input` (`field`: `start` outside the last 7 days, or the recording's own fields), `overlap` (the prompt stays open) |
+| `away_prompt_answer` | `input: RecordingInput` | `Recording`, created with `overlap: cancel` (undoable); closes the window | `not_found` (no prompt), `invalid_input` (`field`: `start` when a span lies outside the last 7 days, or the recording's own fields), `overlap` (the prompt stays open) |
 | `away_prompt_skip` | – | – (clears the prompt, closes the window; nothing is recorded) | – |
 | `rules_list` (`rules/commands.rs`) | – | `Rule[] { id, name, projectId, position, enabled, note, tagId, conditions }`, by position | `db` |
 | `rule_save` | `id: string \| null, input: RuleInput` | `Rule`; `null` appends a new rule; an existing one keeps its position and gets the new conditions | `invalid_input` (`field`: `name`, `projectId`, `note`, `tagId`, `conditions`, `conditions.<i>.value`), `not_found`, `db` |
@@ -163,20 +163,26 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `rule_set_enabled` | `id, enabled: bool` | `Rule` | `not_found` |
 | `rule_preview` | `input: RuleInput, days: u32` | `RulePreview { hits: PreviewHit[] { block, day }, totalMs, days }`: what the conditions alone match over the last `days` days, today included (see [Rules and suggestions](#rules-and-suggestions)) | `invalid_input` (`field: conditions`), `db` |
 | `suggestions` | `day: Day` | `Suggestion[]` (the same as in `DayView`) | `db` |
-| `suggestion_accept` | `day: Day, id` | `Recording`, created like `recording_create` with `overlap: cancel` (undoable) | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
+| `suggestion_accept` | `day: Day, id` | `SuggestionAccepted { recording, durationMs }`: the recording, created like `recording_create` with `overlap: cancel` (undoable), and its length for the toast | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
 | `suggestions_accept_rule` | `day: Day, ruleId` | `Recording[]`: every suggestion of the rule on the day, one undo entry (`Recordings::create_all`; one that would overlap is left out) | `not_found` (no suggestions), `db` |
 | `app_settings_set` (`commands.rs`) | `bundleId: String` (the app key: bundle id, else the app name), `patch: AppSettingPatch { groupByApp?, titles?, ownLane?, hidden? }` (`null` returns `groupByApp`/`titles` to the timeline's setting) | `Settings`; applied under the settings store's lock (`SettingsStore::update_app`), so concurrent changes never undo each other; an override that ends up default is removed (`Settings::with_app`) | `invalid_input` (blank key), `io` |
 | `apps_list` (`day/commands.rs`) | – | `KnownApp[] { appKey, app, totalMs, lastSeen }` (`day::apps::known_apps`): every tracker app and every app with an override, by name | `db` |
-| `recording_create` (`recordings/commands.rs`) | `input: RecordingInput { projectId, start, end, note, tagId }, overlap: Overlap` | `Recording` (snapped) | `invalid_input` (`field`), `overlap` (`details`: the recordings in the way), `not_found`, `db` |
+| `recording_create` (`recordings/commands.rs`) | `input: RecordingInput { projectId, spans: Span[], note, tagId }, overlap: Overlap` | `Recording` (snapped) | `invalid_input` (`field`: `spans` empty or overlapping each other, `end`, `note`, …), `overlap` (`details`: the recordings in the way), `not_found`, `db` |
 | `recording_update` | `id, patch: RecordingPatch, overlap` | `Recording` | the same |
 | `recording_delete` | `id` | – | `not_found`, `db` |
-| `recording_move` / `recording_copy` | `id, day: Day, overlap` | `Recording`: moved, or a new copy, to `day` at the same local time (`same_time_on`, DST-safe) with the same length, through `update` / `create` (undoable; a recording over midnight moves with its start day) | `invalid_input` (the running timer), `overlap`, `not_found`, `db` |
+| `recording_add_span` | `id, span: Span, overlap` | `Recording` with the span added (snapped) | the same, `invalid_input` for the running timer |
+| `recording_update_span` | `id, spanId, span: Span, overlap` | `Recording` with the span's new times | the same; `not_found` for an unknown span |
+| `recording_remove_span` | `id, spanId` | `Recording`, or `null` when it was the last span and the recording was deleted | `invalid_input` (the running timer), `not_found`, `db` |
+| `recording_split_span` | `id, spanId, at: Ms` | `Recording` whose span is cut in two at the snapped `at`; both halves stay in it | `invalid_input` (`field`: `at` not inside the span; the running timer), `not_found`, `db` |
+| `recording_merge` | `into, from` | `Recording` `into` with the spans of `from` (which keeps its project, note and tag); `from` is deleted | `invalid_input` (`field`: `from` the same recording; a running one), `not_found`, `db` |
+| `recording_nudge` | `id, spanId, startSteps: i32, endSteps: i32, overlap` | `Recording` whose span's start and end moved by that many snap steps (`timeline.snapMinutes`; ⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓), through `update_span` | as `recording_update_span` |
+| `recording_move` / `recording_copy` | `id, spanId: string \| null, day: Day, overlap` | `Recording`: moved, or a new copy, to `day` at the same local time (`same_time_on`, DST-safe) with the same lengths (undoable). With `spanId` only that span (the copy is a new recording of it); without, every span, shifted by the days between the first span's day and `day` | `invalid_input` (the running timer), `overlap`, `not_found`, `db` |
 | `week_view` (`calendar/commands.rs`) | `day: Day` | `WeekView { weekStart, label, days: DayColumn[], totalMs, trackedMs }`; `DayColumn { day, bounds, label, isToday, recordings, totalMs, trackedMs }` | `invalid_input`, `db` |
 | `month_view` | `day: Day` | `MonthView { monthStart, label, weeks: MonthDay[][], totalMs }` (whole weeks Monday to Sunday; `totalMs` counts the month's own days); `MonthDay { day, inMonth, isToday, recordedMs, projects }` (the top three by time, with color and shade) | `invalid_input`, `db` |
 | `calendar_period` (`calendar/commands.rs`) | `unit: PeriodUnit` (`day`, `week`, `month`), `day: Day` | `Period { from, to, holdsToday }`: the day, Monday-to-Sunday week or month holding `day` (`calendar::period::period`); the sidebar's date heading | `invalid_input` |
 | `calendar_picker` | `month: Day` (any day of it), `selected: [Day, Day] \| null` | `PickerMonth { monthStart, weeks: PickerDay[][] }` (whole weeks Monday to Sunday); `PickerDay { day, outside, isToday, selected }` (`calendar::period::picker_month`); the date picker | `invalid_input` |
 | `calendar_jumps` | `text: string` | `DateJump[] { name: string \| null, unit: PeriodUnit, from: Day, to: Day }` (`calendar::jump::jumps`): a typed date (`2026-10-12`, `12.10.`, `12.10.2026`, `oct 12`, `12 october 2026`; without a year the latest on or before today) as one day without a name, else the date words starting with `text` or one of whose words does (Today, Yesterday, This week, Last week, This month, Last month, a weekday: the latest on or before today, a month name: the latest on or before this month); `""` gives Today, Yesterday, This week, This month; the palette | – |
-| `recordings_list` | `from: Ms, to: Ms` | `Recording[]` sharing time with the range | `db` |
+| `recordings_list` | `from: Ms, to: Ms` | `Recording[]` with a span sharing time with the range, each with all its spans | `db` |
 | `recording_snap` | `start: Ms, end: Ms` | `Span` as a write would snap it (the drag ghost) | – |
 | `recording_default_span` | – | `Span`: the half hour up to now (`NEW_RECORDING_MINUTES`), snapped (`recordings::default_span`); File → New Recording… without a selection | – |
 | `undo` / `redo` | – | the label undone or redone, `null` when there was none | `overlap`, `db` |
@@ -266,43 +272,56 @@ day's rows, else by its key) for the header's popover.
 
 ## Recordings
 
-`recordings/` turns spans into recordings ([ADR 0010](adr/0010-recordings-never-overlap-ops-with-undo.md)).
-`Recordings { db, undo, snap_minutes }` (`mod.rs`) is the service; each write takes the `AppState.undo` lock
-for its whole run, so writes never interleave. `create`, `update` and `delete` validate, snap, clear the span,
-build an `ops::Op`, apply it and push it on the undo stack; `commands.rs` then emits `data_changed { kind:
-recordings, day }` for every day the op touched, before and after (`Change.days`).
+`recordings/` turns spans into recordings ([ADR 0010](adr/0010-recordings-never-overlap-ops-with-undo.md),
+[ADR 0020](adr/0020-recordings-have-spans.md)). A recording holds one or more spans; project, note and tag
+belong to the recording. `Recordings { db, undo, snap_minutes }` (`mod.rs`) is the service; each write takes
+the `AppState.undo` lock for its whole run, so writes never interleave. `create`, `update`, `delete`,
+`add_span`, `update_span`, `nudge_span`, `remove_span`, `split_span`, `merge`, `move_to_day` and `copy_to_day` validate, snap,
+clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `commands.rs` then emits
+`data_changed { kind: recordings, day }` for every day a span of the op touched, before and after
+(`Change.days`).
 
 - **Snapping** (`snap`, `snap_span`): to the nearest multiple of `timeline.snapMinutes` counted from local
   midnight, read at call time; an end that snaps onto or before the start lands one step after it. `update`
-  snaps only the times it changes, so editing a note keeps the times.
-- **Validation** (`InvalidField`): `end` after `start` and at most 24 h later; `note` one line, at most 500
+  snaps only when the patch has `spans`, so editing a note keeps the times.
+- **Validation** (`InvalidField`): at least one span (`spans`), each `end` after its `start` and at most 24 h
+  later, none overlapping another of the recording (`spans`, checked by `db::recordings::check_spans` for both layers; touching is fine); `note` one line, at most 500
   characters, trimmed; `projectId` not archived (unless the recording already belongs to it); `tagId` (one
   tag or `null`, [ADR 0019](adr/0019-one-tag-per-recording.md)) known.
   A missing project is `not_found`; a running recording is not edited here ("Stop the timer first").
-- **Overlap** (`Overlap::Cancel | Replace`): with `Cancel` a span sharing time with others is refused with
-  `overlap` and the recordings in `details`; with `Replace` each one in the way is deleted (inside), trimmed
-  (one side out) or split (both sides out; the right part is a new recording with the same project, note and
-  tag), all in one `Op::Batch` with the new recording last. A running recording in the way is
-  `invalid_input`.
-- **Operations** (`ops.rs`): `Op::Create | Update { before, after } | Delete | Batch`; `inverse()` swaps them
-  (a batch reversed). `apply` runs the op in one transaction through `db::recordings::put_on` (the row
-  exactly as given, timestamps and tag included) and `remove_on`, then refuses with `overlap` if any
-  recording it wrote shares time with another; then nothing is written.
+- **Overlap** (`Overlap::Cancel | Replace`), per span: with `Cancel` a recording whose spans share time with
+  another's is refused with `overlap` and those recordings in `details`; with `Replace` each span in the way
+  is removed (inside), trimmed (one side out) or cut in two (both sides out; both pieces stay spans of the same
+  recording), and a recording left without spans is deleted (`clear_op`), all in one `Op::Batch` with the
+  written recording last. A running timer's open span in the way is `invalid_input`.
+- **Spans**: `add_span`, `update_span` (by span id), `remove_span` (removing the last one deletes the
+  recording), `split_span(at)` (two touching spans), `merge(into, from)` (the spans of `from` join `into`,
+  `from` is deleted first so its span ids carry over). None of them edits the running timer.
+- **Move and copy** (`move_to_day`, `copy_to_day`): one span by id (the Week view's drag), or the whole
+  recording (the Day view's menu commands): every span moves by the days between its first span's day and the
+  target day, each at its own local time and length. A copy is a new recording.
+- **Operations** (`ops.rs`): `Op::Create | Update { before, after } | Delete | Batch` on whole recordings with
+  their spans; `inverse()` swaps them (a batch reversed). `apply` runs the op in one transaction through
+  `db::recordings::put_on` (the row and all its spans exactly as given, timestamps, tag and span ids included)
+  and `remove_on`, then refuses with `overlap` if any span it wrote shares time with another recording's;
+  then nothing is written.
 - **Undo** (`undo.rs`): `UndoStack` keeps the last 100 changes of this run with their labels (`Record 45 min
-  for Acme`, `Move recording`, `Resize recording`, `Edit recording`, `Delete recording`); a new change clears
+  for Acme`, `Move recording`, `Resize recording`, `Edit recording`, `Delete recording`, `Add span`, `Remove
+  span`, `Split span`, `Merge recordings`); a new change clears
   the redo list. `undo` applies the inverse, `redo` the op again; one that would now overlap is refused and
   the stack stays as it was.
 
 The Day view gets the day's recordings too (`day::commands::load` reads them with the projects, clients and
-tags): `DayView.recordings` (`RecordingBlock`: clipped span, project, client, color and shade, note, `tag`
-name, `running`, `clippedStart`/`clippedEnd`), `ActivityBlock.covered` when at least half of a block lies
-inside recordings, and `totals.recordedMs`.
+tags): `DayView.recordings` (`RecordingBlock`, one per span on the day: the recording's `id`, `spanId`,
+`spanCount`, the clipped span, project, client, color and shade, note, `tag` name, `running`,
+`clippedStart`/`clippedEnd`), `ActivityBlock.covered` when at least half of a block lies inside recordings,
+and `totals.recordedMs` (the day's parts of the spans).
 
 ## Week and month
 
 `calendar/mod.rs` reads the range's recordings (and, for the week, activity) once and cuts them per day with
-the Day view's own `day::recording_blocks` and `day::tracked_ms`, so a recording over midnight shows in both
-days' columns with its parts.
+the Day view's own `day::recording_blocks` and `day::tracked_ms`, so a span over midnight shows in both days'
+columns with its parts, and a recording shows on every day one of its spans touches.
 
 ## Reports
 
@@ -317,8 +336,9 @@ range, or with `anchor` from the unit that holds the anchor (for days: the days 
 with today is "Today", "This week" or "This month". A result equal to a preset becomes that preset (a week
 back from This week is Last week), anything else `Custom`.
 
-- Rows: each recording's part in each day of the range (the running one ends now), so a recording over
-  midnight counts on both days, as in the Day view. Client, project and tag lists narrow
+- Rows: one per recording and day of the range, with that day's parts of its spans (`spans`, the running one
+  ends now; `start`/`end` the first start and the last end; `durationMs` their sum), so a span over midnight
+  counts on both days, as in the Day view. Rows (and so a group's notes) are ordered by their first span. Client, project and tag lists narrow
   together (empty: all; a tag filter keeps recordings with any chosen tag); archived projects only with
   `includeArchived`. Notes are trimmed.
 - Rounding is per recording (`rounding_step`: nearest, half up, or up), at least one step for a recording
@@ -433,10 +453,10 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `activity delete DAY` / `activity delete FROM TO` | `activityDelete { from, to }`: `DAY` (`YYYY-MM-DD`, `today`, `yesterday`) is its local bounds; `FROM`/`TO` as `instant` | `deleted 412 activity spans and 3 away spans` and `undo within 30 s: timetracker activity undo` |
 | `activity undo` | `activityDeleteUndo` | `restored 412 activity spans and 3 away spans`; nothing to undo exits 1 with `Nothing to undo` |
 | `report [today\|yesterday\|week\|last-week\|month\|last-month\|DAY\|FROM TO] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30] [--up]` | `report { request: ReportRequest }` (`cli/report.rs` parses the range and flags); the app resolves names (`reports::cli`: an id, an exact name ignoring case, or a unique start; several matches list them) and runs the report | the report text; `--json`: the `ReportResult` plus `text` |
-| `start PROJECT [--note N] [--tag T]` | `timerStart { request: TimerStartRequest }`; the app resolves the project and tag like `record` | `started Acme at 09:15`; `--json`: the `Recording` plus `projectName` |
-| `stop` | `timerStop` | `stopped 09:15–10:40 (1:25)` or `no timer running` (exit 0) |
+| `start PROJECT [--note N] [--tag T]` | `timerStart { request: TimerStartRequest }`; the app resolves the project and tag like `record` | `started Acme at 09:15` (the open span's start; a recording of today with the same project, note and tag continues); `--json`: the `Recording` plus `projectName` |
+| `stop` | `timerStop` | `stopped 09:15–10:40 (1:25)` (the span just closed) or `no timer running` (exit 0) |
 | `mcp` | none: serves MCP on stdin/stdout (`CliOutcome::Mcp`) | only JSON-RPC on stdout |
-| `record --project P --from ISO --to ISO [--note N] [--tag T] [--replace]` | `record { request: RecordRequest }` (`overlap: replace` with `--replace`, else `cancel`; one `--tag`, a second is a parse error); the app resolves the project (`projects::resolve`) and the tag by name (`tags::resolve_name`, unknown → `not_found`) | `recorded 09:00–10:30 (1:30) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: the `Recording` plus `projectName` |
+| `record --project P (--from ISO --to ISO \| --span FROM-TO…) [--note N] [--tag T] [--replace]` | `record { request: RecordRequest { spans, … } }`: `--from`/`--to` is one span, each `--span` (`14:25-15:00`, ends as `instant`, joined by `-` or `–`; `time::span`) another (`overlap: replace` with `--replace`, else `cancel`; one `--tag`, a second is a parse error); the app resolves the project (`projects::resolve`) and the tag by name (`tags::resolve_name`, unknown → `not_found`) | `recorded 14:25–15:00, 16:05–20:15 (4:45) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: the `Recording` plus `projectName` |
 
 `parse(args, now, tz, stdin) -> Result<CliOutcome, CliError>` is pure: `CliOutcome` is `Run { hidden,
 log_level }`, `Exit { message }` (help, version), `Mcp` or `Remote { message, json, starts_app }`. The CLI checks
@@ -574,7 +594,7 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
 | Tool | Args | Returns |
 |---|---|---|
 | `report` | `range` (`today` default, `yesterday`, `week`, `last-week`, `month`, `last-month`, a day) or `from`/`to`; `group_by` (`project` default, `tag`, `day`, `week`, `month`); `client`, `project`, `tag`; `format` (`text` default, `json`) | `reports::text`, or `{ from, to, group_by, rounding, total_min, total_rounded_min, groups: [{ label, minutes, rounded_min, notes }] }`; rounding from `settings.reports.rounding` |
-| `recordings` | `from`, `to` (days, inclusive), `project`, `tag`, `limit` (default 500, at most 5000) | `[{ id, day, start_iso, end_iso, duration_min, project, client?, note, tag }]` (`tag`: the name or `null`) by start, one row per recording and day, archived projects included |
+| `recordings` | `from`, `to` (days, inclusive), `project`, `tag`, `limit` (default 500, at most 5000) | `[{ id, day, start_iso, end_iso, spans: [{ start_iso, end_iso }], duration_min, project, client?, note, tag }]` (`tag`: the name or `null`; `spans` the day's parts, `duration_min` their sum) by start, one row per recording and day, archived projects included |
 | `projects` | – | `[{ id, name, color, client?, archived }]` |
 | `tags` | – | `[{ id, name }]` |
 | `day_summary` | `day` | `{ day, recorded_min, tracked_min, away_min, by_project, by_tag }`; totals from `day::commands::view_of`, the groups `[{ name, minutes, notes }]` from `reports::run` for that day |
@@ -618,15 +638,17 @@ project cut to 24 characters), and rebuilds the timer items. The tray's click ev
 
 ## Timers
 
-A timer is a recording without an end, so the overlap rule, undo and reports need nothing new.
+A timer is a recording with an open span, so the overlap rule, undo and reports need nothing new.
 
 - `recordings/timer.rs`: `Recordings::start_timer(TimerInput, now)` starts at `snap(now)`, moved forward past
-  any recording that ended since (`free_start`); a running timer stops at that same instant, in one batch
-  ("Start timer for Acme"). `stop_timer(now)` ends it at `stop_time(start, now, snap)`: on the grid, and at
-  least a minute long. Both go through `apply`'s overlap check and onto the undo stack; undoing a stop makes
+  any span that ended since (`free_start`); a running timer stops at that same instant, in one batch
+  ("Start timer for Acme"). A finished recording of today with the same project, note and tag whose spans
+  all end by then continues: it gets the open span instead of a new recording being made (the latest such
+  one). When the running timer already is that project, note and tag, nothing changes. `stop_timer(now)`
+  closes the open span at `stop_time(start, now, snap)`: on the grid, and at least a minute long. Both go through `apply`'s overlap check and onto the undo stack; undoing a stop makes
   the timer run again.
 - `timers/mod.rs`: `status(db, now) -> TimerStatus { running: Option<RunningTimer { recording, projectName,
-  color, shade, elapsedMs }> }`, `recent(db, 8) -> RecentTimer[]` (distinct project, note and tag of finished
+  color, shade, elapsedMs }> }` (`elapsedMs` since the open span started, `open_start`), `recent(db, 8) -> RecentTimer[]` (distinct project, note and tag of finished
   recordings, newest first, archived projects left out), `publish(app)` (the `timer_status` event and the tray),
   `start_ticking(app)` (publishes at startup and every minute while a timer runs).
 - `timers/commands.rs`: `timer_start(projectId, note, tagId)`, `timer_stop` (`null` without a timer),

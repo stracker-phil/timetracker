@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { ReportGroup } from "../../api";
-import { formatClock, formatHm } from "../../lib/format";
+import { formatHm } from "../../lib/format";
+import { spansText } from "../../lib/recordings";
 import { AccentDot } from "../Accent";
 
 /** One group: its label and hours, the notes below, and its recordings on request. */
@@ -43,9 +44,7 @@ export function ReportGroupTable({ group, rounded }: { group: ReportGroup; round
             {group.rows.map((row) => (
               <tr key={`${row.id}:${row.day}`}>
                 <td className="mono">{row.day}</td>
-                <td className="mono">
-                  {formatClock(row.start)}–{formatClock(row.end)}
-                </td>
+                <td className="mono">{spansText(row.spans)}</td>
                 <td className="mono">{formatHm(rounded ? row.roundedMs : row.durationMs)}</td>
                 <td>{row.client ? `${row.client} / ${row.project}` : row.project}</td>
                 <td className="mono o2">{row.tag}</td>

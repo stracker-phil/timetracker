@@ -46,26 +46,103 @@ pub async fn recording_update(
     changing(&app, async |s| s.update(&id, patch, overlap).await).await
 }
 
-/// Moves the recording to `day` at the same local time; it keeps its length.
+/// Moves the span `spanId`, else the whole recording, to `day` at the same local time; spans keep their
+/// lengths.
 #[tauri::command]
 pub async fn recording_move(
     app: AppHandle,
     id: String,
+    span_id: Option<String>,
     day: Day,
     overlap: Overlap,
 ) -> AppResult<Recording> {
-    changing(&app, async |s| s.move_to_day(&id, day, overlap).await).await
+    changing(&app, async |s| {
+        s.move_to_day(&id, span_id.as_deref(), day, overlap).await
+    })
+    .await
 }
 
-/// A copy of the recording on `day` at the same local time.
+/// A copy of the span `spanId`, else of the whole recording, on `day` at the same local time.
 #[tauri::command]
 pub async fn recording_copy(
     app: AppHandle,
     id: String,
+    span_id: Option<String>,
     day: Day,
     overlap: Overlap,
 ) -> AppResult<Recording> {
-    changing(&app, async |s| s.copy_to_day(&id, day, overlap).await).await
+    changing(&app, async |s| {
+        s.copy_to_day(&id, span_id.as_deref(), day, overlap).await
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn recording_add_span(
+    app: AppHandle,
+    id: String,
+    span: Span,
+    overlap: Overlap,
+) -> AppResult<Recording> {
+    changing(&app, async |s| s.add_span(&id, span, overlap).await).await
+}
+
+#[tauri::command]
+pub async fn recording_update_span(
+    app: AppHandle,
+    id: String,
+    span_id: String,
+    span: Span,
+    overlap: Overlap,
+) -> AppResult<Recording> {
+    changing(&app, async |s| {
+        s.update_span(&id, &span_id, span, overlap).await
+    })
+    .await
+}
+
+/// Moves the span's start and end by whole snap steps each (the page's arrow keys).
+#[tauri::command]
+pub async fn recording_nudge(
+    app: AppHandle,
+    id: String,
+    span_id: String,
+    start_steps: i32,
+    end_steps: i32,
+    overlap: Overlap,
+) -> AppResult<Recording> {
+    changing(&app, async |s| {
+        s.nudge_span(&id, &span_id, start_steps, end_steps, overlap)
+            .await
+    })
+    .await
+}
+
+/// The recording without the span; `None` when it was the last one and the recording went with it.
+#[tauri::command]
+pub async fn recording_remove_span(
+    app: AppHandle,
+    id: String,
+    span_id: String,
+) -> AppResult<Option<Recording>> {
+    changing(&app, async |s| s.remove_span(&id, &span_id).await).await
+}
+
+/// Cuts the span in two at `at`, snapped.
+#[tauri::command]
+pub async fn recording_split_span(
+    app: AppHandle,
+    id: String,
+    span_id: String,
+    at: Ms,
+) -> AppResult<Recording> {
+    changing(&app, async |s| s.split_span(&id, &span_id, at).await).await
+}
+
+/// The spans of `from` join `into`; `from` is deleted.
+#[tauri::command]
+pub async fn recording_merge(app: AppHandle, into: String, from: String) -> AppResult<Recording> {
+    changing(&app, async |s| s.merge(&into, &from).await).await
 }
 
 #[tauri::command]

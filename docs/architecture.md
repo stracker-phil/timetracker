@@ -11,11 +11,11 @@ detail: [backend](backend.md), [frontend](frontend.md), [design language](ux.md)
 | Layer | What it is | Who writes it |
 |---|---|---|
 | **Activity** | one continuous span in one app and window, or an away span (no input, sleep, lock) | the background tracker, or an external app through the CLI |
-| **Recording** | a block of time the user confirms for a project; what reports show | the user (Day view, timers, CLI, away prompt) |
+| **Recording** | time the user confirms for a project, in one or more spans ([ADR 0020](adr/0020-recordings-have-spans.md)); what reports show | the user (Day view, timers, CLI, away prompt) |
 | **Project** | a named bucket for recordings, optionally under a client | the user |
 
 Activity never becomes a recording on its own. Rules only suggest recordings; tags classify them for
-reports; a timer is a recording whose end is "now" ([ADR 0005](adr/0005-activity-and-recordings-are-separate-layers.md)).
+reports; a timer is a recording whose last span ends "now" ([ADR 0005](adr/0005-activity-and-recordings-are-separate-layers.md)).
 
 ## Design rules
 

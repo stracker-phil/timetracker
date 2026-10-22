@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleInput, RulePreview, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, ListView, Rule, RuleInput, RulePreview, SuggestionAccepted, Overlap, Recording, RecordingInput, RecordingPatch, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, PauseUntil, Period, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -61,6 +61,19 @@ export const api = {
   recordingCreate: (input: RecordingInput, overlap: Overlap) => invoke<Recording>("recording_create", { input, overlap }),
   recordingUpdate: (id: string, patch: RecordingPatch, overlap: Overlap) => invoke<Recording>("recording_update", { id, patch, overlap }),
   recordingDelete: (id: string) => invoke<void>("recording_delete", { id }),
+  /** Adds a span to a recording; Rust snaps it. Rejects with `overlap` as `recordingCreate` does. */
+  recordingAddSpan: (id: string, span: Span, overlap: Overlap) => invoke<Recording>("recording_add_span", { id, span, overlap }),
+  /** New times for one span of a recording; Rust snaps them. */
+  recordingUpdateSpan: (id: string, spanId: string, span: Span, overlap: Overlap) => invoke<Recording>("recording_update_span", { id, spanId, span, overlap }),
+  /** `null` when it was the recording's last span and the recording went with it. */
+  recordingRemoveSpan: (id: string, spanId: string) => invoke<Recording | null>("recording_remove_span", { id, spanId }),
+  /** Cuts a span in two at `at` (snapped); both halves stay in the recording. */
+  recordingSplitSpan: (id: string, spanId: string, at: number) => invoke<Recording>("recording_split_span", { id, spanId, at }),
+  /** The spans of `from` join `into`, which keeps its project, note and tag; `from` is deleted. */
+  recordingMerge: (into: string, from: string) => invoke<Recording>("recording_merge", { into, from }),
+  /** Moves a span's start and end by whole snap steps each; Rust knows the step. */
+  recordingNudge: (id: string, spanId: string, startSteps: number, endSteps: number, overlap: Overlap) =>
+    invoke<Recording>("recording_nudge", { id, spanId, startSteps, endSteps, overlap }),
   /** Recordings sharing time with `[from, to)`. */
   recordingsList: (from: number, to: number) => invoke<Recording[]>("recordings_list", { from, to }),
   /** The span as a write would store it, for a drag ghost. */
@@ -92,9 +105,10 @@ export const api = {
   calendarPicker: (month: string, selected: [string, string] | null) => invoke<PickerMonth>("calendar_picker", { month, selected }),
   /** The palette's dates for `text`: a typed date, or the date words it starts; "" gives the Go to defaults. */
   calendarJumps: (text: string) => invoke<DateJump[]>("calendar_jumps", { text }),
-  /** To `day` at the same time of day; Rust keeps the length. */
-  recordingMove: (id: string, day: string, overlap: Overlap) => invoke<Recording>("recording_move", { id, day, overlap }),
-  recordingCopy: (id: string, day: string, overlap: Overlap) => invoke<Recording>("recording_copy", { id, day, overlap }),
+  /** The span `spanId`, else the whole recording (its first span landing on `day`), to `day` at the same time of day; Rust keeps the lengths. */
+  recordingMove: (id: string, spanId: string | null, day: string, overlap: Overlap) => invoke<Recording>("recording_move", { id, spanId, day, overlap }),
+  /** A new recording on `day` like `recordingMove` would place it. */
+  recordingCopy: (id: string, spanId: string | null, day: string, overlap: Overlap) => invoke<Recording>("recording_copy", { id, spanId, day, overlap }),
   reportRun: (filter: ReportFilter) => invoke<ReportResult>("report_run", { filter }),
   /** The period of the range's unit (month, week or its days) `by` steps away, from `anchor`'s period when given; presets where they match. */
   reportRangeShift: (range: Range, anchor: string | null, by: number) => invoke<Range>("report_range_shift", { range, anchor, by }),
@@ -155,7 +169,7 @@ export const api = {
   /** What the input's conditions match over the last `days` days, today included. */
   rulePreview: (input: RuleInput, days: number) => invoke<RulePreview>("rule_preview", { input, days }),
   /** Records a suggestion of the day's view; `not_found` once it is gone, `overlap` when a recording took its time. */
-  suggestionAccept: (day: string, id: string) => invoke<Recording>("suggestion_accept", { day, id }),
+  suggestionAccept: (day: string, id: string) => invoke<SuggestionAccepted>("suggestion_accept", { day, id }),
   /** Records every suggestion of the rule on the day as one undoable change. */
   suggestionsAcceptRule: (day: string, ruleId: string) => invoke<Recording[]>("suggestions_accept_rule", { day, ruleId }),
 

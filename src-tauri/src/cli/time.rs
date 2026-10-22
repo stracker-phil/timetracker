@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, FixedOffset, NaiveDateTime, NaiveTime, TimeZone};
 
+use crate::db::recordings::Span;
 use crate::db::time::{Day, Ms};
 use crate::tracker::PauseUntil;
 
@@ -23,6 +24,18 @@ pub fn instant<Tz: TimeZone>(text: &str, now: Ms, tz: &Tz) -> Result<Ms, String>
         .earliest()
         .map(|t| t.timestamp_millis())
         .ok_or_else(|| format!("`{text}` does not exist in the local time zone"))
+}
+
+/// Two `instant`s joined by `-` or `–`: `14:25-15:00`, `2026-10-21T22:00-2026-10-22T01:00`.
+pub fn span<Tz: TimeZone>(text: &str, now: Ms, tz: &Tz) -> Result<Span, String> {
+    text.char_indices()
+        .filter(|&(_, c)| c == '-' || c == '–')
+        .find_map(|(at, c)| {
+            let start = instant(&text[..at], now, tz).ok()?;
+            let end = instant(&text[at + c.len_utf8()..], now, tz).ok()?;
+            Some(Span { start, end })
+        })
+        .ok_or_else(|| format!("Not a span: `{text}` (use 14:25-15:00)"))
 }
 
 fn with_offset(text: &str) -> Option<DateTime<FixedOffset>> {
@@ -196,6 +209,82 @@ mod tests {
             err,
             "`2026-03-29T02:30` does not exist in the local time zone"
         );
+    }
+
+    #[test]
+    fn a_span_is_two_times_joined_by_a_hyphen_or_an_en_dash() {
+        let expected = Span {
+            start: ms("2026-10-21T12:25:00Z"),
+            end: ms("2026-10-21T13:00:00Z"),
+        };
+        for text in [
+            "14:25-15:00",
+            "14:25–15:00",
+            " 14:25 - 15:00 ",
+            "14:25 – 15:00",
+        ] {
+            assert_eq!(span(text, near_midnight(), &Vienna), Ok(expected), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_span_may_use_dates_offsets_seconds_and_now() {
+        for (text, start, end) in [
+            (
+                "2026-10-21T22:00-2026-10-22T01:00",
+                "2026-10-21T20:00:00Z",
+                "2026-10-21T23:00:00Z",
+            ),
+            (
+                "2026-10-21T09:30Z-2026-10-21T10:30Z",
+                "2026-10-21T09:30:00Z",
+                "2026-10-21T10:30:00Z",
+            ),
+            (
+                "2026-10-21T09:30+02:00-2026-10-21T10:30:15+02:00",
+                "2026-10-21T07:30:00Z",
+                "2026-10-21T08:30:15Z",
+            ),
+            (
+                "2026-10-21T09:30-03:00–2026-10-21T18:00",
+                "2026-10-21T12:30:00Z",
+                "2026-10-21T16:00:00Z",
+            ),
+            (
+                "14:25:30-2026-10-22T01:00",
+                "2026-10-21T12:25:30Z",
+                "2026-10-21T23:00:00Z",
+            ),
+            ("14:25-now", "2026-10-21T12:25:00Z", "2026-10-20T23:30:00Z"),
+        ] {
+            assert_eq!(
+                span(text, near_midnight(), &Vienna),
+                Ok(Span {
+                    start: ms(start),
+                    end: ms(end)
+                }),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn text_that_is_not_a_span_is_an_error() {
+        for text in [
+            "",
+            "14:25",
+            "garbage",
+            "14:25-",
+            "-15:00",
+            "14:25-garbage",
+            "14:25-25:00",
+        ] {
+            assert_eq!(
+                span(text, near_midnight(), &Vienna),
+                Err(format!("Not a span: `{text}` (use 14:25-15:00)")),
+                "{text}"
+            );
+        }
     }
 
     #[test]

@@ -758,7 +758,6 @@ describe("DayPage", () => {
   describe("recordings", () => {
     const recordingEl = () => screen.findByLabelText("Website: standup");
     const grip = (el: HTMLElement, which: "start" | "end") => within(el).getByLabelText(`Drag to change the ${which}`);
-    const shiftedBy = (minutes: { start: number; end: number }) => ({ start: meeting.start + minutes.start * MINUTE_MS, end: meeting.end + minutes.end * MINUTE_MS });
 
     it("shows a recording as project and note in the recordings column", async () => {
       renderDay(recordedDay());
@@ -803,6 +802,17 @@ describe("DayPage", () => {
       expect(await screen.findByRole("dialog", { name: "Edit recording" })).toBeInTheDocument();
     });
 
+    it("opens the editor on the span of the double-clicked block", async () => {
+      const morning = { id: "r1-s1", start: at("09:00"), end: at("09:30") };
+      const noon = { id: "r1-s2", start: at("11:00"), end: at("11:45") };
+      mocked.recordingsList.mockResolvedValue([recording({ ...meetingRow, spans: [morning, noon] })]);
+      renderDay(dayView({ recordings: [{ ...meeting, spanId: noon.id, spanCount: 2 }] }), withProject);
+      await userEvent.dblClick(await recordingEl());
+      const dialog = within(await screen.findByRole("dialog", { name: "Edit recording" }));
+      expect(await dialog.findByLabelText("From")).toHaveValue("11:00");
+      expect(dialog.getByText("Also 09:00–09:30")).toBeInTheDocument();
+    });
+
     it("opens the editor on the focused recording with Enter", async () => {
       mocked.recordingsList.mockResolvedValue([meetingRow]);
       renderDay(recordedDay(), withProject);
@@ -823,8 +833,18 @@ describe("DayPage", () => {
         fireEvent.pointerDown(handle, { button: 0, clientY: 1000 });
         fireEvent.pointerMove(handle, { clientY: 1000 + dy });
         fireEvent.pointerUp(handle, { clientY: 1000 + dy });
-        await vi.waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { start: at(start), end: at(end) }, "cancel"));
+        await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at(start), end: at(end) }, "cancel"));
         expect(await screen.findByText("Recording changed")).toBeInTheDocument();
+      });
+
+      it("changes the span of the dragged block when the recording has several", async () => {
+        const second = { ...meeting, spanId: "r1-s2", spanCount: 2 };
+        renderDay(dayView({ recordings: [second] }), withProject);
+        const el = await recordingEl();
+        fireEvent.pointerDown(el, { button: 0, clientY: 1000 });
+        fireEvent.pointerMove(el, { clientY: 1025 });
+        fireEvent.pointerUp(el, { clientY: 1025 });
+        await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s2", { start: at("11:10"), end: at("11:55") }, "cancel"));
       });
 
       it("changes nothing when the pointer is released where it was pressed", async () => {
@@ -832,7 +852,7 @@ describe("DayPage", () => {
         const handle = grip(await recordingEl(), "end");
         fireEvent.pointerDown(handle, { button: 0, clientY: 1000 });
         fireEvent.pointerUp(handle, { clientY: 1000 });
-        expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+        expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
       });
 
       it("does not move a recording that continues on another day", async () => {
@@ -842,11 +862,11 @@ describe("DayPage", () => {
         fireEvent.pointerMove(el, { clientY: 1025 });
         fireEvent.pointerUp(el, { clientY: 1025 });
         expect(within(el).queryByLabelText(/^Drag to change/)).not.toBeInTheDocument();
-        expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+        expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
       });
 
       it("shows an error toast when Rust refuses the new times", async () => {
-        mocked.recordingUpdate.mockRejectedValueOnce({ kind: "invalid_input", message: "`end`: too long", code: null, field: { path: "end", message: "Too long" } });
+        mocked.recordingUpdateSpan.mockRejectedValueOnce({ kind: "invalid_input", message: "`end`: too long", code: null, field: { path: "end", message: "Too long" } });
         renderDay(recordedDay(), withProject);
         const handle = grip(await recordingEl(), "end");
         fireEvent.pointerDown(handle, { button: 0, clientY: 1000 });
@@ -858,29 +878,22 @@ describe("DayPage", () => {
 
     describe("keys", () => {
       it.each([
-        ["Alt+↑ moves it one snap step earlier", "{Alt>}{ArrowUp}{/Alt}", { start: -5, end: -5 }],
-        ["Alt+↓ moves it one snap step later", "{Alt>}{ArrowDown}{/Alt}", { start: 5, end: 5 }],
-        ["Alt+Shift+↓ extends its end by one step", "{Alt>}{Shift>}{ArrowDown}{/Shift}{/Alt}", { start: 0, end: 5 }],
-        ["Alt+Shift+↑ shortens its end by one step", "{Alt>}{Shift>}{ArrowUp}{/Shift}{/Alt}", { start: 0, end: -5 }],
-      ])("%s", async (_name, keys, minutes) => {
+        ["Alt+↑ moves it one snap step earlier", "{Alt>}{ArrowUp}{/Alt}", -1, -1],
+        ["Alt+↓ moves it one snap step later", "{Alt>}{ArrowDown}{/Alt}", 1, 1],
+        ["Alt+Shift+↓ extends its end by one step", "{Alt>}{Shift>}{ArrowDown}{/Shift}{/Alt}", 0, 1],
+        ["Alt+Shift+↑ shortens its end by one step", "{Alt>}{Shift>}{ArrowUp}{/Shift}{/Alt}", 0, -1],
+      ])("%s", async (_name, keys, startSteps, endSteps) => {
         renderDay(recordedDay(), withProject);
         await userEvent.click(await recordingEl());
         await userEvent.keyboard(keys);
-        await vi.waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", shiftedBy(minutes), "cancel"));
-      });
-
-      it("steps by the snap interval of the settings", async () => {
-        renderDay(recordedDay(), { ...withProject, settings: settings({ timeline: { ...settings().timeline, snapMinutes: 15 } }) });
-        await userEvent.click(await recordingEl());
-        await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
-        await vi.waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", shiftedBy({ start: 15, end: 15 }), "cancel"));
+        await vi.waitFor(() => expect(mocked.recordingNudge).toHaveBeenCalledWith("r1", "r1-s1", startSteps, endSteps, "cancel"));
       });
 
       it("does not nudge a recording that continues on another day", async () => {
         renderDay(dayView({ recordings: [{ ...meeting, clippedStart: true }] }), withProject);
         await userEvent.click(await recordingEl());
         await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
-        expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+        expect(mocked.recordingNudge).not.toHaveBeenCalled();
       });
 
       it("deletes the focused recording with Backspace and offers Undo", async () => {
@@ -942,7 +955,7 @@ describe("DayPage", () => {
     });
 
     it("records the suggestion on the shown day with a click and offers Undo", async () => {
-      mocked.suggestionAccept.mockResolvedValue(recording({ start: at("09:00"), end: at("09:45") }));
+      mocked.suggestionAccept.mockResolvedValue({ recording: recording({ start: at("09:00"), end: at("09:45") }), durationMs: 45 * MINUTE_MS });
       renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
       await userEvent.click(await suggestionEl());
       expect(mocked.suggestionAccept).toHaveBeenCalledWith(DAY, proposed.id);
@@ -978,7 +991,7 @@ describe("DayPage", () => {
     });
 
     it("records the focused suggestion with ↵ even while a selection exists, without opening the editor", async () => {
-      mocked.suggestionAccept.mockResolvedValue(recording({ start: at("09:00"), end: at("09:45") }));
+      mocked.suggestionAccept.mockResolvedValue({ recording: recording({ start: at("09:00"), end: at("09:45") }), durationMs: 45 * MINUTE_MS });
       renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [proposed] }));
       await userEvent.click(await blockEl("Safari: Docs"));
       await screen.findByLabelText("Selection");
@@ -1124,7 +1137,7 @@ describe("DayPage", () => {
         renderDay(recordedDay(), withProject);
         await userEvent.click(await blockEl("Website: standup"));
         await userEvent.keyboard(keys);
-        await vi.waitFor(() => expect(mocked[call]).toHaveBeenCalledWith("r1", day, "cancel"));
+        await vi.waitFor(() => expect(mocked[call]).toHaveBeenCalledWith("r1", null, day, "cancel"));
         expect(mocked[other]).not.toHaveBeenCalled();
       });
 

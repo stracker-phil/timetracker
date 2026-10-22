@@ -5,7 +5,7 @@ import { recording } from "./recordingFixtures";
 
 /** A timer running for the default project for 1:23; `patch` overrides fields. */
 export function runningTimer(patch: Partial<RunningTimer> = {}): RunningTimer {
-  return { recording: recording({ id: "r-timer", start: at("09:00"), end: null }), projectName: "Website", color: "blue", shade: 0, elapsedMs: 83 * 60_000, ...patch };
+  return { recording: recording({ id: "r-timer", spans: [{ id: "r-timer-s1", start: at("09:00"), end: null }] }), projectName: "Website", color: "blue", shade: 0, elapsedMs: 83 * 60_000, ...patch };
 }
 
 /** The status with a timer running; `patch` overrides the timer's fields. */

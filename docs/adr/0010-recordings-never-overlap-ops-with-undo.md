@@ -4,6 +4,9 @@
 
 Accepted (2026-10-21), implemented.
 
+Superseded in part by [0020](0020-recordings-have-spans.md): the rule applies per span, and a replace cuts a
+span in two inside the same recording.
+
 ## Context
 
 Recordings are the deliverable: hours per project must add up, so two recordings cannot claim the same
