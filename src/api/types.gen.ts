@@ -104,6 +104,15 @@ export type Backup = { version: number, exportedAt: number, clients: Array<Clien
 
 export type BackupWritten = { bytes: number, recordings: number, activities: number, };
 
+/**
+ * Billable time out of the recorded time; `percent` is `None` when nothing is recorded.
+ */
+export type Billable = { recordedMs: number, billableMs: number, 
+/**
+ * Rounded to a whole percent.
+ */
+percent: number | null, };
+
 export type CaptureSettings = { 
 /**
  * Bundle ids the tracker never records.
@@ -374,7 +383,11 @@ color: string,
 /**
  * The lightness step of `color`, `0..SHADES`, darkest first.
  */
-shade: number, archivedAt: number | null, createdAt: number, };
+shade: number, 
+/**
+ * Its recordings count as billable time.
+ */
+billable: boolean, archivedAt: number | null, createdAt: number, };
 
 export type ProjectInput = { clientId: string | null, name: string, 
 /**
@@ -384,7 +397,7 @@ color: string,
 /**
  * `None`: kept on an edit within the same client, else the next shade no sibling has.
  */
-shade: number | null, };
+shade: number | null, billable: boolean, };
 
 /**
  * A project as the Projects screen lists it.
@@ -478,9 +491,9 @@ clientIds: Array<string>, projectIds: Array<string>, tagIds: Array<string>, grou
 
 export type ReportGroup = { key: string, label: string, 
 /**
- * The project's color and shade when grouped by project.
+ * The project's color, shade and billable flag when grouped by project.
  */
-color: string | null, shade: number | null, durationMs: number, roundedMs: number, 
+color: string | null, shade: number | null, billable: boolean | null, durationMs: number, roundedMs: number, 
 /**
  * Distinct notes in the order they first occur.
  */
@@ -496,7 +509,11 @@ export type ReportNote = { text: string,
  */
 days: Array<Day>, };
 
-export type ReportResult = { filter: ReportFilter, from: Day, to: Day, groups: Array<ReportGroup>, totalMs: number, totalRoundedMs: number, };
+export type ReportResult = { filter: ReportFilter, from: Day, to: Day, groups: Array<ReportGroup>, totalMs: number, totalRoundedMs: number, 
+/**
+ * Of the rounded times, so it adds up with `total_rounded_ms`.
+ */
+billable: Billable, };
 
 /**
  * A recording's part in one day of the range: its spans of that day.
@@ -509,7 +526,7 @@ start: number, end: number,
 /**
  * The day's parts of its spans, by start.
  */
-spans: Array<Span>, durationMs: number, roundedMs: number, projectId: string, project: string, client: string | null, color: string, shade: number, tag: string | null, note: string, };
+spans: Array<Span>, durationMs: number, roundedMs: number, projectId: string, project: string, client: string | null, color: string, shade: number, billable: boolean, tag: string | null, note: string, };
 
 export type ReportSettings = { rounding: Rounding, defaultGroup: Group, };
 
@@ -583,9 +600,9 @@ dataDir: string | null, tracker: TrackerSettings, capture: CaptureSettings, time
 export type Span = { start: number, end: number, };
 
 /**
- * The reply to `status`. `tracker` is `None` while the data store is unavailable.
+ * The reply to `status`. `tracker` and `billable` are `None` while the data store is unavailable.
  */
-export type StatusReport = { version: string, tracker: TrackerStatus | null, timer: RunningTimer | null, windowVisible: boolean, };
+export type StatusReport = { version: string, tracker: TrackerStatus | null, timer: RunningTimer | null, billable: Billable | null, windowVisible: boolean, };
 
 /**
  * A recording a rule proposes for time no recording covers yet.

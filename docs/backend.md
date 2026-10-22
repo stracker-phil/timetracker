@@ -145,6 +145,7 @@ Registered in `start_app` (`generate_handler!`). Commands stay thin; logic lives
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes, recordings, activities }` | `db`, `io`, `invalid_input` |
 | `report_run` (`reports/commands.rs`) | `filter: ReportFilter` | `ReportResult` (see [Reports](#reports)) | `invalid_input` (a range that ends before it starts), `db` |
 | `report_text` | `filter: ReportFilter` | the report as text (`reports::text`) | the same |
+| `billable_ratio` | `range: Range` | `Billable { recordedMs, billableMs, percent }` (`reports::billable`): every recording of the range, archived projects included, no other filter; `percent` is `null` when nothing is recorded. The status bar's ratio for the shown period | `invalid_input`, `db` |
 | `report_range_shift` | `range: Range, anchor: Day \| null, by: i32` | `Range`: the period of the range's unit `by` steps away (`reports::shift`, see [Reports](#reports)); the sidebar's ‹ › Today and date picker in Reports | `invalid_input` |
 | `saved_reports_list` | – | `SavedReport[] { id, name, filter, position }`, by position | `db` |
 | `saved_report_save` | `name, filter` | `SavedReport` (appended) | `invalid_input` (`field: name`), `db` |
@@ -325,32 +326,41 @@ columns with its parts, and a recording shows on every day one of its spans touc
 
 ## Reports
 
-`reports/mod.rs`: `run(db, filter, today, now)` resolves the range (`resolve`: today, yesterday, this or
+`reports/mod.rs` holds the IPC types and `run(db, filter, today, now)`: it resolves the range (`resolve` in
+`reports/range.rs`: today, yesterday, this or
 last week from Monday, this or last month, or custom days), reads the recordings sharing time with it and
 calls the pure `build`. A `ReportFilter` reuses the settings' `Group` and `Rounding`, so the Reports screen
 starts from `settings.reports`.
 
-`shift(range, anchor, by, today)` steps a range for the sidebar's navigator: its unit is a calendar month
+`shift(range, anchor, by, today)` (`reports/range.rs`) steps a range for the sidebar's navigator: its unit is a calendar month
 (first to last day), a Monday-to-Sunday week, or else its own number of days. It moves `by` units from the
 range, or with `anchor` from the unit that holds the anchor (for days: the days ending on it), so `by: 0`
 with today is "Today", "This week" or "This month". A result equal to a preset becomes that preset (a week
 back from This week is Last week), anything else `Custom`.
 
-- Rows: one per recording and day of the range, with that day's parts of its spans (`spans`, the running one
+- Rows (`reports/rows.rs`): one per recording and day of the range, with that day's parts of its spans (`spans`, the running one
   ends now; `start`/`end` the first start and the last end; `durationMs` their sum), so a span over midnight
   counts on both days, as in the Day view. Rows (and so a group's notes) are ordered by their first span. Client, project and tag lists narrow
   together (empty: all; a tag filter keeps recordings with any chosen tag); archived projects only with
   `includeArchived`. Notes are trimmed.
 - Rounding is per recording (`rounding_step`: nearest, half up, or up), at least one step for a recording
   longer than zero; totals sum the rounded rows, each recording once.
-- Groups: by project (`Client / Project`, ordered by client then project, client-less last, with color and
-  shade), by tag (by name, "Untagged" last; each recording counts once, so the groups add up to the
+- Billable (`reports/billable.rs`): a row is `billable` when its project is (no per-recording flag). `ReportResult.billable` is
+  `Billable::of(totalRoundedMs, billable rows' roundedMs)`: whole percent, rounded, `null` without recorded
+  time. `billable(db, range, today, now)` runs the report over every recording of the range for the status
+  bar and `timetracker status`; `billable_text` renders `6:24 of 8:00 (80 %)`.
+- Groups (`reports/groups.rs`): by project (`Client / Project`, ordered by client then project, client-less last, with color,
+  shade and billable flag), by tag (by name, "Untagged" last; each recording counts once, so the groups add up to the
   total), by day (`Mon 2026-10-20`), week
   (`Week 43 · 20 – 26 Oct 2026`) or month (`October 2026`). A group lists its distinct notes in the order
   they first occur, each with its days, and its rows by start.
-- `reports/text.rs` renders the text the screen copies and the CLI prints (format in [ux.md](ux.md#reports)).
+- `reports/text.rs` renders the text the screen copies and the CLI prints (format in [ux.md](ux.md#reports));
+  the CLI adds `Billable: 6:24 of 8:00 (80 %)` below it (`reports::cli::report`) when time is recorded, so the
+  copied timesheet stays without it.
 - `reports/saved.rs`: saved reports in `saved_reports` (the filter as JSON; a filter this version can't read
   opens as the default). Presets stay relative, so a saved "this month" follows the calendar.
+- `reports/testing.rs` (tests only): the shared report fixtures (clients, projects, tags, recordings from
+  local times).
 
 ## List view
 
@@ -443,7 +453,7 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `show [DAY]` | `show { day, focus: false }`; `DAY` is `YYYY-MM-DD`, `today` or `yesterday` (default today) | – |
 | `focus` | `activate { hidden: false }` | – |
 | `hide`, `quit` | `hide`, `quit` | – |
-| `status` | `status` | five lines, below |
+| `status` | `status` | six lines, below |
 | `pause <15m\|1h\|tomorrow\|off>` | `pause { until: PauseUntil }`; `<n>m` or `<n>h` up to 24 h, `tomorrow` = next local midnight, `off` = until resumed | `tracker: paused until 14:30` |
 | `resume` | `resume` | – |
 | `activity add --source S --title T --start ISO --end ISO [--app A] [--url U] [--path P]` | `activityAdd { items: [ActivityInput] }` | `added activity 4711` |
@@ -452,7 +462,7 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `activity stop --source S [--end ISO]` | `activityStop { source, end }`, end default now | `stopped planner at 10:45 (45 min)` or `nothing to stop for planner` |
 | `activity delete DAY` / `activity delete FROM TO` | `activityDelete { from, to }`: `DAY` (`YYYY-MM-DD`, `today`, `yesterday`) is its local bounds; `FROM`/`TO` as `instant` | `deleted 412 activity spans and 3 away spans` and `undo within 30 s: timetracker activity undo` |
 | `activity undo` | `activityDeleteUndo` | `restored 412 activity spans and 3 away spans`; nothing to undo exits 1 with `Nothing to undo` |
-| `report [today\|yesterday\|week\|last-week\|month\|last-month\|DAY\|FROM TO] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30] [--up]` | `report { request: ReportRequest }` (`cli/report.rs` parses the range and flags); the app resolves names (`reports::cli`: an id, an exact name ignoring case, or a unique start; several matches list them) and runs the report | the report text; `--json`: the `ReportResult` plus `text` |
+| `report [today\|yesterday\|week\|last-week\|month\|last-month\|DAY\|FROM TO] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30] [--up]` | `report { request: ReportRequest }` (`cli/report.rs` parses the range and flags); the app resolves names (`reports::cli`: an id, an exact name ignoring case, or a unique start; several matches list them) and runs the report | the report text and `Billable: 6:24 of 8:00 (80 %)` (when time is recorded); `--json`: the `ReportResult` (with `billable { recordedMs, billableMs, percent }`) plus `text` |
 | `start PROJECT [--note N] [--tag T]` | `timerStart { request: TimerStartRequest }`; the app resolves the project and tag like `record` | `started Acme at 09:15` (the open span's start; a recording of today with the same project, note and tag continues); `--json`: the `Recording` plus `projectName` |
 | `stop` | `timerStop` | `stopped 09:15–10:40 (1:25)` (the span just closed) or `no timer running` (exit 0) |
 | `mcp` | none: serves MCP on stdin/stdout (`CliOutcome::Mcp`) | only JSON-RPC on stdout |
@@ -476,12 +486,13 @@ TimeTracker 0.1.0
 tracker: running          (paused | paused until 14:30 | paused until tomorrow | away since 13:02 (idle) | needs permission | off)
 current: Safari · Pull request #42 · 13 min        (current: none)
 timer: none
+billable today: 6:24 of 8:00 (80 %)        (billable today: nothing recorded)
 window: hidden
 ```
 
 `current` is the tracker's open activity only; an open external span (`activity start`) does not show here.
 `--json` prints the reply's `result` instead (`status --json` is a `StatusReport { version, tracker,
-timer, windowVisible }`; `tracker` is `null` while the data store is unavailable); an error prints
+timer, billable, windowVisible }`; `tracker` and `billable` are `null` while the data store is unavailable); an error prints
 `{ "kind", "message" }`.
 
 **Exit codes:** 0 ok; 1 the app answered with an error; 2 bad arguments, or TimeTracker is not running.
@@ -593,9 +604,9 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
 
 | Tool | Args | Returns |
 |---|---|---|
-| `report` | `range` (`today` default, `yesterday`, `week`, `last-week`, `month`, `last-month`, a day) or `from`/`to`; `group_by` (`project` default, `tag`, `day`, `week`, `month`); `client`, `project`, `tag`; `format` (`text` default, `json`) | `reports::text`, or `{ from, to, group_by, rounding, total_min, total_rounded_min, groups: [{ label, minutes, rounded_min, notes }] }`; rounding from `settings.reports.rounding` |
+| `report` | `range` (`today` default, `yesterday`, `week`, `last-week`, `month`, `last-month`, a day) or `from`/`to`; `group_by` (`project` default, `tag`, `day`, `week`, `month`); `client`, `project`, `tag`; `format` (`text` default, `json`) | `reports::text`, or `{ from, to, group_by, rounding, total_min, total_rounded_min, billable_min, billable_percent, groups: [{ label, minutes, rounded_min, notes }] }` (`billable_min` out of `total_rounded_min`; `billable_percent` `null` without recorded time); rounding from `settings.reports.rounding` |
 | `recordings` | `from`, `to` (days, inclusive), `project`, `tag`, `limit` (default 500, at most 5000) | `[{ id, day, start_iso, end_iso, spans: [{ start_iso, end_iso }], duration_min, project, client?, note, tag }]` (`tag`: the name or `null`; `spans` the day's parts, `duration_min` their sum) by start, one row per recording and day, archived projects included |
-| `projects` | – | `[{ id, name, color, client?, archived }]` |
+| `projects` | – | `[{ id, name, color, client?, billable, archived }]` |
 | `tags` | – | `[{ id, name }]` |
 | `day_summary` | `day` | `{ day, recorded_min, tracked_min, away_min, by_project, by_tag }`; totals from `day::commands::view_of`, the groups `[{ name, minutes, notes }]` from `reports::run` for that day |
 | `activity` | `day` | `{ activity: [{ start_iso, end_iso, app, title, url?, path?, source }], away: [{ start_iso, end_iso, reason }] }`; private rows keep only the app. Refused (`Activity is not exposed to MCP. Enable it in Settings → Data.`) unless `settings.mcp.exposeActivity` |

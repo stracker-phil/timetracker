@@ -24,11 +24,10 @@ export function ProjectSheet({ id, initialName = "", initialClientId, onClose, o
   const existing = useStore((s) => s.projects.find((p) => p.project.id === id)?.project);
   const clients = useStore((s) => s.clients);
   const { saveProject, archiveProject, saveClient } = useStore.getState();
-  const [input, setInput] = useState<ProjectInput>(() =>
-    existing
-      ? { clientId: existing.clientId, name: existing.name, color: existing.color, shade: existing.shade }
-      : { clientId: initialClientId ?? null, name: initialName, color: "orange", shade: null },
-  );
+  const [input, setInput] = useState<ProjectInput>(() => {
+    const { clientId, name, color, shade, billable } = existing ?? { clientId: initialClientId ?? null, name: initialName, color: "orange", shade: null, billable: false };
+    return { clientId, name, color, shade, billable };
+  });
   const [newClient, setNewClient] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -120,6 +119,13 @@ export function ProjectSheet({ id, initialName = "", initialClientId, onClose, o
         <FormField label={client ? `Shade of ${client.name}'s color` : "Shade"} error={errors.shade}>
           <ShadeSwatches accent={accent} value={input.shade} onChange={(shade) => patch({ shade })} />
         </FormField>
+        <label className="form-switch">
+          <input type="checkbox" className="switch" role="switch" checked={input.billable} onChange={(e) => patch({ billable: e.target.checked })} />
+          <span>
+            Billable
+            <span className="form-switch-desc">Its recordings count as billable time.</span>
+          </span>
+        </label>
         <div className="actions">
           {existing && (
             <button

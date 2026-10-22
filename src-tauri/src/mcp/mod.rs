@@ -22,7 +22,7 @@ use data::{Core, RecordingsQuery, ReportQuery};
 const INSTRUCTIONS: &str = "Read-only access to TimeTracker, a local time tracker. Three layers: \
 activity (what windows were in front; private, available only when the user enabled it), recordings \
 (time the user assigned to a project, with a one-line note and at most one tag; what reports show) and projects \
-(optionally under a client). Days are local calendar days `YYYY-MM-DD` (or today, yesterday); times \
+(optionally under a client; a project is billable or not, and its recordings with it). Days are local calendar days `YYYY-MM-DD` (or today, yesterday); times \
 are local ISO 8601 with offset, durations are minutes. Nothing here writes. `status` and `open_day` \
 need the app running.";
 
@@ -148,7 +148,7 @@ impl TimeTrackerServer {
     }
 
     #[tool(
-        description = "Hours and notes of a range grouped by project, tag, day, week or month, rounded as the user's report settings say; plain text ready to paste, or json"
+        description = "Hours and notes of a range grouped by project, tag, day, week or month, rounded as the user's report settings say; plain text ready to paste, or json (with the billable minutes and percent)"
     )]
     async fn report(&self, Parameters(args): Parameters<ReportArgs>) -> Result<String, String> {
         let format = ReportFormat::of(args.format.as_deref())?;
@@ -169,7 +169,9 @@ impl TimeTrackerServer {
         answer(self.core.recordings(args.into()).await)
     }
 
-    #[tool(description = "Every project with its client, color and whether it is archived")]
+    #[tool(
+        description = "Every project with its client, color, whether it is billable and whether it is archived"
+    )]
     async fn projects(&self) -> Result<String, String> {
         answer(self.core.projects().await)
     }
@@ -419,6 +421,7 @@ mod tests {
                 "id": portal.id,
                 "name": "Portal",
                 "color": "blue",
+                "billable": false,
                 "archived": false,
             }])
         );
@@ -476,6 +479,8 @@ mod tests {
                 "rounding": "none",
                 "total_min": 60.0,
                 "total_rounded_min": 60.0,
+                "billable_min": 0.0,
+                "billable_percent": 0,
                 "groups": [{
                     "label": "Portal",
                     "minutes": 60.0,

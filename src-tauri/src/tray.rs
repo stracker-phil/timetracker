@@ -8,7 +8,7 @@ use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Wry};
 
-use crate::db::time::now_ms;
+use crate::db::time::{format_hm, now_ms};
 use crate::error::AppResult;
 use crate::lock::MutexExt;
 use crate::recordings::timer::TimerInput;
@@ -147,7 +147,7 @@ fn try_set_timer(
     };
     let mut current = handle.0.lock_unpoisoned();
     current.timer = TimerMenu {
-        running: running.map(|t| format!("{}, {}", t.project_name, clock(t.elapsed_ms))),
+        running: running.map(|t| format!("{}, {}", t.project_name, format_hm(t.elapsed_ms))),
         recent,
     };
     let text = current.status.text()?;
@@ -168,12 +168,7 @@ fn title(timer: &RunningTimer) -> String {
     if timer.project_name.chars().count() > TITLE_PROJECT_CHARS {
         project.push('…');
     }
-    format!("⏱ {} {project}", clock(timer.elapsed_ms))
-}
-
-fn clock(ms: i64) -> String {
-    let minutes = ms.max(0) / 60_000;
-    format!("{}:{:02}", minutes / 60, minutes % 60)
+    format!("⏱ {} {project}", format_hm(timer.elapsed_ms))
 }
 
 fn build_menu(

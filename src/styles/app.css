@@ -216,6 +216,9 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .status-text { padding: 0; border: none; background: none; color: inherit; white-space: nowrap; cursor: default; }
 .status-text:hover { color: var(--text); }
 .status-text.pending { color: var(--text); }
+.status-billable { display: inline-flex; align-items: center; gap: 0.462rem; }
+.status-billable-track { width: 3.692rem; height: 0.385rem; border-radius: 0.192rem; overflow: hidden; background: color-mix(in srgb, var(--text) 14%, transparent); }
+.status-billable-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
 
 /* ---------- dialogs ---------- */
 /* Overlays (dialogs, palette, menus, toasts, popovers): --pop, a --field-line border, 10px radius and a
@@ -412,6 +415,9 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .form-field { display: flex; flex-direction: column; gap: 0.308rem; }
 .form-field > label, .form-field-label { color: var(--o2); font-size: var(--fs-small); }
 .form-field-error { color: var(--style-red); font-size: var(--fs-small); }
+.form-switch { display: flex; align-items: center; gap: 0.615rem; }
+.form-switch > span { display: flex; flex-direction: column; }
+.form-switch-desc { color: var(--o3); font-size: var(--fs-small); }
 .form-row { display: flex; align-items: center; justify-content: space-between; }
 .dialog .actions .actions-start { margin-right: auto; }
 .dialog.welcome p { margin: 0; }
@@ -538,6 +544,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .report-rows th { text-align: left; font-weight: 500; color: var(--o3); padding: 2px 0.923rem 2px 0; border-bottom: 1px solid var(--line); }
 .report-rows td { padding: 2px 0.923rem 2px 0; vertical-align: top; }
 .report-total { padding-top: 0.615rem; border-top: 1px solid var(--line); font-weight: 600; }
+.report-billable { display: flex; align-items: center; gap: 0.615rem; color: var(--o2); }
 
 /* ---------- week and month ---------- */
 .week-head, .week-body { display: grid; grid-template-columns: var(--timeline-axis-w) repeat(7, minmax(7rem, 1fr)); min-width: min-content; }

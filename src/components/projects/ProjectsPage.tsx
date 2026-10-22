@@ -19,6 +19,7 @@ function ProjectRow({ item, onMenu }: { item: ProjectListItem; onMenu: (e: Mouse
         <AccentDot accent={project.color} shade={project.shade} />
         <span className="grow-text">{project.name}</span>
       </button>
+      {project.billable && <span className="badge">billable</span>}
       <span className="project-meta mono o2">
         {item.lastUsed !== null && <span>last used {relativeTime(item.lastUsed)}</span>}
         <span>{formatHours(item.recordedMs30d)} / 30 d</span>

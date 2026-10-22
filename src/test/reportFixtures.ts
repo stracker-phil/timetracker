@@ -17,6 +17,7 @@ export function reportRow(patch: Partial<ReportRow> = {}): ReportRow {
     client: null,
     color: "blue",
     shade: 0,
+    billable: false,
     tag: null,
     note: "",
     ...patch,
@@ -25,7 +26,7 @@ export function reportRow(patch: Partial<ReportRow> = {}): ReportRow {
 
 /** A project group of 0:45 with one row and no notes; `patch` overrides fields. */
 export function reportGroup(patch: Partial<ReportGroup> = {}): ReportGroup {
-  return { key: "project-1", label: "Website", color: "blue", shade: 0, durationMs: 2_700_000, roundedMs: 2_700_000, notes: [], rows: [reportRow()], ...patch };
+  return { key: "project-1", label: "Website", color: "blue", shade: 0, billable: null, durationMs: 2_700_000, roundedMs: 2_700_000, notes: [], rows: [reportRow()], ...patch };
 }
 
 /** A one-day report of `DAY` with a single 0:45 group; `patch` overrides fields. */
@@ -37,6 +38,7 @@ export function reportResult(patch: Partial<ReportResult> = {}): ReportResult {
     groups: [reportGroup()],
     totalMs: 2_700_000,
     totalRoundedMs: 2_700_000,
+    billable: { recordedMs: 0, billableMs: 0, percent: null },
     ...patch,
   };
 }

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-use super::{Range, ReportFilter, ReportResult, run, text};
+use super::{Range, ReportFilter, ReportResult, billable_text, run, text};
 use crate::db::time::{Day, now_ms};
 use crate::db::{Db, clients, projects, tags};
 use crate::error::{AppError, AppResult};
@@ -22,7 +22,7 @@ pub struct ReportRequest {
     pub tags: Vec<String>,
 }
 
-/// The result with its text, which the CLI prints without `--json`.
+/// The result with its text, which the CLI prints without `--json`: the copied text and the billable line.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reported {
@@ -34,9 +34,16 @@ pub struct Reported {
 pub async fn report(app: &AppHandle, request: ReportRequest) -> AppResult<Reported> {
     let db = app.state::<AppState>().data.db()?;
     let filter = filter_of(&db, request).await?;
-    let result: ReportResult = run(&db, &filter, Day::today(), now_ms()).await?;
+    reported(run(&db, &filter, Day::today(), now_ms()).await?)
+}
+
+fn reported(result: ReportResult) -> AppResult<Reported> {
+    let mut text = text(&result);
+    if let Some(billable) = billable_text(&result.billable) {
+        text.push_str(&format!("Billable: {billable}\n"));
+    }
     Ok(Reported {
-        text: text(&result),
+        text,
         result: serde_json::to_value(result)?,
     })
 }
@@ -119,6 +126,7 @@ mod tests {
     use super::*;
     use crate::db::tags::Tag;
     use crate::error::ErrorKind;
+    use crate::reports::{Billable, ReportGroup};
 
     fn tag(id: &str, name: &str) -> Tag {
         Tag {
@@ -221,6 +229,72 @@ mod tests {
                 "projects": [],
                 "tags": [],
             })
+        );
+    }
+
+    fn result_with(recorded_minutes: i64, billable_minutes: i64) -> ReportResult {
+        let ms = |m: i64| m * 60_000;
+        let day = Day::parse("2026-10-20").unwrap();
+        let groups = if recorded_minutes > 0 {
+            vec![ReportGroup {
+                key: "Portal".into(),
+                label: "Portal".into(),
+                color: None,
+                shade: None,
+                billable: None,
+                duration_ms: ms(recorded_minutes),
+                rounded_ms: ms(recorded_minutes),
+                notes: vec![],
+                rows: vec![],
+            }]
+        } else {
+            vec![]
+        };
+        ReportResult {
+            filter: ReportFilter::default(),
+            from: day,
+            to: day,
+            groups,
+            total_ms: ms(recorded_minutes),
+            total_rounded_ms: ms(recorded_minutes),
+            billable: Billable::of(ms(recorded_minutes), ms(billable_minutes)),
+        }
+    }
+
+    #[test]
+    fn the_report_text_ends_with_the_billable_line_when_time_is_recorded() {
+        let reported = reported(result_with(480, 384)).unwrap();
+
+        assert_eq!(
+            reported.text,
+            "Tue 2026-10-20\n\
+             \n\
+             Portal  8:00 h\n\
+             \n\
+             Total  8:00 h\n\
+             Billable: 6:24 of 8:00 (80 %)\n"
+        );
+    }
+
+    #[test]
+    fn the_report_text_has_no_billable_line_without_recorded_time() {
+        let reported = reported(result_with(0, 0)).unwrap();
+
+        assert_eq!(reported.text, "Tue 2026-10-20\n\nNo recordings.\n");
+    }
+
+    #[test]
+    fn the_json_result_carries_the_billable_share() {
+        let with_time = reported(result_with(480, 384)).unwrap();
+        let without = reported(result_with(0, 0)).unwrap();
+
+        assert_eq!(
+            with_time.result["billable"],
+            json!({ "recordedMs": 28_800_000, "billableMs": 23_040_000, "percent": 80 })
+        );
+        assert_eq!(
+            without.result["billable"],
+            json!({ "recordedMs": 0, "billableMs": 0, "percent": null })
         );
     }
 

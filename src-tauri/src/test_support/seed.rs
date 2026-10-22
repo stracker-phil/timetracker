@@ -343,11 +343,13 @@ async fn ensure_projects(db: &Db) -> AppResult<Vec<String>> {
         let project = match existing {
             Some(project) => project,
             None => {
+                let billable = client_id.is_some();
                 let input = projects::ProjectInput {
                     client_id,
                     name: name.into(),
                     color: "teal".into(),
                     shade: None,
+                    billable,
                 };
                 projects::insert(db, input).await?
             }
@@ -473,6 +475,21 @@ mod tests {
                 tags: 5,
             }
         );
+    }
+
+    #[tokio::test]
+    async fn seeded_projects_are_billable_exactly_when_they_have_a_client() {
+        let (db, _) = seeded_week(1).await;
+        let projects = projects::list(&db, true).await.unwrap();
+        assert_eq!(projects.len(), 5);
+        for project in projects {
+            assert_eq!(
+                project.billable,
+                project.client_id.is_some(),
+                "{}",
+                project.name
+            );
+        }
     }
 
     #[tokio::test]

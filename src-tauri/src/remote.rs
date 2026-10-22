@@ -43,7 +43,7 @@ pub struct RemoteEvent {
     pub request: RemoteRequest,
 }
 
-/// The reply to `status`. `tracker` is `None` while the data store is unavailable.
+/// The reply to `status`. `tracker` and `billable` are `None` while the data store is unavailable.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -51,6 +51,7 @@ pub struct StatusReport {
     pub version: String,
     pub tracker: Option<TrackerStatus>,
     pub timer: Option<RunningTimer>,
+    pub billable: Option<reports::Billable>,
     pub window_visible: bool,
 }
 
@@ -121,17 +122,23 @@ fn json(value: impl Serialize) -> HandlerResult {
 }
 
 pub async fn status_report(app: &AppHandle) -> StatusReport {
-    let timer = match app.state::<AppState>().data.db() {
-        Ok(db) => timers::status(&db, now_ms())
-            .await
-            .ok()
-            .and_then(|s| s.running),
-        Err(_) => None,
+    let (timer, billable) = match app.state::<AppState>().data.db() {
+        Ok(db) => {
+            let now = now_ms();
+            let timer = timers::status(&db, now).await.ok().and_then(|s| s.running);
+            let today = Day::today();
+            let billable = reports::billable(&db, &reports::Range::Today, today, now)
+                .await
+                .ok();
+            (timer, billable)
+        }
+        Err(_) => (None, None),
     };
     StatusReport {
         version: app.package_info().version.to_string(),
         tracker: tracker(app).ok().map(|t| t.status()),
         timer,
+        billable,
         window_visible: window::main_visible(app),
     }
 }
@@ -213,6 +220,7 @@ mod tests {
             version: "1.2.3".into(),
             tracker,
             timer: None,
+            billable: None,
             window_visible: true,
         }
     }
@@ -239,6 +247,7 @@ mod tests {
                     "text": "Tracking"
                 },
                 "timer": null,
+                "billable": null,
                 "windowVisible": true
             })
         );

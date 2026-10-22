@@ -52,6 +52,9 @@ pub struct ReportOut {
     pub rounding: Rounding,
     pub total_min: f64,
     pub total_rounded_min: f64,
+    /// Out of `total_rounded_min`; the percent is `null` when nothing is recorded.
+    pub billable_min: f64,
+    pub billable_percent: Option<u8>,
     pub groups: Vec<ReportGroupOut>,
 }
 
@@ -100,6 +103,7 @@ pub struct ProjectOut {
     pub color: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client: Option<String>,
+    pub billable: bool,
     pub archived: bool,
 }
 
@@ -343,6 +347,7 @@ impl Core {
                 id: project.id,
                 name: project.name,
                 color: project.color,
+                billable: project.billable,
                 archived: project.archived_at.is_some(),
             })
             .collect())
@@ -448,6 +453,8 @@ pub fn report_out(result: &ReportResult) -> ReportOut {
         rounding: result.filter.rounding,
         total_min: minutes(result.total_ms),
         total_rounded_min: minutes(result.total_rounded_ms),
+        billable_min: minutes(result.billable.billable_ms),
+        billable_percent: result.billable.percent,
         groups: result
             .groups
             .iter()
@@ -612,6 +619,7 @@ mod tests {
                 name: "Portal".into(),
                 color: "blue".into(),
                 shade: None,
+                billable: true,
             },
         )
         .await
@@ -785,6 +793,8 @@ mod tests {
         assert_eq!(
             keys,
             [
+                "billable_min",
+                "billable_percent",
                 "from",
                 "group_by",
                 "groups",
@@ -800,6 +810,8 @@ mod tests {
         assert_eq!(out["rounding"], "nearest30");
         assert_eq!(out["total_min"], 205.0);
         assert_eq!(out["total_rounded_min"], 210.0);
+        assert_eq!(out["billable_min"], 150.0);
+        assert_eq!(out["billable_percent"], 71);
         assert_eq!(out["groups"].as_array().unwrap().len(), 2);
         assert_eq!(
             named(&out["groups"], "label", "Acme / Portal"),
@@ -825,6 +837,21 @@ mod tests {
                 ],
             })
         );
+    }
+
+    #[tokio::test]
+    async fn the_json_report_of_a_day_without_recordings_has_no_billable_percent() {
+        let seed = seeded().await;
+
+        let (result, _) = seed
+            .core
+            .report(report_query(Some("2026-10-18")))
+            .await
+            .unwrap();
+
+        let out = serde_json::to_value(report_out(&result)).unwrap();
+        assert_eq!(out["billable_min"], 0.0);
+        assert_eq!(out["billable_percent"], Value::Null);
     }
 
     #[tokio::test]
@@ -1062,6 +1089,7 @@ mod tests {
                 shade: 4,
                 elapsed_ms: 30 * 60_000,
             }),
+            billable: None,
             window_visible: false,
         };
 
@@ -1227,7 +1255,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn projects_list_their_client_color_and_archived_flag() {
+    async fn projects_list_their_client_color_billable_and_archived_flag() {
         let seed = seeded().await;
         projects::set_archived(&seed.db, &seed.podcast.id, true)
             .await
@@ -1243,6 +1271,7 @@ mod tests {
                 "name": "Portal",
                 "color": seed.portal.color,
                 "client": "Acme",
+                "billable": true,
                 "archived": false,
             })
         );
@@ -1252,6 +1281,7 @@ mod tests {
                 "id": seed.podcast.id,
                 "name": "Podcast",
                 "color": seed.podcast.color,
+                "billable": false,
                 "archived": true,
             })
         );

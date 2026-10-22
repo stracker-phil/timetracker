@@ -99,6 +99,7 @@ export function createApiMock(): typeof realApi {
     tagsSave: vi.fn(async (id: string | null, name: string) => ({ id: id ?? `tag-${name}`, name, createdAt: 0 })),
     tagsDelete: vi.fn().mockResolvedValue(undefined),
     reportRun: vi.fn().mockResolvedValue(reportResult()),
+    billableRatio: vi.fn().mockResolvedValue({ recordedMs: 0, billableMs: 0, percent: null }),
     reportRangeShift: vi.fn(async (range: Range) => range),
     reportText: vi.fn().mockResolvedValue("Mon 2026-10-20\n\nNo recordings.\n"),
     savedReportsList: vi.fn().mockResolvedValue([]),

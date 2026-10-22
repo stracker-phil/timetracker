@@ -10,7 +10,7 @@ import { groupProjects, projectLabel } from "./projects";
 const mocked = vi.mocked(api, true);
 const toastMessages = () => useStore.getState().toasts.map((t) => t.message);
 const fieldError = { kind: "invalid_input", message: "Invalid name", code: null, field: { path: "name", message: "already exists" } };
-const input: ProjectInput = { clientId: null, name: "Website", color: "blue", shade: null };
+const input: ProjectInput = { clientId: null, name: "Website", color: "blue", shade: null, billable: false };
 const clientInput: ClientInput = { name: "Acme", color: "teal" };
 
 describe("projects slice", () => {

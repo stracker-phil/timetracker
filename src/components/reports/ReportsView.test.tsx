@@ -96,6 +96,28 @@ describe("ReportsView", () => {
       expect(total().queryByTitle("Before rounding")).not.toBeInTheDocument();
     });
 
+    it("shows the billable hours and share below the total", async () => {
+      mocked.reportRun.mockResolvedValue(reportResult({ billable: { recordedMs: 28_800_000, billableMs: 23_040_000, percent: 80 } }));
+      await renderView();
+      expect(await screen.findByLabelText("Billable total")).toHaveTextContent("6:24 h · 80 %");
+    });
+
+    it("shows no billable total when nothing is recorded in the report", async () => {
+      await renderView();
+      await screen.findByText("Total");
+      expect(screen.queryByLabelText("Billable total")).not.toBeInTheDocument();
+    });
+
+    it("badges a billable project group only", async () => {
+      mocked.reportRun.mockResolvedValue(
+        reportResult({ groups: [reportGroup({ billable: true }), reportGroup({ key: "p2", label: "Docs", billable: false }), reportGroup({ key: "p3", label: "Mixed", billable: null })] }),
+      );
+      await renderView();
+      expect(within(await screen.findByRole("region", { name: "Website" })).getByText("billable")).toBeInTheDocument();
+      expect(within(screen.getByRole("region", { name: "Docs" })).queryByText("billable")).not.toBeInTheDocument();
+      expect(within(screen.getByRole("region", { name: "Mixed" })).queryByText("billable")).not.toBeInTheDocument();
+    });
+
     it("shows the error when the report fails", async () => {
       mocked.reportRun.mockRejectedValue({ kind: "io", message: "Database is locked", code: null });
       resetStore({ settings: settings(), view: "reports" });

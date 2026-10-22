@@ -9,11 +9,12 @@ use crate::activity::DeleteResult;
 use crate::activity::external::SOURCE_PREFIX;
 use crate::db::activities::ActivityRow;
 use crate::db::recordings::Recording;
-use crate::db::time::{Day, Ms};
+use crate::db::time::{Day, Ms, format_hm};
 use crate::ipc::IpcMessage;
 use crate::recordings::cli::{Recorded, spans_text};
 use crate::remote::StatusReport;
 use crate::reports::cli::Reported;
+use crate::reports::{Billable, billable_text};
 use crate::timers::commands::TimerStarted;
 use crate::timers::{RunningTimer, open_start};
 use crate::tracker::{TrackerState, TrackerStatus};
@@ -85,7 +86,7 @@ pub fn render<Tz: TimeZone>(
             Some(format!(
                 "recorded {} ({}) for {}{note}",
                 spans_text(&r.spans, |ms| clock(ms, tz)),
-                hours(r.duration(now)),
+                format_hm(r.duration(now)),
                 recorded.project_name
             ))
         }
@@ -103,7 +104,7 @@ pub fn render<Tz: TimeZone>(
                 Some(closed) => format!(
                     "stopped {} ({})",
                     spans_text(std::slice::from_ref(closed), |ms| clock(ms, tz)),
-                    hours(closed.duration(now))
+                    format_hm(closed.duration(now))
                 ),
                 None => "stopped".into(),
             },
@@ -134,12 +135,6 @@ fn spans(result: &DeleteResult) -> String {
     )
 }
 
-/// `1:30`.
-fn hours(ms: Ms) -> String {
-    let minutes = ms.max(0) / 60_000;
-    format!("{}:{:02}", minutes / 60, minutes % 60)
-}
-
 fn read<T: DeserializeOwned>(value: &Value) -> Result<T, String> {
     T::deserialize(value)
         .map_err(|e| format!("The running TimeTracker sent an unexpected reply: {e}"))
@@ -154,6 +149,10 @@ fn status<Tz: TimeZone>(report: &StatusReport, now: Ms, tz: &Tz) -> String {
         ),
         format!("current: {}", current(report.tracker.as_ref(), now)),
         format!("timer: {}", timer(report.timer.as_ref(), now)),
+        format!(
+            "billable today: {}",
+            billable_today(report.billable.as_ref())
+        ),
         format!(
             "window: {}",
             if report.window_visible {
@@ -179,6 +178,14 @@ fn current(tracker: Option<&TrackerStatus>, now: Ms) -> String {
     parts.join(" · ")
 }
 
+/// `6:24 of 8:00 (80 %)`; `unavailable` without a data store.
+fn billable_today(billable: Option<&Billable>) -> String {
+    match billable {
+        None => "unavailable".into(),
+        Some(billable) => billable_text(billable).unwrap_or_else(|| "nothing recorded".into()),
+    }
+}
+
 /// `None` is a tracker that is off (no data store).
 /// `Acme · standup · 0:25`, or `none`.
 fn timer(timer: Option<&RunningTimer>, now: Ms) -> String {
@@ -189,7 +196,7 @@ fn timer(timer: Option<&RunningTimer>, now: Ms) -> String {
     if !t.recording.note.is_empty() {
         parts.push(t.recording.note.clone());
     }
-    parts.push(hours(now - open_start(&t.recording)));
+    parts.push(format_hm(now - open_start(&t.recording)));
     parts.join(" · ")
 }
 
@@ -294,6 +301,7 @@ mod tests {
             version: "1.2.3".into(),
             tracker,
             timer: None,
+            billable: None,
             window_visible,
         })
         .unwrap()
@@ -325,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn status_prints_five_lines_in_order() {
+    fn status_prints_six_lines_in_order() {
         let current = row("tracker", "Safari", "Docs", now() - 12 * MINUTE, None);
         let result = report(Some(tracker(TrackerState::Running, Some(current))), true);
         assert_eq!(
@@ -335,9 +343,47 @@ mod tests {
                 "tracker: running",
                 "current: Safari · Docs · 12 min",
                 "timer: none",
+                "billable today: unavailable",
                 "window: visible",
             ]
         );
+    }
+
+    #[test]
+    fn status_shows_the_billable_share_of_today() {
+        let result = serde_json::to_value(StatusReport {
+            version: "1.2.3".into(),
+            tracker: None,
+            timer: None,
+            billable: Some(crate::reports::Billable::of(480 * MINUTE, 384 * MINUTE)),
+            window_visible: true,
+        })
+        .unwrap();
+        assert_eq!(
+            status_lines(&result)[4],
+            "billable today: 6:24 of 8:00 (80 %)"
+        );
+    }
+
+    #[test]
+    fn status_says_when_the_billable_share_is_unavailable_or_nothing_is_recorded() {
+        for (billable, expected) in [
+            (None, "billable today: unavailable"),
+            (
+                Some(crate::reports::Billable::of(0, 0)),
+                "billable today: nothing recorded",
+            ),
+        ] {
+            let result = serde_json::to_value(StatusReport {
+                version: "1.2.3".into(),
+                tracker: None,
+                timer: None,
+                billable,
+                window_visible: true,
+            })
+            .unwrap();
+            assert_eq!(status_lines(&result)[4], expected, "{billable:?}");
+        }
     }
 
     #[test]
@@ -346,7 +392,7 @@ mod tests {
         let result = report(Some(tracker(TrackerState::Running, Some(current))), false);
         let lines = status_lines(&result);
         assert_eq!(lines[2], "current: Finder · 1 h 30 min");
-        assert_eq!(lines[4], "window: hidden");
+        assert_eq!(lines[5], "window: hidden");
     }
 
     #[test]
@@ -402,6 +448,7 @@ mod tests {
                 "tracker: off",
                 "current: none",
                 "timer: none",
+                "billable today: unavailable",
                 "window: visible",
             ]
         );
@@ -822,6 +869,7 @@ mod tests {
                     shade: 0,
                     elapsed_ms: 25 * MINUTE,
                 }),
+                billable: None,
                 window_visible: true,
             })
             .unwrap();

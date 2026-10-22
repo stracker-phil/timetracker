@@ -539,6 +539,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_billable_migration_leaves_existing_projects_not_billable() {
+        let tmp = temp_config_dir();
+        let file = tmp.path().join(DB_FILE);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&file)
+                    .create_if_missing(true)
+                    .foreign_keys(true),
+            )
+            .await
+            .unwrap();
+        sqlx::migrate!("./migrations")
+            .run_to(7, &pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(
+            "INSERT INTO projects (id, name, color, created_at) VALUES ('p', 'P', 'blue', 1);",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        let db = Db::open(&file).await.unwrap();
+
+        let project = projects::get(&db, "p").await.unwrap();
+        assert!(!project.billable);
+    }
+
+    #[tokio::test]
     async fn meta_records_the_schema_version_and_creation_time() {
         let db = Db::open_memory().await.unwrap();
         assert_eq!(

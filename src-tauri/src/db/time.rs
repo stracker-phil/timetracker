@@ -169,6 +169,12 @@ pub fn clip(start: Ms, end: Option<Ms>, bounds: (Ms, Ms), now: Ms) -> Option<(Ms
     (from < to).then_some((from, to))
 }
 
+/// A duration as `6:24`, hours without a leading zero; negative counts as zero.
+pub fn format_hm(ms: Ms) -> String {
+    let minutes = ms.max(0) / 60_000;
+    format!("{}:{:02}", minutes / 60, minutes % 60)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

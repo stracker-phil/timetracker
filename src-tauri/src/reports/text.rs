@@ -12,7 +12,7 @@
 use std::fmt::Write;
 
 use super::{ReportNote, ReportResult, day_label, rounding_step};
-use crate::db::time::{Day, Ms};
+use crate::db::time::{Day, Ms, format_hm};
 use crate::store::settings::Group;
 
 /// Up to a week, a note's days read as weekdays; longer ranges name the date.
@@ -70,10 +70,9 @@ fn days_of(note: &ReportNote, range_days: usize) -> String {
         .join(", ")
 }
 
-/// `3:30 h`; hours without a leading zero.
+/// `3:30 h`.
 fn hours(ms: Ms) -> String {
-    let minutes = ms.max(0) / 60_000;
-    format!("{}:{:02} h", minutes / 60, minutes % 60)
+    format!("{} h", format_hm(ms))
 }
 
 #[cfg(test)]
@@ -101,6 +100,7 @@ mod tests {
             label: label.into(),
             color: None,
             shade: None,
+            billable: None,
             duration_ms: minutes * MINUTE,
             rounded_ms: minutes * MINUTE,
             notes,
@@ -120,6 +120,7 @@ mod tests {
             groups,
             total_ms: total,
             total_rounded_ms: total,
+            billable: crate::reports::Billable::of(total, 0),
         }
     }
 

@@ -11,10 +11,9 @@ use sqlx::{FromRow, Row, SqliteConnection, SqlitePool};
 use super::activities::ActivityRow;
 use super::away::AwayRow;
 use super::clients::Client;
-use super::projects::Project;
 use super::tags::Tag;
 use super::time::{Day, Ms, now_ms};
-use super::{activities, away, backup, clients, projects, tags};
+use super::{activities, away, backup, clients, tags};
 use crate::error::AppResult;
 use crate::reports::saved::{self, SavedReport};
 
@@ -107,13 +106,26 @@ struct LegacyBackup {
     version: u32,
     exported_at: Ms,
     clients: Vec<Client>,
-    projects: Vec<Project>,
+    projects: Vec<LegacyProject>,
     tags: Vec<Tag>,
     activities: Vec<ActivityRow>,
     away_spans: Vec<AwayRow>,
     recordings: Vec<LegacyRecording>,
     rules: Vec<LegacyRule>,
     saved_reports: Vec<SavedReport>,
+}
+
+/// A project before migration 0008 (no `billable`).
+#[derive(Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+struct LegacyProject {
+    id: String,
+    client_id: Option<String>,
+    name: String,
+    color: String,
+    shade: u8,
+    archived_at: Option<Ms>,
+    created_at: Ms,
 }
 
 #[derive(Serialize)]
@@ -215,7 +227,12 @@ async fn export(conn: &mut SqliteConnection) -> AppResult<LegacyBackup> {
         version: LEGACY_BACKUP_VERSION,
         exported_at: now_ms(),
         clients: clients::all(conn).await?,
-        projects: projects::all(conn).await?,
+        projects: sqlx::query_as(
+            "SELECT id, client_id, name, color, shade, archived_at, created_at
+             FROM projects ORDER BY created_at, id",
+        )
+        .fetch_all(&mut *conn)
+        .await?,
         tags: tags::all(conn).await?,
         activities: activities::all(conn).await?,
         away_spans: away::all(conn).await?,

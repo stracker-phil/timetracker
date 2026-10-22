@@ -1,7 +1,7 @@
 use tauri::State;
 
 use super::saved::{self, SavedReport};
-use super::{Range, ReportFilter, ReportResult, run, shift, text};
+use super::{Billable, Range, ReportFilter, ReportResult, billable, run, shift, text};
 use crate::db::time::{Day, now_ms};
 use crate::error::AppResult;
 use crate::state::AppState;
@@ -12,6 +12,12 @@ pub async fn report_run(
     filter: ReportFilter,
 ) -> AppResult<ReportResult> {
     run(&state.data.db()?, &filter, Day::today(), now_ms()).await
+}
+
+/// The status bar's ratio for the shown period: every recording, whatever the report's filter.
+#[tauri::command]
+pub async fn billable_ratio(state: State<'_, AppState>, range: Range) -> AppResult<Billable> {
+    billable(&state.data.db()?, &range, Day::today(), now_ms()).await
 }
 
 #[tauri::command]

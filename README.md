@@ -51,6 +51,8 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 - The sidebar shows the day (or week, month, report period) with ‹ › and Today; P, N and O do the same, and a
   click on the date opens a calendar. ⌘1 to ⌘6 switch to Day, Week, Month, Reports, Projects and Rules.
 - Everything works from the keyboard: ⌘K opens the command palette, ? lists the shortcuts.
+- A project is billable or not (a switch in its sheet; no rates). The status bar shows the billable share of
+  the recorded time for the shown day, week, month or report period, e.g. `Billable 80 %`.
 
 ## CLI
 
@@ -62,14 +64,14 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 | `timetracker --version`, `--help` | prints and exits |
 | `timetracker show [DAY]` | shows the window at a day (`YYYY-MM-DD`, `today`, `yesterday`), starting TimeTracker if needed |
 | `timetracker focus`, `hide`, `quit` | brings the window to the front (starting TimeTracker if needed), hides it, quits |
-| `timetracker status [--json]` | the tracker state, the current activity and whether the window shows |
+| `timetracker status [--json]` | the tracker state, the current activity, the timer, today's billable time (`billable today: 6:24 of 8:00 (80 %)`) and whether the window shows |
 | `timetracker pause <15m\|1h\|tomorrow\|off>`, `resume` | pauses tracking (durations up to 24h; `tomorrow`: until midnight; `off`: until resumed), resumes it |
 | `timetracker activity add\|start\|stop …` | writes another app's activity, see [Scripting](#scripting) |
 | `timetracker activity delete <DAY>` / `activity delete <FROM> <TO>` | deletes the activity and away spans of a day or range (whole when they cross it; recordings stay) |
 | `timetracker activity undo` | restores the last delete, within 30 s of it |
 | `timetracker record --project P --from T --to T [--note N] [--tag T] [--replace]` | records time for a project (by id, name or a unique start of its name; one tag by name); refuses to overlap another recording unless `--replace` |
 | `timetracker record --project P --span 14:25-15:00 --span 16:05-20:15 …` | one recording with several separate spans (`--from`/`--to` counts as one more) |
-| `timetracker report [RANGE] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30 [--up]]` | prints the hours and notes of today (or `yesterday`, `week`, `last-week`, `month`, `last-month`, a day, or two days `FROM TO`), ready to paste into a timesheet |
+| `timetracker report [RANGE] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30 [--up]]` | prints the hours and notes of today (or `yesterday`, `week`, `last-week`, `month`, `last-month`, a day, or two days `FROM TO`), ready to paste into a timesheet, then `Billable: 6:24 of 8:00 (80 %)`; `--json` has both numbers in `billable` |
 | `timetracker start PROJECT [--note N] [--tag T]` / `timetracker stop` | starts a timer now (a running one stops) / stops it |
 | `timetracker mcp` | serves the read-only MCP server on stdin/stdout, see [MCP](#mcp) |
 | `timetracker dev seed [--years N] [--yes]` | debug builds only: writes N years (default 2) of generated workdays into the running app's database ([docs/testing.md](docs/testing.md#sample-data)) |
@@ -116,7 +118,8 @@ claude mcp add timetracker -- ~/.local/bin/timetracker mcp
 ```
 
 Then ask "what did I record yesterday by project?" or "how many hours of development this month?". The tools:
-`report` (the report text, or JSON), `recordings`, `projects`, `tags`, `day_summary`, `status` and `open_day`
+`report` (the report text, or JSON with the billable minutes and percent), `recordings`, `projects` (with
+`billable`), `tags`, `day_summary`, `status` and `open_day`
 (these two need the app running), and `activity` (window titles and URLs), which stays off until you enable
 "Expose activity to the MCP server" in Settings → Data.
 

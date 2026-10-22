@@ -72,7 +72,7 @@ A backup is the JSON export below, or a copy of the folder while the app is not 
 |---|---|
 | `meta` | `key`/`value` facts: `schema` (`1`), `created_at`, `tags_seeded` |
 | `clients` | `id` (UUID), `name`, `color` (an accent name), `archived_at`, `created_at` |
-| `projects` | `id` (UUID), `client_id`, `name`, `color` (the client's accent, or its own without a client), `shade` (`0..SHADES`), `archived_at`, `created_at` |
+| `projects` | `id` (UUID), `client_id`, `name`, `color` (the client's accent, or its own without a client), `shade` (`0..SHADES`), `billable` (0/1, default 0), `archived_at`, `created_at` |
 | `tags` | `id` (UUID), `name` (unique, ignoring case), `created_at` |
 | `activities` | one span in one app and window: `id` (AUTOINCREMENT), `source` (`tracker` or `external:<name>`), `start`, `end` (NULL while open), `app`, `bundle_id`, `title`, `url`, `path`, `private`; indexed on `start` and `(source, start)` |
 | `away_spans` | no input, sleep, lock or pause: `id` (AUTOINCREMENT), `start`, `end`, `reason` (`idle`, `sleep`, `lock`, `paused`); indexed on `start` |
@@ -150,6 +150,8 @@ Other apps write activity through the CLI, `timetracker://` links or the `activi
   zones (`chrono-tz`, dev only) and never the machine's.
 - `clip(start, end, bounds, now)` is the part of a span inside `bounds`; an open span ends at `now`; `None`
   when nothing is inside.
+- `format_hm(ms)` is a duration as `6:24` (hours unpadded, negative as zero), the one text form the CLI, the
+  report text, the billable line and the tray use.
 
 The page never computes day bounds or week starts; it only formats.
 
@@ -191,6 +193,10 @@ the field:
 | `color` (project) | a project of a client takes the client's color, whatever the input; without a client one of `ACCENTS`, blank becomes `orange` (`projects::DEFAULT_COLOR`) |
 | `shade` | `0..SHADES` (9 lightness steps of the color); `null` keeps the shade on an edit within the same client, else takes the first of `SHADE_ORDER` no sibling has (projects of the same client, or all client-less ones) |
 | `clientId` | must exist (`not_found`) and not be archived, checked on create and when the client changes, so a project of an archived client stays editable |
+| `billable` | a plain yes/no, stored as given; no rates or amounts |
+
+- Billable is the project's alone: a recording is billable exactly when its project is, so changing the flag
+  changes the billable time of every past period. Archived projects keep their flag; clients have none.
 
 - Nothing is deleted except tags: recordings reference projects, so projects and clients are archived.
   Editing an archived project keeps it archived. Archiving a client archives its active projects (an earlier
@@ -227,7 +233,8 @@ the field:
 Rows have the shape of their IPC types (`Client`, `Project`, `Tag`, `ActivityRow`, `AwayRow`, `Recording`,
 `Rule`, `SavedReport`). Version 1 (before migration 0006) had `tagIds` arrays on recordings and rules
 instead of `tagId`; the pre-0006 backup is written in it. Version 2 (before migration 0007) had `start` and
-`end` on recordings instead of `spans`. There is no import yet; one would map a version 1
+`end` on recordings instead of `spans`. Projects carry `billable` since migration 0008 (an older file has
+none: not billable). There is no import yet; one would map a version 1
 row to its first tag by name.
 
 ## Migrations
@@ -235,7 +242,9 @@ row to its first tag by name.
 Embedded at compile time with `sqlx::migrate!("./migrations")` and run by `Db::open`; `build.rs` rebuilds
 the crate when the folder changes. Migrations are forward-only: add `NNNN_<name>.sql` with the next number and
 never edit a file that has shipped. A downgrade restores a backup. `0002_drop_billing.sql` removed the billing
-columns (`projects.billable`, `projects.hourly_rate`, `recordings.billable`): TimeTracker tracks time only.
+columns (`projects.billable`, `projects.hourly_rate`, `recordings.billable`); `0008_project_billable.sql`
+brought back only the project's yes/no (`projects.billable`, default 0: existing projects start as not
+billable). There are no rates, amounts or per-recording flags.
 `0003_client_colors.sql` gave clients the color most of their projects had and spread shades over each
 client's projects. `0004_saved_reports.sql` adds `saved_reports (id, name, filter, position)`; `0005_rules.sql` adds `rules` and
 `rule_conditions`.

@@ -307,6 +307,7 @@ mod tests {
                 name: "Portal".into(),
                 color: String::new(),
                 shade: Some(3),
+                billable: false,
             },
         )
         .await

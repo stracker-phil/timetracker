@@ -68,6 +68,15 @@ describe("ProjectsPage", () => {
       expect(screen.getByText("12:30 h / 30 d")).toBeInTheDocument();
     });
 
+    it("badges a billable project only", () => {
+      const billable = projectItem({ project: { id: "p-bill", name: "Retainer", billable: true } });
+      renderPage({ projects: [billable, solo] });
+      const rows = screen.getAllByRole("listitem");
+      const row = (name: string) => within(rows.find((r) => within(r).queryByRole("button", { name }))!);
+      expect(row("Retainer").getByText("billable")).toBeInTheDocument();
+      expect(row("Solo work").queryByText("billable")).not.toBeInTheDocument();
+    });
+
     it("omits last used for a project that was never recorded", () => {
       renderPage({ projects: [projectItem()] });
       expect(screen.queryByText(/last used/)).not.toBeInTheDocument();

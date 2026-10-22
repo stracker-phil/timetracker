@@ -210,6 +210,7 @@ mod tests {
                 name: name.into(),
                 color: "blue".into(),
                 shade: None,
+                billable: false,
             },
         )
         .await

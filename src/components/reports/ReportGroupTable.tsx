@@ -14,6 +14,7 @@ export function ReportGroupTable({ group, rounded }: { group: ReportGroup; round
       <header className="report-group-head">
         {group.color && <AccentDot accent={group.color} shade={group.shade ?? undefined} />}
         <h3 className="grow-text">{group.label}</h3>
+        {group.billable && <span className="badge">billable</span>}
         {rounded && group.roundedMs !== group.durationMs && <span className="mono o3" title="Before rounding">{formatHm(group.durationMs)}</span>}
         <span className="mono report-hours">{formatHm(group.roundedMs)} h</span>
       </header>

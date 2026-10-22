@@ -1,11 +1,12 @@
 import { PanelLeft } from "lucide-react";
-import { api } from "../api";
+import { api, type Range } from "../api";
 import { useBindingLabel, runCommand } from "../commands";
 import { today } from "../lib/day";
 import { formatClock, formatHm } from "../lib/format";
 import { useApiResult } from "../lib/useApiResult";
 import { selectDayVersion, useStore } from "../state/store";
 import { useLiveReload } from "./day/useLiveReload";
+import { useCalendarPeriod, useReportRange } from "./DateNavigator";
 import { TrackerStatus } from "./TrackerStatus";
 
 /** `⏱ Project 1:23`; a click stops the timer. */
@@ -33,6 +34,49 @@ function TodayTotals() {
   );
 }
 
+const TODAY: Range = { kind: "today" };
+
+/** The period the sidebar navigator shows; today in views without one; `null` while it loads. */
+function useShownRange(): Range | null {
+  const view = useStore((s) => s.view);
+  const reportRange = useReportRange();
+  const calendar = useCalendarPeriod();
+  if (view === "reports") return reportRange;
+  if (view !== "day" && view !== "week" && view !== "month") return TODAY;
+  if (!calendar) return null;
+  return { kind: "custom", from: calendar.period.from, to: calendar.period.to };
+}
+
+/** `Billable 80 %` with a bar, for the shown period; hidden while nothing is recorded in it. */
+function BillableRatio() {
+  const range = useShownRange();
+  if (!range) return null;
+  return <BillableMeter range={range} />;
+}
+
+function BillableMeter({ range }: { range: Range }) {
+  const tick = useLiveReload(true);
+  const changes = useStore((s) => s.changeCount);
+  const { data: billable } = useApiResult(`${JSON.stringify(range)}#${changes}#${tick}`, () => api.billableRatio(range), { keepData: true });
+  if (billable?.percent == null) return null;
+  return (
+    <span
+      className="status-billable"
+      role="meter"
+      aria-label="Billable"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={billable.percent}
+      title={`Billable ${formatHm(billable.billableMs)} / ${formatHm(billable.recordedMs)}`}
+    >
+      <span className="status-billable-track" aria-hidden="true">
+        <span className="status-billable-fill" style={{ width: `${billable.percent}%` }} />
+      </span>
+      Billable {billable.percent} %
+    </span>
+  );
+}
+
 export function StatusBar() {
   const sidebarKeys = useBindingLabel("sidebar.toggle");
   const selection = useStore((s) => s.selectionSnap);
@@ -49,6 +93,7 @@ export function StatusBar() {
       )}
       <span className="spacer" />
       <RunningTimer />
+      <BillableRatio />
       <TodayTotals />
     </footer>
   );

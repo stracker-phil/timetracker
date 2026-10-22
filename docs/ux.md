@@ -48,8 +48,11 @@ One place for views and one place for dates: the sidebar.
   the shown day's totals only when it is not today.
 - **Status bar** (plain text in `--o3`): on the left the sidebar toggle, the tracker's state (a dot: accent
   while running, `--o3` while away or paused, `--style-red` without permission; the tray's text; Pause,
-  Resume or Allow…) and the selection; on the right the running timer and today's totals in mono,
-  `recorded 1:00 · tracked 3:12`, in every view. The text zoom has no readout: ⌘= ⌘- ⌘0.
+  Resume or Allow…) and the selection; on the right the running timer, the billable ratio and today's totals
+  in mono, `recorded 1:00 · tracked 3:12`, in every view. The billable ratio is a small bar (a neutral track,
+  filled in the accent; no red or green judgment) with `Billable 80 %`, and `Billable 6:24 / 8:00` in its
+  tooltip, for the period the navigator shows (day, week, month, report period; today on Projects and Rules).
+  It hides while nothing is recorded in that period. The text zoom has no readout: ⌘= ⌘- ⌘0.
 
 ## Color schemes and tokens
 
@@ -129,7 +132,9 @@ an 8px inset and a 5px radius; the active one is `--sel` with its label in the a
 
 Lists grouped under a heading (the clients on the Projects screen) use a section header band: `--band`
 background, small semibold `--o2` text, 5px radius. Archived rows are dimmed (55% opacity) and keep a
-Restore action. A client band and a project row start with a color dot (`AccentDot`, a project's in its shade).
+Restore action. A client band and a project row start with a color dot (`AccentDot`, a project's in its shade);
+a billable project carries a small `billable` badge after its name. The project sheet has a Billable switch
+(a plain yes/no; there are no rates or amounts).
 Colors are chosen with nine round swatches (`AccentSwatches` for a hue, `ShadeSwatches` for a shade), the
 chosen one ringed. A tag is plain mono text, never a pill; a recording has at most one
 ([ADR 0019](adr/0019-one-tag-per-recording.md)).
@@ -312,9 +317,11 @@ The Reports screen: the range as title, Copy as text and Save report… on the r
 with a color dot (by project), the hours in mono on the right, the notes in `--o2` below, and "3
 recordings" that unfolds a table; a row lists all of a recording's spans of its day (`14:25–15:00,
 16:05–20:15`), and the notes follow the recordings' first spans. The total closes the list; with rounding, the unrounded hours stand
-beside it in `--o3`. Saved reports sit under Reports in the sidebar.
+beside it in `--o3`. Below it, in `--o2`, `Billable 6:24 h · 80 %` (of the rounded total). Groups by project
+carry the `billable` badge of a billable project. Saved reports sit under Reports in the sidebar.
 
-The copied text, also what `timetracker report` prints:
+The copied text, also what `timetracker report` prints (the CLI adds `Billable: 3:30 of 4:45 (74 %)` below
+the total; the copied text leaves it out):
 
 ```text
 2026-10-19 – 2026-10-25 · rounded to 15 min

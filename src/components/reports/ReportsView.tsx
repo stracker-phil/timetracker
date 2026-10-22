@@ -50,6 +50,14 @@ export function ReportsView() {
             <span className="mono report-hours">{formatHm(result.totalRoundedMs)} h</span>
           </footer>
         )}
+        {result?.billable.percent != null && (
+          <footer className="report-billable" aria-label="Billable total">
+            <span className="grow-text">Billable</span>
+            <span className="mono report-hours">
+              {formatHm(result.billable.billableMs)} h · {result.billable.percent} %
+            </span>
+          </footer>
+        )}
       </div>
     </section>
   );

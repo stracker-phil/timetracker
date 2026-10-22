@@ -37,7 +37,7 @@ describe("ProjectSheet", () => {
       expect(screen.getByRole("heading", { name: "New project" })).toBeInTheDocument();
       await userEvent.type(screen.getByLabelText("Name"), "Website");
       await save();
-      expect(mocked.projectsSave).toHaveBeenCalledWith(null, { clientId: null, name: "Website", color: "orange", shade: null });
+      expect(mocked.projectsSave).toHaveBeenCalledWith(null, { clientId: null, name: "Website", color: "orange", shade: null, billable: false });
       expect(onClose).toHaveBeenCalled();
     });
 
@@ -46,7 +46,18 @@ describe("ProjectSheet", () => {
       await userEvent.type(screen.getByLabelText("Name"), "Website");
       await userEvent.click(screen.getByRole("button", { name: "Accent teal" }));
       await save();
-      expect(mocked.projectsSave).toHaveBeenCalledWith(null, { clientId: null, name: "Website", color: "teal", shade: null });
+      expect(mocked.projectsSave).toHaveBeenCalledWith(null, { clientId: null, name: "Website", color: "teal", shade: null, billable: false });
+    });
+
+    it("starts with the Billable switch off and saves it on when toggled", async () => {
+      renderSheet();
+      const billable = screen.getByRole("switch", { name: /^Billable/ });
+      expect(billable).not.toBeChecked();
+      await userEvent.type(screen.getByLabelText("Name"), "Website");
+      await userEvent.click(billable);
+      expect(billable).toBeChecked();
+      await save();
+      expect(mocked.projectsSave).toHaveBeenCalledWith(null, expect.objectContaining({ billable: true }));
     });
 
     it("saves the chosen client", async () => {
@@ -257,7 +268,17 @@ describe("ProjectSheet", () => {
       await userEvent.clear(screen.getByLabelText("Name"));
       await userEvent.type(screen.getByLabelText("Name"), "Site");
       await save();
-      expect(mocked.projectsSave).toHaveBeenCalledWith("p1", { clientId: "c-acme", name: "Site", color: "purple", shade: 4 });
+      expect(mocked.projectsSave).toHaveBeenCalledWith("p1", { clientId: "c-acme", name: "Site", color: "purple", shade: 4, billable: false });
+    });
+
+    it("reflects a billable project in the Billable switch and saves it off when toggled", async () => {
+      const billable = projectItem({ project: { id: "p5", name: "Retainer", billable: true } });
+      renderSheet({ id: "p5" }, { projects: [billable] });
+      const toggle = screen.getByRole("switch", { name: /^Billable/ });
+      expect(toggle).toBeChecked();
+      await userEvent.click(toggle);
+      await save();
+      expect(mocked.projectsSave).toHaveBeenCalledWith("p5", expect.objectContaining({ billable: false }));
     });
 
     it("saves a newly picked shade", async () => {

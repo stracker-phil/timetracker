@@ -20,6 +20,8 @@ pub struct Project {
     pub color: String,
     /// The lightness step of `color`, `0..SHADES`, darkest first.
     pub shade: u8,
+    /// Its recordings count as billable time.
+    pub billable: bool,
     pub archived_at: Option<Ms>,
     pub created_at: Ms,
 }
@@ -34,6 +36,7 @@ pub struct ProjectInput {
     pub color: String,
     /// `None`: kept on an edit within the same client, else the next shade no sibling has.
     pub shade: Option<u8>,
+    pub billable: bool,
 }
 
 /// A client-less project's color when none is given.
@@ -48,6 +51,7 @@ struct Stored {
     name: String,
     color: String,
     shade: u8,
+    billable: bool,
 }
 
 /// The input as stored. `existing` is the project being edited; its client may stay archived.
@@ -82,6 +86,7 @@ async fn validated(db: &Db, input: ProjectInput, existing: Option<&Project>) -> 
         name,
         color,
         shade,
+        billable: input.billable,
     })
 }
 
@@ -147,14 +152,15 @@ pub async fn get(db: &Db, id: &str) -> AppResult<Project> {
 pub async fn insert(db: &Db, input: ProjectInput) -> AppResult<Project> {
     let input = validated(db, input, None).await?;
     Ok(sqlx::query_as(
-        "INSERT INTO projects (id, client_id, name, color, shade, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING *",
+        "INSERT INTO projects (id, client_id, name, color, shade, billable, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) RETURNING *",
     )
     .bind(new_id())
     .bind(input.client_id)
     .bind(input.name)
     .bind(input.color)
     .bind(input.shade)
+    .bind(input.billable)
     .bind(now_ms())
     .fetch_one(db.pool())
     .await?)
@@ -167,7 +173,7 @@ pub async fn update(db: &Db, id: &str, input: ProjectInput) -> AppResult<Project
     found(
         id,
         sqlx::query_as(
-            "UPDATE projects SET client_id = ?2, name = ?3, color = ?4, shade = ?5
+            "UPDATE projects SET client_id = ?2, name = ?3, color = ?4, shade = ?5, billable = ?6
              WHERE id = ?1 RETURNING *",
         )
         .bind(id)
@@ -175,6 +181,7 @@ pub async fn update(db: &Db, id: &str, input: ProjectInput) -> AppResult<Project
         .bind(input.name)
         .bind(input.color)
         .bind(input.shade)
+        .bind(input.billable)
         .fetch_optional(db.pool())
         .await?,
     )
@@ -341,6 +348,7 @@ mod tests {
             name: name.into(),
             color: "blue".into(),
             shade: None,
+            billable: false,
         }
     }
 
@@ -363,6 +371,7 @@ mod tests {
                 name: "  Website ".into(),
                 color: "red".into(),
                 shade: Some(6),
+                billable: false,
             },
         )
         .await
@@ -375,6 +384,76 @@ mod tests {
         assert_eq!(project.archived_at, None);
         assert_eq!(get(&db, &project.id).await.unwrap(), project);
         assert_eq!(count(&db).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_project_is_not_billable_unless_marked() {
+        let db = Db::open_memory().await.unwrap();
+
+        let project = insert(&db, input("P")).await.unwrap();
+
+        assert!(!project.billable);
+    }
+
+    #[tokio::test]
+    async fn the_billable_flag_is_stored_and_read_back() {
+        let db = Db::open_memory().await.unwrap();
+
+        let project = insert(
+            &db,
+            ProjectInput {
+                billable: true,
+                ..input("P")
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(project.billable);
+        assert!(get(&db, &project.id).await.unwrap().billable);
+        assert!(list(&db, false).await.unwrap()[0].billable);
+    }
+
+    #[tokio::test]
+    async fn the_billable_flag_switches_both_ways_on_update() {
+        let db = Db::open_memory().await.unwrap();
+        let project = insert(&db, input("P")).await.unwrap();
+
+        for billable in [true, false] {
+            let updated = update(
+                &db,
+                &project.id,
+                ProjectInput {
+                    billable,
+                    ..input("P")
+                },
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(updated.billable, billable);
+            assert_eq!(get(&db, &project.id).await.unwrap().billable, billable);
+        }
+    }
+
+    #[tokio::test]
+    async fn an_archived_project_keeps_its_billable_flag() {
+        let db = Db::open_memory().await.unwrap();
+        let project = insert(
+            &db,
+            ProjectInput {
+                billable: true,
+                ..input("P")
+            },
+        )
+        .await
+        .unwrap();
+
+        let archived = set_archived(&db, &project.id, true).await.unwrap();
+        let restored = set_archived(&db, &project.id, false).await.unwrap();
+
+        assert!(archived.billable);
+        assert!(restored.billable);
     }
 
     #[tokio::test]
@@ -655,6 +734,7 @@ mod tests {
                 name: "New".into(),
                 color: "blue".into(),
                 shade: Some(2),
+                billable: false,
             },
         )
         .await
@@ -1237,6 +1317,7 @@ mod tests {
                     "name": "P",
                     "color": "blue",
                     "shade": 4,
+                    "billable": false,
                     "archivedAt": null,
                     "createdAt": project.created_at,
                 },

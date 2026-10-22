@@ -463,6 +463,7 @@ fn start_app(
             rules::commands::suggestions_accept_rule,
             reports::commands::report_run,
             reports::commands::report_range_shift,
+            reports::commands::billable_ratio,
             reports::commands::report_text,
             reports::commands::saved_reports_list,
             reports::commands::saved_report_save,

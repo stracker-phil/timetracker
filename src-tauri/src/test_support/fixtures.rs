@@ -82,6 +82,7 @@ pub async fn project(db: &Db, name: &str) -> Project {
             name: name.into(),
             color: "blue".into(),
             shade: None,
+            billable: false,
         },
     )
     .await
