@@ -217,6 +217,10 @@ pub async fn handle(app: AppHandle, message: IpcMessage) -> HandlerResult {
         }
         IpcMessage::TimerStop => json(timers::commands::stop(&app).await?),
         IpcMessage::TimerStatus => json(timer::state(&db(&app)?, now_ms()).await?),
+        IpcMessage::TimerPicker => {
+            timers::picker::open(&app, timers::picker::Place::OnFocusedScreen);
+            Ok(serde_json::Value::Null)
+        }
         IpcMessage::TrackerStatus => json(tracker(&app)?.status()),
         IpcMessage::TimerUpdate { request } => {
             timers::commands::update_by_name(&app, request).await?;

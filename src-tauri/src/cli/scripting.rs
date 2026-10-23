@@ -150,6 +150,8 @@ pub enum TimerCommand {
     Stop,
     /// Print the running timer (--json: flat fields with project, client, tag, note and start)
     Status,
+    /// Open the timer picker on the focused screen, as the timer shortcut does; the window stays hidden
+    Pick,
     /// Change the running timer in place: its project, note or tag
     Update(ChangeArgs),
 }
@@ -162,6 +164,7 @@ impl TimerCommand {
             },
             TimerCommand::Stop => IpcMessage::TimerStop,
             TimerCommand::Status => IpcMessage::TimerStatus,
+            TimerCommand::Pick => IpcMessage::TimerPicker,
             TimerCommand::Update(ChangeArgs {
                 project,
                 note,
@@ -544,6 +547,7 @@ mod tests {
             ),
             (vec!["timer", "stop"], IpcMessage::TimerStop),
             (vec!["timer", "status"], IpcMessage::TimerStatus),
+            (vec!["timer", "pick"], IpcMessage::TimerPicker),
         ];
         for (args, message) in cases {
             assert_eq!(remote(&args), (message, false, false), "{args:?}");

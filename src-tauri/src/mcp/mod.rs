@@ -293,7 +293,7 @@ mod tests {
     use tempfile::TempDir;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-    const TOOLS: [&str; 17] = [
+    const TOOLS: [&str; 18] = [
         "activity",
         "approve",
         "clients",
@@ -308,6 +308,7 @@ mod tests {
         "status",
         "suggestions",
         "tags",
+        "timer_picker",
         "timer_start",
         "timer_stop",
         "timer_update",
@@ -343,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn the_server_offers_exactly_the_seventeen_read_and_write_tools() {
+    fn the_server_offers_exactly_the_eighteen_read_and_write_tools() {
         let mut names: Vec<String> = TimeTrackerServer::all_tools()
             .list_all()
             .iter()
@@ -761,6 +762,7 @@ mod tests {
                 ("approve", json!({"ids": ["sg1"]})),
                 ("timer_start", json!({"project": "Portal"})),
                 ("timer_stop", json!({})),
+                ("timer_picker", json!({})),
                 ("timer_update", json!({"note": "x"})),
             ] {
                 let called = client.tool(tool, arguments).await;
@@ -1075,6 +1077,16 @@ mod tests {
 
             assert_eq!(session.asked(), IpcMessage::TimerStop);
             assert_eq!(text(&called), "no timer running");
+        }
+
+        #[tokio::test]
+        async fn timer_picker_asks_the_app_to_open_the_picker() {
+            let mut session = session(client_info("test"), vec![nothing()]).await;
+
+            let called = session.call("timer_picker", json!({})).await;
+
+            assert_eq!(session.asked(), IpcMessage::TimerPicker);
+            assert_eq!(text(&called), "Opened the timer picker");
         }
 
         #[tokio::test]

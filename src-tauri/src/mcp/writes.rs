@@ -237,6 +237,14 @@ impl TimeTrackerServer {
         self.told(IpcMessage::TimerStart { request }).await
     }
 
+    #[tool(
+        description = "Opens the timer picker on the user's screen, so the user can start, change or stop the timer; the main window stays hidden"
+    )]
+    async fn timer_picker(&self) -> Result<String, String> {
+        ui::ask(&self.socket, IpcMessage::TimerPicker).await?;
+        Ok("Opened the timer picker".into())
+    }
+
     #[tool(description = "Stops the running timer")]
     async fn timer_stop(&self) -> Result<String, String> {
         self.told(IpcMessage::TimerStop).await

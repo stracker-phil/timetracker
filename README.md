@@ -107,6 +107,7 @@ reports can be saved under a name and sit under Reports in the sidebar.
 | `timetracker timer start PROJECT [--note N] [--tag T]`, `timer stop` | starts a timer now (a running one stops; the same project, note and tag continue today's recording) / stops it |
 | `timetracker timer status [--json]` | the running timer: `--json` has `running`, `project`, `client`, `tag`, `note`, `startedAt` (ms), `startedAtIso`, `elapsedMs` and the ids |
 | `timetracker timer update [--project P] [--note N] [--tag T\|--no-tag]` | changes the running timer in place |
+| `timetracker timer pick` | opens the timer picker (the timer shortcut's, ⌘F4 by default) on the focused screen; the main window stays hidden |
 | `timetracker mcp` | serves the MCP server on stdin/stdout, see [MCP](#mcp) |
 | `timetracker dev seed [--years N] [--yes]` | debug builds only: writes N years (default 2) of generated workdays into the running app's database ([docs/testing.md](docs/testing.md#sample-data)) |
 
@@ -183,7 +184,8 @@ Writes need the app running and work like the CLI's ([Suggestions and recordings
 `record` and `edit` leave suggestions in the Day view, "Suggested by" the client's name (`claude-code`), until
 you approve or dismiss them; `final: true` changes the timesheet itself (`draft: true` keeps it a suggestion).
 `approve` records suggestions, `delete` dismisses one (a recording only with `final`), and `timer_start`,
-`timer_stop` and `timer_update` drive the timer directly. Ask "suggest 9 to 10:30 today for Acme with the note
+`timer_stop` and `timer_update` drive the timer directly; `timer_picker` opens the timer picker for you to
+choose. Ask "suggest 9 to 10:30 today for Acme with the note
 from this ticket".
 
 ## Privacy

@@ -82,6 +82,8 @@ pub enum IpcMessage {
     },
     TimerStop,
     TimerStatus,
+    /// The timer picker on the focused screen, as the timer shortcut opens it.
+    TimerPicker,
     TrackerStatus,
     TimerUpdate {
         request: TimerUpdateRequest,
@@ -149,6 +151,7 @@ impl IpcMessage {
             IpcMessage::TimerStart { .. } => "TimerStart",
             IpcMessage::TimerStop => "TimerStop",
             IpcMessage::TimerStatus => "TimerStatus",
+            IpcMessage::TimerPicker => "TimerPicker",
             IpcMessage::TrackerStatus => "TrackerStatus",
             IpcMessage::TimerUpdate { .. } => "TimerUpdate",
             IpcMessage::Edit { .. } => "Edit",
@@ -595,6 +598,7 @@ mod tests {
             timer_start_message(),
             IpcMessage::TimerStop,
             IpcMessage::TimerStatus,
+            IpcMessage::TimerPicker,
             IpcMessage::TrackerStatus,
             timer_update_message(),
             suggestion_message(),
@@ -683,6 +687,7 @@ mod tests {
     fn timer_messages_are_of_their_own_kinds() {
         assert_eq!(timer_start_message().kind(), "TimerStart");
         assert_eq!(IpcMessage::TimerStop.kind(), "TimerStop");
+        assert_eq!(IpcMessage::TimerPicker.kind(), "TimerPicker");
     }
 
     #[cfg(debug_assertions)]
@@ -849,6 +854,10 @@ mod tests {
             (
                 IpcMessage::TimerStatus,
                 serde_json::json!({ "type": "timerStatus" }),
+            ),
+            (
+                IpcMessage::TimerPicker,
+                serde_json::json!({ "type": "timerPicker" }),
             ),
             (
                 IpcMessage::TrackerStatus,

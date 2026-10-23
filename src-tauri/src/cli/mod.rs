@@ -765,7 +765,10 @@ mod tests {
     #[test]
     fn timer_and_tracker_help_list_their_subcommands() {
         for (parent, names) in [
-            ("timer", ["start", "stop", "status", "update"].as_slice()),
+            (
+                "timer",
+                ["start", "stop", "status", "update", "pick"].as_slice(),
+            ),
             ("tracker", ["pause", "resume", "status"].as_slice()),
         ] {
             let Ok(CliOutcome::Exit { message }) = run(&[parent, "--help"]) else {

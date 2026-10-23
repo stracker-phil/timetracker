@@ -613,6 +613,7 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `timer stop` (hidden alias `stop`) | `timerStop` | `stopped 09:15–10:40 (1:25)` (the span just closed) or `no timer running` (exit 0) |
 | `timer status` | `timerStatus` | `timer: Acme · standup · 0:25` or `timer: none`; `--json`: `TimerState` |
 | `timer update [--project P] [--note N] [--tag T\|--no-tag]` | `timerUpdate { request: TimerUpdateRequest }`: absent fields stay (`timers::commands::update_by_name`); refused without a timer | `timer: …` |
+| `timer pick` | `timerPicker`: `timers::picker::open` on the focused screen, as the timer shortcut; the main window stays as it is | – |
 | `mcp` | none: serves MCP on stdin/stdout (`CliOutcome::Mcp`) | only JSON-RPC on stdout |
 | `record --project P (--from ISO --to ISO \| --span FROM-TO…) [--note N] [--tag T] [--source S] [--final [--replace]] [--draft]` | `record { request: RecordRequest { spans, final, source, … } }`: `--from`/`--to` is one span, each `--span` (`14:25-15:00`, ends as `instant`, joined by `-` or `–`; `time::span`) another (`overlap: replace` with `--replace`, else `cancel`; `--replace` without an effective `--final` is a parse error; one `--tag`, a second is a parse error); the app resolves the project (`projects::resolve`) and the tag by name (`tags::resolve_name`, unknown → `not_found`). Without `final` it stores a suggestion (`Recordings::create_suggestion`, source `cli` by default) | `suggested 06:00–06:30 (0:30) for Acme · fix login; review it in the Day view (id …)`, or with `--final` `recorded 14:25–15:00, 16:05–20:15 (4:45) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: `Written`, `{ kind: suggestion \| recording, … }` with the stored suggestion or the recording plus `projectName` |
 | `edit ID [--project P] [--note N] [--tag T\|--no-tag] [--from/--to \| --span…] [--final [--replace]] [--draft]` | `edit { request: EditRequest }`; spans given replace all | the written suggestion or recording, as `record` |
@@ -716,6 +717,7 @@ Every message is logged by type (`IpcMessage::kind`, never the contents).
 | `recordings { range }`, `suggestions { range }` | `scripting::listing` | `RecordingEntry[]`, `SuggestionEntry[]` |
 | `projects`, `clients`, `tags` | `scripting::catalog` | `ProjectEntry[]`, `ClientEntry[]`, `TagEntry[]` |
 | `timerStart`, `timerStop`, `timerStatus`, `timerUpdate` | `timers::commands::start_by_name`, `stop`, `scripting::timer::state`, `timers::commands::update_by_name` | `TimerStarted`, `Recording \| null`, `TimerState`, `TimerState` |
+| `timerPicker` | `timers::picker::open(app, Place::OnFocusedScreen)` | `null` |
 | `undo`, `redo` | `Recordings::undo`, `redo` | the label or `null` |
 | `activityAdd { items }` | `activity::add` | `{ ids }` |
 | `activityStart { input }` | `activity::start` | `ActivityRow` |
@@ -795,6 +797,7 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
 | `timer_start` | `project`, `note`, `tag` | `IpcMessage::TimerStart` |
 | `timer_stop` | – | `IpcMessage::TimerStop` |
 | `timer_update` | `project`, `note`, `tag`, `clear_tag` | `IpcMessage::TimerUpdate` |
+| `timer_picker` | – | `IpcMessage::TimerPicker`: the timer picker on the user's screen |
 | `day_summary` | `day` | `{ day, recorded_min, tracked_min, away_min, by_project, by_tag }`; totals from `day::view_of`, the groups `[{ name, minutes, notes }]` from `reports::run` for that day |
 | `activity` | `day` | `{ activity: [{ start_iso, end_iso, app, title, url?, path?, source }], away: [{ start_iso, end_iso, reason }] }`; private rows keep only the app. Refused (`Activity is not exposed to MCP. Enable it in Settings → Data.`) unless `settings.mcp.exposeActivity` |
 | `status` | – | `IpcMessage::Status` to the app: `{ version, tracker: { state, text, current: { app, title?, url?, since_iso } }, timer: { project, client?, tag?, note, start_iso, elapsed_min }, window_visible }`; the current title and URL only when activity is exposed |

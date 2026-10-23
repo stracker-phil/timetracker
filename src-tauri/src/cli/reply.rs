@@ -970,6 +970,7 @@ mod tests {
                 focus: false,
             },
             IpcMessage::Activate { hidden: false },
+            IpcMessage::TimerPicker,
         ] {
             assert_eq!(
                 render_at_now(&message, &Value::Null),
