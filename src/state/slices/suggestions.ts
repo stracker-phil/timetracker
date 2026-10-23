@@ -58,7 +58,7 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
       async approveRuleSuggestions(ruleId) {
         try {
           const recorded = await api.suggestionApproveRule(get().day, ruleId);
-          focusNextAfter(shownSuggestions(get()).filter((s) => s.ruleId === ruleId).map((s) => s.id));
+          focusNextAfter(shownSuggestions(get()).filter((s) => s.ruleIds.includes(ruleId)).map((s) => s.id));
           undoToast(recorded.length === 1 ? "Recorded 1 suggestion" : `Recorded ${recorded.length} suggestions`);
         } catch (e) {
           fail(e, "Could not approve the suggestions");

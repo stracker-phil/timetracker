@@ -23,13 +23,18 @@ fn input_of(suggestion: Suggestion) -> RecordingInput {
     }
 }
 
-fn dismissal_of(day: Day, suggestion: &Suggestion) -> Dismissal {
-    Dismissal {
-        rule_id: suggestion.rule_id.clone(),
-        day,
-        start: suggestion.start,
-        end: suggestion.end,
-    }
+/// One per rule of the suggestion, each over all of its time.
+fn dismissals_of(day: Day, suggestion: &Suggestion) -> Vec<Dismissal> {
+    suggestion
+        .rule_ids
+        .iter()
+        .map(|rule_id| Dismissal {
+            rule_id: rule_id.clone(),
+            day,
+            start: suggestion.start,
+            end: suggestion.end,
+        })
+        .collect()
 }
 
 /// The day's suggestions that `keep` holds for; `not_found` with `gone` when none is left.
@@ -110,7 +115,7 @@ pub async fn approve_edited(
 ) -> AppResult<Change<Recording>> {
     let suggestion = find(service, settings, day, id).await?;
     service
-        .create_settling(input, overlap, dismissal_of(day, &suggestion))
+        .create_settling(input, overlap, dismissals_of(day, &suggestion))
         .await
 }
 
@@ -126,7 +131,7 @@ pub async fn approve_all(
     approve_found(service, found).await
 }
 
-/// Records every suggestion of the rule on `day` as one undoable change.
+/// Records every suggestion of the rule on `day`, those it shares with other rules too, as one undoable change.
 pub async fn approve_rule(
     service: &Recordings<'_>,
     settings: &Settings,
@@ -137,7 +142,7 @@ pub async fn approve_rule(
         service,
         settings,
         day,
-        |s| s.rule_id == rule_id,
+        |s| s.rule_ids.iter().any(|id| id == rule_id),
         "The rule has no suggestions on this day",
     )
     .await?;
@@ -154,6 +159,6 @@ pub async fn dismiss(
 ) -> AppResult<Change<usize>> {
     let found = find_all(service, settings, day, ids).await?;
     service
-        .record_dismissals(found.iter().map(|s| dismissal_of(day, s)).collect())
+        .record_dismissals(found.iter().map(|s| dismissals_of(day, s)).collect())
         .await
 }

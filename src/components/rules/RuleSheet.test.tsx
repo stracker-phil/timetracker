@@ -62,7 +62,7 @@ describe("RuleSheet", () => {
       await userEvent.click(screen.getByRole("combobox", { name: "Project" }));
       await userEvent.keyboard("{ArrowDown}");
       await userEvent.click(await screen.findByRole("option", { name: "Website" }));
-      await userEvent.type(screen.getByLabelText("Condition 1 value"), "Slack");
+      await userEvent.type(screen.getByLabelText("App 1 value"), "Slack");
       await save();
       expect(mocked.ruleSave).toHaveBeenCalledWith(null, { name: "Chat", projectId: "project-1", enabled: true, note: "", tagId: null, conditions: [{ field: "app", op: "is", value: "Slack" }] });
       expect(onClose).toHaveBeenCalled();
@@ -77,22 +77,76 @@ describe("RuleSheet", () => {
       expect(mocked.ruleSave).toHaveBeenCalledWith(null, expect.objectContaining({ tagId: "tag-support" }));
     });
 
-    it("adds a condition, with the field and comparison the user picks", async () => {
+    it("adds a field, with the comparison the user picks", async () => {
       renderSheet({ draft: { ...draft, conditions: [draft.conditions[0]] } });
-      await userEvent.click(screen.getByRole("button", { name: "Add condition" }));
-      await userEvent.selectOptions(screen.getByLabelText("Condition 2 field"), "Domain");
-      await userEvent.selectOptions(screen.getByLabelText("Condition 2 comparison"), "begins with");
-      await userEvent.type(screen.getByLabelText("Condition 2 value"), "example");
+      await userEvent.click(within(screen.getByRole("group", { name: "Add a field" })).getByRole("button", { name: "Domain" }));
+      expect(screen.getByLabelText("Domain 1 comparison")).toHaveValue("is");
+      await userEvent.selectOptions(screen.getByLabelText("Domain 1 comparison"), "begins with");
+      await userEvent.type(screen.getByLabelText("Domain 1 value"), "example");
       await save();
       expect(mocked.ruleSave).toHaveBeenCalledWith(null, expect.objectContaining({ conditions: [draft.conditions[0], { field: "domain", op: "begins_with", value: "example" }] }));
     });
 
-    it("removes a condition, but never the last one", async () => {
+    it("saves several values of one field as separate conditions of that field", async () => {
+      renderSheet({ draft: { ...draft, conditions: [draft.conditions[0]] } });
+      await userEvent.click(screen.getByRole("button", { name: "Add App value" }));
+      await userEvent.type(screen.getByLabelText("App 2 value"), "Chrome");
+      await save();
+      expect(mocked.ruleSave).toHaveBeenCalledWith(
+        null,
+        expect.objectContaining({
+          conditions: [
+            { field: "app", op: "is", value: "Safari" },
+            { field: "app", op: "is", value: "Chrome" },
+          ],
+        }),
+      );
+    });
+
+    it("keeps the fields in groups when a value is added to an earlier field", async () => {
       renderSheet({ draft });
-      await userEvent.click(screen.getByRole("button", { name: "Remove condition 1" }));
-      expect(screen.queryByLabelText("Condition 2 value")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Condition 1 value")).toHaveValue("docs");
-      expect(screen.getByRole("button", { name: "Remove condition 1" })).toBeDisabled();
+      await userEvent.click(screen.getByRole("button", { name: "Add App value" }));
+      await userEvent.type(screen.getByLabelText("App 2 value"), "Chrome");
+      await save();
+      expect(mocked.ruleSave).toHaveBeenCalledWith(
+        null,
+        expect.objectContaining({
+          conditions: [draft.conditions[0], draft.conditions[1], { field: "app", op: "is", value: "Chrome" }],
+        }),
+      );
+      expect(within(screen.getByRole("region", { name: "App" })).getByLabelText("App 2 value")).toHaveValue("Chrome");
+    });
+
+    it("offers a field only while the rule does not use it", async () => {
+      renderSheet({ draft });
+      const add = within(screen.getByRole("group", { name: "Add a field" }));
+      expect(add.getAllByRole("button").map((b) => b.textContent)).toEqual(["URL", "Domain", "Path", "Source"]);
+      await userEvent.click(add.getByRole("button", { name: "URL" }));
+      expect(add.queryByRole("button", { name: "URL" })).not.toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "URL" })).toBeInTheDocument();
+    });
+
+    it("shows an or before every value of a field after the first", async () => {
+      renderSheet({ draft: { ...draft, conditions: [draft.conditions[0]] } });
+      const app = () => within(screen.getByRole("region", { name: "App" }));
+      expect(app().queryByText("or")).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Add App value" }));
+      expect(app().getAllByText("or")).toHaveLength(1);
+    });
+
+    it("removes a value, but never the last condition", async () => {
+      renderSheet({ draft });
+      await userEvent.click(screen.getByRole("button", { name: "Remove App 1" }));
+      expect(screen.queryByRole("region", { name: "App" })).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Title 1 value")).toHaveValue("docs");
+      expect(screen.getByRole("button", { name: "Remove Title 1" })).toBeDisabled();
+    });
+
+    it("removes one of several values and renumbers the rest", async () => {
+      renderSheet({ draft: { ...draft, conditions: [{ field: "app", op: "is", value: "Safari" }, { field: "app", op: "is", value: "Chrome" }] } });
+      await userEvent.click(screen.getByRole("button", { name: "Remove App 1" }));
+      expect(screen.queryByLabelText("App 2 value")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("App 1 value")).toHaveValue("Chrome");
     });
 
     it("offers no Delete", () => {
@@ -104,8 +158,8 @@ describe("RuleSheet", () => {
       renderSheet({ draft });
       expect(screen.getByLabelText("Name")).toHaveValue("Safari → Website");
       expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("Website");
-      expect(screen.getByLabelText("Condition 1 value")).toHaveValue("Safari");
-      expect(screen.getByLabelText("Condition 2 comparison")).toHaveValue("contains");
+      expect(screen.getByLabelText("App 1 value")).toHaveValue("Safari");
+      expect(screen.getByLabelText("Title 1 comparison")).toHaveValue("contains");
     });
   });
 
@@ -115,8 +169,8 @@ describe("RuleSheet", () => {
       expect(screen.getByRole("heading", { name: "Edit rule" })).toBeInTheDocument();
       expect(screen.getByLabelText("Name")).toHaveValue("Slack");
       expect(screen.getByLabelText("Note")).toHaveValue("chat");
-      await userEvent.clear(screen.getByLabelText("Condition 1 value"));
-      await userEvent.type(screen.getByLabelText("Condition 1 value"), "Teams");
+      await userEvent.clear(screen.getByLabelText("App 1 value"));
+      await userEvent.type(screen.getByLabelText("App 1 value"), "Teams");
       await userEvent.click(screen.getByRole("switch", { name: "Suggest recordings" }));
       await save();
       expect(mocked.ruleSave).toHaveBeenCalledWith("r-slack", { name: "Slack", projectId: "project-1", enabled: false, note: "chat", tagId: null, conditions: [{ field: "app", op: "is", value: "Teams" }] });
@@ -160,12 +214,23 @@ describe("RuleSheet", () => {
       mocked.ruleSave.mockRejectedValueOnce(fieldError("conditions.1.value", "Needs a value"));
       const { onClose } = renderSheet({ draft });
       await save();
-      const row = await screen.findByRole("group", { name: "Condition 2" });
+      const row = await screen.findByRole("group", { name: "Title 1" });
       await within(row).findByRole("alert");
       expect(row).toHaveAttribute("aria-invalid", "true");
       expect(within(row).getByRole("alert")).toHaveTextContent("Needs a value");
-      expect(screen.getByRole("group", { name: "Condition 1" })).not.toHaveAttribute("aria-invalid");
+      expect(screen.getByRole("group", { name: "App 1" })).not.toHaveAttribute("aria-invalid");
       expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("marks the row by its place in the rule's list when its field is grouped", async () => {
+      mocked.ruleSave.mockRejectedValueOnce(fieldError("conditions.2.value", "Needs a value"));
+      renderSheet({ draft: { ...draft, conditions: [draft.conditions[0], draft.conditions[1], { field: "app", op: "is", value: "" }] } });
+      await save();
+      const row = await screen.findByRole("group", { name: "App 2" });
+      expect(row).toHaveAttribute("aria-invalid", "true");
+      expect(within(row).getByRole("alert")).toHaveTextContent("Needs a value");
+      expect(screen.getByRole("group", { name: "App 1" })).not.toHaveAttribute("aria-invalid");
+      expect(screen.getByRole("group", { name: "Title 1" })).not.toHaveAttribute("aria-invalid");
     });
 
     it("shows the error of the name below its field", async () => {
@@ -226,7 +291,7 @@ describe("RuleSheet", () => {
       renderSheet({ draft });
       await preview().findByText("Nothing matches");
       mocked.rulePreview.mockResolvedValue(rulePreview({ hits: [previewHit("2026-03-10", { id: "h1", title: "Docs home" })], totalMs: 30 * 60_000, days: 1 }));
-      await userEvent.type(screen.getByLabelText("Condition 2 value"), "x");
+      await userEvent.type(screen.getByLabelText("Title 1 value"), "x");
       expect(await preview().findByText("Docs home")).toBeInTheDocument();
       expect(mocked.rulePreview).toHaveBeenLastCalledWith(expect.objectContaining({ conditions: [draft.conditions[0], { field: "title", op: "contains", value: "docsx" }] }), 7);
     });
@@ -234,7 +299,7 @@ describe("RuleSheet", () => {
     it("waits for a value in every condition that needs one", async () => {
       renderSheet({ draft: { ...draft, conditions: [{ field: "title", op: "contains", value: "" }] } });
       expect(preview().getByText("Give each condition a value to see what it matches.")).toBeInTheDocument();
-      await userEvent.type(screen.getByLabelText("Condition 1 value"), "docs");
+      await userEvent.type(screen.getByLabelText("Title 1 value"), "docs");
       expect(await preview().findByText("Nothing matches")).toBeInTheDocument();
       expect(preview().queryByText("Give each condition a value to see what it matches.")).not.toBeInTheDocument();
     });

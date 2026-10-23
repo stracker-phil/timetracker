@@ -535,6 +535,8 @@ timeline's for every app.
   by <rule>" with a sparkle, the tag and the duration; ✓ (Approve) and ✕ (Dismiss) round buttons top right.
   A click opens the inline editor prefilled with it ("Suggested by <rule>. Approve records it.", the primary
   button reads Approve): saving records it as edited and dismisses the rest of its time, one undo step.
+- **Joined**: touching suggestions that would make the same recording (project, note and tag), also from
+  different rules, show as one ("Suggested by PhpStorm, Slack: Lumen Labs").
 - **Hatched blocks** in the time column: diagonal stripes of the project's fill, dashed outline, project, rule
   and duration; a click opens the editor on it like its card. The suggestion being edited gives way to the
   editor's draft spans.
@@ -557,6 +559,9 @@ timeline's for every app.
   button.
 - **Rule sheet**: the form on the left, "Last 7 days" on the right with the matching time and the hits
   (day and time in `--o2`, the app, the title). Below 720px the preview moves under the form.
+  "Conditions" shows one tinted section per field (App, Title, URL…) with a + for another value; the
+  values of a field are alternatives ("or"), every field must match. Quiet buttons below add the fields not
+  used yet.
 
 ## Timer
 

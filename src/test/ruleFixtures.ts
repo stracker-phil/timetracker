@@ -17,6 +17,7 @@ export function suggestion(patch: Partial<Suggestion> = {}): Suggestion {
   return {
     id: `${ruleId}:${start}:${end}`,
     ruleId,
+    ruleIds: [ruleId],
     ruleName: "Slack",
     projectId: "project-1",
     projectName: "Website",

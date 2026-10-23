@@ -16,15 +16,39 @@ export const OPS: { id: RuleOp; label: string }[] = [
   { id: "pattern", label: "matches" },
 ];
 
-const fieldLabel = (field: RuleField) => FIELDS.find((f) => f.id === field)?.label.toLowerCase() ?? field;
+export const fieldLabel = (field: RuleField) => FIELDS.find((f) => f.id === field)?.label ?? field;
 const opLabel = (op: RuleOp) => OPS.find((o) => o.id === op)?.label ?? op;
 
-/** `app is "Slack" · title contains "standup"`. */
-export function conditionSummary(conditions: (Condition | ConditionInput)[]): string {
-  return conditions.map((c) => `${fieldLabel(c.field)} ${opLabel(c.op)} "${c.value}"`).join(" · ");
+export interface ConditionGroup {
+  field: RuleField;
+  /** Each condition with its index in the rule's list. */
+  items: { condition: ConditionInput; index: number }[];
 }
 
-export const emptyCondition = (): ConditionInput => ({ field: "app", op: "is", value: "" });
+/** The conditions by field, fields in order of first appearance: a field's conditions are alternatives. */
+export function groupConditions(conditions: ConditionInput[]): ConditionGroup[] {
+  const groups: ConditionGroup[] = [];
+  conditions.forEach((condition, index) => {
+    const group = groups.find((g) => g.field === condition.field);
+    if (group) group.items.push({ condition, index });
+    else groups.push({ field: condition.field, items: [{ condition, index }] });
+  });
+  return groups;
+}
+
+/** `title contains "a" or is "b"`. */
+const groupText = ({ field, items }: ConditionGroup) => `${fieldLabel(field).toLowerCase()} ${items.map(({ condition: c }) => `${opLabel(c.op)} "${c.value}"`).join(" or ")}`;
+
+/** `app is "Chrome" or is "Safari" · title contains "standup"`. */
+export const conditionSummary = (conditions: (Condition | ConditionInput)[]) => groupConditions(conditions).map(groupText).join(" · ");
+
+const EXACT_FIELDS: RuleField[] = ["app", "domain"];
+
+export const emptyCondition = (field: RuleField = "app"): ConditionInput => ({
+  field,
+  op: EXACT_FIELDS.includes(field) ? "is" : "contains",
+  value: "",
+});
 
 export const emptyRule = (): RuleInput => ({ name: "", projectId: "", enabled: true, note: "", tagId: null, conditions: [emptyCondition()] });
 

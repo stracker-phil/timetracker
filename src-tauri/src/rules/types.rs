@@ -83,7 +83,11 @@ pub struct RuleInput {
 pub struct Suggestion {
     /// `<rule id>:<start>:<end>`: the same after a reload.
     pub id: String,
+    /// The first of `rule_ids`.
     pub rule_id: String,
+    /// The rules whose touching pieces it joins, in position order; they share project, note and tag.
+    pub rule_ids: Vec<String>,
+    /// Their names, comma separated.
     pub rule_name: String,
     pub project_id: String,
     pub project_name: String,

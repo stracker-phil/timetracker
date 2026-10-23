@@ -127,14 +127,18 @@ pub fn compile(rules: &[Rule]) -> Vec<Compiled> {
     enabled.into_iter().map(Compiled::new).collect()
 }
 
-/// Every condition holds. A private block, or a rule without conditions, never matches.
+/// Each field's conditions are alternatives: one per field must hold. A private block, or a rule without
+/// conditions, never matches.
 pub fn matches(rule: &Compiled, block: &ActivityBlock) -> bool {
+    let holds = |field: RuleField| {
+        let value = field_value(block, field);
+        rule.matchers
+            .iter()
+            .any(|(f, matcher)| *f == field && matcher.matches(&value))
+    };
     !block.private
         && !rule.matchers.is_empty()
-        && rule
-            .matchers
-            .iter()
-            .all(|(field, matcher)| matcher.matches(&field_value(block, *field)))
+        && rule.matchers.iter().all(|(field, _)| holds(*field))
 }
 
 pub fn first_match<'a>(rules: &'a [Compiled], block: &ActivityBlock) -> Option<&'a Compiled> {
@@ -303,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn every_condition_must_hold() {
+    fn every_field_must_hold() {
         let block = block(0, 10, "Slack", "Weekly Standup");
         let cases = [
             (vec![(App, Is, "slack"), (Title, Contains, "standup")], true),
@@ -313,6 +317,39 @@ mod tests {
         for (conditions, expected) in cases {
             assert_eq!(matched(&conditions, &block), expected, "{conditions:?}");
         }
+    }
+
+    #[test]
+    fn conditions_on_the_same_field_are_alternatives() {
+        let conditions = [
+            (App, Is, "Chrome"),
+            (App, Is, "Safari"),
+            (Title, Contains, "site1"),
+            (Title, Contains, "site2"),
+        ];
+        let cases = [
+            ("Safari", "read site2 today", true),
+            ("Chrome", "site1", true),
+            ("Firefox", "site2", false),
+            ("Chrome", "other", false),
+            ("Safari", "", false),
+        ];
+        for (app, title, expected) in cases {
+            assert_eq!(
+                matched(&conditions, &block(0, 10, app, title)),
+                expected,
+                "{app} / {title:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn same_field_alternatives_may_use_different_ops() {
+        let conditions = [(App, Is, "Mail"), (App, BeginsWith, "Sla")];
+
+        assert!(matched(&conditions, &block(0, 10, "Slack", "")));
+        assert!(matched(&conditions, &block(0, 10, "Mail", "")));
+        assert!(!matched(&conditions, &block(0, 10, "Code", "")));
     }
 
     #[test]

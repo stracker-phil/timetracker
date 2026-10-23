@@ -91,7 +91,7 @@ pub async fn day_of_rules(db: &Db, day: Day, settings: &Settings) -> AppResult<V
             let pending: Vec<&Suggestion> = view
                 .suggestions
                 .iter()
-                .filter(|s| s.rule_id == rule.rule_id)
+                .filter(|s| s.rule_ids.contains(&rule.rule_id))
                 .collect();
             RuleDay {
                 rule_id: rule.rule_id.clone(),
@@ -200,6 +200,16 @@ mod tests {
         async fn app_rule(&self, app: &str) -> Rule {
             let input = RuleInput {
                 note: format!("{app} work"),
+                tag_id: Some(self.tag_id.clone()),
+                ..rule_input(app, &self.project.id, &[(App, RuleOp::Is, app)])
+            };
+            store::save(&self.db, None, &input).await.unwrap()
+        }
+
+        /// Like `app_rule`, but every such rule shares one note, so touching suggestions of two apps join.
+        async fn shared_rule(&self, app: &str) -> Rule {
+            let input = RuleInput {
+                note: "shared".into(),
                 tag_id: Some(self.tag_id.clone()),
                 ..rule_input(app, &self.project.id, &[(App, RuleOp::Is, app)])
             };
@@ -840,6 +850,135 @@ mod tests {
                 pending: 0,
                 pending_ms: 0,
             }
+        );
+    }
+
+    /// Slack 9 to 10 and Code 10 to 11 under two rules with one target: a single joined suggestion.
+    async fn joined_suggestion(w: &World, today: Day) -> (Rule, Rule, Suggestion) {
+        let slack = w.shared_rule("Slack").await;
+        let code = w.shared_rule("Code").await;
+        w.work(today, "Slack", (9, 0), (10, 0)).await;
+        w.work(today, "Code", (10, 0), (11, 0)).await;
+        let mut found = w.suggestions(today).await;
+        assert_eq!(found.len(), 1);
+        (slack, code, found.remove(0))
+    }
+
+    #[tokio::test]
+    async fn touching_work_of_two_rules_with_one_target_is_one_joined_suggestion() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+
+        let (slack, code, joined) = joined_suggestion(&w, today).await;
+
+        assert_eq!(joined.rule_ids, [slack.id.clone(), code.id]);
+        assert_eq!(joined.rule_id, slack.id);
+        assert_eq!(joined.rule_name, "Slack, Code");
+        assert_eq!(
+            (joined.start, joined.end),
+            (on(today, 9, 0), on(today, 11, 0))
+        );
+    }
+
+    #[tokio::test]
+    async fn dismissing_a_joined_suggestion_dismisses_it_for_each_of_its_rules() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (_, _, joined) = joined_suggestion(&w, today).await;
+
+        let change = dismiss(&w.service(), &w.settings, today, &[joined.id.clone()])
+            .await
+            .unwrap();
+
+        assert_eq!(change.value, 1);
+        assert!(w.suggestions(today).await.is_empty());
+        w.work(today, "Slack", (11, 0), (12, 0)).await;
+        let spans: Vec<(Ms, Ms)> = w
+            .suggestions(today)
+            .await
+            .iter()
+            .map(|s| (s.start, s.end))
+            .collect();
+        assert_eq!(spans, [(on(today, 11, 0), on(today, 12, 0))]);
+    }
+
+    #[tokio::test]
+    async fn undoing_the_dismissal_of_a_joined_suggestion_brings_it_back_whole() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (_, _, joined) = joined_suggestion(&w, today).await;
+        dismiss(&w.service(), &w.settings, today, &[joined.id.clone()])
+            .await
+            .unwrap();
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Dismiss suggestion"));
+        assert_eq!(w.suggestions(today).await, [joined]);
+    }
+
+    #[tokio::test]
+    async fn approving_by_the_second_rule_records_the_joined_suggestion_it_shares() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (_, code, _) = joined_suggestion(&w, today).await;
+
+        let change = approve_rule(&w.service(), &w.settings, today, &code.id)
+            .await
+            .unwrap();
+
+        let times: Vec<(Ms, Option<Ms>)> =
+            change.value.iter().map(|r| (r.start(), r.end())).collect();
+        assert_eq!(times, [(on(today, 9, 0), Some(on(today, 11, 0)))]);
+        assert_eq!(change.value[0].note, "shared");
+        assert!(w.suggestions(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn approving_an_edited_joined_suggestion_leaves_nothing_of_it_for_either_rule() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (_, _, joined) = joined_suggestion(&w, today).await;
+
+        approve_edited(
+            &w.service(),
+            &w.settings,
+            today,
+            &joined.id,
+            w.input_on(today, (9, 0), (9, 30)),
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap();
+
+        assert!(w.suggestions(today).await.is_empty());
+        assert_eq!(w.recordings().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_joined_suggestion_is_pending_for_each_of_its_rules() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (slack, code, _) = joined_suggestion(&w, today).await;
+
+        let days = day_of_rules(&w.db, today, &w.settings).await.unwrap();
+
+        assert_eq!(
+            days,
+            [
+                RuleDay {
+                    rule_id: slack.id,
+                    matched_ms: 60 * MIN,
+                    pending: 1,
+                    pending_ms: 120 * MIN,
+                },
+                RuleDay {
+                    rule_id: code.id,
+                    matched_ms: 60 * MIN,
+                    pending: 1,
+                    pending_ms: 120 * MIN,
+                },
+            ]
         );
     }
 

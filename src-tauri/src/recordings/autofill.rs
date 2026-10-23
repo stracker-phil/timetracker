@@ -68,9 +68,23 @@ mod tests {
     #[tokio::test]
     async fn the_latest_recording_with_the_note_decides_project_and_tag() {
         let w = World::new().await;
-        save(&w, &w.project.id, "code review", Some(&w.alpha.id), at(9, 0)).await;
+        save(
+            &w,
+            &w.project.id,
+            "code review",
+            Some(&w.alpha.id),
+            at(9, 0),
+        )
+        .await;
         save(&w, &w.other.id, "code review", Some(&w.beta.id), at(14, 0)).await;
-        save(&w, &w.project.id, "code review", Some(&w.alpha.id), at(11, 0)).await;
+        save(
+            &w,
+            &w.project.id,
+            "code review",
+            Some(&w.alpha.id),
+            at(11, 0),
+        )
+        .await;
 
         assert_eq!(
             autofill(&w.db, "code review").await.unwrap(),

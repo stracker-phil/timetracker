@@ -817,7 +817,19 @@ export type Suggestion = {
 /**
  * `<rule id>:<start>:<end>`: the same after a reload.
  */
-id: string, ruleId: string, ruleName: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, start: number, end: number, durationMs: number, note: string, tagId: string | null, 
+id: string, 
+/**
+ * The first of `rule_ids`.
+ */
+ruleId: string, 
+/**
+ * The rules whose touching pieces it joins, in position order; they share project, note and tag.
+ */
+ruleIds: Array<string>, 
+/**
+ * Their names, comma separated.
+ */
+ruleName: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, start: number, end: number, durationMs: number, note: string, tagId: string | null, 
 /**
  * The tag's name.
  */

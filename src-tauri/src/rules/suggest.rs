@@ -100,9 +100,55 @@ fn claimed_pieces(own: &[Vec<Span>], bridges: &[Vec<Span>]) -> Vec<Vec<Span>> {
     pieces.into_iter().map(union).collect()
 }
 
+/// A rule's share of the time (by rule index) after recordings and dismissals.
+struct Piece {
+    rule: usize,
+    start: Ms,
+    end: Ms,
+}
+
+/// What a rule's suggestion would record.
+fn target(rule: &Compiled) -> (&str, &str, Option<&str>) {
+    (&rule.project_id, &rule.note, rule.tag_id.as_deref())
+}
+
+/// Touching pieces joined into one suggestion's time.
+struct Run {
+    /// Rule indexes, ascending.
+    rules: Vec<usize>,
+    start: Ms,
+    end: Ms,
+}
+
+/// Pieces of the same target that touch, joined; by start.
+fn join_touching(mut pieces: Vec<Piece>, rules: &[Compiled]) -> Vec<Run> {
+    pieces.sort_by_key(|p| p.start);
+    let mut runs: Vec<Run> = Vec::new();
+    for Piece { rule, start, end } in pieces {
+        match runs.last_mut() {
+            Some(run)
+                if run.end == start && target(&rules[run.rules[0]]) == target(&rules[rule]) =>
+            {
+                run.end = end;
+                if !run.rules.contains(&rule) {
+                    run.rules.push(rule);
+                    run.rules.sort_unstable();
+                }
+            }
+            _ => runs.push(Run {
+                rules: vec![rule],
+                start,
+                end,
+            }),
+        }
+    }
+    runs
+}
+
 /// The suggestions of the day, by start. Matched time goes to its rule first; a run's bridged gaps only take
 /// time no rule matched, so suggestions never overlap. A rule's dismissed time stays its own and is not
-/// suggested again. Tags deleted since the rule was saved are left out.
+/// suggested again. Touching pieces of rules with the same project, note and tag are one suggestion. Tags
+/// deleted since the rule was saved are left out.
 pub fn suggest(
     blocks: &[&ActivityBlock],
     recordings: &[RecordingBlock],
@@ -119,45 +165,65 @@ pub fn suggest(
         .collect();
     let recorded = union(recordings.iter().map(|r| (r.start, r.end)).collect());
 
-    let mut suggestions: Vec<Suggestion> = Vec::new();
-    for (rule, pieces) in rules.iter().zip(claimed_pieces(&own, &bridges)) {
-        let Some(project) = names.projects.get(&rule.project_id) else {
+    let mut pieces: Vec<Piece> = Vec::new();
+    for (index, (rule, claimed)) in rules.iter().zip(claimed_pieces(&own, &bridges)).enumerate() {
+        if !names.projects.contains_key(&rule.project_id) {
             continue;
-        };
-        let tag = rule.tag_id.as_ref().and_then(|id| names.tags.get(id));
-        let tag_id = tag.and(rule.tag_id.clone());
+        }
         let rule_dismissed = dismissed
             .iter()
             .filter(|d| d.rule_id == rule.rule_id)
             .map(|d| (d.start, d.end));
         let cut = union(recorded.iter().copied().chain(rule_dismissed).collect());
-        let spans = subtract(&pieces, &cut);
-        suggestions.extend(
-            spans
+        pieces.extend(
+            subtract(&claimed, &cut)
                 .into_iter()
-                .filter(|(start, end)| end - start >= MIN_SUGGESTION_MS)
-                .map(|(start, end)| Suggestion {
-                    id: format!("{}:{start}:{end}", rule.rule_id),
-                    rule_id: rule.rule_id.clone(),
-                    rule_name: rule.rule_name.clone(),
-                    project_id: rule.project_id.clone(),
-                    project_name: project.name.clone(),
-                    client_name: project.client_name.clone(),
-                    color: project.color.clone(),
-                    shade: project.shade,
+                .map(|(start, end)| Piece {
+                    rule: index,
                     start,
                     end,
-                    duration_ms: end - start,
-                    note: rule.note.clone(),
-                    tag_id: tag_id.clone(),
-                    tag: tag.map(|t| t.name.clone()),
-                    tag_emoji: tag.and_then(|t| t.emoji.clone()),
-                    next_card: None,
                 }),
         );
     }
-    suggestions.sort_by(|a, b| a.start.cmp(&b.start).then_with(|| a.id.cmp(&b.id)));
-    suggestions
+
+    join_touching(pieces, rules)
+        .into_iter()
+        .filter(|run| run.end - run.start >= MIN_SUGGESTION_MS)
+        .filter_map(|run| {
+            let of: Vec<&Compiled> = run.rules.iter().map(|&i| &rules[i]).collect();
+            suggestion(&of, run.start, run.end, names)
+        })
+        .collect()
+}
+
+/// `rules` share one target; none when its project is gone.
+fn suggestion(rules: &[&Compiled], start: Ms, end: Ms, names: &Names) -> Option<Suggestion> {
+    let rule = rules[0];
+    let project = names.projects.get(&rule.project_id)?;
+    let tag = rule.tag_id.as_ref().and_then(|id| names.tags.get(id));
+    Some(Suggestion {
+        id: format!("{}:{start}:{end}", rule.rule_id),
+        rule_id: rule.rule_id.clone(),
+        rule_ids: rules.iter().map(|r| r.rule_id.clone()).collect(),
+        rule_name: rules
+            .iter()
+            .map(|r| r.rule_name.as_str())
+            .collect::<Vec<_>>()
+            .join(", "),
+        project_id: rule.project_id.clone(),
+        project_name: project.name.clone(),
+        client_name: project.client_name.clone(),
+        color: project.color.clone(),
+        shade: project.shade,
+        start,
+        end,
+        duration_ms: end - start,
+        note: rule.note.clone(),
+        tag_id: tag.and(rule.tag_id.clone()),
+        tag: tag.map(|t| t.name.clone()),
+        tag_emoji: tag.and_then(|t| t.emoji.clone()),
+        next_card: None,
+    })
 }
 
 #[cfg(test)]
@@ -425,6 +491,7 @@ mod tests {
             [Suggestion {
                 id: format!("r1:{}:{}", 10 * MIN, 20 * MIN),
                 rule_id: "r1".into(),
+                rule_ids: vec!["r1".into()],
                 rule_name: "Rule r1".into(),
                 project_id: "p1".into(),
                 project_name: "Project p1".into(),
@@ -644,6 +711,196 @@ mod tests {
         let matched = matched_ms(&refs, &compile(&rules));
 
         assert_eq!(matched, [20 * MIN, 3 * MIN, 0]);
+    }
+
+    /// Suggestions of `rules` (positions as given) over `blocks`, minus `dismissed` as `(rule id, start, end)` minutes.
+    fn suggestions_of_rules(
+        rules: &[Rule],
+        blocks: &[ActivityBlock],
+        dismissed: &[(&str, i64, i64)],
+    ) -> Vec<Suggestion> {
+        let blocks: Vec<&ActivityBlock> = blocks.iter().collect();
+        let dismissed: Vec<Dismissal> = dismissed
+            .iter()
+            .map(|&(rule_id, start, end)| Dismissal {
+                rule_id: rule_id.into(),
+                day: Day::parse("2026-01-05").unwrap(),
+                start: start * MIN,
+                end: end * MIN,
+            })
+            .collect();
+        suggest(
+            &blocks,
+            &[],
+            &[],
+            &compile(rules),
+            &names(&["p1", "p2"], &["t1", "t2"]),
+            0,
+            &dismissed,
+        )
+    }
+
+    /// `(rule ids, start minute, end minute)` of each suggestion.
+    fn joined_spans(suggestions: &[Suggestion]) -> Vec<(Vec<String>, i64, i64)> {
+        suggestions
+            .iter()
+            .map(|s| (s.rule_ids.clone(), s.start / MIN, s.end / MIN))
+            .collect()
+    }
+
+    fn ids(ids: &[&str]) -> Vec<String> {
+        ids.iter().map(|id| id.to_string()).collect()
+    }
+
+    fn same_target_rules() -> Vec<Rule> {
+        vec![
+            Rule {
+                position: 0,
+                ..app_is("r1", "p1", "Slack")
+            },
+            Rule {
+                position: 1,
+                ..app_is("r2", "p1", "Code")
+            },
+        ]
+    }
+
+    #[test]
+    fn touching_pieces_of_rules_with_the_same_target_become_one_suggestion() {
+        let blocks = [slack(0, 10), code(10, 20)];
+
+        let found = suggestions_of_rules(&same_target_rules(), &blocks, &[]);
+
+        assert_eq!(found.len(), 1);
+        let joined = &found[0];
+        assert_eq!(
+            (
+                joined.id.as_str(),
+                joined.rule_id.as_str(),
+                joined.rule_ids.clone(),
+                joined.rule_name.as_str(),
+                joined.start,
+                joined.end,
+                joined.duration_ms,
+            ),
+            (
+                format!("r1:0:{}", 20 * MIN).as_str(),
+                "r1",
+                ids(&["r1", "r2"]),
+                "Rule r1, Rule r2",
+                0,
+                20 * MIN,
+                20 * MIN,
+            )
+        );
+    }
+
+    #[test]
+    fn a_joined_suggestion_lists_its_rules_in_position_order_whichever_came_first() {
+        let blocks = [code(0, 10), slack(10, 20)];
+
+        let found = suggestions_of_rules(&same_target_rules(), &blocks, &[]);
+
+        assert_eq!(joined_spans(&found), [(ids(&["r1", "r2"]), 0, 20)]);
+        assert_eq!(found[0].rule_id, "r1");
+        assert_eq!(found[0].rule_name, "Rule r1, Rule r2");
+    }
+
+    #[test]
+    fn a_rule_on_both_sides_of_another_is_listed_once() {
+        let blocks = [slack(0, 10), code(10, 20), slack(20, 30)];
+
+        let found = suggestions_of_rules(&same_target_rules(), &blocks, &[]);
+
+        assert_eq!(joined_spans(&found), [(ids(&["r1", "r2"]), 0, 30)]);
+    }
+
+    #[test]
+    fn three_rules_with_the_same_target_join_into_one() {
+        let mut rules = same_target_rules();
+        rules.push(Rule {
+            position: 2,
+            ..app_is("r3", "p1", "Mail")
+        });
+        let blocks = [slack(0, 10), code(10, 20), block(20, 30, "Mail", "")];
+
+        let found = suggestions_of_rules(&rules, &blocks, &[]);
+
+        assert_eq!(joined_spans(&found), [(ids(&["r1", "r2", "r3"]), 0, 30)]);
+        assert_eq!(found[0].rule_name, "Rule r1, Rule r2, Rule r3");
+    }
+
+    #[test]
+    fn the_minimum_applies_to_the_joined_length() {
+        let cases = [
+            (3, 3, vec![(ids(&["r1", "r2"]), 0, 6)]),
+            (3, 2, vec![(ids(&["r1", "r2"]), 0, 5)]),
+            (3, 1, vec![]),
+        ];
+        for (first, second, expected) in cases {
+            let blocks = [slack(0, first), code(first, first + second)];
+
+            let found = suggestions_of_rules(&same_target_rules(), &blocks, &[]);
+
+            assert_eq!(joined_spans(&found), expected, "{first} + {second} min");
+        }
+    }
+
+    #[test]
+    fn pieces_that_do_not_touch_or_differ_in_target_stay_separate() {
+        let mut other_note = same_target_rules();
+        other_note[1].note = "other".into();
+        let mut other_tag = same_target_rules();
+        other_tag[1].tag_id = Some("t2".into());
+        let mut other_project = same_target_rules();
+        other_project[1].project_id = "p2".into();
+        let cases = [
+            (
+                "a gap between them",
+                same_target_rules(),
+                vec![slack(0, 10), code(11, 21)],
+            ),
+            ("another note", other_note, vec![slack(0, 10), code(10, 20)]),
+            ("another tag", other_tag, vec![slack(0, 10), code(10, 20)]),
+            (
+                "another project",
+                other_project,
+                vec![slack(0, 10), code(10, 20)],
+            ),
+        ];
+        for (name, rules, blocks) in cases {
+            let found = suggestions_of_rules(&rules, &blocks, &[]);
+
+            let rule_ids: Vec<Vec<String>> = found.iter().map(|s| s.rule_ids.clone()).collect();
+            assert_eq!(rule_ids, [ids(&["r1"]), ids(&["r2"])], "{name}");
+        }
+    }
+
+    #[test]
+    fn dismissed_time_is_cut_before_pieces_are_joined() {
+        let blocks = [slack(0, 20), code(20, 30)];
+
+        let found = suggestions_of_rules(&same_target_rules(), &blocks, &[("r1", 0, 10)]);
+
+        assert_eq!(joined_spans(&found), [(ids(&["r1", "r2"]), 10, 30)]);
+        assert_eq!(found[0].id, format!("r1:{}:{}", 10 * MIN, 30 * MIN));
+    }
+
+    #[test]
+    fn a_dismissal_of_the_joined_time_for_one_rule_leaves_the_other_rules_piece() {
+        let blocks = [slack(0, 10), code(10, 20)];
+
+        let found = suggestions_of_rules(&same_target_rules(), &blocks, &[("r1", 0, 10)]);
+
+        assert_eq!(joined_spans(&found), [(ids(&["r2"]), 10, 20)]);
+    }
+
+    #[test]
+    fn a_suggestion_of_one_rule_lists_only_that_rule() {
+        let found = suggestions_of_rules(&same_target_rules(), &[slack(0, 10)], &[]);
+
+        assert_eq!(joined_spans(&found), [(ids(&["r1"]), 0, 10)]);
+        assert_eq!(found[0].rule_name, "Rule r1");
     }
 
     #[test]

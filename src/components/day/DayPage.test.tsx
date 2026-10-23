@@ -655,8 +655,8 @@ describe("DayPage", () => {
       const sheet = within(await screen.findByRole("dialog", { name: "New rule" }));
       expect(sheet.getByLabelText("Name")).toHaveValue("Notes");
       expect(sheet.getByRole("combobox", { name: "Project" })).toHaveValue("");
-      expect(sheet.getByLabelText("Condition 1 field")).toHaveValue("app");
-      expect(sheet.getByLabelText("Condition 1 value")).toHaveValue("Notes");
+      expect(sheet.getByRole("region", { name: "App" })).toBeInTheDocument();
+      expect(sheet.getByLabelText("App 1 value")).toHaveValue("Notes");
       expect(mocked.ruleSave).not.toHaveBeenCalled();
     });
 
@@ -2027,9 +2027,9 @@ describe("DayPage", () => {
       expect(await screen.findByRole("dialog", { name: "New rule" })).toBeInTheDocument();
       expect(sheet().getByLabelText("Name")).toHaveValue("Safari → Website");
       expect(sheet().getByRole("combobox", { name: "Project" })).toHaveValue("Website");
-      expect(sheet().getByLabelText("Condition 1 value")).toHaveValue("Safari");
-      expect(sheet().getByLabelText("Condition 2 field")).toHaveValue("domain");
-      expect(sheet().getByLabelText("Condition 2 value")).toHaveValue("example.com");
+      expect(sheet().getByLabelText("App 1 value")).toHaveValue("Safari");
+      expect(sheet().getByRole("region", { name: "Domain" })).toBeInTheDocument();
+      expect(sheet().getByLabelText("Domain 1 value")).toHaveValue("example.com");
       expect(screen.queryByRole("list", { name: "Drop on a project to make a rule" })).not.toBeInTheDocument();
     });
 
@@ -2040,9 +2040,9 @@ describe("DayPage", () => {
       fireEvent.pointerUp(lanes, { clientX: 300, clientY: 230 });
       expect(await screen.findByRole("dialog", { name: "New rule" })).toBeInTheDocument();
       expect(sheet().getByLabelText("Name")).toHaveValue("Notes → Website");
-      expect(sheet().getByLabelText("Condition 2 field")).toHaveValue("title");
-      expect(sheet().getByLabelText("Condition 2 comparison")).toHaveValue("contains");
-      expect(sheet().getByLabelText("Condition 2 value")).toHaveValue("Todo");
+      expect(sheet().getByRole("region", { name: "Title" })).toBeInTheDocument();
+      expect(sheet().getByLabelText("Title 1 comparison")).toHaveValue("contains");
+      expect(sheet().getByLabelText("Title 1 value")).toHaveValue("Todo");
     });
 
     it("saves nothing until the sheet's Save", async () => {

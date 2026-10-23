@@ -1,6 +1,5 @@
 import { useId, useState } from "react";
-import { Plus } from "lucide-react";
-import { api, toAppError, type ConditionInput, type Rule, type RuleInput } from "../../api";
+import { api, toAppError, type Rule, type RuleInput } from "../../api";
 import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
 import { FormField } from "../Field";
@@ -8,8 +7,8 @@ import { Modal } from "../Modal";
 import { NoteInput } from "../NoteInput";
 import { ProjectPicker } from "../pickers/ProjectPicker";
 import { TagPicker } from "../pickers/TagPicker";
-import { ConditionRow } from "./ConditionRow";
-import { emptyCondition, emptyRule } from "./conditions";
+import { ConditionGroups } from "./ConditionGroups";
+import { emptyRule } from "./conditions";
 import { RulePreviewPanel } from "./RulePreviewPanel";
 
 interface Props {
@@ -47,10 +46,6 @@ export function RuleSheet({ id, draft, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const ids = { name: useId(), note: useId(), enabled: useId() };
   const patch = (p: Partial<RuleInput>) => setInput((current) => ({ ...current, ...p }));
-  const setConditions = (change: (conditions: ConditionInput[]) => ConditionInput[]) => setInput((current) => ({ ...current, conditions: change(current.conditions) }));
-  const setCondition = (index: number, condition: ConditionInput) => setConditions((all) => all.map((c, i) => (i === index ? condition : c)));
-  const removeCondition = (index: number) => setConditions((all) => all.filter((_, i) => i !== index));
-  const addCondition = () => setConditions((all) => [...all, emptyCondition()]);
   const { data: apps } = useApiResult("apps", api.appsList);
   const appKeyOf = (app: string) => apps?.find((a) => a.app.toLowerCase() === app.trim().toLowerCase())?.appKey ?? null;
 
@@ -90,23 +85,8 @@ export function RuleSheet({ id, draft, onClose }: Props) {
         <FormField label="Tag" error={errors.tagId}>
           <TagPicker value={input.tagId} onChange={(tagId) => patch({ tagId })} />
         </FormField>
-        <FormField label="Activity where all of these hold" error={errors.conditions}>
-          <div className="conditions">
-            {input.conditions.map((condition, index) => (
-              <ConditionRow
-                key={index}
-                index={index}
-                condition={condition}
-                error={errors[`conditions.${index}.value`]}
-                onChange={(c) => setCondition(index, c)}
-                appKeyOf={appKeyOf}
-                onRemove={input.conditions.length > 1 ? () => removeCondition(index) : undefined}
-              />
-            ))}
-            <button type="button" className="btn" onClick={addCondition}>
-              <Plus size="0.923rem" aria-hidden="true" /> Add condition
-            </button>
-          </div>
+        <FormField label="Conditions" error={errors.conditions}>
+          <ConditionGroups conditions={input.conditions} errors={errors} onChange={(conditions) => patch({ conditions })} appKeyOf={appKeyOf} />
         </FormField>
         <label className="rule-enabled" htmlFor={ids.enabled}>
           <input id={ids.enabled} className="switch" type="checkbox" role="switch" checked={input.enabled} onChange={(e) => patch({ enabled: e.target.checked })} />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { block } from "../../test/dayFixtures";
-import { conditionSummary, draftFromBlock } from "./conditions";
+import { conditionSummary, draftFromBlock, emptyCondition, fieldLabel, groupConditions } from "./conditions";
 
 const website = { id: "p-site", name: "Website" };
 
@@ -18,6 +18,59 @@ describe("conditionSummary", () => {
 
   it("is empty without conditions", () => {
     expect(conditionSummary([])).toBe("");
+  });
+
+  it("lists the values of one field as alternatives", () => {
+    expect(
+      conditionSummary([
+        { field: "app", op: "is", value: "Chrome" },
+        { field: "title", op: "contains", value: "x" },
+        { field: "app", op: "is", value: "Safari" },
+      ]),
+    ).toBe('app is "Chrome" or is "Safari" · title contains "x"');
+  });
+});
+
+describe("groupConditions", () => {
+  it("groups by field in order of first appearance, keeping each condition's index", () => {
+    const app1 = { field: "app", op: "is", value: "Chrome" } as const;
+    const title = { field: "title", op: "contains", value: "x" } as const;
+    const app2 = { field: "app", op: "is", value: "Safari" } as const;
+    expect(groupConditions([app1, title, app2])).toEqual([
+      { field: "app", items: [{ condition: app1, index: 0 }, { condition: app2, index: 2 }] },
+      { field: "title", items: [{ condition: title, index: 1 }] },
+    ]);
+  });
+
+  it("is empty without conditions", () => {
+    expect(groupConditions([])).toEqual([]);
+  });
+});
+
+describe("emptyCondition", () => {
+  it("defaults to an app that is exactly the value", () => {
+    expect(emptyCondition()).toEqual({ field: "app", op: "is", value: "" });
+  });
+
+  it.each([
+    ["app", "is"],
+    ["domain", "is"],
+    ["title", "contains"],
+    ["url", "contains"],
+    ["path", "contains"],
+    ["source", "contains"],
+  ] as const)("compares %s with %s", (field, op) => {
+    expect(emptyCondition(field)).toEqual({ field, op, value: "" });
+  });
+});
+
+describe("fieldLabel", () => {
+  it.each([
+    ["app", "App"],
+    ["url", "URL"],
+    ["domain", "Domain"],
+  ] as const)("names %s %s", (field, label) => {
+    expect(fieldLabel(field)).toBe(label);
   });
 });
 

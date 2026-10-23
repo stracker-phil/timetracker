@@ -15,13 +15,17 @@ pub fn suggestions_label(verb: &str, count: usize) -> String {
 }
 
 impl Recordings<'_> {
-    /// Stores each dismissal as one undoable change; returns how many.
-    pub async fn record_dismissals(&self, dismissals: Vec<Dismissal>) -> AppResult<Change<usize>> {
+    /// Stores the dismissals of each suggestion as one undoable change; returns how many suggestions.
+    pub async fn record_dismissals(
+        &self,
+        suggestions: Vec<Vec<Dismissal>>,
+    ) -> AppResult<Change<usize>> {
         let mut undo = self.undo.lock().await;
-        let count = dismissals.len();
+        let count = suggestions.len();
         let label = suggestions_label("Dismiss", count);
-        let ops = dismissals
+        let ops = suggestions
             .into_iter()
+            .flatten()
             .map(|dismissal| Op::Dismiss { dismissal })
             .collect();
         let op = Op::Batch {
@@ -36,9 +40,12 @@ impl Recordings<'_> {
         &self,
         input: RecordingInput,
         overlap: Overlap,
-        dismissal: Dismissal,
+        dismissals: Vec<Dismissal>,
     ) -> AppResult<Change<Recording>> {
-        self.create_with(input, overlap, vec![Op::Dismiss { dismissal }])
-            .await
+        let ops = dismissals
+            .into_iter()
+            .map(|dismissal| Op::Dismiss { dismissal })
+            .collect();
+        self.create_with(input, overlap, ops).await
     }
 }

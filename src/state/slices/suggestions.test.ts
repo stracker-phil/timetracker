@@ -122,6 +122,13 @@ describe("suggestions slice", () => {
       await state().approveRuleSuggestions("rule-1");
       expect(state().focusedSuggestion).toBe(second.id);
     });
+
+    it("counts a suggestion joined from several rules as the rule's", async () => {
+      const joined = suggestion({ ruleId: "rule-0", ruleIds: ["rule-0", "rule-1"], start: at("08:00"), end: at("08:30") });
+      resetStore({ day: DAY, dayView: dayView({ suggestions: [joined, second, third] }), focusedSuggestion: joined.id });
+      await state().approveRuleSuggestions("rule-1");
+      expect(state().focusedSuggestion).toBe(second.id);
+    });
   });
 
   describe("approveSuggestions", () => {

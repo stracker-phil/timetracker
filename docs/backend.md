@@ -496,7 +496,7 @@ dismissing one keeps its time from that rule for good.
   checks the name, note, project (existing, not archived), tag (`tagId`, one or `null`) and conditions (at least one; a value
   unless the op is `is`). `active` is what the Day view uses: enabled rules whose project isn't archived.
 - `matching.rs`: `compile` turns enabled rules into `Compiled` matchers once per view; `matches` holds when
-  every condition does (case-insensitive; `contains`, `is`, `begins_with`, or `pattern`: a glob with `*` and
+  every field holds, and a field holds when any of its conditions does (case-insensitive; `contains`, `is`, `begins_with`, or `pattern`: a glob with `*` and
   `?` anchored at both ends, no regex). Fields read the block's app, title, URL, domain (the URL's host
   without `www.`), path or source; an empty value only matches `is ""`; a private block matches no rule.
   `first_match` takes the first rule by position.
@@ -505,8 +505,9 @@ dismissing one keeps its time from that rule for good.
   to the next is shorter than the continuity threshold and no sleep, lock or pause lies in it. Matched time
   belongs to its rule first; a run's bridged gaps only take time no rule matched (earlier rules first), so
   suggestions never overlap. Recorded time, and each rule's own dismissed time (`dismissed`, read by
-  `day::load` with `db::dismissed::list_for_day`), is cut away; pieces under `MIN_SUGGESTION_MS` (5 min) are
-  dropped. Ids are `<rule id>:<start>:<end>`, so a suggestion keeps its id across reloads. A tag deleted since
+  `day::load` with `db::dismissed::list_for_day`), is cut away; pieces under Touching pieces of rules with the same project, note and tag join into one suggestion
+  (`joined`; `ruleIds` lists its rules in position order, `ruleId` is the first, `ruleName` their names);
+  joined pieces under `MIN_SUGGESTION_MS` (5 min) are dropped. Ids are `<rule id>:<start>:<end>`, so a suggestion keeps its id across reloads. A tag deleted since
   the rule was saved is left out; `tag` carries the tag's name, `tagEmoji` its emoji, `clientName` the project's client.
   `rules::day_suggestions` sets each suggestion's `nextCard` (`next_card`: the first timesheet card starting
   after it), which the page puts it before, and `durationMs`.
@@ -515,7 +516,8 @@ dismissing one keeps its time from that rule for good.
   stale id is `not_found`: "The suggestion is gone", "The suggestions are gone", or "The rule has no
   suggestions on this day"), then
   write through the recordings service, so each is one undo entry. A dismissal (`db::dismissed::Dismissal
-  { rule_id, day, start, end }`) is an `Op::Dismiss`; its time stays the rule's even after the rule is edited
+  { rule_id, day, start, end }`, one per rule of a joined suggestion) is an `Op::Dismiss`; `approve_rule`
+  includes the joined suggestions the rule shares; its time stays the rule's even after the rule is edited
   or a recording over it is deleted. `approve_edited` creates the edited recording and dismisses the
   suggestion's span in one `Op::Batch` (`Recordings::create_settling`), so what the edit left out does not
   come back.

@@ -324,12 +324,14 @@ position) and their writes; a `data_changed` of kind `rules` reloads them.
 
 - `RulesView` lists `RuleRow`s in order: a grip (a pointer drag by whole rows; on release `reorderRules`
   sends every id in the new order, shown at once and restored when the write fails), the enable switch
-  (`setRuleEnabled`), the name, the project and `conditionSummary` (`app is "Slack" · title contains "x"`).
+  (`setRuleEnabled`), the name, the project and `conditionSummary` (`app is "Chrome" or is "Safari" · title contains "x"`).
   A row click, New rule or ⌘N (`rules.new`) opens the `rule` dialog. Without rules a centered empty state
   ("No rules yet", the ⌥-drag tip, a New rule button) replaces the intro and the list.
 - `RuleSheet` (dialog `rule` with `id` or a `draft`): name, `ProjectPicker`, note, `TagPicker`, the
-  `ConditionRow`s (field, comparison, value, remove; Add condition; an `app` condition whose value names a
-  tracked app from `appsList()` shows its `AppIcon`, else the initial) and the enable switch. Save sends
+  conditions as `ConditionGroups` ("Conditions": one section per field from `groupConditions`, its +
+  adding a value; each value a `ConditionRow` with comparison, value and remove, "or" before all but the first;
+  quiet buttons below add a field not used yet; an `app` value naming a tracked app from `appsList()` shows its
+  `AppIcon`, else the initial) and the enable switch. Save sends
   `saveRule`; a field error shows under its field, and `conditions.<i>.value` marks that row. Beside the
   form, `RulePreviewPanel` asks `rulePreview(input, 7)` through `useApiResult` (300 ms debounce, keeps the
   last result) once every condition has a value, and lists the hits with the total.
