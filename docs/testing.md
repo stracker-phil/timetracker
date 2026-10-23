@@ -100,13 +100,14 @@ scripts/dev/js.sh 'timetracker.getState().setView("week")'
 
 ### Accessibility in dev builds
 
-The tracker needs Accessibility for window titles. macOS keys the grant to the app's code signature. An ad
-hoc signature is a hash of the build, so every rebuild asks again: remove the old TimeTracker (Debug) entry
-in System Settings → Privacy & Security → Accessibility and grant the new one. The debug app is its own
-entry there, apart from the installed TimeTracker, so neither grant replaces the other; both share the data.
-`launch.sh` signs the bundle before starting it, with the identifier `com.philippstracker.timetracker.debug` and the keychain identity in
-`TIMETRACKER_SIGN_IDENTITY`, or ad hoc without it. With a certificate (for example a self-signed
-"Code Signing" certificate made in Keychain Access), the grant survives rebuilds.
+The tracker needs Accessibility for window titles. macOS keys the grant to the app's designated requirement:
+with a certificate that is the identifier and the certificate, so the grant survives rebuilds; ad hoc it is
+the build's hash, so every rebuild asks again (remove the old entry in System Settings → Privacy & Security →
+Accessibility and grant the new one). `scripts/create-signing-cert.sh` creates the self-signed "TimeTracker
+Local Signing" certificate once per Mac; `scripts/sign-app.sh` signs with `TIMETRACKER_SIGN_IDENTITY`, else
+that certificate, else ad hoc. `launch.sh` signs the debug bundle (`com.philippstracker.timetracker.debug`)
+before starting it, `scripts/install.sh` the release bundle (`com.philippstracker.timetracker`). The two are
+separate entries in Privacy & Security, each granted once; both share the data.
 
 ### Sample data
 

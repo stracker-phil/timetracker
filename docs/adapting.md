@@ -49,7 +49,7 @@ The app's name and ids live in a few places. Change them together.
 | **Menu**: app menu with Services, Hide, Show All | `menu/mod.rs` | Move Settings and Quit into a File menu | Same |
 | **Fonts**: the system font (`-apple-system`, SF Pro) and `ui-monospace` (SF Mono), with `system-ui` and `Menlo` fallbacks | `theme.css` (`--font-ui`, `--font-mono`) | Falls back to the platform's UI font; bundle a font if it must match | Same |
 | **Bundle targets**: `app` and `dmg`, signed ad hoc (`bundle.macOS.signingIdentity: "-"`), `icon.icns` | `tauri.conf.json` `bundle`; `package.json` `release`, `build:app`, `app` | `deb`, `appimage` | `nsis`, `msi` (`icon.ico` is already generated) |
-| **Install and dev scripts** (zsh, `ln` into `~/Applications` and `~/.local/bin`, `codesign`, Swift, CoreGraphics, `screencapture`) | `scripts/install.sh`, `scripts/stop-app.sh`, `scripts/dev/` | Link into `~/.local/bin` and a `.desktop` file; rewrite the dev scripts or use `bun tauri dev` | PowerShell |
+| **Install and dev scripts** (zsh, `ln` into `~/Applications` and `~/.local/bin`, `codesign`, Swift, CoreGraphics, `screencapture`) | `scripts/install.sh`, `scripts/stop-app.sh`, `scripts/sign-app.sh`, `scripts/create-signing-cert.sh`, `scripts/dev/` | Link into `~/.local/bin` and a `.desktop` file; rewrite the dev scripts or use `bun tauri dev` | PowerShell |
 | **Tests**: the setup pretends to be a Mac | `src/test-setup.ts` | Make the platform a parameter | Same |
 
 A port is done when `bun run test`, `bun run lint`, `bun run test:db` and `bun run release` pass on the

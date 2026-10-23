@@ -1,17 +1,13 @@
 #!/bin/zsh
 # Restarts the debug app next to the terminal (same screen, free area) without taking focus.
 # Usage: scripts/dev/launch.sh [timetracker CLI args...]     Terminal app name: $TIMETRACKER_DEV_TERMINAL (default Terminal)
-# Signing identity: $TIMETRACKER_SIGN_IDENTITY (a code-signing certificate in the keychain); ad hoc without it.
 set -e
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 APP="$ROOT/src-tauri/target/debug/bundle/macos/TimeTracker (Debug).app"
 BIN="$APP/Contents/MacOS/timetracker"
 [[ -x "$BIN" ]] || { echo "Build first: bun run build:app"; exit 1; }
 
-# The Accessibility grant belongs to the code signature. A certificate keeps it across rebuilds;
-# an ad hoc signature changes with every build, so macOS asks again.
-codesign --force --sign "${TIMETRACKER_SIGN_IDENTITY:--}" --identifier com.philippstracker.timetracker.debug "$APP"
-[[ -n "$TIMETRACKER_SIGN_IDENTITY" ]] || echo "Signed ad hoc: grant Accessibility again after each rebuild (see docs/testing.md)"
+"$ROOT/scripts/sign-app.sh" "$APP" com.philippstracker.timetracker.debug
 
 FRAME=$(swift - "${TIMETRACKER_DEV_TERMINAL:-Terminal}" <<'SWIFT' 2>/dev/null
 import AppKit
