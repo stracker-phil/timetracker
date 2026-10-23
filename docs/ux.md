@@ -535,6 +535,8 @@ timeline's for every app.
   by <rule>" with a sparkle, the tag and the duration; ✓ (Approve) and ✕ (Dismiss) round buttons top right.
   A click opens the inline editor prefilled with it ("Suggested by <rule>. Approve records it.", the primary
   button reads Approve): saving records it as edited and dismisses the rest of its time, one undo step.
+- **What rules see**: the summary, so each stretch counts as what was mostly done in it and a short glance
+  stays part of the recording around it; imported activity counts on its own (ADR 0027).
 - **Joined**: touching suggestions that would make the same recording (project, note and tag), also from
   different rules, show as one ("Suggested by PhpStorm, Slack: Lumen Labs").
 - **Hatched blocks** in the time column: diagonal stripes of the project's fill, dashed outline, project, rule

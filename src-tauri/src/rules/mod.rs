@@ -13,7 +13,7 @@ pub mod types;
 
 use crate::calendar::titles::day_title;
 use crate::day::transform::continuity_ms;
-use crate::day::{ActivityBlock, DayView, LaneKind, Names, TimesheetCard};
+use crate::day::{ActivityBlock, DayView, Names, TimesheetCard};
 use crate::db::Db;
 use crate::db::dismissed::Dismissal;
 use crate::db::time::{Day, Ms, now_ms};
@@ -26,16 +26,9 @@ use types::{PreviewHit, RuleDay, RuleInput, RulePreview, Suggestion};
 /// Keeps the preview's reply small; its total still counts every hit.
 pub const PREVIEW_HITS: usize = 200;
 
-/// The blocks rules look at: every lane but the summary.
+/// The blocks rules look at, by start.
 pub(crate) fn candidates(view: &DayView) -> Vec<&ActivityBlock> {
-    let mut blocks: Vec<&ActivityBlock> = view
-        .lanes
-        .iter()
-        .filter(|lane| lane.kind != LaneKind::Summary)
-        .flat_map(|lane| &lane.blocks)
-        .collect();
-    blocks.sort_by_key(|b| (b.start, b.end));
-    blocks
+    view.rule_blocks.iter().collect()
 }
 
 /// The view's suggestions under `rules` (compiled, in order), without the `dismissed` time, each placed
@@ -853,6 +846,62 @@ mod tests {
         );
     }
 
+    /// Zoom 10:00 to 10:13 with a two-minute look at Slack inside it, under a rule for each app.
+    async fn zoom_with_a_slack_glance(w: &World, today: Day) -> (Rule, Rule) {
+        let zoom = w.app_rule("Zoom").await;
+        let slack = w.app_rule("Slack").await;
+        w.work(today, "Zoom", (10, 0), (10, 6)).await;
+        w.work(today, "Slack", (10, 6), (10, 8)).await;
+        w.work(today, "Zoom", (10, 8), (10, 13)).await;
+        (zoom, slack)
+    }
+
+    #[tokio::test]
+    async fn a_short_glance_at_another_app_stays_part_of_the_meeting_suggestion() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (zoom, _) = zoom_with_a_slack_glance(&w, today).await;
+
+        let found: Vec<(String, Ms, Ms)> = w
+            .suggestions(today)
+            .await
+            .into_iter()
+            .map(|s| (s.rule_id, s.start, s.end))
+            .collect();
+
+        assert_eq!(found, [(zoom.id, on(today, 10, 0), on(today, 10, 13))]);
+    }
+
+    #[tokio::test]
+    async fn a_rules_day_counts_only_the_time_its_app_won_in_the_summary() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (zoom, slack) = zoom_with_a_slack_glance(&w, today).await;
+
+        let days = day_of_rules(&w.db, today, &w.settings).await.unwrap();
+
+        let matched: Vec<(String, Ms)> = days
+            .into_iter()
+            .map(|d| (d.rule_id, d.matched_ms))
+            .collect();
+        assert_eq!(matched, [(zoom.id, 13 * MIN), (slack.id, 0)]);
+    }
+
+    #[tokio::test]
+    async fn the_preview_sees_the_summary_so_a_glance_has_no_hit() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        zoom_with_a_slack_glance(&w, today).await;
+        let input = rule_input("Slack", &w.project.id, &[(App, RuleOp::Is, "Slack")]);
+
+        let preview = preview(&w.db, &w.settings, &input, today, 1).await.unwrap();
+
+        assert_eq!(
+            (preview.hits.len(), preview.total_ms, preview.days),
+            (0, 0, 0)
+        );
+    }
+
     /// Slack 9 to 10 and Code 10 to 11 under two rules with one target: a single joined suggestion.
     async fn joined_suggestion(w: &World, today: Day) -> (Rule, Rule, Suggestion) {
         let slack = w.shared_rule("Slack").await;
@@ -1025,7 +1074,7 @@ mod tests {
         let today = day("2026-01-05");
         let midnight = on(today, 0, 0);
         for i in 0..250 {
-            let start = midnight + i * 2 * MIN;
+            let start = midnight + i * 5 * MIN;
             let title = format!("window {i}");
             activity(&w.db, start, Some(start + MIN), "Slack", &title).await;
         }
@@ -1034,8 +1083,8 @@ mod tests {
         let preview = preview(&w.db, &w.settings, &input, today, 7).await.unwrap();
 
         assert_eq!(preview.hits.len(), PREVIEW_HITS);
-        assert_eq!(preview.hits[0].block.start, midnight + 249 * 2 * MIN);
-        assert_eq!(preview.hits[199].block.start, midnight + 50 * 2 * MIN);
+        assert_eq!(preview.hits[0].block.start, midnight + 249 * 5 * MIN);
+        assert_eq!(preview.hits[199].block.start, midnight + 50 * 5 * MIN);
         assert_eq!((preview.total_ms, preview.days), (250 * MIN, 1));
     }
 

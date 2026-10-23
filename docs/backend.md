@@ -278,7 +278,7 @@ by the commands and the CLI. Activity is never edited (ADR 0005), so deletion wo
 from the day before included) and calls it. `ViewSettings` is a copy of `Settings.timeline` and
 `Settings.apps`. The module is split by concern: `types.rs` (everything `DayView` sends), `totals.rs`
 (`totals`, `tracked_ms`, span unions), `recordings.rs` (`recording_blocks`, `timesheet`), `summary.rs`
-(the summary lane), `lanes.rs` (lanes and columns), `transform.rs` (the timeline settings), `title.rs` (`clean_title`). In order:
+(the summary lane), `rule_blocks.rs` (what rules match), `lanes.rs` (lanes and columns), `transform.rs` (the timeline settings), `title.rs` (`clean_title`). In order:
 
 1. `clipped_blocks`: every activity cut to the day's bounds (an open span ends at `now`); private rows keep
    the app and read "Private" without URL or path. Titles go through `title::clean_title`: the symbols leading
@@ -298,6 +298,10 @@ from the day before included) and calls it. `ViewSettings` is a copy of `Setting
    (ties: the earlier start), a bucket without activity stays empty, and a run of buckets with one winner is
    one block over the whole run, id `s<start>`. Every summary block starts and ends on the grid (:45, :50,
    never :49); its `activeMs` is the winner's time inside it.
+   `rule_blocks::rule_blocks` builds `DayView.rule_blocks` (`#[serde(skip)]`) for the rules (ADR 0027) whether or
+   not the lane shows: the same summary keyed by app and title whatever `titles` and `groupByApp` say, each
+   block cut to its first and last activity and without the barriers inside it, plus the external rows as
+   they are; hidden apps take no part.
 5. `transform::grouped`: rows of one key that touch, or whose gap is shorter than the continuity (off 0,
    short 2, regular 8, extended 16 min), become one block unless a sleep, lock or pause lies between
    (`breaks_continuity`; idle is bridged). Other keys' rows in the gap stay their own blocks, beside it.
@@ -500,8 +504,8 @@ dismissing one keeps its time from that rule for good.
   `?` anchored at both ends, no regex). Fields read the block's app, title, URL, domain (the URL's host
   without `www.`), path or source; an empty value only matches `is ""`; a private block matches no rule.
   `first_match` takes the first rule by position.
-- `suggest.rs`: every block of the activity, app and source lanes (after hiding, grouping, continuity and
-  noise; not the summary lane) goes to its first matching rule. A rule's blocks join into runs while the gap
+- `suggest.rs`: every block of `DayView.rule_blocks` (`rules::candidates`; ADR 0027) goes to its first
+  matching rule. A rule's blocks join into runs while the gap
   to the next is shorter than the continuity threshold and no sleep, lock or pause lies in it. Matched time
   belongs to its rule first; a run's bridged gaps only take time no rule matched (earlier rules first), so
   suggestions never overlap. Recorded time, and each rule's own dismissed time (`dismissed`, read by

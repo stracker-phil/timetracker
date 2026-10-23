@@ -27,6 +27,10 @@ pub struct DayView {
     #[serde(skip)]
     #[ts(skip)]
     pub barriers: Vec<(Ms, Ms)>,
+    /// What rules match, by start (`rule_blocks`): the summary by document, then external activity.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub rule_blocks: Vec<ActivityBlock>,
     pub totals: DayTotals,
     pub first_activity: Option<Ms>,
     /// Every source of the day's activity, sorted.

@@ -6,6 +6,7 @@ pub mod commands;
 mod lanes;
 mod load;
 mod recordings;
+mod rule_blocks;
 mod summary;
 #[cfg(test)]
 mod testing;
@@ -109,6 +110,8 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
         rows.into_iter().partition(|b| b.source == TRACKER_SOURCE);
     let tracker = transform::without_hidden(tracker, settings);
     let apps = apps::day_apps(&tracker, settings);
+    let rule_blocks =
+        rule_blocks::rule_blocks(&tracker, &external, &barriers, input.bounds, settings);
     let mut lanes = timeline_lanes(tracker, external, &barriers, input.bounds, settings);
     mark_covered(&mut lanes, &recordings);
 
@@ -125,6 +128,7 @@ pub fn view(input: &DayInput, settings: &ViewSettings) -> DayView {
         timesheet: timesheet(&recordings),
         recordings,
         barriers,
+        rule_blocks,
         totals: captured.totals,
         first_activity: captured.first_activity,
         sources: captured.sources,
