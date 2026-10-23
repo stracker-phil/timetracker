@@ -10,16 +10,19 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use ts_rs::TS;
 
 use crate::activity;
+use crate::db::Db;
 use crate::db::time::{Day, now_ms};
 use crate::error::{AppError, ErrorKind};
 use crate::events::REMOTE_EVENT;
 use crate::ipc::{HandlerResult, IpcError, IpcMessage};
 use crate::launch;
 use crate::pending::{NoReply, PendingReplies};
-use crate::recordings;
+use crate::recordings::commands::changing;
 use crate::reports;
+use crate::scripting::timer::{self, TimerState};
+use crate::scripting::{catalog, listing, writes};
 use crate::state::AppState;
-use crate::timers::{self, RunningTimer};
+use crate::timers;
 use crate::tracker::{Tracker, TrackerStatus};
 use crate::window;
 
@@ -50,7 +53,7 @@ pub struct RemoteEvent {
 pub struct StatusReport {
     pub version: String,
     pub tracker: Option<TrackerStatus>,
-    pub timer: Option<RunningTimer>,
+    pub timer: TimerState,
     pub billable: Option<reports::Billable>,
     pub window_visible: bool,
 }
@@ -117,6 +120,10 @@ fn tracker(app: &AppHandle) -> Result<Arc<Tracker>, IpcError> {
         })
 }
 
+fn db(app: &AppHandle) -> Result<Db, IpcError> {
+    Ok(app.state::<AppState>().data.db()?)
+}
+
 fn json(value: impl Serialize) -> HandlerResult {
     serde_json::to_value(value).map_err(|e| AppError::from(e).into())
 }
@@ -125,14 +132,14 @@ pub async fn status_report(app: &AppHandle) -> StatusReport {
     let (timer, billable) = match app.state::<AppState>().data.db() {
         Ok(db) => {
             let now = now_ms();
-            let timer = timers::status(&db, now).await.ok().and_then(|s| s.running);
+            let timer = timer::state(&db, now).await.unwrap_or_default();
             let today = Day::today();
             let billable = reports::billable(&db, &reports::Range::Today, today, now)
                 .await
                 .ok();
             (timer, billable)
         }
-        Err(_) => (None, None),
+        Err(_) => (TimerState::default(), None),
     };
     StatusReport {
         version: app.package_info().version.to_string(),
@@ -189,7 +196,19 @@ pub async fn handle(app: AppHandle, message: IpcMessage) -> HandlerResult {
             json(activity::delete_range(&app, from, to).await?)
         }
         IpcMessage::ActivityDeleteUndo => json(activity::undo_delete(&app).await?),
-        IpcMessage::Record { request } => json(recordings::cli::record(&app, request).await?),
+        IpcMessage::Record { request } => json(writes::record(&app, request).await?),
+        IpcMessage::Edit { request } => json(writes::edit(&app, request).await?),
+        IpcMessage::Delete { id, final_write } => {
+            json(writes::delete(&app, &id, final_write).await?)
+        }
+        IpcMessage::Approve { ids } => json(writes::approve(&app, &ids).await?),
+        IpcMessage::Recordings { range } => json(listing::recordings_in(&app, &range).await?),
+        IpcMessage::Suggestions { range } => json(listing::suggestions_in(&app, &range).await?),
+        IpcMessage::Projects { archived } => json(catalog::projects(&db(&app)?, archived).await?),
+        IpcMessage::Clients { archived } => json(catalog::clients(&db(&app)?, archived).await?),
+        IpcMessage::Tags => json(catalog::tags(&db(&app)?).await?),
+        IpcMessage::Undo => json(changing(&app, async |s| s.undo().await).await?),
+        IpcMessage::Redo => json(changing(&app, async |s| s.redo().await).await?),
         IpcMessage::Report { request, output } => {
             json(reports::cli::report(&app, request, output).await?)
         }
@@ -197,6 +216,12 @@ pub async fn handle(app: AppHandle, message: IpcMessage) -> HandlerResult {
             json(timers::commands::start_by_name(&app, request).await?)
         }
         IpcMessage::TimerStop => json(timers::commands::stop(&app).await?),
+        IpcMessage::TimerStatus => json(timer::state(&db(&app)?, now_ms()).await?),
+        IpcMessage::TrackerStatus => json(tracker(&app)?.status()),
+        IpcMessage::TimerUpdate { request } => {
+            timers::commands::update_by_name(&app, request).await?;
+            json(timer::state(&db(&app)?, now_ms()).await?)
+        }
         launch @ (IpcMessage::Activate { .. } | IpcMessage::Error { .. }) => {
             launch::queue(&app, launch);
             Ok(serde_json::Value::Null)
@@ -221,7 +246,7 @@ mod tests {
         StatusReport {
             version: "1.2.3".into(),
             tracker,
-            timer: None,
+            timer: TimerState::default(),
             billable: None,
             window_visible: true,
         }
@@ -248,7 +273,19 @@ mod tests {
                     "permission": "granted",
                     "text": "Tracking"
                 },
-                "timer": null,
+                "timer": {
+                    "running": false,
+                    "recordingId": null,
+                    "projectId": null,
+                    "project": null,
+                    "client": null,
+                    "tagId": null,
+                    "tag": null,
+                    "note": null,
+                    "startedAt": null,
+                    "startedAtIso": null,
+                    "elapsedMs": null
+                },
                 "billable": null,
                 "windowVisible": true
             })
@@ -256,28 +293,22 @@ mod tests {
     }
 
     #[test]
-    fn status_report_carries_the_running_timer() {
-        let timer = RunningTimer {
-            recording: crate::db::recordings::Recording {
-                id: "r1".into(),
-                project_id: "p1".into(),
-                note: "standup".into(),
-                tag_id: None,
-                created_at: 1_000,
-                updated_at: 1_000,
-                spans: vec![crate::db::recordings::RecordingSpan {
-                    id: "s1".into(),
-                    start: 1_000,
-                    end: None,
-                }],
-            },
-            project_name: "Acme".into(),
-            color: "blue".into(),
-            shade: 2,
-            elapsed_ms: 60_000,
+    fn status_report_carries_the_running_timer_as_flat_fields() {
+        let timer = TimerState {
+            running: true,
+            recording_id: Some("r1".into()),
+            project_id: Some("p1".into()),
+            project: Some("Portal".into()),
+            client: Some("Acme".into()),
+            tag_id: Some("t1".into()),
+            tag: Some("development".into()),
+            note: Some("standup".into()),
+            started_at: Some(1_000),
+            started_at_iso: Some("1970-01-01T00:00:01+00:00".into()),
+            elapsed_ms: Some(60_000),
         };
         let original = StatusReport {
-            timer: Some(timer),
+            timer,
             ..report(None)
         };
 
@@ -286,14 +317,16 @@ mod tests {
         assert_eq!(
             value["timer"],
             serde_json::json!({
-                "recording": {
-                    "id": "r1", "projectId": "p1",
-                    "note": "standup", "tagId": null, "createdAt": 1000, "updatedAt": 1000,
-                    "spans": [{ "id": "s1", "start": 1000, "end": null }]
-                },
-                "projectName": "Acme",
-                "color": "blue",
-                "shade": 2,
+                "running": true,
+                "recordingId": "r1",
+                "projectId": "p1",
+                "project": "Portal",
+                "client": "Acme",
+                "tagId": "t1",
+                "tag": "development",
+                "note": "standup",
+                "startedAt": 1000,
+                "startedAtIso": "1970-01-01T00:00:01+00:00",
                 "elapsedMs": 60000
             })
         );

@@ -39,13 +39,29 @@ impl ReportOutput {
     }
 }
 
-/// The result with the text the CLI prints without `--json`.
+/// The result with the text the CLI prints without `--json`; on the wire the period (`from`, `to`,
+/// `title`) comes first and the long `text` last, so the JSON reads from the top.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reported {
-    pub text: String,
     #[serde(flatten)]
     pub result: serde_json::Value,
+    pub text: String,
+}
+
+/// `result`'s fields with `first` in front, the rest in their order.
+fn leading(result: serde_json::Value, first: &[&str]) -> serde_json::Value {
+    let serde_json::Value::Object(mut fields) = result else {
+        return result;
+    };
+    let mut ordered = serde_json::Map::new();
+    for key in first {
+        if let Some(value) = fields.shift_remove(*key) {
+            ordered.insert((*key).to_string(), value);
+        }
+    }
+    ordered.extend(fields);
+    serde_json::Value::Object(ordered)
 }
 
 pub async fn report(
@@ -71,7 +87,10 @@ fn reported(result: ReportResult, output: ReportOutput) -> AppResult<Reported> {
             text
         }
     };
-    Ok(Reported { text, result: json })
+    Ok(Reported {
+        result: leading(json, &["from", "to", "title"]),
+        text,
+    })
 }
 
 /// The request with its names resolved to ids.
@@ -375,5 +394,54 @@ mod tests {
             json!({ "text": "Total  0:00 h\n", "totalMs": 0, "groups": [] })
         );
         assert_eq!(serde_json::from_value::<Reported>(wire).unwrap(), reported);
+    }
+
+    #[test]
+    fn the_reply_writes_the_text_after_the_result_fields() {
+        let reported = Reported {
+            text: "Total  0:00 h\n".into(),
+            result: json!({ "totalMs": 0, "groups": [] }),
+        };
+
+        assert_eq!(
+            serde_json::to_string(&reported).unwrap(),
+            r#"{"totalMs":0,"groups":[],"text":"Total  0:00 h\n"}"#
+        );
+    }
+
+    fn keys_of(reported: &Reported) -> Vec<String> {
+        serde_json::to_value(reported)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn the_cli_json_starts_with_the_period_and_ends_with_the_text() {
+        for output in [ReportOutput::Text, ReportOutput::Notes] {
+            let keys = keys_of(&reported(result_with(480, 384), output).unwrap());
+
+            assert_eq!(keys[..3], ["from", "to", "title"], "{output:?}");
+            assert_eq!(keys.last().map(String::as_str), Some("text"), "{output:?}");
+        }
+    }
+
+    #[test]
+    fn leading_moves_the_named_fields_to_the_front_and_keeps_the_rest_in_order() {
+        let result = json!({ "b": 1, "title": "T", "a": 2, "from": "F" });
+
+        let ordered = leading(result, &["from", "to", "title"]);
+
+        let keys: Vec<&String> = ordered.as_object().unwrap().keys().collect();
+        assert_eq!(keys, ["from", "title", "b", "a"]);
+        assert_eq!(ordered["from"], "F");
+    }
+
+    #[test]
+    fn leading_leaves_a_result_that_is_not_an_object_alone() {
+        assert_eq!(leading(json!([1, 2]), &["from"]), json!([1, 2]));
     }
 }

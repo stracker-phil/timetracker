@@ -6,7 +6,7 @@
 use super::suggestions_of;
 use super::types::Suggestion;
 use crate::db::dismissed::Dismissal;
-use crate::db::recordings::Recording;
+use crate::db::recordings::{Recording, RecordingPatch};
 use crate::db::stored_suggestions::{self, StoredSuggestion};
 use crate::db::time::Day;
 use crate::error::{AppError, AppResult};
@@ -179,6 +179,29 @@ pub async fn approve_edited(
 ) -> AppResult<Change<Recording>> {
     let Found { found, .. } = find_all(service, settings, day, &[id.to_string()]).await?;
     let settles = settling(service, day, &found[0]).await?;
+    service.create_with(input, overlap, settles).await
+}
+
+/// Records the suggestion `id` of `day` (a stored one with all of its pieces) with `patch` applied, and
+/// settles the rest of it, as one undoable change.
+pub async fn approve_patched(
+    service: &Recordings<'_>,
+    settings: &Settings,
+    day: Day,
+    id: &str,
+    patch: RecordingPatch,
+    overlap: Overlap,
+) -> AppResult<Change<Recording>> {
+    let Found { found, shown } = find_all(service, settings, day, &[id.to_string()]).await?;
+    let suggestion = &found[0];
+    let base = input_of(suggestion, &shown);
+    let input = RecordingInput {
+        project_id: patch.project_id.unwrap_or(base.project_id),
+        spans: patch.spans.unwrap_or(base.spans),
+        note: patch.note.unwrap_or(base.note),
+        tag_id: patch.tag_id.unwrap_or(base.tag_id),
+    };
+    let settles = settling(service, day, suggestion).await?;
     service.create_with(input, overlap, settles).await
 }
 

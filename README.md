@@ -88,23 +88,41 @@ reports can be saved under a name and sit under Reports in the sidebar.
 | `timetracker show [DAY]` | shows the window at a day (`YYYY-MM-DD`, `today`, `yesterday`), starting TimeTracker if needed |
 | `timetracker focus`, `hide`, `quit` | brings the window to the front (starting TimeTracker if needed), hides it, quits |
 | `timetracker status [--json]` | the tracker state, the current activity, the timer, today's billable time (`billable today: 6:24 of 8:00 (80 %)`) and whether the window shows |
-| `timetracker pause <15m\|1h\|tomorrow\|off>`, `resume` | pauses tracking (durations up to 24h; `tomorrow`: until midnight; `off`: until resumed), resumes it |
+| `timetracker tracker pause <15m\|1h\|tomorrow\|off>`, `tracker resume`, `tracker status` | pauses activity tracking (durations up to 24h; `tomorrow`: until midnight; `off`: until resumed), resumes it, prints its state; the timer is not affected |
 | `timetracker activity add\|start\|stop …` | writes another app's activity, see [Scripting](#scripting) |
 | `timetracker activity delete <DAY>` / `activity delete <FROM> <TO>` | deletes the activity and away spans of a day or range (whole when they cross it; recordings stay) |
 | `timetracker activity undo` | restores the last delete, within 30 s of it |
-| `timetracker record --project P --from T --to T [--note N] [--tag T] [--replace]` | records time for a project (by id, name or a unique start of its name; one tag by name); refuses to overlap another recording unless `--replace` |
-| `timetracker record --project P --span 14:25-15:00 --span 16:05-20:15 …` | one recording with several separate spans (`--from`/`--to` counts as one more) |
+| `timetracker record --project P --from T --to T [--note N] [--tag T] [--source S]` | suggests time for a project (by id, name or a unique start of its name; one tag by name), to review in the Day view ("Suggested by cli", or `S`); see [Suggestions and recordings](#suggestions-and-recordings) |
+| `timetracker record … --final [--replace]` | records it instead; refuses to overlap another recording unless `--replace` |
+| `timetracker record --project P --span 14:25-15:00 --span 16:05-20:15 …` | several separate spans (`--from`/`--to` counts as one more) |
+| `timetracker edit ID [--project P] [--note N] [--tag T\|--no-tag] [--span …] [--final [--replace]]` | changes a suggestion; with `--final` changes a recording, or records the suggestion with the changes |
+| `timetracker delete ID [--final]` | deletes a suggestion (a rule's is dismissed); with `--final` a recording |
+| `timetracker approve ID…` | records suggestions as they are |
+| `timetracker suggestions [RANGE]`, `recordings [RANGE]` | lists them with their ids (`RANGE` as for `report`; suggestions of at most 62 days) |
+| `timetracker projects [--archived]`, `clients [--archived]`, `tags` | lists the names a command takes, with their ids |
+| `timetracker undo`, `redo` | undoes or redoes the last change to recordings or suggestions, as ⌘Z in the app |
 | `timetracker report [RANGE] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30 [--up]] [--notes]` | prints the hours and notes of today (or `yesterday`, `week`, `last-week`, `month`, `last-month`, a day, or two days `FROM TO`), ready to paste into a timesheet, then `Billable: 6:24 of 8:00 (80 %)`; `--json` has both numbers in `billable`. `--notes` prints only the notes, one per line in time order (`report today --notes --project P`: that project's, as the Reports screen's Copy notes) |
-| `timetracker start PROJECT [--note N] [--tag T]` / `timetracker stop` | starts a timer now (a running one stops) / stops it |
+| `timetracker timer start PROJECT [--note N] [--tag T]`, `timer stop` | starts a timer now (a running one stops; the same project, note and tag continue today's recording) / stops it |
+| `timetracker timer status [--json]` | the running timer: `--json` has `running`, `project`, `client`, `tag`, `note`, `startedAt` (ms), `startedAtIso`, `elapsedMs` and the ids |
+| `timetracker timer update [--project P] [--note N] [--tag T\|--no-tag]` | changes the running timer in place |
 | `timetracker mcp` | serves the read-only MCP server on stdin/stdout, see [MCP](#mcp) |
 | `timetracker dev seed [--years N] [--yes]` | debug builds only: writes N years (default 2) of generated workdays into the running app's database ([docs/testing.md](docs/testing.md#sample-data)) |
 
 Times are `2026-10-21T09:30` (local, or with `Z` or `±hh:mm`), `09:30` (today) or `now`. Every command except
 `show`, `focus` and `mcp` needs TimeTracker running. Exit codes: 0 ok, 1 TimeTracker refused the request (the
-error is printed), 2 bad arguments or "TimeTracker is not running". `--json` prints replies as JSON.
+error is printed), 2 bad arguments or "TimeTracker is not running". `--json` prints replies as JSON. The
+older `start`, `stop`, `pause` and `resume` still work.
 
 Closing the window keeps TimeTracker running in the menu bar, and ⌘Q also hides the Dock icon; recording
 goes on. Quit with "Quit TimeTracker" (app menu, menu bar item or palette) or `timetracker quit`.
+
+### Suggestions and recordings
+
+Writes from other apps are suggestions you review, unless they say `--final` (ADR
+[0028](docs/adr/0028-outside-writes-are-suggestions.md)). A suggestion shows in the Day view like a rule's;
+approve it there or with `approve`, and every change is undoable. `--draft` keeps a write a suggestion even
+next to `--final`, so a wrapper script can't be talked into changing recordings. The timer is direct: `timer
+start`, `stop` and `update` change the running recording.
 
 ## Scripting
 
@@ -122,6 +140,18 @@ open "timetracker://activity?source=planner&title=Lunch&start=2026-10-21T12:00&e
 timetracker show yesterday
 timetracker status --json | jq .tracker.state
 timetracker report last-week --by tag --round 15
+```
+
+A reminder that asks "still working on it?", and a planner whose blocks wait for review:
+
+```sh
+note=$(timetracker timer status --json | jq -r 'select(.running) | .note')
+if [ -n "$note" ]; then
+  answer=$(osascript -e "text returned of (display dialog \"Still on it?\" default answer \"$note\")")
+  timetracker timer update --note "$answer"   # the same note changes nothing
+fi
+timetracker record --project acme --span 09:00-09:30 --note Planning --source planner
+timetracker suggestions --json | jq -r '.[] | select(.by == "planner") | .id' | xargs timetracker approve
 ```
 
 `--json` on `activity add` reads an array of `{ source, title, start, end, app?, url?, path? }` from stdin,

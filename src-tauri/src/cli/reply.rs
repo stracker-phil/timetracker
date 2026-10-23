@@ -11,12 +11,13 @@ use crate::db::activities::ActivityRow;
 use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms, format_hm};
 use crate::ipc::IpcMessage;
-use crate::recordings::cli::{Recorded, spans_text};
+use crate::recordings::cli::spans_text;
 use crate::remote::StatusReport;
 use crate::reports::cli::Reported;
 use crate::reports::{Billable, billable_text};
+use crate::scripting::timer::TimerState;
 use crate::timers::commands::TimerStarted;
-use crate::timers::{RunningTimer, open_start};
+use crate::timers::open_start;
 use crate::tracker::{TrackerState, TrackerStatus};
 
 /// The text for `result`, the reply to `message`; `None` when the subcommand prints nothing.
@@ -28,7 +29,7 @@ pub fn render<Tz: TimeZone>(
 ) -> Result<Option<String>, String> {
     Ok(match message {
         IpcMessage::Status => Some(status(&read::<StatusReport>(result)?, now, tz)),
-        IpcMessage::Pause { .. } => {
+        IpcMessage::Pause { .. } | IpcMessage::Resume | IpcMessage::TrackerStatus => {
             let status = read::<TrackerStatus>(result)?;
             Some(format!(
                 "tracker: {}",
@@ -75,21 +76,6 @@ pub fn render<Tz: TimeZone>(
             "restored {}",
             spans(&read::<DeleteResult>(result)?)
         )),
-        IpcMessage::Record { .. } => {
-            let recorded = read::<Recorded>(result)?;
-            let r = &recorded.recording;
-            let note = if r.note.is_empty() {
-                String::new()
-            } else {
-                format!(" · {}", r.note)
-            };
-            Some(format!(
-                "recorded {} ({}) for {}{note}",
-                spans_text(&r.spans, |ms| clock(ms, tz)),
-                format_hm(r.duration(now)),
-                recorded.project_name
-            ))
-        }
         IpcMessage::TimerStart { .. } => {
             let started = read::<TimerStarted>(result)?;
             Some(format!(
@@ -119,7 +105,7 @@ pub fn render<Tz: TimeZone>(
                 stats.days, stats.activities, stats.away_spans, stats.recordings, stats.projects
             ))
         }
-        _ => None,
+        _ => super::written::render(message, result, now, tz)?,
     })
 }
 
@@ -135,7 +121,7 @@ fn spans(result: &DeleteResult) -> String {
     )
 }
 
-fn read<T: DeserializeOwned>(value: &Value) -> Result<T, String> {
+pub(super) fn read<T: DeserializeOwned>(value: &Value) -> Result<T, String> {
     T::deserialize(value)
         .map_err(|e| format!("The running TimeTracker sent an unexpected reply: {e}"))
 }
@@ -148,7 +134,7 @@ fn status<Tz: TimeZone>(report: &StatusReport, now: Ms, tz: &Tz) -> String {
             tracker_state(report.tracker.as_ref(), now, tz)
         ),
         format!("current: {}", current(report.tracker.as_ref(), now)),
-        format!("timer: {}", timer(report.timer.as_ref(), now)),
+        format!("timer: {}", timer(&report.timer, now)),
         format!(
             "billable today: {}",
             billable_today(report.billable.as_ref())
@@ -188,15 +174,15 @@ fn billable_today(billable: Option<&Billable>) -> String {
 
 /// `None` is a tracker that is off (no data store).
 /// `Acme · standup · 0:25`, or `none`.
-fn timer(timer: Option<&RunningTimer>, now: Ms) -> String {
-    let Some(t) = timer else {
+pub(super) fn timer(timer: &TimerState, now: Ms) -> String {
+    let (Some(project), Some(started_at)) = (&timer.project, timer.started_at) else {
         return "none".into();
     };
-    let mut parts = vec![t.project_name.clone()];
-    if !t.recording.note.is_empty() {
-        parts.push(t.recording.note.clone());
+    let mut parts = vec![project.clone()];
+    if let Some(note) = timer.note.as_ref().filter(|n| !n.is_empty()) {
+        parts.push(note.clone());
     }
-    parts.push(format_hm(now - open_start(&t.recording)));
+    parts.push(format_hm(now - started_at));
     parts.join(" · ")
 }
 
@@ -227,7 +213,7 @@ fn source_name(row: &ActivityRow) -> &str {
         .unwrap_or(&row.source)
 }
 
-fn clock<Tz: TimeZone>(ms: Ms, tz: &Tz) -> String {
+pub(super) fn clock<Tz: TimeZone>(ms: Ms, tz: &Tz) -> String {
     DateTime::from_timestamp_millis(ms)
         .unwrap_or_default()
         .with_timezone(tz)
@@ -256,7 +242,7 @@ mod tests {
     use crate::capture::PermissionStatus;
     use crate::db::away::AwayReason;
     use crate::db::recordings::{Recording, RecordingSpan};
-    use crate::recordings::cli::RecordRequest;
+    use crate::recordings::cli::{RecordRequest, Recorded};
     use crate::recordings::{Overlap, Span};
     use crate::tracker::PauseUntil;
 
@@ -300,7 +286,7 @@ mod tests {
         serde_json::to_value(StatusReport {
             version: "1.2.3".into(),
             tracker,
-            timer: None,
+            timer: TimerState::default(),
             billable: None,
             window_visible,
         })
@@ -354,7 +340,7 @@ mod tests {
         let result = serde_json::to_value(StatusReport {
             version: "1.2.3".into(),
             tracker: None,
-            timer: None,
+            timer: TimerState::default(),
             billable: Some(crate::reports::Billable::of(480 * MINUTE, 384 * MINUTE)),
             window_visible: true,
         })
@@ -377,7 +363,7 @@ mod tests {
             let result = serde_json::to_value(StatusReport {
                 version: "1.2.3".into(),
                 tracker: None,
-                timer: None,
+                timer: TimerState::default(),
                 billable,
                 window_visible: true,
             })
@@ -597,6 +583,8 @@ mod tests {
                 note: String::new(),
                 tag: None,
                 overlap: Overlap::Cancel,
+                final_write: true,
+                source: None,
             },
         }
     }
@@ -618,10 +606,10 @@ mod tests {
     }
 
     fn recorded_spans(note: &str, spans: &[(&str, Option<&str>)]) -> Value {
-        serde_json::to_value(Recorded {
+        serde_json::to_value(crate::scripting::writes::Written::Recording(Recorded {
             recording: timer_recording_spans(note, spans),
             project_name: "Acme".into(),
-        })
+        }))
         .unwrap()
     }
 
@@ -848,33 +836,89 @@ mod tests {
             let result = serde_json::to_value(StatusReport {
                 version: "1.2.3".into(),
                 tracker: None,
-                timer: Some(RunningTimer {
-                    recording: Recording {
-                        spans: vec![
-                            RecordingSpan {
-                                id: "s0".into(),
-                                start: start - 120 * MINUTE,
-                                end: Some(start - 60 * MINUTE),
-                            },
-                            RecordingSpan {
-                                id: "s1".into(),
-                                start,
-                                end: None,
-                            },
-                        ],
-                        ..timer_recording(note, "2026-10-21T11:35:00+02:00", None)
-                    },
-                    project_name: "Acme".into(),
-                    color: "blue".into(),
-                    shade: 0,
-                    elapsed_ms: 25 * MINUTE,
-                }),
+                timer: running_timer(note, start),
                 billable: None,
                 window_visible: true,
             })
             .unwrap();
 
             assert_eq!(status_lines(&result)[3], expected, "{note:?}");
+        }
+    }
+
+    fn running_timer(note: &str, started_at: Ms) -> TimerState {
+        TimerState {
+            running: true,
+            recording_id: Some("r1".into()),
+            project_id: Some("p1".into()),
+            project: Some("Acme".into()),
+            note: Some(note.into()),
+            started_at: Some(started_at),
+            started_at_iso: Some(String::new()),
+            elapsed_ms: Some(now() - started_at),
+            ..TimerState::default()
+        }
+    }
+
+    #[test]
+    fn timer_status_prints_the_running_timer_or_none() {
+        let cases = [
+            (
+                running_timer("standup", now() - 25 * MINUTE),
+                "timer: Acme · standup · 0:25",
+            ),
+            (running_timer("", now() - 65 * MINUTE), "timer: Acme · 1:05"),
+            (TimerState::default(), "timer: none"),
+        ];
+        for message in [IpcMessage::TimerStatus, timer_update_message()] {
+            for (state, expected) in &cases {
+                assert_eq!(
+                    render_at_now(&message, &serde_json::to_value(state).unwrap()),
+                    Ok(Some((*expected).into())),
+                    "{message:?} {state:?}"
+                );
+            }
+        }
+    }
+
+    fn timer_update_message() -> IpcMessage {
+        IpcMessage::TimerUpdate {
+            request: crate::timers::commands::TimerUpdateRequest::default(),
+        }
+    }
+
+    #[test]
+    fn tracker_status_and_resume_print_the_tracker_state_like_pause() {
+        let paused =
+            serde_json::to_value(tracker(TrackerState::Paused { until: None }, None)).unwrap();
+        let running = serde_json::to_value(tracker(TrackerState::Running, None)).unwrap();
+
+        for (message, result, expected) in [
+            (IpcMessage::TrackerStatus, &running, "tracker: running"),
+            (IpcMessage::TrackerStatus, &paused, "tracker: paused"),
+            (IpcMessage::Resume, &running, "tracker: running"),
+        ] {
+            assert_eq!(
+                render_at_now(&message, result),
+                Ok(Some(expected.into())),
+                "{message:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tracker_and_timer_replies_of_the_wrong_shape_are_errors() {
+        for message in [
+            IpcMessage::TrackerStatus,
+            IpcMessage::Resume,
+            IpcMessage::TimerStatus,
+            timer_update_message(),
+        ] {
+            let err = render_at_now(&message, &json!("nope")).unwrap_err();
+            assert!(
+                err.starts_with("The running TimeTracker sent an unexpected reply"),
+                "{message:?}: {err}"
+            );
         }
     }
 
@@ -921,7 +965,6 @@ mod tests {
         for message in [
             IpcMessage::Hide,
             IpcMessage::Quit,
-            IpcMessage::Resume,
             IpcMessage::Show {
                 day: None,
                 focus: false,

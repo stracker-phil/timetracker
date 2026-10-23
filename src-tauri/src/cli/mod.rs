@@ -8,9 +8,11 @@ mod batch;
 mod record;
 pub mod reply;
 pub mod report;
+mod scripting;
 #[cfg(test)]
 mod testing;
 pub mod time;
+mod written;
 
 use std::ffi::OsString;
 use std::io::Read;
@@ -25,21 +27,27 @@ use activity::ActivityCommand;
 pub use batch::split;
 use record::RecordArgs;
 use report::ReportArgs;
+use scripting::{DeleteArgs, EditArgs, ListRange, TimerCommand, TrackerCommand};
 
 const EXAMPLES: &str = "Examples:
   timetracker                          start TimeTracker or bring it to the front
   timetracker --hidden                 start without opening the window (launch at login)
   timetracker show yesterday           show yesterday's Day view
   timetracker status --json            the tracker state as JSON
-  timetracker pause 1h                 pause tracking for an hour
+  timetracker tracker pause 1h         pause activity tracking for an hour
   timetracker activity delete today    delete today's activity (undo within 30 s: activity undo)
-  timetracker stop                     stop the running timer
-  timetracker start acme --note \"weekly call\" --tag \"external meeting\"
+  timetracker timer stop               stop the running timer
+  timetracker timer start acme --note \"weekly call\" --tag \"external meeting\"
+  timetracker timer status --json      the running timer as flat fields
   timetracker activity add --source planner --title \"Weekly sync\" --start 10:00 --end 10:45
   timetracker activity start --source planner --title Break
   timetracker activity stop --source planner
   timetracker record --project acme --from 09:00 --to 09:30 --note standup --tag \"internal meeting\"
-  timetracker record --project acme --span 14:25-15:00 --span 16:05-20:15
+  timetracker record --project acme --span 14:25-15:00 --span 16:05-20:15 --final
+  timetracker suggestions --json       today's suggestions with their ids
+  timetracker approve <id>             record a suggestion as it is
+  timetracker timer update --note \"ID-123: Payment bug\"
+  timetracker projects --json          the projects with their clients and ids
   timetracker report last-week --by tag --round 15
   claude mcp add timetracker -- ~/.local/bin/timetracker mcp";
 
@@ -102,21 +110,56 @@ enum Command {
     Quit,
     /// Print the tracker state, the current activity and whether the window shows
     Status,
-    /// Pause tracking
+    /// Same as `tracker pause`, for older scripts
+    #[command(hide = true)]
     Pause {
         /// 15m, 1h (up to 24h), tomorrow (until midnight) or off (until resumed)
         until: String,
     },
-    /// Resume paused tracking
+    /// Same as `tracker resume`, for older scripts
+    #[command(hide = true)]
     Resume,
     /// Write another app's activity (a planner, a meeting tool) into its own lane, or delete activity
     #[command(subcommand)]
     Activity(ActivityCommand),
-    /// Record time for a project
+    /// Suggest time for a project, to review in the Day view; --final records it
     Record(RecordArgs),
+    /// Edit a suggestion; --final edits a recording, or records the suggestion with the changes
+    Edit(EditArgs),
+    /// Delete a suggestion (a rule's is dismissed); --final deletes a recording
+    Delete(DeleteArgs),
+    /// Record suggestions as they are
+    Approve {
+        /// Suggestion ids, from `timetracker suggestions`
+        #[arg(required = true)]
+        ids: Vec<String>,
+    },
+    /// List the suggestions to review, with their ids
+    Suggestions(ListRange),
+    /// List the recordings, with their ids
+    Recordings(ListRange),
+    /// List the projects, with their clients and ids
+    Projects {
+        /// Archived ones too
+        #[arg(long)]
+        archived: bool,
+    },
+    /// List the clients, with their ids
+    Clients {
+        /// Archived ones too
+        #[arg(long)]
+        archived: bool,
+    },
+    /// List the tags, with their ids
+    Tags,
+    /// Undo the last change to recordings or suggestions
+    Undo,
+    /// Redo the last undone change
+    Redo,
     /// Print the hours and notes of a day or range, ready to paste into a timesheet
     Report(ReportArgs),
-    /// Start a timer for a project now; a running timer stops
+    /// Same as `timer start`, for older scripts
+    #[command(hide = true)]
     Start {
         /// The project's id, name or a unique start of its name
         project: String,
@@ -127,8 +170,15 @@ enum Command {
         #[arg(long)]
         tag: Option<String>,
     },
-    /// Stop the running timer
+    /// Same as `timer stop`, for older scripts
+    #[command(hide = true)]
     Stop,
+    /// Start, stop, show or change the running timer
+    #[command(subcommand)]
+    Timer(TimerCommand),
+    /// Pause, resume or show activity tracking
+    #[command(subcommand)]
+    Tracker(TrackerCommand),
     /// Serve a read-only MCP server (works while the app is closed)
     Mcp,
     /// Developer tools (debug builds only)
@@ -263,6 +313,18 @@ fn message<Tz: TimeZone>(
             request: TimerStartRequest { project, note, tag },
         },
         Command::Stop => IpcMessage::TimerStop,
+        Command::Timer(command) => command.message(),
+        Command::Tracker(command) => command.message()?,
+        Command::Edit(args) => args.message(now, tz)?,
+        Command::Delete(args) => args.message(),
+        Command::Approve { ids } => IpcMessage::Approve { ids },
+        Command::Suggestions(range) => range.suggestions(now, tz)?,
+        Command::Recordings(range) => range.recordings(now, tz)?,
+        Command::Projects { archived } => IpcMessage::Projects { archived },
+        Command::Clients { archived } => IpcMessage::Clients { archived },
+        Command::Tags => IpcMessage::Tags,
+        Command::Undo => IpcMessage::Undo,
+        Command::Redo => IpcMessage::Redo,
         #[cfg(debug_assertions)]
         Command::Dev(DevCommand::Seed { years, yes }) => IpcMessage::DevSeed { years, yes },
         Command::Mcp => unreachable!("`parse` serves `mcp` before it builds a message"),
@@ -337,14 +399,73 @@ mod tests {
 
     #[test]
     fn help_lists_the_subcommands() {
-        let Ok(CliOutcome::Exit { message }) = run(&["--help"]) else {
-            panic!("--help should exit");
-        };
+        let listed = listed_commands();
         for name in [
-            "show", "focus", "hide", "quit", "status", "pause", "resume", "activity", "record",
+            "show",
+            "focus",
+            "hide",
+            "quit",
+            "status",
+            "activity",
+            "record",
+            "edit",
+            "delete",
+            "approve",
+            "suggestions",
+            "recordings",
+            "projects",
+            "clients",
+            "tags",
+            "undo",
+            "redo",
+            "report",
+            "timer",
+            "tracker",
+            "mcp",
         ] {
-            assert!(message.contains(&format!("  {name} ")), "{name}");
+            assert!(listed.iter().any(|l| l == name), "{name}: {listed:?}");
         }
+    }
+
+    #[test]
+    fn the_old_top_level_timer_and_tracker_commands_still_parse_but_are_not_in_the_help() {
+        let listed = listed_commands();
+        for name in ["start", "stop", "pause", "resume"] {
+            assert!(!listed.iter().any(|l| l == name), "{name}: {listed:?}");
+        }
+        let start = IpcMessage::TimerStart {
+            request: TimerStartRequest {
+                project: "acme".into(),
+                note: String::new(),
+                tag: None,
+            },
+        };
+        for (args, message) in [
+            (vec!["start", "acme"], start),
+            (vec!["stop"], IpcMessage::TimerStop),
+            (vec!["resume"], IpcMessage::Resume),
+            (
+                vec!["pause", "15m"],
+                IpcMessage::Pause {
+                    until: PauseUntil::Minutes(15),
+                },
+            ),
+        ] {
+            assert_eq!(remote(&args).0, message, "{args:?}");
+        }
+    }
+
+    /// The names in the `Commands:` section of the help.
+    fn listed_commands() -> Vec<String> {
+        let help = Cli::command().render_help().to_string();
+        help.lines()
+            .skip_while(|line| *line != "Commands:")
+            .skip(1)
+            .take_while(|line| line.is_empty() || line.starts_with(' '))
+            .filter(|line| line.starts_with("  ") && !line.starts_with("   "))
+            .filter_map(|line| line.split_whitespace().next())
+            .map(String::from)
+            .collect()
     }
 
     #[test]
@@ -640,12 +761,17 @@ mod tests {
     }
 
     #[test]
-    fn help_lists_the_timer_subcommands() {
-        let Ok(CliOutcome::Exit { message }) = run(&["--help"]) else {
-            panic!("--help should exit");
-        };
-        for name in ["start", "stop"] {
-            assert!(message.contains(&format!("  {name} ")), "{name}");
+    fn timer_and_tracker_help_list_their_subcommands() {
+        for (parent, names) in [
+            ("timer", ["start", "stop", "status", "update"].as_slice()),
+            ("tracker", ["pause", "resume", "status"].as_slice()),
+        ] {
+            let Ok(CliOutcome::Exit { message }) = run(&[parent, "--help"]) else {
+                panic!("{parent} --help should exit");
+            };
+            for name in names {
+                assert!(message.contains(&format!("  {name} ")), "{parent} {name}");
+            }
         }
     }
 }

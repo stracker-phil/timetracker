@@ -32,30 +32,53 @@ pub struct RecordArgs {
     /// A tag by name (at most one)
     #[arg(long)]
     tag: Option<String>,
-    /// Trim or remove the recordings in the way instead of refusing
+    /// Trim or remove the recordings in the way instead of refusing (with --final)
     #[arg(long)]
     replace: bool,
+    /// Write a recording instead of a suggestion to review
+    #[arg(long = "final")]
+    final_write: bool,
+    /// Write a suggestion even with --final
+    #[arg(long)]
+    draft: bool,
+    /// The app the suggestion comes from, shown in the Day view (default cli)
+    #[arg(long)]
+    source: Option<String>,
 }
 
 impl RecordArgs {
     pub fn request<Tz: TimeZone>(self, now: Ms, tz: &Tz) -> Result<RecordRequest, String> {
+        let final_write = is_final(self.final_write, self.draft);
+        if self.replace && !final_write {
+            return Err("--replace changes recordings; add --final".into());
+        }
         Ok(RecordRequest {
             project: self.project,
             spans: spans(self.from.zip(self.to), &self.spans, now, tz)?,
             note: self.note,
             tag: self.tag,
-            overlap: if self.replace {
-                Overlap::Replace
-            } else {
-                Overlap::Cancel
-            },
+            overlap: overlap(self.replace),
+            final_write,
+            source: self.source,
         })
     }
 }
 
-/// The span of the flags, or with `--json` and no span flags the array on stdin.
+/// `--final` writes recordings, unless `--draft` asks for a suggestion anyway (ADR 0028).
+pub(super) fn is_final(final_flag: bool, draft: bool) -> bool {
+    final_flag && !draft
+}
+
+pub(super) fn overlap(replace: bool) -> Overlap {
+    if replace {
+        Overlap::Replace
+    } else {
+        Overlap::Cancel
+    }
+}
+
 /// `--from`/`--to` as one span, then every `--span`.
-fn spans<Tz: TimeZone>(
+pub(super) fn spans<Tz: TimeZone>(
     from_to: Option<(String, String)>,
     spans: &[String],
     now: Ms,
@@ -91,7 +114,26 @@ mod tests {
                 note: note.into(),
                 tag: tag.map(str::to_string),
                 overlap,
+                final_write: false,
+                source: None,
             },
+        }
+    }
+
+    fn request_of(extra: &[&str]) -> RecordRequest {
+        let base = [
+            "record",
+            "--project",
+            "ac",
+            "--from",
+            "09:00",
+            "--to",
+            "10:30",
+        ];
+        let args: Vec<&str> = base.iter().chain(extra).copied().collect();
+        match remote(&args).0 {
+            IpcMessage::Record { request } => request,
+            other => panic!("not a record: {other:?}"),
         }
     }
 
@@ -109,6 +151,8 @@ mod tests {
                 note: String::new(),
                 tag: None,
                 overlap: Overlap::Cancel,
+                final_write: false,
+                source: None,
             },
         }
     }
@@ -297,22 +341,76 @@ mod tests {
     }
 
     #[test]
-    fn record_with_replace_overlaps_by_replacing() {
-        let (message, ..) = remote(&[
-            "record",
-            "--project",
-            "ac",
-            "--from",
-            "09:00",
-            "--to",
-            "10:30",
-            "--replace",
-        ]);
+    fn record_final_with_replace_overlaps_by_replacing() {
+        let request = request_of(&["--final", "--replace"]);
 
         assert_eq!(
-            message,
-            record_request("", None, "2026-10-21T10:30:00+02:00", Overlap::Replace)
+            request,
+            RecordRequest {
+                project: "ac".into(),
+                spans: vec![Span {
+                    start: ms("2026-10-21T09:00:00+02:00"),
+                    end: ms("2026-10-21T10:30:00+02:00"),
+                }],
+                note: String::new(),
+                tag: None,
+                overlap: Overlap::Replace,
+                final_write: true,
+                source: None,
+            }
         );
+    }
+
+    #[test]
+    fn record_is_final_only_with_final_and_without_draft() {
+        for (extra, expected) in [
+            (vec![], false),
+            (vec!["--final"], true),
+            (vec!["--draft"], false),
+            (vec!["--final", "--draft"], false),
+            (vec!["--draft", "--final"], false),
+        ] {
+            assert_eq!(request_of(&extra).final_write, expected, "{extra:?}");
+        }
+    }
+
+    #[test]
+    fn record_passes_the_source_on_and_leaves_it_out_by_default() {
+        assert_eq!(request_of(&[]).source, None);
+        assert_eq!(
+            request_of(&["--source", "planner"]).source,
+            Some("planner".into())
+        );
+    }
+
+    #[test]
+    fn replace_without_an_effective_final_is_refused() {
+        for extra in [
+            vec!["--replace"],
+            vec!["--replace", "--draft"],
+            vec!["--replace", "--final", "--draft"],
+        ] {
+            let args: Vec<&str> = [
+                "record",
+                "--project",
+                "ac",
+                "--from",
+                "09:00",
+                "--to",
+                "10:30",
+            ]
+            .iter()
+            .chain(&extra)
+            .copied()
+            .collect();
+            let err = run(&args).unwrap_err();
+
+            assert!(!err.in_app, "{extra:?}");
+            assert_eq!(
+                err.message, "--replace changes recordings; add --final",
+                "{extra:?}"
+            );
+        }
     }
 
     #[test]

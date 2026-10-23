@@ -4,7 +4,7 @@ use super::minutes;
 use crate::db::activities::ActivityRow;
 use crate::db::time::to_local_iso;
 use crate::remote::StatusReport;
-use crate::timers::open_start;
+use crate::scripting::timer::TimerState;
 use crate::tracker::TrackerState;
 
 #[derive(Serialize)]
@@ -36,9 +36,25 @@ pub struct CurrentOut {
 #[derive(Serialize)]
 pub struct TimerOut {
     pub project: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
     pub note: String,
     pub start_iso: String,
     pub elapsed_min: f64,
+}
+
+/// `None` while no timer runs.
+fn timer_out(timer: TimerState) -> Option<TimerOut> {
+    Some(TimerOut {
+        project: timer.project?,
+        client: timer.client,
+        tag: timer.tag,
+        note: timer.note.unwrap_or_default(),
+        start_iso: timer.started_at_iso?,
+        elapsed_min: minutes(timer.elapsed_ms.unwrap_or(0)),
+    })
 }
 
 /// The app's status report in minutes and local times; window titles only when activity is exposed.
@@ -50,12 +66,7 @@ pub fn status_out(report: StatusReport, expose_activity: bool) -> StatusOut {
             text: tracker.text,
             current: tracker.current.map(|row| current_out(row, expose_activity)),
         }),
-        timer: report.timer.map(|timer| TimerOut {
-            start_iso: to_local_iso(open_start(&timer.recording)),
-            project: timer.project_name,
-            note: timer.recording.note,
-            elapsed_min: minutes(timer.elapsed_ms),
-        }),
+        timer: timer_out(report.timer),
         window_visible: report.window_visible,
     }
 }
@@ -75,45 +86,35 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::db::recordings::{Recording, RecordingSpan};
-    use crate::db::time::Ms;
     use crate::mcp::data::fixtures::{at, iso};
-    use crate::timers::RunningTimer;
+
+    fn report_with(timer: TimerState) -> StatusReport {
+        StatusReport {
+            version: "1.0.0".into(),
+            tracker: None,
+            timer,
+            billable: None,
+            window_visible: false,
+        }
+    }
+
+    fn running_timer() -> TimerState {
+        TimerState {
+            running: true,
+            recording_id: Some("r1".into()),
+            project_id: Some("p1".into()),
+            project: Some("Portal".into()),
+            note: Some("tooling".into()),
+            started_at: Some(at(14, 0)),
+            started_at_iso: Some(iso(14, 0)),
+            elapsed_ms: Some(30 * 60_000),
+            ..TimerState::default()
+        }
+    }
 
     #[test]
     fn the_status_timer_starts_at_the_start_of_its_open_span() {
-        let span = |id: &str, start: Ms, end: Option<Ms>| RecordingSpan {
-            id: id.into(),
-            start,
-            end,
-        };
-        let recording = Recording {
-            id: "r1".into(),
-            project_id: "p1".into(),
-            note: "tooling".into(),
-            tag_id: None,
-            created_at: 0,
-            updated_at: 0,
-            spans: vec![
-                span("s1", at(9, 0), Some(at(10, 0))),
-                span("s2", at(14, 0), None),
-            ],
-        };
-        let report = StatusReport {
-            version: "1.0.0".into(),
-            tracker: None,
-            timer: Some(RunningTimer {
-                recording,
-                project_name: "Portal".into(),
-                color: "blue".into(),
-                shade: 4,
-                elapsed_ms: 30 * 60_000,
-            }),
-            billable: None,
-            window_visible: false,
-        };
-
-        let out = serde_json::to_value(status_out(report, false)).unwrap();
+        let out = serde_json::to_value(status_out(report_with(running_timer()), false)).unwrap();
 
         assert_eq!(
             out["timer"],
@@ -124,5 +125,36 @@ mod tests {
                 "elapsed_min": 30.0,
             })
         );
+    }
+
+    #[test]
+    fn the_status_timer_names_its_client_and_tag_when_it_has_them() {
+        let timer = TimerState {
+            client: Some("Acme".into()),
+            tag: Some("development".into()),
+            ..running_timer()
+        };
+
+        let out = serde_json::to_value(status_out(report_with(timer), false)).unwrap();
+
+        assert_eq!(
+            out["timer"],
+            json!({
+                "project": "Portal",
+                "client": "Acme",
+                "tag": "development",
+                "note": "tooling",
+                "start_iso": iso(14, 0),
+                "elapsed_min": 30.0,
+            })
+        );
+    }
+
+    #[test]
+    fn the_status_has_no_timer_while_none_runs() {
+        let out =
+            serde_json::to_value(status_out(report_with(TimerState::default()), false)).unwrap();
+
+        assert_eq!(out["timer"], json!(null));
     }
 }

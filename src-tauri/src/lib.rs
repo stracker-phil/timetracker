@@ -28,6 +28,7 @@ pub mod recordings;
 pub mod remote;
 pub mod reports;
 pub mod rules;
+pub mod scripting;
 pub mod state;
 pub mod store;
 #[cfg(any(test, feature = "test-util", debug_assertions))]

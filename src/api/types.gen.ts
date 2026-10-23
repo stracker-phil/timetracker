@@ -812,7 +812,7 @@ export type Span = { start: number, end: number, };
 /**
  * The reply to `status`. `tracker` and `billable` are `None` while the data store is unavailable.
  */
-export type StatusReport = { version: string, tracker: TrackerStatus | null, timer: RunningTimer | null, billable: Billable | null, windowVisible: boolean, };
+export type StatusReport = { version: string, tracker: TrackerStatus | null, timer: TimerState, billable: Billable | null, windowVisible: boolean, };
 
 export type StoredSuggestion = { id: string, projectId: string, note: string, tagId: string | null, 
 /**
@@ -901,6 +901,11 @@ summaryMinutes: number, showAllActivity: boolean, compact: boolean, groupByApp: 
  * One of `SNAP_MINUTES`.
  */
 snapMinutes: number, zoom: number, };
+
+/**
+ * Every field but `running` is `None` while no timer runs.
+ */
+export type TimerState = { running: boolean, recordingId: string | null, projectId: string | null, project: string | null, client: string | null, tagId: string | null, tag: string | null, note: string | null, startedAt: number | null, startedAtIso: string | null, elapsedMs: number | null, };
 
 export type TimerStatus = { running: RunningTimer | null, };
 

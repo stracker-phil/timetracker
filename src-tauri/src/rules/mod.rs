@@ -22,7 +22,7 @@ use crate::db::time::{Day, Ms, now_ms};
 use crate::error::AppResult;
 use crate::store::settings::{DayTitle, Settings};
 use matching::{Compiled, compile, matches};
-pub use review::{approve, approve_all, approve_edited, approve_rule, dismiss};
+pub use review::{approve, approve_all, approve_edited, approve_patched, approve_rule, dismiss};
 use types::{PreviewHit, RuleDay, RuleInput, RulePreview, Suggestion};
 
 /// Keeps the preview's reply small; its total still counts every hit.
@@ -157,7 +157,7 @@ mod tests {
     use crate::db::clients::{self, ClientInput};
     use crate::db::projects::{self, Project, ProjectInput};
     use crate::db::recordings as stored;
-    use crate::db::recordings::Recording;
+    use crate::db::recordings::{Recording, RecordingPatch};
     use crate::db::stored_suggestions;
     use crate::db::tags;
     use crate::error::ErrorKind;
@@ -1393,6 +1393,223 @@ mod tests {
 
         assert_eq!(w.recordings().await, [recording, existing]);
         assert!(w.stored_of(today).await.is_empty());
+    }
+
+    fn note_patch(note: &str) -> RecordingPatch {
+        RecordingPatch {
+            note: Some(note.into()),
+            ..RecordingPatch::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn approving_a_patched_rule_suggestion_records_the_patch_over_its_values() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.app_rule("Slack").await;
+        w.work(today, "Slack", (9, 0), (10, 0)).await;
+        let suggestion = w.suggestions(today).await.remove(0);
+
+        let change = approve_patched(
+            &w.service(),
+            &w.settings,
+            today,
+            &suggestion.id,
+            note_patch("patched"),
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap();
+
+        let recording = change.value;
+        assert_eq!(
+            (
+                recording.project_id.as_str(),
+                recording.note.as_str(),
+                recording.tag_id.clone(),
+                recording.start(),
+                recording.end(),
+            ),
+            (
+                w.project.id.as_str(),
+                "patched",
+                Some(w.tag_id.clone()),
+                on(today, 9, 0),
+                Some(on(today, 10, 0)),
+            )
+        );
+        assert!(change.days.contains(&today));
+        assert_eq!(w.recordings().await, [recording.clone()]);
+        assert!(w.suggestions(today).await.is_empty());
+
+        w.service().undo().await.unwrap();
+
+        assert!(w.recordings().await.is_empty());
+        assert_eq!(w.suggestions(today).await, [suggestion]);
+
+        w.service().redo().await.unwrap();
+
+        assert_eq!(w.recordings().await, [recording]);
+        assert!(w.suggestions(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_patch_can_change_the_project_spans_and_note_and_remove_the_tag() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let other = project(&w.db, "Other").await;
+        w.app_rule("Slack").await;
+        w.work(today, "Slack", (9, 0), (10, 0)).await;
+        let suggestion = w.suggestions(today).await.remove(0);
+        let patch = RecordingPatch {
+            project_id: Some(other.id.clone()),
+            spans: Some(vec![Span {
+                start: on(today, 9, 0),
+                end: on(today, 9, 30),
+            }]),
+            note: Some(String::new()),
+            tag_id: Some(None),
+        };
+
+        let change = approve_patched(
+            &w.service(),
+            &w.settings,
+            today,
+            &suggestion.id,
+            patch,
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap();
+
+        let recording = change.value;
+        assert_eq!(
+            (
+                recording.project_id.clone(),
+                recording.note.as_str(),
+                recording.tag_id.clone(),
+                recording.start(),
+                recording.end(),
+            ),
+            (other.id, "", None, on(today, 9, 0), Some(on(today, 9, 30)),)
+        );
+        assert!(w.suggestions(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn approving_a_patched_stored_suggestion_records_all_its_pieces_and_deletes_it() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (saved, existing, shown) = cut_stored(&w, today).await;
+
+        let change = approve_patched(
+            &w.service(),
+            &w.settings,
+            today,
+            &shown[1].id,
+            note_patch("patched"),
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap();
+
+        let recording = change.value;
+        let times: Vec<(Ms, Option<Ms>)> =
+            recording.spans.iter().map(|s| (s.start, s.end)).collect();
+        assert_eq!(
+            times,
+            [
+                (on(today, 9, 0), Some(on(today, 10, 0))),
+                (on(today, 11, 0), Some(on(today, 12, 0))),
+            ]
+        );
+        assert_eq!(
+            (recording.note.as_str(), recording.tag_id.clone()),
+            ("patched", Some(w.tag_id.clone()))
+        );
+        assert_eq!(w.recordings().await, [recording.clone(), existing.clone()]);
+        assert!(w.stored_of(today).await.is_empty());
+        assert!(w.suggestions(today).await.is_empty());
+
+        w.service().undo().await.unwrap();
+
+        assert_eq!(w.recordings().await, [existing]);
+        assert_eq!(w.stored_of(today).await, [saved]);
+        assert_eq!(w.suggestions(today).await, shown);
+    }
+
+    #[tokio::test]
+    async fn approving_a_patched_suggestion_that_is_gone_is_not_found() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+
+        let err = approve_patched(
+            &w.service(),
+            &w.settings,
+            today,
+            "gone",
+            note_patch("patched"),
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+        assert!(w.recordings().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_patch_over_a_recording_is_refused_unless_it_replaces_it() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.app_rule("Slack").await;
+        w.work(today, "Slack", (9, 0), (10, 0)).await;
+        let taken = w.create_recording(today, (9, 0), (9, 30)).await;
+        let suggestion = w.suggestions(today).await.remove(0);
+        assert_eq!(
+            (suggestion.start, suggestion.end),
+            (on(today, 9, 30), on(today, 10, 0))
+        );
+        let whole_hour = || RecordingPatch {
+            spans: Some(vec![Span {
+                start: on(today, 9, 0),
+                end: on(today, 10, 0),
+            }]),
+            ..RecordingPatch::default()
+        };
+
+        let err = approve_patched(
+            &w.service(),
+            &w.settings,
+            today,
+            &suggestion.id,
+            whole_hour(),
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::Overlap);
+        assert_eq!(w.recordings().await, [taken]);
+        assert_eq!(w.suggestions(today).await, [suggestion.clone()]);
+
+        let change = approve_patched(
+            &w.service(),
+            &w.settings,
+            today,
+            &suggestion.id,
+            whole_hour(),
+            Overlap::Replace,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            (change.value.start(), change.value.end()),
+            (on(today, 9, 0), Some(on(today, 10, 0)))
+        );
+        assert_eq!(w.recordings().await, [change.value]);
+        assert!(w.suggestions(today).await.is_empty());
     }
 
     #[tokio::test]

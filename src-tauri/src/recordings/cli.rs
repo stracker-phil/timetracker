@@ -1,4 +1,4 @@
-//! `timetracker record`: what the CLI sends and gets back, and the overlap message it prints.
+//! `timetracker record --final`: what the CLI sends and gets back, and the overlap message it prints.
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,12 @@ pub struct RecordRequest {
     pub note: String,
     pub tag: Option<String>,
     pub overlap: Overlap,
+    /// A recording; else a stored suggestion (ADR 0028).
+    #[serde(default, rename = "final")]
+    pub final_write: bool,
+    /// The suggestion's source; `cli` when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 /// The saved recording with the names the CLI prints.

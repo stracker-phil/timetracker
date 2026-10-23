@@ -2,10 +2,10 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use super::{RECENT, RecentTimer, TimerStatus, picker, publish, recent, status};
-use crate::db::recordings::Recording;
+use crate::db::recordings::{self, Recording};
 use crate::db::time::now_ms;
 use crate::db::{projects, tags};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::recordings::commands::changing;
 use crate::recordings::timer::TimerInput;
 use crate::state::AppState;
@@ -36,6 +36,19 @@ pub struct TimerStartRequest {
     pub tag: Option<String>,
 }
 
+/// `timetracker timer update`: what changes; absent fields stay. The project by id, name or unique prefix,
+/// the tag by name.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimerUpdateRequest {
+    pub project: Option<String>,
+    pub note: Option<String>,
+    pub tag: Option<String>,
+    /// Removes the tag; `tag` wins when both are given.
+    #[serde(default)]
+    pub clear_tag: bool,
+}
+
 /// The started recording with the project name the CLI prints.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,6 +71,31 @@ pub async fn start_by_name(app: &AppHandle, request: TimerStartRequest) -> AppRe
         recording: start(app, input).await?,
         project_name: project.name,
     })
+}
+
+/// `timetracker timer update`: the running timer with the request applied; refused while none runs.
+pub async fn update_by_name(app: &AppHandle, request: TimerUpdateRequest) -> AppResult<Recording> {
+    let db = app.state::<AppState>().data.db()?;
+    let Some(running) = recordings::running(&db).await? else {
+        return Err(AppError::InvalidInput("No timer is running".into()));
+    };
+    let project_id = match &request.project {
+        Some(project) => projects::resolve(&db, project).await?.id,
+        None => running.project_id,
+    };
+    let tag_id = match (&request.tag, request.clear_tag) {
+        (Some(tag), _) => Some(tags::resolve_name(&db, tag).await?.id),
+        (None, true) => None,
+        (None, false) => running.tag_id,
+    };
+    let input = TimerInput {
+        project_id,
+        note: request.note.unwrap_or(running.note),
+        tag_id,
+    };
+    update(app, input)
+        .await?
+        .ok_or_else(|| AppError::InvalidInput("No timer is running".into()))
 }
 
 #[cfg(test)]

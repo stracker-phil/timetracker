@@ -20,8 +20,10 @@ use crate::activity::ActivityInput;
 use crate::db::time::{Day, Ms};
 use crate::error::{AppError, ErrorKind};
 use crate::recordings::cli::RecordRequest;
+use crate::reports::Range;
 use crate::reports::cli::{ReportOutput, ReportRequest};
-use crate::timers::commands::TimerStartRequest;
+use crate::scripting::writes::EditRequest;
+use crate::timers::commands::{TimerStartRequest, TimerUpdateRequest};
 use crate::tracker::PauseUntil;
 
 /// Every request another process can make. Each CLI subcommand is one message; `remote::handle`
@@ -79,6 +81,38 @@ pub enum IpcMessage {
         request: TimerStartRequest,
     },
     TimerStop,
+    TimerStatus,
+    TrackerStatus,
+    TimerUpdate {
+        request: TimerUpdateRequest,
+    },
+    Edit {
+        request: EditRequest,
+    },
+    /// Deleting a recording needs `final`.
+    Delete {
+        id: String,
+        #[serde(default, rename = "final")]
+        final_write: bool,
+    },
+    Approve {
+        ids: Vec<String>,
+    },
+    Recordings {
+        range: Range,
+    },
+    Suggestions {
+        range: Range,
+    },
+    Projects {
+        archived: bool,
+    },
+    Clients {
+        archived: bool,
+    },
+    Tags,
+    Undo,
+    Redo,
     /// Runs JavaScript in the window (used by scripts/dev to drive the UI).
     #[cfg(debug_assertions)]
     Eval {
@@ -114,6 +148,19 @@ impl IpcMessage {
             IpcMessage::Report { .. } => "Report",
             IpcMessage::TimerStart { .. } => "TimerStart",
             IpcMessage::TimerStop => "TimerStop",
+            IpcMessage::TimerStatus => "TimerStatus",
+            IpcMessage::TrackerStatus => "TrackerStatus",
+            IpcMessage::TimerUpdate { .. } => "TimerUpdate",
+            IpcMessage::Edit { .. } => "Edit",
+            IpcMessage::Delete { .. } => "Delete",
+            IpcMessage::Approve { .. } => "Approve",
+            IpcMessage::Recordings { .. } => "Recordings",
+            IpcMessage::Suggestions { .. } => "Suggestions",
+            IpcMessage::Projects { .. } => "Projects",
+            IpcMessage::Clients { .. } => "Clients",
+            IpcMessage::Tags => "Tags",
+            IpcMessage::Undo => "Undo",
+            IpcMessage::Redo => "Redo",
             #[cfg(debug_assertions)]
             IpcMessage::Eval { .. } => "Eval",
             #[cfg(debug_assertions)]
@@ -547,7 +594,79 @@ mod tests {
             report_message(),
             timer_start_message(),
             IpcMessage::TimerStop,
+            IpcMessage::TimerStatus,
+            IpcMessage::TrackerStatus,
+            timer_update_message(),
+            suggestion_message(),
+            edit_message(),
+            IpcMessage::Delete {
+                id: "s1".into(),
+                final_write: true,
+            },
+            IpcMessage::Approve {
+                ids: vec!["s1".into(), "rule:1000:2000".into()],
+            },
+            IpcMessage::Recordings {
+                range: Range::Yesterday,
+            },
+            IpcMessage::Suggestions {
+                range: Range::Custom {
+                    from: day("2026-10-01"),
+                    to: day("2026-10-07"),
+                },
+            },
+            IpcMessage::Projects { archived: true },
+            IpcMessage::Clients { archived: false },
+            IpcMessage::Tags,
+            IpcMessage::Undo,
+            IpcMessage::Redo,
         ]
+    }
+
+    fn timer_update_message() -> IpcMessage {
+        IpcMessage::TimerUpdate {
+            request: TimerUpdateRequest {
+                project: Some("acme".into()),
+                note: Some("ID-123: Payment bug".into()),
+                tag: None,
+                clear_tag: true,
+            },
+        }
+    }
+
+    fn edit_message() -> IpcMessage {
+        IpcMessage::Edit {
+            request: EditRequest {
+                id: "s1".into(),
+                project: None,
+                note: Some("standup".into()),
+                tag: Some("internal meeting".into()),
+                clear_tag: false,
+                spans: Some(vec![Span {
+                    start: 1_000,
+                    end: 2_000,
+                }]),
+                final_write: true,
+                overlap: Overlap::Cancel,
+            },
+        }
+    }
+
+    fn suggestion_message() -> IpcMessage {
+        IpcMessage::Record {
+            request: RecordRequest {
+                project: "acme".into(),
+                spans: vec![Span {
+                    start: 1_000,
+                    end: 2_000,
+                }],
+                note: String::new(),
+                tag: None,
+                overlap: Overlap::Cancel,
+                final_write: false,
+                source: Some("planner".into()),
+            },
+        }
     }
 
     fn timer_start_message() -> IpcMessage {
@@ -619,6 +738,8 @@ mod tests {
                 note: "fix login".into(),
                 tag: Some("internal meeting".into()),
                 overlap: Overlap::Replace,
+                final_write: true,
+                source: None,
             },
         }
     }
@@ -709,10 +830,94 @@ mod tests {
                             { "start": 3000, "end": 4000 }
                         ],
                         "note": "fix login",
-                        "tag": "internal meeting", "overlap": "replace"
+                        "tag": "internal meeting", "overlap": "replace", "final": true
                     }
                 }),
             ),
+            (
+                suggestion_message(),
+                serde_json::json!({
+                    "type": "record",
+                    "request": {
+                        "project": "acme",
+                        "spans": [{ "start": 1000, "end": 2000 }],
+                        "note": "",
+                        "tag": null, "overlap": "cancel", "final": false, "source": "planner"
+                    }
+                }),
+            ),
+            (
+                IpcMessage::TimerStatus,
+                serde_json::json!({ "type": "timerStatus" }),
+            ),
+            (
+                IpcMessage::TrackerStatus,
+                serde_json::json!({ "type": "trackerStatus" }),
+            ),
+            (
+                timer_update_message(),
+                serde_json::json!({
+                    "type": "timerUpdate",
+                    "request": {
+                        "project": "acme", "note": "ID-123: Payment bug",
+                        "tag": null, "clearTag": true
+                    }
+                }),
+            ),
+            (
+                edit_message(),
+                serde_json::json!({
+                    "type": "edit",
+                    "request": {
+                        "id": "s1", "project": null, "note": "standup",
+                        "tag": "internal meeting", "clearTag": false,
+                        "spans": [{ "start": 1000, "end": 2000 }],
+                        "final": true, "overlap": "cancel"
+                    }
+                }),
+            ),
+            (
+                IpcMessage::Delete {
+                    id: "s1".into(),
+                    final_write: true,
+                },
+                serde_json::json!({ "type": "delete", "id": "s1", "final": true }),
+            ),
+            (
+                IpcMessage::Approve {
+                    ids: vec!["s1".into(), "rule:1000:2000".into()],
+                },
+                serde_json::json!({ "type": "approve", "ids": ["s1", "rule:1000:2000"] }),
+            ),
+            (
+                IpcMessage::Recordings {
+                    range: Range::Yesterday,
+                },
+                serde_json::json!({ "type": "recordings", "range": { "kind": "yesterday" } }),
+            ),
+            (
+                IpcMessage::Suggestions {
+                    range: Range::Custom {
+                        from: day("2026-10-01"),
+                        to: day("2026-10-07"),
+                    },
+                },
+                serde_json::json!({
+                    "type": "suggestions",
+                    "range": { "kind": "custom", "from": "2026-10-01", "to": "2026-10-07" }
+                }),
+            ),
+            (
+                IpcMessage::Projects { archived: true },
+                serde_json::json!({ "type": "projects", "archived": true }),
+            ),
+            (
+                IpcMessage::Clients { archived: false },
+                serde_json::json!({ "type": "clients", "archived": false }),
+            ),
+            (IpcMessage::Tags, serde_json::json!({ "type": "tags" })),
+            (IpcMessage::Undo, serde_json::json!({ "type": "undo" })),
+            (IpcMessage::Redo, serde_json::json!({ "type": "redo" })),
             (
                 report_message(),
                 serde_json::json!({
@@ -982,6 +1187,43 @@ mod tests {
     fn activate_without_hidden_deserializes_as_not_hidden() {
         let message: IpcMessage = serde_json::from_str(r#"{"type":"activate"}"#).unwrap();
         assert_eq!(message, IpcMessage::Activate { hidden: false });
+    }
+
+    #[test]
+    fn record_and_delete_without_final_deserialize_as_not_final() {
+        let record = serde_json::json!({
+            "type": "record",
+            "request": {
+                "project": "acme",
+                "spans": [{ "start": 1000, "end": 2000 }],
+                "note": "", "tag": null, "overlap": "cancel"
+            }
+        });
+        let delete = serde_json::json!({ "type": "delete", "id": "s1" });
+
+        assert_eq!(
+            serde_json::from_value::<IpcMessage>(record).unwrap(),
+            suggestion_message_from(None)
+        );
+        assert_eq!(
+            serde_json::from_value::<IpcMessage>(delete).unwrap(),
+            IpcMessage::Delete {
+                id: "s1".into(),
+                final_write: false
+            }
+        );
+    }
+
+    fn suggestion_message_from(source: Option<&str>) -> IpcMessage {
+        let IpcMessage::Record { request } = suggestion_message() else {
+            unreachable!("a record message")
+        };
+        IpcMessage::Record {
+            request: RecordRequest {
+                source: source.map(String::from),
+                ..request
+            },
+        }
     }
 
     #[test]

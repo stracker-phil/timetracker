@@ -587,8 +587,9 @@ and exits ([ADR 0017](adr/0017-cli-asks-the-running-app.md)). It never opens the
 ### Command tree
 
 `cli/mod.rs` (clap derive; `Cli`, `Command`, `parse` and `message`), with the larger subcommands' flags and
-messages in their own files: `cli/activity.rs` (`ActivityCommand`), `cli/record.rs` (`RecordArgs`),
-`cli/report.rs` (`ReportArgs`); `cli/batch.rs` holds `split`; `cli/testing.rs` the tests' shared helpers.
+messages in their own files: `cli/activity.rs` (`ActivityCommand`), `cli/record.rs` (`RecordArgs`,
+`is_final`: `--final` unless `--draft`), `cli/report.rs` (`ReportArgs`), `cli/scripting.rs` (`EditArgs`,
+`DeleteArgs`, `ListRange`, `TimerCommand`, `TrackerCommand`); `cli/batch.rs` holds `split`; `cli/testing.rs` the tests' shared helpers.
 Global flags: `--hidden` (start without the window; a running instance stays
 as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting for this run), `--json`
 (replies as JSON), `--help`, `--version`.
@@ -599,19 +600,27 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `focus` | `activate { hidden: false }` | – |
 | `hide`, `quit` | `hide`, `quit` | – |
 | `status` | `status` | six lines, below |
-| `pause <15m\|1h\|tomorrow\|off>` | `pause { until: PauseUntil }`; `<n>m` or `<n>h` up to 24 h, `tomorrow` = next local midnight, `off` = until resumed | `tracker: paused until 14:30` |
-| `resume` | `resume` | – |
+| `tracker pause <15m\|1h\|tomorrow\|off>` (hidden alias `pause`) | `pause { until: PauseUntil }`; `<n>m` or `<n>h` up to 24 h, `tomorrow` = next local midnight, `off` = until resumed | `tracker: paused until 14:30` |
+| `tracker resume` (hidden alias `resume`), `tracker status` | `resume`, `trackerStatus` | `tracker: running` |
 | `activity add --source S --title T --start ISO --end ISO [--app A] [--url U] [--path P]` | `activityAdd { items: [ActivityInput] }` | `added activity 4711` |
 | `activity add --json` (no other flags) | `activityAdd`, items from a JSON array of `ActivityInput` on stdin (times in UTC ms) | `added 3 activities` |
 | `activity start --source S --title T [--start ISO] [--app A] [--url U] [--path P]` | `activityStart { input }`, start default now | `started planner at 10:00` |
 | `activity stop --source S [--end ISO]` | `activityStop { source, end }`, end default now | `stopped planner at 10:45 (45 min)` or `nothing to stop for planner` |
 | `activity delete DAY` / `activity delete FROM TO` | `activityDelete { from, to }`: `DAY` (`YYYY-MM-DD`, `today`, `yesterday`) is its local bounds; `FROM`/`TO` as `instant` | `deleted 412 activity spans and 3 away spans` and `undo within 30 s: timetracker activity undo` |
 | `activity undo` | `activityDeleteUndo` | `restored 412 activity spans and 3 away spans`; nothing to undo exits 1 with `Nothing to undo` |
-| `report [today\|yesterday\|week\|last-week\|month\|last-month\|DAY\|FROM TO] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30] [--up]` | `report { request: ReportRequest }` (`cli/report.rs` parses the range and flags); the app resolves names (`reports::cli`: an id, an exact name ignoring case, or a unique start; several matches list them) and runs the report | the report text and `Billable: 6:24 of 8:00 (80 %)` (when time is recorded); `--json`: the `ReportResult` (with `billable { recordedMs, billableMs, percent }`) plus `text` |
-| `start PROJECT [--note N] [--tag T]` | `timerStart { request: TimerStartRequest }`; the app resolves the project and tag like `record` | `started Acme at 09:15` (the open span's start; a recording of today with the same project, note and tag continues); `--json`: the `Recording` plus `projectName` |
-| `stop` | `timerStop` | `stopped 09:15–10:40 (1:25)` (the span just closed) or `no timer running` (exit 0) |
+| `report [today\|yesterday\|week\|last-week\|month\|last-month\|DAY\|FROM TO] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30] [--up]` | `report { request: ReportRequest }` (`cli/report.rs` parses the range and flags); the app resolves names (`reports::cli`: an id, an exact name ignoring case, or a unique start; several matches list them) and runs the report | the report text and `Billable: 6:24 of 8:00 (80 %)` (when time is recorded); `--json`: the `ReportResult` (with `billable { recordedMs, billableMs, percent }`) plus `text`, with `from`, `to` and `title` first and `text` last (`reports::cli::leading`) |
+| `timer start PROJECT [--note N] [--tag T]` (hidden alias `start`) | `timerStart { request: TimerStartRequest }`; the app resolves the project and tag like `record` | `started Acme at 09:15` (the open span's start; a recording of today with the same project, note and tag continues); `--json`: the `Recording` plus `projectName` |
+| `timer stop` (hidden alias `stop`) | `timerStop` | `stopped 09:15–10:40 (1:25)` (the span just closed) or `no timer running` (exit 0) |
+| `timer status` | `timerStatus` | `timer: Acme · standup · 0:25` or `timer: none`; `--json`: `TimerState` |
+| `timer update [--project P] [--note N] [--tag T\|--no-tag]` | `timerUpdate { request: TimerUpdateRequest }`: absent fields stay (`timers::commands::update_by_name`); refused without a timer | `timer: …` |
 | `mcp` | none: serves MCP on stdin/stdout (`CliOutcome::Mcp`) | only JSON-RPC on stdout |
-| `record --project P (--from ISO --to ISO \| --span FROM-TO…) [--note N] [--tag T] [--replace]` | `record { request: RecordRequest { spans, … } }`: `--from`/`--to` is one span, each `--span` (`14:25-15:00`, ends as `instant`, joined by `-` or `–`; `time::span`) another (`overlap: replace` with `--replace`, else `cancel`; one `--tag`, a second is a parse error); the app resolves the project (`projects::resolve`) and the tag by name (`tags::resolve_name`, unknown → `not_found`) | `recorded 14:25–15:00, 16:05–20:15 (4:45) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: the `Recording` plus `projectName` |
+| `record --project P (--from ISO --to ISO \| --span FROM-TO…) [--note N] [--tag T] [--source S] [--final [--replace]] [--draft]` | `record { request: RecordRequest { spans, final, source, … } }`: `--from`/`--to` is one span, each `--span` (`14:25-15:00`, ends as `instant`, joined by `-` or `–`; `time::span`) another (`overlap: replace` with `--replace`, else `cancel`; `--replace` without an effective `--final` is a parse error; one `--tag`, a second is a parse error); the app resolves the project (`projects::resolve`) and the tag by name (`tags::resolve_name`, unknown → `not_found`). Without `final` it stores a suggestion (`Recordings::create_suggestion`, source `cli` by default) | `suggested 06:00–06:30 (0:30) for Acme · fix login; review it in the Day view (id …)`, or with `--final` `recorded 14:25–15:00, 16:05–20:15 (4:45) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: `Written`, `{ kind: suggestion \| recording, … }` with the stored suggestion or the recording plus `projectName` |
+| `edit ID [--project P] [--note N] [--tag T\|--no-tag] [--from/--to \| --span…] [--final [--replace]] [--draft]` | `edit { request: EditRequest }`; spans given replace all | the written suggestion or recording, as `record` |
+| `delete ID [--final] [--draft]` | `delete { id, final }` | `deleted the suggestion ID` / `deleted the recording ID`; `--json`: `Deleted { kind, id }` |
+| `approve ID…` | `approve { ids }`: each one `rules::approve`, one undo step each, stopping at the first refused | one `recorded …` line each |
+| `suggestions [RANGE]`, `recordings [RANGE]` | `suggestions { range }`, `recordings { range }` (`Range` as `report`'s) | one line each with its id, or `no suggestions` / `no recordings`; `--json`: `SuggestionEntry[]` / `RecordingEntry[]` |
+| `projects [--archived]`, `clients [--archived]`, `tags` | `projects { archived }`, `clients { archived }`, `tags` | one line each with its id; `--json`: `ProjectEntry[]` / `ClientEntry[]` / `TagEntry[]` |
+| `undo`, `redo` | `undo`, `redo` (`Recordings::undo/redo`, the app's ⌘Z stack) | `undid Record 30m for Acme` or `nothing to undo` |
 
 `parse(args, now, tz, stdin) -> Result<CliOutcome, CliError>` is pure: `CliOutcome` is `Run { hidden,
 log_level }`, `Exit { message }` (help, version), `Mcp` or `Remote { message, json, starts_app }`. The CLI checks
@@ -637,8 +646,20 @@ window: hidden
 
 `current` is the tracker's open activity only; an open external span (`activity start`) does not show here.
 `--json` prints the reply's `result` instead (`status --json` is a `StatusReport { version, tracker,
-timer, billable, windowVisible }`; `tracker` and `billable` are `null` while the data store is unavailable); an error prints
+timer, billable, windowVisible }`; `tracker` and `billable` are `null` while the data store is unavailable,
+`timer` is a `TimerState { running, recordingId, projectId, project, client, tagId, tag, note, startedAt,
+startedAtIso, elapsedMs }`, every field but `running` `null` without a timer); an error prints
 `{ "kind", "message" }`.
+
+**Scripting** (`scripting/`, ADR 0028): what the CLI reads and writes for other apps. `catalog.rs`
+(`projects`, `clients`, `tags`), `listing.rs` (`recordings`, `suggestions`, and `recordings_in` / `suggestions_in` for a `Range`: a stored suggestion's
+shown pieces as one entry, rule suggestions by piece; at most `MAX_SUGGESTION_DAYS`, 62), `timer.rs` (`TimerState`,
+`state`) and `writes.rs` (`record`, `edit`, `delete`, `approve`). An id is resolved by `target`:
+`stored:<id>:<start>:<end>` and a bare stored id name a stored suggestion, `<rule id>:<start>:<end>` a rule's
+suggestion on the day of its start, anything else a recording. Changing a recording needs `final` (else
+`` `ID` is a recording; add --final to change it ``); `edit SUGGESTION --final` records it with the changes
+(`rules::approve_patched`), a rule's suggestion can't be edited without it. `cli/written.rs` prints the
+replies.
 
 **Exit codes:** 0 ok; 1 the app answered with an error; 2 bad arguments, or TimeTracker is not running.
 With no instance, `show` and `focus` start the app with their message queued (`starts_app`); every other
@@ -690,7 +711,12 @@ Every message is logged by type (`IpcMessage::kind`, never the contents).
 | `hide` | `window::hide_main` | `null` |
 | `quit` | `app.exit(0)` 200 ms after replying | `null` |
 | `status` | `remote::status_report` | `StatusReport` |
-| `pause { until }`, `resume` | `Tracker::pause`, `Tracker::resume` | `TrackerStatus` |
+| `pause { until }`, `resume`, `trackerStatus` | `Tracker::pause`, `Tracker::resume`, `Tracker::status` | `TrackerStatus` |
+| `record`, `edit`, `delete { id, final }`, `approve { ids }` | `scripting::writes` | `Written`, `Written`, `Deleted`, `Recorded[]` |
+| `recordings { range }`, `suggestions { range }` | `scripting::listing` | `RecordingEntry[]`, `SuggestionEntry[]` |
+| `projects`, `clients`, `tags` | `scripting::catalog` | `ProjectEntry[]`, `ClientEntry[]`, `TagEntry[]` |
+| `timerStart`, `timerStop`, `timerStatus`, `timerUpdate` | `timers::commands::start_by_name`, `stop`, `scripting::timer::state`, `timers::commands::update_by_name` | `TimerStarted`, `Recording \| null`, `TimerState`, `TimerState` |
+| `undo`, `redo` | `Recordings::undo`, `redo` | the label or `null` |
 | `activityAdd { items }` | `activity::add` | `{ ids }` |
 | `activityStart { input }` | `activity::start` | `ActivityRow` |
 | `activityStop { source, end }` | `activity::stop` | `ActivityRow` or `null` |
@@ -757,7 +783,7 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
 | `tags` | – | `[{ id, name }]` |
 | `day_summary` | `day` | `{ day, recorded_min, tracked_min, away_min, by_project, by_tag }`; totals from `day::view_of`, the groups `[{ name, minutes, notes }]` from `reports::run` for that day |
 | `activity` | `day` | `{ activity: [{ start_iso, end_iso, app, title, url?, path?, source }], away: [{ start_iso, end_iso, reason }] }`; private rows keep only the app. Refused (`Activity is not exposed to MCP. Enable it in Settings → Data.`) unless `settings.mcp.exposeActivity` |
-| `status` | – | `IpcMessage::Status` to the app: `{ version, tracker: { state, text, current: { app, title?, url?, since_iso } }, timer: { project, note, start_iso, elapsed_min }, window_visible }`; the current title and URL only when activity is exposed |
+| `status` | – | `IpcMessage::Status` to the app: `{ version, tracker: { state, text, current: { app, title?, url?, since_iso } }, timer: { project, client?, tag?, note, start_iso, elapsed_min }, window_visible }`; the current title and URL only when activity is exposed |
 | `open_day` | `day` | `IpcMessage::Show { day, focus: true }` to the app |
 
 Days are `YYYY-MM-DD`, `today` or `yesterday` (`cli::time::day`); ranges parse with `cli::report::range`, the
@@ -826,7 +852,7 @@ A timer is a recording with an open span, so the overlap rule, undo and reports 
   `DEFAULT_TIMER_SHORTCUT`, `Mod+Ctrl+Alt+T`; `null` turns it off) open or close the picker from any app (`tauri-plugin-global-shortcut`). Only a chord with a Tauri key name
   (`keybindings::is_global`) qualifies; `sanitized` resets others. `update_settings` registers a changed
   shortcut before saving it and returns `invalid_input` when the system refuses.
-- `status` (CLI, `StatusReport.timer`) prints `timer: Acme · standup · 0:25`.
+- `status` and `timer status` (CLI, `StatusReport.timer`, a flat `scripting::timer::TimerState`) print `timer: Acme · standup · 0:25`.
 
 ## Persistence
 

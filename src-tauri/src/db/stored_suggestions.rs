@@ -29,6 +29,13 @@ pub struct StoredSuggestion {
     pub updated_at: Ms,
 }
 
+impl StoredSuggestion {
+    /// The sum of its spans.
+    pub fn duration(&self) -> Ms {
+        self.spans.iter().map(|s| s.end - s.start).sum()
+    }
+}
+
 macro_rules! select {
     ($rest:literal) => {
         concat!(

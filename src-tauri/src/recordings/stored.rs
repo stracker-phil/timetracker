@@ -65,8 +65,11 @@ impl Recordings<'_> {
             before: None,
             after: Some(suggestion.clone()),
         };
-        let total = suggestion.spans.iter().map(|s| s.end - s.start).sum();
-        let label = format!("Suggest {} for {}", format_duration(total), project.name);
+        let label = format!(
+            "Suggest {} for {}",
+            format_duration(suggestion.duration()),
+            project.name
+        );
         let days = self.apply_and_push(&mut undo, label, op).await?;
         Ok(Change {
             value: suggestion,
