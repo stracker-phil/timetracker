@@ -1,6 +1,6 @@
-//! Window layout that survives a restart (`ui_state.json`): sidebar, pane sizes, the last viewed day,
-//! the timeline zoom and whether the welcome sheet was finished. Unknown keys, such as the dropped
-//! `dayMode`, are ignored.
+//! Window layout that survives a restart (`ui_state.json`): sidebar, pane sizes, the timeline zoom and
+//! whether the welcome sheet was finished. Unknown keys, such as the dropped `dayMode` and `lastDay`, are
+//! ignored.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -9,11 +9,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::json_store::JsonStore;
-use crate::db::time::Day;
 use crate::error::AppResult;
-
-/// A remembered day older than this opens today instead.
-const RESTORE_DAYS: i64 = 30;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -22,8 +18,6 @@ pub struct UiState {
     pub sidebar_hidden: bool,
     /// In px.
     pub sidebar_width: u16,
-    /// `YYYY-MM-DD`.
-    pub last_day: Option<String>,
     /// The Day view's scale in px per minute.
     pub timeline_zoom: f32,
     /// Splitter positions by pane id, in px.
@@ -37,26 +31,10 @@ impl Default for UiState {
         Self {
             sidebar_hidden: false,
             sidebar_width: 200,
-            last_day: None,
             timeline_zoom: 2.5,
             pane_sizes: HashMap::new(),
             onboarding_done: false,
         }
-    }
-}
-
-impl UiState {
-    /// The state the window opens with: `last_day` only while it lies within `RESTORE_DAYS` of `today`.
-    pub fn restorable(mut self, today: Day) -> Self {
-        let age = self
-            .last_day
-            .as_deref()
-            .and_then(|day| Day::parse(day).ok())
-            .map(|day| (today.date() - day.date()).num_days());
-        if !age.is_some_and(|age| (0..=RESTORE_DAYS).contains(&age)) {
-            self.last_day = None;
-        }
-        self
     }
 }
 
@@ -105,7 +83,6 @@ mod tests {
             UiState {
                 sidebar_hidden: false,
                 sidebar_width: 200,
-                last_day: None,
                 timeline_zoom: 2.5,
                 pane_sizes: HashMap::new(),
                 onboarding_done: false,
@@ -119,7 +96,6 @@ mod tests {
         let ui = UiState {
             sidebar_hidden: true,
             sidebar_width: 260,
-            last_day: Some("2026-10-21".into()),
             timeline_zoom: 1.5,
             pane_sizes: HashMap::from([("timeline".to_string(), 320.0)]),
             onboarding_done: true,
@@ -147,66 +123,17 @@ mod tests {
 
     #[test]
     fn keys_are_camel_case() {
-        let ui = UiState {
-            last_day: Some("2026-10-21".into()),
-            ..UiState::default()
-        };
+        let ui = UiState::default();
         assert_eq!(
             serde_json::to_value(&ui).unwrap(),
             serde_json::json!({
                 "sidebarHidden": false,
                 "sidebarWidth": 200,
-                "lastDay": "2026-10-21",
                 "timelineZoom": 2.5,
                 "paneSizes": {},
                 "onboardingDone": false
             })
         );
-    }
-
-    fn restored(last_day: Option<&str>) -> UiState {
-        UiState {
-            sidebar_width: 260,
-            last_day: last_day.map(str::to_string),
-            ..UiState::default()
-        }
-        .restorable(Day::parse("2026-10-22").unwrap())
-    }
-
-    #[test]
-    fn a_last_day_within_thirty_days_of_today_is_restored() {
-        for last_day in ["2026-10-22", "2026-10-21", "2026-09-22", "2026-09-23"] {
-            assert_eq!(restored(Some(last_day)).last_day.as_deref(), Some(last_day));
-        }
-    }
-
-    #[test]
-    fn a_last_day_that_is_older_in_the_future_or_unreadable_is_dropped() {
-        for last_day in [
-            "2026-09-21",
-            "2025-10-22",
-            "2026-10-23",
-            "2027-01-01",
-            "",
-            "yesterday",
-            "2026-13-01",
-            "2026-10-2",
-        ] {
-            assert_eq!(restored(Some(last_day)).last_day, None, "{last_day}");
-        }
-    }
-
-    #[test]
-    fn restoring_keeps_every_other_field_and_a_missing_last_day() {
-        assert_eq!(
-            restored(None),
-            UiState {
-                sidebar_width: 260,
-                ..UiState::default()
-            }
-        );
-        assert_eq!(restored(Some("2026-10-01")).sidebar_width, 260);
-        assert_eq!(restored(Some("2020-01-01")).sidebar_width, 260);
     }
 
     #[test]
@@ -228,7 +155,6 @@ mod tests {
         let store = UiStateStore::open(dir.path());
         let ui = UiState {
             sidebar_width: 260,
-            last_day: Some("2026-10-21".into()),
             ..UiState::default()
         };
         store.set(ui.clone()).await.unwrap();
@@ -253,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn a_file_with_the_dropped_day_mode_key_loads_without_quarantining_the_file() {
+    fn a_file_with_the_dropped_last_day_and_day_mode_keys_loads_without_quarantining_the_file() {
         let dir = temp_config_dir();
         let raw = r#"{"sidebarWidth": 320, "lastDay": "2026-10-21", "dayMode": "list", "onboardingDone": true}"#;
         std::fs::write(dir.path().join("ui_state.json"), raw).unwrap();
@@ -264,7 +190,6 @@ mod tests {
             loaded,
             UiState {
                 sidebar_width: 320,
-                last_day: Some("2026-10-21".into()),
                 onboarding_done: true,
                 ..UiState::default()
             }

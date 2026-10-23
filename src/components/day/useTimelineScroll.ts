@@ -3,27 +3,26 @@ import type { DayView } from "../../api";
 import { findBlock } from "../../lib/blockFocus";
 
 const HOUR_MS = 3_600_000;
-/** A day opens scrolled to this long before its first activity. */
+/** A past day opens scrolled to this long before its first activity. */
 const LEAD_MS = HOUR_MS / 2;
-/** A day without activity opens at this hour (today: at the current time). */
+/** A past day without activity opens at this hour. */
 const EMPTY_DAY_HOUR = 8;
+/** Today opens with now this far down the visible part, so the current activity shows. */
+const NOW_AT = 0.8;
 
-/** Where a day opens: its first activity, else now (today), else the morning. */
-function openingTime(view: DayView, now: number | null): number {
-  return view.firstActivity ?? now ?? view.bounds[0] + EMPTY_DAY_HOUR * HOUR_MS;
+function openingTop(view: DayView, now: number | null, y: (ms: number) => number, height: number): number {
+  if (now !== null) return y(now) - height * NOW_AT;
+  return y((view.firstActivity ?? view.bounds[0] + EMPTY_DAY_HOUR * HOUR_MS) - LEAD_MS);
 }
 
-/**
- * Scrolls a newly shown day to where it opens, and the focused block into view. A reload of the same day
- * keeps the position.
- */
-export function useTimelineScroll(ref: RefObject<HTMLElement | null>, view: DayView, focusedBlock: string | null, y: (ms: number) => number, now: number | null) {
-  const scrolledDay = useRef<string | null>(null);
+/** Scrolls a newly shown day to where it opens, again on each window opening, and the focused block into view. */
+export function useTimelineScroll(ref: RefObject<HTMLElement | null>, view: DayView, focusedBlock: string | null, y: (ms: number) => number, now: number | null, openings: number) {
+  const scrolled = useRef<{ day: string; openings: number } | null>(null);
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!el || scrolledDay.current === view.day) return;
-    scrolledDay.current = view.day;
-    el.scrollTop = Math.max(0, y(openingTime(view, now) - LEAD_MS));
+    if (!el || (scrolled.current?.day === view.day && scrolled.current.openings === openings)) return;
+    scrolled.current = { day: view.day, openings };
+    el.scrollTop = Math.max(0, openingTop(view, now, y, el.clientHeight));
   });
 
   useEffect(() => {

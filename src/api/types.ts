@@ -34,4 +34,4 @@ export const SHADES = 9;
 export type Keybindings = Record<string, string | null>;
 
 /** Until Rust's state loads; `onboardingDone` is true so the welcome sheet never flashes before it. */
-export const EMPTY_UI_STATE: UiState = { sidebarHidden: false, sidebarWidth: 200, lastDay: null, timelineZoom: 2.5, paneSizes: {}, onboardingDone: true };
+export const EMPTY_UI_STATE: UiState = { sidebarHidden: false, sidebarWidth: 200, timelineZoom: 2.5, paneSizes: {}, onboardingDone: true };

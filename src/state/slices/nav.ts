@@ -11,6 +11,8 @@ export interface NavSlice {
   view: View;
   /** The day the Day, Week and Month views show (`YYYY-MM-DD`). */
   day: string;
+  /** Counts `windowOpened` calls. */
+  openings: number;
   /**
    * Shows `view`, then runs `then`. Leaving a view clears the selection and closes the editor, asking first
    * when it has changes; Keep editing stays, and `then` never runs.
@@ -20,25 +22,19 @@ export interface NavSlice {
   goToDay: (day: string) => void;
   /** Hours: today in the Day view. */
   showHours: () => void;
+  /** The hidden window was shown again: Hours, and the Day view scrolls to now. */
+  windowOpened: () => void;
   /** Today, in the view shown; in Reports the report's period that holds today. */
   goToday: () => void;
   /** Shows `day` (in Reports, the period holding it) without changing the view. */
   showDate: (day: string) => void;
   /** A day, week or month back (-1) or ahead (1), by the view shown; in Reports the report's period. */
   step: (by: 1 | -1) => void;
-  /** Shows the day the window showed last, unless another day was shown; Rust drops a day too old to restore. */
-  restoreDay: () => void;
 }
 
 export const navSlice: Slice<NavSlice> = {
   create: (set, get) => {
-    // Once a day was shown on request, the remembered one no longer applies.
-    let shown = false;
-    const stay = (day: string) => {
-      shown = true;
-      set({ day });
-      get().rememberDay(day);
-    };
+    const stay = (day: string) => set({ day });
     const stepDay = dayStepper(() => get().day, stay);
     const enter = (view: View, then?: () => void) => {
       if (view === get().view) return then?.();
@@ -56,6 +52,11 @@ export const navSlice: Slice<NavSlice> = {
 
       goToDay: show,
       showHours: () => show(today()),
+      openings: 0,
+      windowOpened() {
+        set({ openings: get().openings + 1 });
+        get().showHours();
+      },
       goToday: () => get().showDate(today()),
       showDate(day) {
         if (get().view === "reports") void get().shiftReportRange(day, 0);
@@ -65,11 +66,6 @@ export const navSlice: Slice<NavSlice> = {
         const { view } = get();
         if (view === "reports") void get().shiftReportRange(null, by);
         else stepDay(STEP_UNITS[view] ?? "day", by);
-      },
-
-      restoreDay() {
-        const last = get().uiState.lastDay;
-        if (last && !shown) set({ day: last });
       },
     };
   },

@@ -67,6 +67,7 @@ One place for views and one place for dates: the sidebar.
     The cells are for the pointer; the keys are ⌘1 to ⌘3, P, N, O and Go to Date… (`nav.goToDate`), whose
     picker opens under the title.
   - **Hours** (clock): today in the Day view, ready to record today; selected while the Day view shows today.
+    Each time the hidden window shows again (the Dock icon comes back), it opens here.
   - **Reports** (⌘4) with the saved reports under it.
   - A separator, then the configuration pages: **Projects** (⌘5), **Tags** (⌘6), **Rules** (⌘7).
   - **At the bottom** (`SidebarStatus`): the tracker's status in a rounded `--sidebar-hover` field with a
@@ -356,7 +357,9 @@ text; a row's date or detail follows its title in `--o2`.
 
 ## Timeline
 
-The Day view reads like Timely's: the toolbar, the timesheet on the left, then the timeline.
+The Day view reads like Timely's: the toolbar, the timesheet on the left, then the timeline. Today opens
+with the current time a fifth above the bottom, so the current activity shows; another day opens 30 min
+before its first activity (08:00 without any).
 
 - **Toolbar:** the date, a mark (a green check once the day has recorded time, else a grey dot), the day's
   totals (`recorded 1h 00m · tracked 6h 12m`, a part that is zero left out; away time is not shown), View options and the ⋯ menu, borderless toolbar buttons.

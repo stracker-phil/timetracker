@@ -83,7 +83,8 @@ export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) 
   const y = (ms: number) => ((ms - origin) / MINUTE_MS) * pxPerMinute;
   const element = (id: string | null) => (id === null ? null : (scrollRef.current?.querySelector(`[data-block-id="${id}"]`) ?? null));
 
-  useTimelineScroll(scrollRef, view, focusedBlock, y, live ? now : null);
+  const openings = useStore((s) => s.openings);
+  useTimelineScroll(scrollRef, view, focusedBlock, y, live ? now : null, openings);
   const columnRef = useRef<HTMLDivElement>(null);
   const grid = { ticks: view.ticks, y };
   const press = useSelectionPress({ grid, scrollRef });

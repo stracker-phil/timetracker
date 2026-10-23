@@ -18,6 +18,8 @@ pub const TRACKER_STATUS_EVENT: &str = "tracker_status";
 pub const DATA_CHANGED_EVENT: &str = "data_changed";
 /// Payload: an `AwayPrompt`, to the `away` window when a new span replaces the open prompt's.
 pub const AWAY_PROMPT_CHANGED_EVENT: &str = "away_prompt_changed";
+/// No payload; the hidden main window was shown again.
+pub const WINDOW_OPENED_EVENT: &str = "window_opened";
 /// Payload: a `TimerStatus`; at start, on every change and every minute while a timer runs.
 pub const TIMER_STATUS_EVENT: &str = "timer_status";
 

@@ -1,4 +1,6 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
+
+use crate::events::WINDOW_OPENED_EVENT;
 
 const MAIN: &str = "main";
 
@@ -21,11 +23,15 @@ pub fn show_main(app: &AppHandle) {
     bring_to_front(app);
 }
 
-/// Shows the window without bringing the app to the front.
+/// Shows the window without bringing the app to the front; emits `WINDOW_OPENED_EVENT` when it was hidden.
 pub fn show_main_in_background(app: &AppHandle) {
     set_dock_icon(app, true);
+    let opening = !main_visible(app);
     if let Some(window) = app.get_webview_window(MAIN) {
         let _ = window.show();
+    }
+    if opening && let Err(e) = app.emit(WINDOW_OPENED_EVENT, ()) {
+        log::warn!("Couldn't tell the page the window opened: {e}");
     }
 }
 

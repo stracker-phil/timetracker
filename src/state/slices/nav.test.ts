@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, EMPTY_UI_STATE } from "../../api";
+import { api } from "../../api";
 import { flushUiState, resetStore, useStore } from "../store";
 import { defaultFilter } from "./reports";
 
@@ -72,12 +72,6 @@ describe("nav slice", () => {
       expect(state().view).toBe("day");
     });
 
-    it("remembers the day a step arrives at", async () => {
-      resetStore({ day: "2026-03-10", view: "week" });
-      state().step(1);
-      await vi.waitFor(() => expect(state().uiState.lastDay).toBe("2026-03-17"));
-    });
-
     it("adds up two quick steps, each from the day the one before arrived at", async () => {
       resetStore({ day: "2026-03-10" });
       state().step(1);
@@ -90,14 +84,6 @@ describe("nav slice", () => {
       state().goToday();
       expect(state().day).toBe("2026-10-21");
       expect(state().view).toBe(view);
-    });
-
-    it("remembers the shown day and writes it after the debounce", () => {
-      state().goToDay("2026-10-18");
-      expect(state().uiState.lastDay).toBe("2026-10-18");
-      expect(mocked.setUiState).not.toHaveBeenCalled();
-      vi.advanceTimersByTime(500);
-      expect(mocked.setUiState).toHaveBeenCalledWith(expect.objectContaining({ lastDay: "2026-10-18" }));
     });
 
     it.each(["day", "week", "month"] as const)("showDate shows the day and keeps the %s view", (view) => {
@@ -147,35 +133,24 @@ describe("nav slice", () => {
     });
   });
 
-  describe("restoreDay", () => {
-    const withLastDay = (lastDay: string | null, patch = {}) => resetStore({ uiState: { ...EMPTY_UI_STATE, lastDay }, ...patch });
-
-    it.each(["2026-10-20", "2026-09-21", "2026-01-01", "2026-10-25"])("shows whatever day Rust sent as the day shown last: %s", (last) => {
-      withLastDay(last);
-      state().restoreDay();
-      expect(state().day).toBe(last);
+  describe("windowOpened", () => {
+    it("starts with no openings", () => {
+      expect(state().openings).toBe(0);
     });
 
-    it("stays on today when no day is remembered", () => {
-      withLastDay(null);
-      state().restoreDay();
+    it.each(["week", "reports", "projects"] as const)("shows today in the Day view from the %s view and counts the opening", (view) => {
+      resetStore({ day: "2026-01-05", view });
+      state().windowOpened();
       expect(state().day).toBe("2026-10-21");
+      expect(state().view).toBe("day");
+      expect(state().openings).toBe(1);
     });
 
-    it("keeps a day that was shown meanwhile", () => {
-      resetStore();
-      state().goToDay("2026-10-05");
-      useStore.setState({ uiState: { ...EMPTY_UI_STATE, lastDay: "2026-10-20" } });
-      state().restoreDay();
-      expect(state().day).toBe("2026-10-05");
-    });
-
-    it("keeps today when it was shown meanwhile, even with a recent day remembered", () => {
-      resetStore();
-      state().goToDay("2026-10-21");
-      useStore.setState({ uiState: { ...EMPTY_UI_STATE, lastDay: "2026-10-20" } });
-      state().restoreDay();
+    it("counts every opening, also when today is already shown", () => {
+      state().windowOpened();
+      state().windowOpened();
       expect(state().day).toBe("2026-10-21");
+      expect(state().openings).toBe(2);
     });
   });
 });

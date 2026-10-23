@@ -3,13 +3,12 @@ import { fail } from "../requests";
 import type { Slice } from "../store";
 
 export interface ViewStateSlice {
-  /** Window layout that survives a restart (sidebar, pane sizes, last day, timeline zoom). */
+  /** Window layout that survives a restart (sidebar, pane sizes, timeline zoom). */
   uiState: UiState;
   loadUiState: () => Promise<void>;
   /** Stores a splitter position (px) under its pane id. */
   setPaneSize: (pane: string, px: number) => void;
   toggleSidebar: () => void;
-  rememberDay: (day: string) => void;
   /** px per minute, clamped to the timeline's range. */
   setTimelineZoom: (pxPerMinute: number) => void;
   /** The next zoom step in (`by` 1) or out (-1). */
@@ -49,10 +48,6 @@ export const viewStateSlice: Slice<ViewStateSlice> = {
 
       toggleSidebar() {
         patchUiState((current) => ({ sidebarHidden: !current.sidebarHidden }));
-      },
-
-      rememberDay(day) {
-        if (get().uiState.lastDay !== day) patchUiState(() => ({ lastDay: day }));
       },
 
       setTimelineZoom(pxPerMinute) {

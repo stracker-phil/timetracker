@@ -33,12 +33,12 @@ function handleLaunchEvents(events: LaunchEvent[]) {
 
 function useBackendEvents() {
   useEffect(() => {
-    const { loadSettings, loadUiState, restoreDay, loadTracker, loadProjects, setTracker, toast, dataChanged } = useStore.getState();
+    const { loadSettings, loadUiState, loadTracker, loadProjects, setTracker, toast, dataChanged, windowOpened } = useStore.getState();
     const drainLaunches = () => api.takeLaunchEvents().then(handleLaunchEvents, (e) => toast("error", `Launch request failed: ${toAppError(e).message}`));
 
     // Re-installing applies the user's keybinding overrides, which arrive with the settings.
     void loadSettings().then(() => (installCommands(), drainLaunches()));
-    void loadUiState().then(restoreDay);
+    void loadUiState();
     void loadTracker();
     void loadProjects();
     void useStore.getState().loadSavedReports();
@@ -46,6 +46,7 @@ function useBackendEvents() {
     const unlisten = [
       api.onTimerStatus(useStore.getState().setTimerStatus),
       api.onLaunch(() => void drainLaunches()),
+      api.onWindowOpened(windowOpened),
       api.onCommand(runMenuCommand),
       api.onRemote((e) => void answerRemote(e)),
       api.onDataChanged(dataChanged),

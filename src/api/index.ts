@@ -212,6 +212,8 @@ export const api = {
   suggestionsDismiss: (day: string, ids: string[]) => invoke<number>("suggestions_dismiss", { day, ids }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
+  /** The hidden main window was shown again (the Dock icon came back). */
+  onWindowOpened: (handler: () => void): Promise<UnlistenFn> => listen("window_opened", handler),
   /** Native menu and tray items emit the id of the command they run. */
   onCommand: (handler: (id: string) => void): Promise<UnlistenFn> => listen<string>("command", (e) => handler(e.payload)),
   /** Requests from other processes; answer each with `remoteReply`. */

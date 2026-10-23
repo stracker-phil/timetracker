@@ -174,6 +174,7 @@ export function createApiMock(): typeof realApi {
     suggestionsDismiss: vi.fn().mockResolvedValue(1),
     rulesToday: vi.fn().mockResolvedValue([]),
     onLaunch: vi.fn(noUnlisten),
+    onWindowOpened: vi.fn(noUnlisten),
     onCommand: vi.fn(noUnlisten),
     onRemote: vi.fn(noUnlisten),
     onTrackerStatus: vi.fn(noUnlisten),

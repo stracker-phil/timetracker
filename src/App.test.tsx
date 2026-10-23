@@ -134,14 +134,16 @@ describe("App", () => {
       expect(await screen.findByText("tracked 30m")).toBeInTheDocument();
     });
 
-    it("opens on the day Rust sends as the one shown last", async () => {
-      mocked.getUiState.mockResolvedValueOnce({ ...EMPTY_UI_STATE, lastDay: "2026-10-05" });
+    it("opens on today", async () => {
       await renderApp();
-      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith("2026-10-05"));
+      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith(today()));
     });
 
-    it("opens on today when Rust sends no day shown last", async () => {
-      await renderApp();
+    it("shows today in the Day view when the hidden window is shown again", async () => {
+      const day = await api.calendarStep("day", today(), -3);
+      await renderApp({ view: "reports", day });
+      act(() => mocked.onWindowOpened.mock.calls[0][0]());
+      expect(await screen.findByRole("region", { name: "Day" })).toBeInTheDocument();
       await vi.waitFor(() => expect(mocked.dayView).toHaveBeenLastCalledWith(today()));
     });
   });

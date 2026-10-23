@@ -958,10 +958,6 @@ export type UiState = { sidebarHidden: boolean,
  */
 sidebarWidth: number, 
 /**
- * `YYYY-MM-DD`.
- */
-lastDay: string | null, 
-/**
  * The Day view's scale in px per minute.
  */
 timelineZoom: number, 
