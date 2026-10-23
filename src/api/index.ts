@@ -32,6 +32,8 @@ export const api = {
   remoteReply: (id: string, result: unknown, error: string | null) => invoke<void>("remote_reply", { id, result, error }),
   /** Hides the window; the app keeps running in the menu bar. */
   hideWindow: () => invoke<void>("hide_window"),
+  /** Hides the window and the Dock icon; the app keeps running in the menu bar. */
+  hideToMenuBar: () => invoke<void>("hide_to_menu_bar"),
   quitApp: () => invoke<void>("quit_app"),
   /** The native save panel; `null` when the user cancels. */
   chooseSavePath: (fileName: string, extension: string) => invoke<string | null>("choose_save_path", { fileName, extension }),

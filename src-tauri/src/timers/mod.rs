@@ -5,6 +5,8 @@ pub mod commands;
 #[cfg(target_os = "macos")]
 mod panel;
 pub mod picker;
+#[cfg(target_os = "macos")]
+pub mod screen;
 pub mod shortcut;
 
 use std::time::Duration;

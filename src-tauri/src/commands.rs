@@ -230,6 +230,11 @@ pub fn hide_window(app: AppHandle) {
 }
 
 #[tauri::command]
+pub fn hide_to_menu_bar(app: AppHandle) {
+    window::hide_to_menu_bar(&app);
+}
+
+#[tauri::command]
 pub fn quit_app(app: AppHandle) {
     app.exit(0);
 }

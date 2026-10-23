@@ -23,6 +23,7 @@ pub fn show_main(app: &AppHandle) {
 
 /// Shows the window without bringing the app to the front.
 pub fn show_main_in_background(app: &AppHandle) {
+    set_dock_icon(app, true);
     if let Some(window) = app.get_webview_window(MAIN) {
         let _ = window.show();
     }
@@ -32,6 +33,19 @@ pub fn main_visible(app: &AppHandle) -> bool {
     app.get_webview_window(MAIN)
         .and_then(|window| window.is_visible().ok())
         .unwrap_or(false)
+}
+
+/// Hides the window and the Dock icon; the app keeps recording from the menu bar.
+pub fn hide_to_menu_bar(app: &AppHandle) {
+    hide_main(app);
+    set_dock_icon(app, false);
+}
+
+fn set_dock_icon(app: &AppHandle, shown: bool) {
+    #[cfg(target_os = "macos")]
+    if let Err(e) = app.set_dock_visibility(shown) {
+        log::warn!("Couldn't change the Dock icon: {e}");
+    }
 }
 
 pub fn hide_main(app: &AppHandle) {

@@ -168,7 +168,7 @@ pub async fn timers_recent(state: State<'_, AppState>) -> AppResult<Vec<RecentTi
 
 #[tauri::command]
 pub fn timer_picker_open(app: AppHandle) {
-    picker::open(&app);
+    picker::open(&app, picker::Place::OnFocusedScreen);
 }
 
 #[tauri::command]

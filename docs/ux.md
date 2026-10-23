@@ -576,7 +576,8 @@ timeline's for every app.
   recorded today continues that recording with a new span. The menu bar item's title reads `⏱ 1h 23m Acme` while it runs, and the
   status bar shows `⏱ Acme 1:23` (a click stops it).
 - The picker (⌃⌥⌘T from any app, ⌘T in the window, Start Timer… in the tray) is a small floating panel on
-  `--pop` with `--radius-lg` under the tray icon: "Start Timer", then the labelled fields in the editor's order
+  `--pop` with `--radius-lg`, under the tray icon from the tray, else at the top center of the screen with
+  the front window (or the pointer): "Start Timer", then the labelled fields in the editor's order
   (Note, focused, "What did you work on?"; Project; Tag), Start (↵), Cancel (Escape), and below a hairline the
   "Recent" timers as rows with their project's dot. While a timer runs the same form shows its note
   (selected, to retype), project and tag under "Timer running" with the project's dot and the elapsed time;
@@ -728,7 +729,7 @@ Rules of the keys (`handleKeydown`):
 
 - Bare keys never fire in text fields; there only ⌘ and ⌃ combinations and Escape do.
 - While a dialog, the palette, the recording editor or a context menu is open, only Settings, `?`, the
-  palette, zoom, Close window and Quit run; every other key belongs to the overlay. Escape closes the
+  palette, zoom, Close window, Hide to Menu Bar and Quit run; every other key belongs to the overlay. Escape closes the
   recording editor wherever the focus is.
 - ↵ and Space on a focused button or link activate it. J, K, H, L, V, ⇧J, ⇧K, ] and [ give the keys back to
   the timeline: they take the focus off a Tabbed-to button.
@@ -767,7 +768,8 @@ recording commands'.
 | `data.exportBackup` | Export backup… | menu | global |
 | `help.readme` | Open README | menu | global |
 | `recording.new` | New recording… (the Day view's selection, else the half hour up to now on today; the Week and Month stay) | menu | global |
-| `app.quit` | Quit TimeTracker | ⌘Q | global |
+| `app.background` | Hide to Menu Bar (the window and the Dock icon hide; recording goes on) | ⌘Q | global |
+| `app.quit` | Quit TimeTracker | menu | global |
 | `nav.prev` / `nav.next` | Previous / Next day, week, month or report period | P / N | dated |
 | `nav.today` | Go to today (this week, this month, the report's period that holds today) | O | dated |
 | `nav.goToDate` | Go to date… (the date picker) | menu | dated |
@@ -859,7 +861,7 @@ Every view and nearly every command has a menu item, with its key shown (`src-ta
 in [backend.md](backend.md#native-menu)). An item whose command cannot run now is greyed out: outside its
 view's scope, when its `when` is false (no selection, no focused recording, no running timer, no focused
 suggestion), and while a dialog, the palette or the editor is open (except Settings, Keyboard Shortcuts,
-Command Palette, zoom, Close Window, Undo, Redo and Quit). Rebinding a key in Settings → Shortcuts updates
+Command Palette, zoom, Close Window, Undo, Redo, Hide to Menu Bar and Quit). Rebinding a key in Settings → Shortcuts updates
 the menu.
 
 Keys with ⌘ or ⌃ are real menu accelerators. Single keys and ⌥ keys (P, N, O, J, K, ], [, ⌫, ↵, ⇧?, ⌥←) are
@@ -868,7 +870,7 @@ from every text field. The page's key handler runs them, with the rules above.
 
 | Menu | Items (command; key) |
 |---|---|
-| TimeTracker | About; Settings… (`settings.toggle`; ⌘,); Launch at Login (`app.launchAtLogin`, a check item); Show Welcome Again (`welcome.show`); Services; Hide, Hide Others, Show All; Quit TimeTracker (`app.quit`; ⌘Q) |
+| TimeTracker | About; Settings… (`settings.toggle`; ⌘,); Launch at Login (`app.launchAtLogin`, a check item); Show Welcome Again (`welcome.show`); Services; Hide, Hide Others, Show All; Hide to Menu Bar (`app.background`; ⌘Q), Quit TimeTracker (`app.quit`) |
 | File | New Recording… (`recording.new`); Start Timer… (`timer.start`; ⌘T), Stop Timer (`timer.stop`; ⌘⇧.); New Project… (`projects.new`; ⌘N), New Client… (`clients.new`), New Tag… (`tags.new`; ⌘N), New Rule… (`rules.new`; ⌘N); Export Backup… (`data.exportBackup`); Close Window (`window.hide`; ⌘W) |
 | Edit | Undo (`edit.undo`; ⌘Z), Redo (`edit.redo`; ⌘⇧Z); Cut, Copy, Paste, Select All (native); Delete Recording (`recording.delete`; ⌫); Copy Report as Text (`reports.copyText`; ⌘⇧C), Copy Report Notes (`reports.copyNotes`; ⌥⌘C) |
 | View | Day, Week, Month, Reports, Projects, Tags, Rules (`view.day` … `view.rules`; ⌘1 … ⌘7, the active view checked); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); View Options… (`day.settings`); Enter Full Screen (native) |

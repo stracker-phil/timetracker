@@ -58,6 +58,7 @@ export function createApiMock(): typeof realApi {
     takeLaunchEvents: vi.fn().mockResolvedValue([]),
     remoteReply: vi.fn().mockResolvedValue(undefined),
     hideWindow: vi.fn().mockResolvedValue(undefined),
+    hideToMenuBar: vi.fn().mockResolvedValue(undefined),
     quitApp: vi.fn().mockResolvedValue(undefined),
     chooseSavePath: vi.fn().mockResolvedValue(null),
     chooseFolder: vi.fn().mockResolvedValue(null),

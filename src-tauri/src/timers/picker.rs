@@ -11,16 +11,23 @@ const LABEL: &str = "timer";
 const URL: &str = "src/windows/timer/index.html";
 const SIZE: (f64, f64) = (380.0, 380.0);
 
-/// Shows the picker under the tray icon (centered when the tray's place is unknown) and focuses it.
-pub fn open(app: &AppHandle) {
+#[derive(Clone, Copy)]
+pub enum Place {
+    /// Under the tray icon, for the tray's menu.
+    UnderTray,
+    /// On the screen the user works on, for the keyboard.
+    OnFocusedScreen,
+}
+
+pub fn open(app: &AppHandle, place: Place) {
     let handle = app.clone();
     // The panel's AppKit calls need the main thread; the shortcut and the commands may come from others.
-    if let Err(e) = app.run_on_main_thread(move || open_on_main_thread(&handle)) {
+    if let Err(e) = app.run_on_main_thread(move || open_on_main_thread(&handle, place)) {
         log::warn!("Couldn't open the timer picker: {e}");
     }
 }
 
-fn open_on_main_thread(app: &AppHandle) {
+fn open_on_main_thread(app: &AppHandle, place: Place) {
     let window = match app.get_webview_window(LABEL) {
         Some(window) => window,
         None => match build(app) {
@@ -31,10 +38,33 @@ fn open_on_main_thread(app: &AppHandle) {
             }
         },
     };
-    if window.move_window(Position::TrayCenter).is_err() {
+    move_to(&window, place);
+    focus(&window);
+}
+
+fn move_to(window: &WebviewWindow, place: Place) {
+    let moved = match place {
+        Place::UnderTray => window.move_window(Position::TrayCenter).is_ok(),
+        Place::OnFocusedScreen => on_focused_screen(window),
+    };
+    if !moved {
         let _ = window.move_window(Position::Center);
     }
-    focus(&window);
+}
+
+#[cfg(target_os = "macos")]
+fn on_focused_screen(window: &WebviewWindow) -> bool {
+    let Ok(ns_window) = window.ns_window() else {
+        return false;
+    };
+    // SAFETY: the window is alive and this runs on the main thread.
+    unsafe { super::screen::place_on_focused_screen(ns_window) };
+    true
+}
+
+#[cfg(not(target_os = "macos"))]
+fn on_focused_screen(_window: &WebviewWindow) -> bool {
+    false
 }
 
 #[cfg(target_os = "macos")]
@@ -63,7 +93,7 @@ fn show_and_focus(window: &WebviewWindow) {
 pub fn toggle(app: &AppHandle) {
     match app.get_webview_window(LABEL) {
         Some(window) if window.is_visible().unwrap_or(false) => hide(app),
-        _ => open(app),
+        _ => open(app, Place::OnFocusedScreen),
     }
 }
 

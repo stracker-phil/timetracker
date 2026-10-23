@@ -138,7 +138,7 @@ describe("menuState", () => {
   });
 
   describe("while an overlay is open", () => {
-    const ALLOWED = ["settings.toggle", "shortcuts.show", "palette.toggle", "zoom.in", "zoom.out", "zoom.reset", "window.hide", "app.quit", "edit.undo", "edit.redo"];
+    const ALLOWED = ["settings.toggle", "shortcuts.show", "palette.toggle", "zoom.in", "zoom.out", "zoom.reset", "window.hide", "app.background", "app.quit", "edit.undo", "edit.redo"];
 
     it.each<[string, Parameters<typeof resetStore>[0]]>([
       ["a dialog", { dialog: { type: "settings" } }],

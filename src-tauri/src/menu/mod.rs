@@ -103,6 +103,7 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
         .hide_others()
         .show_all()
         .separator()
+        .item(&build_item(app, bindings, state, "app.background")?)
         .item(&build_item(app, bindings, state, "app.quit")?)
         .build()?;
     let file = sub(
@@ -207,15 +208,16 @@ pub fn rebuild(app: &AppHandle) {
     }
 }
 
-/// Quitting is handled here, so it works even when the page is broken; every other item runs
-/// its command in the page.
+/// Quitting and hiding are handled here, so they work even when the page is broken; every other item
+/// runs its command in the page.
 pub fn forward(app: &AppHandle, id: &str) {
     let Some(def) = menu_item(id) else {
         return;
     };
-    if id == "app.quit" {
-        app.exit(0);
-        return;
+    match id {
+        "app.quit" => return app.exit(0),
+        "app.background" => return crate::window::hide_to_menu_bar(app),
+        _ => {}
     }
     // macOS toggled the checkmark on click; the page's next report decides it.
     if def.check {

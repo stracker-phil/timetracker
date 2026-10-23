@@ -39,7 +39,9 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("settings.toggle", "Settings…", "Mod+,"),
     check("app.launchAtLogin", "Launch at Login", ""),
     item("welcome.show", "Show Welcome Again", ""),
-    item("app.quit", "Quit TimeTracker", "Mod+Q"),
+    // ⌘Q only hides: the app keeps recording until Quit is chosen.
+    item("app.background", "Hide to Menu Bar", "Mod+Q"),
+    item("app.quit", "Quit TimeTracker", ""),
     // File
     item("recording.new", "New Recording…", ""),
     item("timer.start", "Start Timer…", "Mod+T"),
@@ -164,6 +166,7 @@ mod tests {
         "settings.toggle",
         "app.launchAtLogin",
         "welcome.show",
+        "app.background",
         "app.quit",
         "recording.new",
         "timer.start",
@@ -404,6 +407,12 @@ mod tests {
                 ("view.rules", "Mod+7"),
             ]
         );
+    }
+
+    #[test]
+    fn mod_q_hides_to_the_menu_bar_and_quit_has_no_default_binding() {
+        assert_eq!(default_binding("app.background"), Some("Mod+Q"));
+        assert_eq!(default_binding("app.quit"), None);
     }
 
     #[test]

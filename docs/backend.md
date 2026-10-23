@@ -82,9 +82,10 @@ the `sidebar` vibrancy effect. The away prompt (`away_prompt/window.rs`) and the
 |---|---|
 | close button / ⌘W (`window.hide`, `hide_window`) | the window hides; the app, the tray and the Dock icon stay |
 | last window closed (`ExitRequested { code: None }`) | prevented |
-| tray "Open TimeTracker", a second `timetracker` launch, Dock icon click (`RunEvent::Reopen`) | `window::show_main`: show, unminimize, focus |
+| ⌘Q (`app.background`, `hide_to_menu_bar`) | `window::hide_to_menu_bar`: the window and the Dock icon hide (`set_dock_visibility`); the tray, the tracker and the timer keep running |
+| tray "Open TimeTracker", a second `timetracker` launch, Dock icon click (`RunEvent::Reopen`) | `window::show_main`: the Dock icon returns, show, unminimize, focus |
 | `timetracker --hidden` (launch at login) | first instance: the window is never shown; running instance: nothing |
-| ⌘Q (`app.quit`), tray "Quit TimeTracker", `quit_app` | `app.exit(0)` |
+| "Quit TimeTracker" (`app.quit`, no default key) in the app menu, the palette and the tray, `quit_app` | `app.exit(0)` |
 
 `window.rs` never sets the window theme, so its native appearance follows macOS (the page draws every surface
 opaquely). It also has `bring_to_front`, which does nothing with `TIMETRACKER_BACKGROUND=1` in debug builds.
@@ -790,7 +791,10 @@ A timer is a recording with an open span, so the overlap rule, undo and reports 
   untouched; `null` without a timer),
   `timer_status`, `timers_recent`, `timer_picker_open`, `timer_picker_close`; `start_by_name` serves the CLI.
 - `timers/picker.rs`: the `timer` window (`src/windows/timer/index.html`, 380×380, no decorations, transparent,
-  always on top, hidden on blur), under the tray icon or centered; capability `capabilities/timer.json`. On
+  always on top, hidden on blur); capability `capabilities/timer.json`. `open(app, Place)`: `UnderTray` from the
+  tray menu, `OnFocusedScreen` from the shortcut and `timer_picker_open`: `timers/screen.rs` puts it at the top
+  center (`top_center`) of the screen holding the frontmost app's front window (`CGWindowListCopyWindowInfo`,
+  layer 0), else the one under the pointer (`screen_at`); centered elsewhere. On
   macOS `timers/panel.rs` turns it into a non-activating `NSPanel` (a runtime subclass swapped in with
   `object_setClass` after checking it matches tao's `TaoWindow` layout, else it stays a plain window): it joins
   every space, full-screen ones too (`NSStatusWindowLevel`), and takes the keyboard without activating the app,
@@ -893,9 +897,10 @@ Bring All to Front) and Help. [ux.md](ux.md#menu-bar) lists every item.
 - **Enabled and checked.** The page reports `MenuState { enabled, checked }` (ids) through `menu_sync`
   whenever it changes; `menu/sync.rs` keeps it in the managed `MenuSync` and applies it to every listed item
   (`item_state`): items missing from `enabled` are greyed out, check items show `checked` (the active view,
-  Launch at Login). Before the first report every item is enabled; `app.quit` always is.
+  Launch at Login). Before the first report every item is enabled; `app.quit` and `app.background` always are.
   `rebuild` builds with the last report.
-- **Clicks.** `menu::forward`: `app.quit` exits right there, so quitting works even when the page is broken;
+- **Clicks.** `menu::forward`: `app.quit` exits and `app.background` hides to the menu bar right there, so both
+  work even when the page is broken;
   every other listed id is emitted as `command` (`is_menu_command` filters out the native items). A click on
   a check item re-applies the last report first, since macOS toggles the mark itself; the page's next report
   sets it.

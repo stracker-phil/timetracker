@@ -167,7 +167,8 @@ out. The core commands are `APP_COMMANDS` (`commands/index.ts`); their default b
   (`moveRule` in the rules slice).
 - **Tracker.** `tracker.pause` (until resumed; while tracking) and `tracker.resume` (while paused), no default
   bindings.
-- **Window.** `window.hide` calls `api.hideWindow`; `app.quit` is handled by Rust when it comes from the menu.
+- **Window.** `window.hide` calls `api.hideWindow`; `app.background` (⌘Q) calls `api.hideToMenuBar`; both it and `app.quit`
+  are handled by Rust when they come from the menu.
 - **App and help.** `app.launchAtLogin` switches the LaunchAgent (`setLaunchAtLogin`, checked by
   `settings.launchAtLogin`); `welcome.show` shows the welcome sheet again; `data.exportBackup` and
   `data.reveal` run the Settings → Data actions (`components/settings/actions.ts`); `help.readme` calls

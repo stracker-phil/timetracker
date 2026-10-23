@@ -262,7 +262,7 @@ fn on_menu_event(app: &AppHandle, id: &str) {
         OPEN_ID => window::show_main(app),
         QUIT_ID => app.exit(0),
         RESUME_ID => resume(app),
-        TIMER_START_ID => picker::open(app),
+        TIMER_START_ID => picker::open(app, picker::Place::UnderTray),
         TIMER_STOP_ID => stop_timer(app),
         _ if id.starts_with(TIMER_RECENT_PREFIX) => start_recent(app, id),
         _ => {

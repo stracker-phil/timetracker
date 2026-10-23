@@ -28,8 +28,8 @@ pub struct ItemState {
     pub checked: bool,
 }
 
-/// Quitting works even when the page is broken, so it never waits for the page to enable it.
-const ALWAYS_ENABLED: &[&str] = &["app.quit"];
+/// Quitting and hiding work even when the page is broken, so they never wait for the page to enable them.
+const ALWAYS_ENABLED: &[&str] = &["app.background", "app.quit"];
 
 /// How an item shows under the page's report; before the first report every item is enabled.
 pub fn item_state(state: Option<&MenuState>, id: &str) -> ItemState {
@@ -124,6 +124,15 @@ mod tests {
     fn quit_stays_enabled_when_the_page_does_not_list_it() {
         let state = report(&[], &[]);
         assert_eq!(item_state(Some(&state), "app.quit"), shown(true, false));
+    }
+
+    #[test]
+    fn hide_to_menu_bar_stays_enabled_when_the_page_does_not_list_it() {
+        let state = report(&[], &[]);
+        assert_eq!(
+            item_state(Some(&state), "app.background"),
+            shown(true, false)
+        );
     }
 
     #[test]

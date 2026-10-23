@@ -293,7 +293,8 @@ const APP_COMMANDS: Command[] = [
   { id: "data.reveal", title: "Show data folder", scope: "global", menu: true, run: revealDataFolder },
   { id: "data.exportBackup", title: "Export backup…", scope: "global", menu: true, run: exportBackup },
   { id: "help.readme", title: "Open README", scope: "global", menu: true, run: () => void api.openReadme().catch((e) => fail(e, "Couldn't open the README")) },
-  { id: "app.quit", title: "Quit TimeTracker", scope: "global", defaultBinding: "Mod+Q", menu: true, run: () => void api.quitApp() },
+  { id: "app.background", title: "Hide to Menu Bar", scope: "global", defaultBinding: "Mod+Q", menu: true, run: () => void api.hideToMenuBar() },
+  { id: "app.quit", title: "Quit TimeTracker", scope: "global", menu: true, run: () => void api.quitApp() },
 ];
 
 /**
@@ -321,7 +322,7 @@ export function runCommand(id: string): boolean {
 }
 
 /** While a dialog or the palette is open, only these run; other keys belong to the overlay. */
-const MODAL_ALLOWED = new Set(["settings.toggle", "shortcuts.show", "palette.toggle", "zoom.in", "zoom.out", "zoom.reset", "window.hide", "app.quit", "edit.undo", "edit.redo"]);
+const MODAL_ALLOWED = new Set(["settings.toggle", "shortcuts.show", "palette.toggle", "zoom.in", "zoom.out", "zoom.reset", "window.hide", "app.background", "app.quit", "edit.undo", "edit.redo"]);
 
 /** Commands that keep firing while their key is held. */
 const REPEATABLE = new Set(["zoom.in", "zoom.out", "recording.nudgeEarlier", "recording.nudgeLater", "recording.extend", "recording.shrink"]);

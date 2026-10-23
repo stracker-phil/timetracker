@@ -103,8 +103,8 @@ Times are `2026-10-21T09:30` (local, or with `Z` or `±hh:mm`), `09:30` (today) 
 `show`, `focus` and `mcp` needs TimeTracker running. Exit codes: 0 ok, 1 TimeTracker refused the request (the
 error is printed), 2 bad arguments or "TimeTracker is not running". `--json` prints replies as JSON.
 
-Closing the window keeps TimeTracker running in the menu bar; quit from the menu bar item, with ⌘Q or with
-`timetracker quit`.
+Closing the window keeps TimeTracker running in the menu bar, and ⌘Q also hides the Dock icon; recording
+goes on. Quit with "Quit TimeTracker" (app menu, menu bar item or palette) or `timetracker quit`.
 
 ## Scripting
 

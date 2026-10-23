@@ -24,6 +24,7 @@ pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         commands::log_frontend_error,
         commands::take_launch_events,
         commands::hide_window,
+        commands::hide_to_menu_bar,
         commands::quit_app,
         commands::choose_save_path,
         commands::choose_folder,
