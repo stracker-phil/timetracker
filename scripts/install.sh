@@ -14,7 +14,14 @@ ln -sfn "$APP" "$LINK"
 ln -sf "$BIN" "$HOME/.local/bin/timetracker"
 echo "Installed the release build as ~/Applications/TimeTracker.app and ~/.local/bin/timetracker"
 
-pgrep -f 'TimeTracker( \(Debug\))?\.app/Contents/MacOS/timetracker( --hidden)?$' >/dev/null || exit 0
+running() { pgrep -f 'TimeTracker( \(Debug\))?\.app/Contents/MacOS/timetracker( --hidden)?$' >/dev/null; }
+running || exit 0
 "$ROOT/scripts/stop-app.sh" "$BIN"
-open -g "$LINK"
-echo "Restarted TimeTracker on the new release build"
+# Launch Services can refuse right after the old app quit (error -600), so try a few times.
+for _ in {1..10}; do
+  open -g "$LINK" 2>/dev/null
+  sleep 1
+  running && { echo "Restarted TimeTracker on the new release build"; exit 0; }
+done
+echo "TimeTracker did not start again; open it from ~/Applications" >&2
+exit 1
