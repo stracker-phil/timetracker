@@ -1,5 +1,5 @@
-//! Every change to recordings, and to the dismissed suggestions, is an `Op` with an exact inverse, applied in
-//! one transaction (ADR 0010).
+//! Every change to recordings, dismissed suggestions and stored suggestions is an `Op` with an exact inverse,
+//! applied in one transaction (ADR 0010).
 
 use std::collections::HashSet;
 
@@ -8,6 +8,7 @@ use sqlx::SqliteConnection;
 use crate::db::Db;
 use crate::db::dismissed::{self, Dismissal};
 use crate::db::recordings::{self, Recording};
+use crate::db::stored_suggestions::{self, StoredSuggestion};
 use crate::db::time::Day;
 use crate::error::{AppError, AppResult};
 
@@ -28,6 +29,11 @@ pub enum Op {
     },
     Undismiss {
         dismissal: Dismissal,
+    },
+    /// A stored suggestion created (`before` none), edited, or deleted (`after` none).
+    Suggestion {
+        before: Option<StoredSuggestion>,
+        after: Option<StoredSuggestion>,
     },
     /// Applied in order; a replace is trims and deletes followed by the new recording.
     Batch {
@@ -55,6 +61,10 @@ impl Op {
             Op::Undismiss { dismissal } => Op::Dismiss {
                 dismissal: dismissal.clone(),
             },
+            Op::Suggestion { before, after } => Op::Suggestion {
+                before: after.clone(),
+                after: before.clone(),
+            },
             Op::Batch { label, ops } => Op::Batch {
                 label: label.clone(),
                 ops: ops.iter().rev().map(Op::inverse).collect(),
@@ -67,7 +77,10 @@ impl Op {
         match self {
             Op::Create { recording } => vec![recording],
             Op::Update { after, .. } => vec![after],
-            Op::Delete { .. } | Op::Dismiss { .. } | Op::Undismiss { .. } => Vec::new(),
+            Op::Delete { .. }
+            | Op::Dismiss { .. }
+            | Op::Undismiss { .. }
+            | Op::Suggestion { .. } => Vec::new(),
             Op::Batch { ops, .. } => ops.iter().flat_map(Op::written).collect(),
         }
     }
@@ -77,16 +90,17 @@ impl Op {
         match self {
             Op::Create { recording } | Op::Delete { recording } => vec![recording],
             Op::Update { before, after } => vec![before, after],
-            Op::Dismiss { .. } | Op::Undismiss { .. } => Vec::new(),
+            Op::Dismiss { .. } | Op::Undismiss { .. } | Op::Suggestion { .. } => Vec::new(),
             Op::Batch { ops, .. } => ops.iter().flat_map(Op::recordings).collect(),
         }
     }
 
-    /// The days whose dismissed suggestions the op changes.
-    pub fn dismissal_days(&self) -> Vec<Day> {
+    /// The days whose dismissed or stored suggestions the op changes.
+    pub fn suggestion_days(&self) -> Vec<Day> {
         match self {
             Op::Dismiss { dismissal } | Op::Undismiss { dismissal } => vec![dismissal.day],
-            Op::Batch { ops, .. } => ops.iter().flat_map(Op::dismissal_days).collect(),
+            Op::Suggestion { before, after } => before.iter().chain(after).map(|s| s.day).collect(),
+            Op::Batch { ops, .. } => ops.iter().flat_map(Op::suggestion_days).collect(),
             _ => Vec::new(),
         }
     }
@@ -111,6 +125,18 @@ async fn run(conn: &mut SqliteConnection, op: &Op) -> AppResult<()> {
         Op::Delete { recording } => recordings::remove_on(conn, &recording.id).await,
         Op::Dismiss { dismissal } => dismissed::put_on(conn, dismissal).await,
         Op::Undismiss { dismissal } => dismissed::remove_on(conn, dismissal).await,
+        Op::Suggestion {
+            after: Some(suggestion),
+            ..
+        } => stored_suggestions::put_on(conn, suggestion).await,
+        Op::Suggestion {
+            before: Some(suggestion),
+            after: None,
+        } => stored_suggestions::remove_on(conn, &suggestion.id).await,
+        Op::Suggestion {
+            before: None,
+            after: None,
+        } => Ok(()),
         Op::Batch { ops, .. } => {
             for op in ops {
                 Box::pin(run(conn, op)).await?;
@@ -277,6 +303,150 @@ mod tests {
             assert_eq!(op.inverse(), inverse, "{name}");
             assert_eq!(inverse.inverse(), op, "{name} twice");
         }
+    }
+
+    fn stored(id: &str, note: &str, day: Day) -> StoredSuggestion {
+        StoredSuggestion {
+            id: id.into(),
+            project_id: "p".into(),
+            note: note.into(),
+            tag_id: None,
+            source: "cli".into(),
+            day,
+            spans: vec![crate::db::recordings::Span {
+                start: at(10, 0),
+                end: at(11, 0),
+            }],
+            created_at: 1_000,
+            updated_at: 2_000,
+        }
+    }
+
+    fn suggestion_op(before: Option<&StoredSuggestion>, after: Option<&StoredSuggestion>) -> Op {
+        Op::Suggestion {
+            before: before.cloned(),
+            after: after.cloned(),
+        }
+    }
+
+    #[test]
+    fn the_inverse_of_a_suggestion_op_swaps_before_and_after() {
+        let day = Day::of(at(12, 0));
+        let (old, new) = (stored("s", "old", day), stored("s", "new", day));
+        let cases = [
+            (
+                "create",
+                suggestion_op(None, Some(&new)),
+                suggestion_op(Some(&new), None),
+            ),
+            (
+                "delete",
+                suggestion_op(Some(&old), None),
+                suggestion_op(None, Some(&old)),
+            ),
+            (
+                "edit",
+                suggestion_op(Some(&old), Some(&new)),
+                suggestion_op(Some(&new), Some(&old)),
+            ),
+        ];
+        for (name, op, inverse) in cases {
+            assert_eq!(op.inverse(), inverse, "{name}");
+            assert_eq!(inverse.inverse(), op, "{name} twice");
+        }
+    }
+
+    #[test]
+    fn suggestion_days_are_the_days_of_dismissals_and_stored_suggestions() {
+        let (monday, tuesday, wednesday) = {
+            let monday = Day::of(at(12, 0));
+            (monday, monday.next(), monday.next().next())
+        };
+        let moved = suggestion_op(
+            Some(&stored("s", "", monday)),
+            Some(&stored("s", "", tuesday)),
+        );
+        let created = suggestion_op(None, Some(&stored("t", "", wednesday)));
+        let dismissed = dismiss(&Dismissal {
+            day: monday,
+            ..dismissal("rule", 0, 1)
+        });
+        let cases = [
+            ("a move", moved.clone(), vec![monday, tuesday]),
+            ("a creation", created.clone(), vec![wednesday]),
+            ("a dismissal", dismissed.clone(), vec![monday]),
+            ("a recording", create(&row("a", 0, 10)), vec![]),
+            (
+                "a batch of them",
+                batch(vec![created, dismissed, create(&row("b", 0, 10)), moved]),
+                vec![wednesday, monday, monday, tuesday],
+            ),
+        ];
+        for (name, op, expected) in cases {
+            assert_eq!(op.suggestion_days(), expected, "{name}");
+        }
+    }
+
+    #[tokio::test]
+    async fn applying_a_suggestion_op_and_its_inverse_leaves_no_trace() {
+        let w = World::new().await;
+        let day = Day::of(at(12, 0));
+        let new = StoredSuggestion {
+            project_id: w.project.id.clone(),
+            tag_id: Some(w.alpha.id.clone()),
+            ..stored("s", "new", day)
+        };
+        let op = suggestion_op(None, Some(&new));
+        let listed = || stored_suggestions::list_for_day(&w.db, day);
+
+        apply(&w.db, &op).await.unwrap();
+        assert_eq!(listed().await.unwrap(), [new]);
+
+        apply(&w.db, &op.inverse()).await.unwrap();
+        assert!(listed().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn applying_an_edit_and_its_inverse_restores_the_exact_suggestion() {
+        let w = World::new().await;
+        let day = Day::of(at(12, 0));
+        let old = StoredSuggestion {
+            project_id: w.project.id.clone(),
+            ..stored("s", "old", day)
+        };
+        let new = StoredSuggestion {
+            project_id: w.other.id.clone(),
+            tag_id: Some(w.beta.id.clone()),
+            updated_at: 9_000,
+            ..stored("s", "new", day)
+        };
+        apply(&w.db, &suggestion_op(None, Some(&old)))
+            .await
+            .unwrap();
+        let op = suggestion_op(Some(&old), Some(&new));
+
+        apply(&w.db, &op).await.unwrap();
+        assert_eq!(stored_suggestions::get(&w.db, "s").await.unwrap(), new);
+
+        apply(&w.db, &op.inverse()).await.unwrap();
+        assert_eq!(stored_suggestions::get(&w.db, "s").await.unwrap(), old);
+    }
+
+    #[tokio::test]
+    async fn deleting_a_suggestion_that_is_gone_is_not_found_and_applies_nothing() {
+        let w = World::new().await;
+        let day = Day::of(at(12, 0));
+        let gone = StoredSuggestion {
+            project_id: w.project.id.clone(),
+            ..stored("gone", "", day)
+        };
+        let kept = saved(&w, None, at(10, 0), at(11, 0)).await;
+        let op = batch(vec![delete(&kept), suggestion_op(Some(&gone), None)]);
+
+        let err = apply(&w.db, &op).await.unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+        assert_eq!(w.rows().await, [kept]);
     }
 
     #[test]

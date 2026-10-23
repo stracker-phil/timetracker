@@ -13,6 +13,7 @@ mod proposal;
 mod review;
 mod snap;
 mod spans;
+mod stored;
 #[cfg(test)]
 mod testing;
 pub mod timer;
@@ -113,7 +114,7 @@ fn days_touched(op: &Op, now: Ms) -> Vec<Day> {
         .iter()
         .flat_map(|r| &r.spans)
         .flat_map(|s| days_of(s.start, s.end.unwrap_or(now)))
-        .chain(op.dismissal_days())
+        .chain(op.suggestion_days())
         .collect();
     days.sort();
     days.dedup();
@@ -179,8 +180,8 @@ impl Recordings<'_> {
         self.create_with(input, overlap, Vec::new()).await
     }
 
-    /// `create`, with `also` applied in the same undoable change.
-    async fn create_with(
+    /// `input` as a new recording, written together with `also` as one undoable change.
+    pub async fn create_with(
         &self,
         input: RecordingInput,
         overlap: Overlap,
@@ -207,23 +208,22 @@ impl Recordings<'_> {
         self.commit(&mut undo, label, op, &recording.id).await
     }
 
-    /// New recordings as one undoable change; one with a span that would overlap a recording, or one
-    /// created before it, is left out.
-    pub async fn create_all(
+    /// New recordings, each with its ops, as one undoable change; one with a span that would overlap a
+    /// recording, or one created before it, is left out with its ops.
+    pub async fn create_all_with(
         &self,
-        inputs: Vec<RecordingInput>,
+        inputs: Vec<(RecordingInput, Vec<Op>)>,
         label: String,
     ) -> AppResult<Change<Vec<Recording>>> {
         let mut undo = self.undo.lock().await;
-        let created = self.without_overlaps(inputs).await?;
+        let kept = self.without_overlaps(inputs).await?;
+        let created: Vec<Recording> = kept.iter().map(|(r, _)| r.clone()).collect();
         let days = if created.is_empty() {
             Vec::new()
         } else {
-            let ops = created
-                .iter()
-                .map(|recording| Op::Create {
-                    recording: recording.clone(),
-                })
+            let ops = kept
+                .into_iter()
+                .flat_map(|(recording, also)| std::iter::once(Op::Create { recording }).chain(also))
                 .collect();
             let op = Op::Batch {
                 label: label.clone(),
@@ -238,19 +238,22 @@ impl Recordings<'_> {
     }
 
     /// The inputs as new recordings, leaving out those that overlap a stored one or an earlier input.
-    async fn without_overlaps(&self, inputs: Vec<RecordingInput>) -> AppResult<Vec<Recording>> {
-        let mut kept: Vec<Recording> = Vec::new();
-        for input in inputs {
+    async fn without_overlaps(
+        &self,
+        inputs: Vec<(RecordingInput, Vec<Op>)>,
+    ) -> AppResult<Vec<(Recording, Vec<Op>)>> {
+        let mut kept: Vec<(Recording, Vec<Op>)> = Vec::new();
+        for (input, extra) in inputs {
             let (recording, _) = self.new_recording(input).await?;
             let spans = claimed(&recording);
             let overlaps_kept = kept
                 .iter()
-                .flat_map(claimed)
+                .flat_map(|(k, _)| claimed(k))
                 .any(|k| spans.iter().any(|s| k.start < s.end && k.end > s.start));
             if overlaps_kept || !in_the_way(self.db, &spans, &recording.id).await?.is_empty() {
                 continue;
             }
-            kept.push(recording);
+            kept.push((recording, extra));
         }
         Ok(kept)
     }
@@ -360,6 +363,7 @@ mod tests {
     use super::undo::UndoStatus;
     use super::*;
     use crate::db::projects;
+    use crate::db::stored_suggestions::{self, StoredSuggestion};
     use crate::error::ErrorKind;
     use crate::test_support;
 
@@ -1177,9 +1181,7 @@ mod tests {
             w.input(at(12, 0), at(13, 0)),
         ];
 
-        let change = w
-            .service()
-            .create_all(inputs, "Accept suggestions of Slack".into())
+        let change = create_all(&w, inputs, "Accept suggestions of Slack")
             .await
             .unwrap();
 
@@ -1216,11 +1218,7 @@ mod tests {
             w.input(at(12, 0), at(13, 0)),
         ];
 
-        let change = w
-            .service()
-            .create_all(inputs, "Accept".into())
-            .await
-            .unwrap();
+        let change = create_all(&w, inputs, "Accept").await.unwrap();
 
         assert_eq!(
             spans(&change.value),
@@ -1242,14 +1240,8 @@ mod tests {
         w.create(at(10, 0), at(11, 0)).await;
         let before = w.status().await;
 
-        let empty = w
-            .service()
-            .create_all(Vec::new(), "Accept".into())
-            .await
-            .unwrap();
-        let all_skipped = w
-            .service()
-            .create_all(vec![w.input(at(10, 30), at(11, 30))], "Accept".into())
+        let empty = create_all(&w, Vec::new(), "Accept").await.unwrap();
+        let all_skipped = create_all(&w, vec![w.input(at(10, 30), at(11, 30))], "Accept")
             .await
             .unwrap();
 
@@ -1259,6 +1251,154 @@ mod tests {
         }
         assert_eq!(w.status().await, before);
         assert_eq!(w.rows().await.len(), 1);
+    }
+
+    async fn create_all(
+        w: &World,
+        inputs: Vec<RecordingInput>,
+        label: &str,
+    ) -> AppResult<Change<Vec<Recording>>> {
+        let inputs = inputs
+            .into_iter()
+            .map(|input| (input, Vec::new()))
+            .collect();
+        w.service().create_all_with(inputs, label.into()).await
+    }
+
+    fn stored(w: &World, id: &str, start: Ms, end: Ms) -> StoredSuggestion {
+        StoredSuggestion {
+            id: id.into(),
+            project_id: w.project.id.clone(),
+            note: String::new(),
+            tag_id: None,
+            source: "cli".into(),
+            day: Day::of(start),
+            spans: vec![Span { start, end }],
+            created_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    /// The op that stores `suggestion`.
+    fn storing(suggestion: StoredSuggestion) -> Op {
+        Op::Suggestion {
+            before: None,
+            after: Some(suggestion),
+        }
+    }
+
+    async fn stored_ids(w: &World) -> Vec<String> {
+        let day = Day::of(at(12, 0));
+        stored_suggestions::list_for_days(&w.db, day.prev(), day.next())
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|s| s.id)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn create_all_with_writes_the_ops_of_the_inputs_it_creates_and_skips_the_others() {
+        let w = World::new().await;
+        let existing = w.create(at(10, 0), at(11, 0)).await;
+        let kept_op = storing(stored(&w, "kept", at(12, 0), at(13, 0)));
+        let skipped_op = storing(stored(&w, "skipped", at(10, 30), at(11, 30)));
+        let inputs = vec![
+            (w.input(at(12, 0), at(13, 0)), vec![kept_op]),
+            (w.input(at(10, 30), at(11, 30)), vec![skipped_op]),
+        ];
+
+        let change = w
+            .service()
+            .create_all_with(inputs, "Approve suggestion".into())
+            .await
+            .unwrap();
+
+        assert_eq!(spans(&change.value), [(at(12, 0), at(13, 0))]);
+        assert_eq!(stored_ids(&w).await, ["kept"]);
+        assert!(change.days.contains(&Day::of(at(12, 0))));
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Approve suggestion"));
+        assert_eq!(w.rows().await, [existing]);
+        assert!(stored_ids(&w).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_all_with_nothing_created_writes_no_ops() {
+        let w = World::new().await;
+        w.create(at(10, 0), at(11, 0)).await;
+        let op = storing(stored(&w, "skipped", at(10, 30), at(11, 30)));
+        let before = w.status().await;
+
+        let change = w
+            .service()
+            .create_all_with(
+                vec![(w.input(at(10, 30), at(11, 30)), vec![op])],
+                "Approve".into(),
+            )
+            .await
+            .unwrap();
+
+        assert!(change.value.is_empty());
+        assert!(change.days.is_empty());
+        assert!(stored_ids(&w).await.is_empty());
+        assert_eq!(w.status().await, before);
+    }
+
+    #[tokio::test]
+    async fn create_with_applies_the_extra_ops_in_the_same_undo_step() {
+        let w = World::new().await;
+        let saved = w
+            .service()
+            .create_suggestion(w.input(at(10, 0), at(11, 0)), "cli")
+            .await
+            .unwrap()
+            .value;
+        let delete_it = Op::Suggestion {
+            before: Some(saved.clone()),
+            after: None,
+        };
+
+        let change = w
+            .service()
+            .create_with(
+                w.input(at(10, 0), at(11, 0)),
+                Overlap::Cancel,
+                vec![delete_it],
+            )
+            .await
+            .unwrap();
+
+        assert!(stored_ids(&w).await.is_empty());
+        assert_eq!(w.rows().await, [change.value]);
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Record 1h 00m for Acme"));
+        assert!(w.rows().await.is_empty());
+        assert_eq!(stored_ids(&w).await, [saved.id]);
+    }
+
+    #[tokio::test]
+    async fn create_with_that_is_refused_leaves_the_extra_ops_unapplied() {
+        let w = World::new().await;
+        w.create(at(10, 0), at(11, 0)).await;
+        let create_it = storing(stored(&w, "s1", at(12, 0), at(13, 0)));
+
+        let err = w
+            .service()
+            .create_with(
+                w.input(at(10, 30), at(11, 30)),
+                Overlap::Cancel,
+                vec![create_it],
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::Overlap);
+        assert!(stored_ids(&w).await.is_empty());
     }
 
     #[tokio::test]
@@ -1272,11 +1412,7 @@ mod tests {
             },
         ];
 
-        let err = w
-            .service()
-            .create_all(inputs, "Accept".into())
-            .await
-            .unwrap_err();
+        let err = create_all(&w, inputs, "Accept").await.unwrap_err();
 
         assert_eq!(field_of(&err).as_deref(), Some("note"));
         assert!(w.rows().await.is_empty());

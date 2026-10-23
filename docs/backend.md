@@ -164,9 +164,9 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `rule_preview` | `input: RuleInput, days: u32` | `RulePreview { hits: PreviewHit[] { block, day }, totalMs, days }`: what the conditions alone match over the last `days` days, today included (see [Rules and suggestions](#rules-and-suggestions)) | `invalid_input` (`field: conditions`), `db` |
 | `suggestions` | `day: Day` | `Suggestion[]` (the same as in `DayView`) | `db` |
 | `suggestion_approve` | `day: Day, id` | `SuggestionApproved { recording, durationMs }`: the recording, created like `recording_create` with `overlap: cancel` (undoable), and its length for the toast | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
-| `suggestion_approve_rule` | `day: Day, ruleId` | `Recording[]`: every suggestion of the rule on the day, one undo entry `Approve suggestion` / `Approve n suggestions` (`Recordings::create_all`; one that would overlap is left out) | `not_found` (no suggestions), `db` |
+| `suggestion_approve_rule` | `day: Day, ruleId` | `Recording[]`: every suggestion of the rule on the day, one undo entry `Approve suggestion` / `Approve n suggestions` (`Recordings::create_all_with`; one that would overlap is left out) | `not_found` (no suggestions), `db` |
 | `suggestions_approve` | `day: Day, ids: string[]` | `Recording[]`: the suggestions `ids` still on the day (the shown ones; others are not touched), one undo entry `Approve suggestion` / `Approve n suggestions` | `not_found` (none of them left), `db` |
-| `suggestion_approve_edited` | `day: Day, id, input: RecordingInput, overlap` | `Recording`: `input` (the editor's fields) created and the suggestion's whole span dismissed, one undo entry (`Recordings::create_settling`) | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
+| `suggestion_approve_edited` | `day: Day, id, input: RecordingInput, overlap` | `Recording`: `input` (the editor's fields) created and the suggestion's whole span dismissed (a stored one deleted), one undo entry (`Recordings::create_with`) | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
 | `suggestions_dismiss` | `day: Day, ids: string[]` | `number` dismissed: each one's rule, day and span stored in `dismissed_suggestions`, one undo entry `Dismiss suggestion` / `Dismiss n suggestions` | `not_found` (none of them left), `db` |
 | `rules_today` | – | `RuleDay[] { ruleId, matchedMs, pending, pendingMs }` for each active rule today (`rules::day_of_rules`): the activity it matched (first match wins) and its suggestions waiting for review; the Rules screen | `db` |
 | `app_settings_set` (`commands.rs`) | `bundleId: String` (the app key: bundle id, else the app name), `patch: AppSettingPatch { ownLane?, hidden? }` | `Settings`; applied under the settings store's lock (`SettingsStore::update_app`), so concurrent changes never undo each other; an override that ends up default is removed (`Settings::with_app`) | `invalid_input` (blank key), `io` |
@@ -364,8 +364,9 @@ clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `co
   menu commands); each moves by the days between `from` (else its first span's day) and the target day, at its
   own local time and length, and the other spans stay. A copy is a new recording of the moved spans.
 - **Operations** (`ops.rs`): `Op::Create | Update { before, after } | Delete | Batch` on whole recordings with
-  their spans, and `Op::Dismiss | Undismiss` on a dismissed suggestion (so undo covers reviewing); `inverse()`
-  swaps them (a batch reversed). `dismissal_days` adds a dismissal's day to the days a change touched. `apply` runs the op in one transaction through
+  their spans, `Op::Dismiss | Undismiss` on a dismissed suggestion (so undo covers reviewing) and
+  `Op::Suggestion { before, after }` on a stored suggestion (create, edit, delete); `inverse()` swaps them (a
+  batch reversed). `suggestion_days` adds a dismissal's or stored suggestion's day to the days a change touched. `apply` runs the op in one transaction through
   `db::recordings::put_on` (the row and all its spans exactly as given, timestamps, tag and span ids included)
   and `remove_on`, then refuses with `overlap` if any span it wrote shares time with another recording's;
   then nothing is written.
@@ -374,8 +375,8 @@ clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `co
   time`, `Split time`, `Merge recordings`, `Approve suggestion`, `Approve n suggestions`, `Dismiss suggestion`, `Dismiss n suggestions`, from
   `recordings::suggestions_label`); a new change clears
   the redo list. `undo` applies the inverse, `redo` the op again; one that would now overlap is refused and
-  the stack stays as it was. `Recordings::undo`/`redo` live in `undo.rs`; `record_dismissals` (one `Op::Batch` of
-  `Op::Dismiss`) and `create_settling` in `review.rs`.
+  the stack stays as it was. `Recordings::undo`/`redo` live in `undo.rs`; `dismiss_with` (one `Op::Batch` of
+  the ops that settle each suggestion) in `review.rs`.
 
 The Day view gets the day's recordings too (`day::load` reads them with the projects, clients and
 tags): `DayView.recordings` (`RecordingBlock`, one per span on the day: the recording's `id`, `spanId`,
@@ -496,7 +497,8 @@ back from This week is Last week), anything else `Custom`.
 
 `rules/`: a rule says "activity like this belongs to project X"; it never writes a recording. Its suggestions
 fill `DayView.suggestions` and wait for the owner's review: approving one is an ordinary undoable create,
-dismissing one keeps its time from that rule for good.
+dismissing one keeps its time from that rule for good. Stored suggestions (ADR 0028), which other apps write
+through the CLI and MCP, share the list and the review.
 
 - `store.rs`: `rules` and `rule_conditions` (migration `0005_rules.sql`), in position order. `validated`
   checks the name, note, project (existing, not archived), tag (`tagId`, one or `null`) and conditions (at least one; a value
@@ -512,28 +514,47 @@ dismissing one keeps its time from that rule for good.
   belongs to its rule first; a run's bridged gaps only take time no rule matched (earlier rules first), so
   suggestions never overlap. Recorded time, and each rule's own dismissed time (`dismissed`, read by
   `day::load` with `db::dismissed::list_for_day`), is cut away; pieces under Touching pieces of rules with the same project, note and tag join into one suggestion
-  (`joined`; `ruleIds` lists its rules in position order, `ruleId` is the first, `ruleName` their names);
+  (`joined`; `ruleIds` lists its rules in position order, `by` their names);
   joined pieces under `MIN_SUGGESTION_MS` (5 min) are dropped. Ids are `<rule id>:<start>:<end>`, so a suggestion keeps its id across reloads. A tag deleted since
   the rule was saved is left out; `tag` carries the tag's name, `tagEmoji` its emoji, `clientName` the project's client.
-  `rules::day_suggestions` sets each suggestion's `nextCard` (`next_card`: the first timesheet card starting
-  after it), which the page puts it before, and `durationMs`.
+  `rules::day_suggestions` puts the day's stored suggestions first (`stored::pieces`) and lets the rules
+  fill only the time left (`suggest`'s `taken`: recorded and stored time), sorts by start and sets each
+  suggestion's `nextCard` (`next_card`: the first timesheet card starting after it), which the page puts it
+  before, and `durationMs`.
+- `stored.rs` (`pieces`): each span of a stored suggestion (`db::stored_suggestions::StoredSuggestion
+  { id, projectId, note, tagId, source, day, spans, createdAt, updatedAt }`, read by `day::load` with
+  `list_for_day`) without recorded time and without the time of suggestions stored before it (by
+  `createdAt`); a piece the cut leaves under `MIN_SUGGESTION_MS` is dropped, a whole span stays at any
+  length. Ids are `stored:<id>:<start>:<end>`, `storedId` is the stored id, `ruleIds` is empty and `by` is
+  the source.
 - `review.rs` (re-exported from `rules/mod.rs`): `approve`, `approve_all(ids)`, `approve_rule`, `approve_edited`
   and `dismiss(ids)` rebuild the day's suggestions and find them again through one lookup (`find_where`; a
   stale id is `not_found`: "The suggestion is gone", "The suggestions are gone", or "The rule has no
   suggestions on this day"), then
-  write through the recordings service, so each is one undo entry. A dismissal (`db::dismissed::Dismissal
+  write through the recordings service, so each is one undo entry. A stored suggestion is settled whole:
+  approving records every piece of it the day shows as one recording's spans and deletes it
+  (`Op::Suggestion` with `after: None`) in the same `Op::Batch` (`Recordings::create_with` /
+  `create_all_with`); dismissing deletes it (`Recordings::dismiss_with`); several pieces of one count once.
+  A dismissal (`db::dismissed::Dismissal
   { rule_id, day, start, end }`, one per rule of a joined suggestion) is an `Op::Dismiss`; `approve_rule`
   includes the joined suggestions the rule shares; its time stays the rule's even after the rule is edited
   or a recording over it is deleted. `approve_edited` creates the edited recording and dismisses the
-  suggestion's span in one `Op::Batch` (`Recordings::create_settling`), so what the edit left out does not
-  come back.
+  suggestion's span (or deletes the stored suggestion) in one `Op::Batch` (`Recordings::create_with`), so
+  what the edit left out does not come back.
+- Stored suggestions are written by `recordings/stored.rs`: `Recordings::create_suggestion(input, source)`
+  ("Suggest 0:30 for Acme"), `update_suggestion(id, RecordingPatch)` ("Edit suggestion"; an unchanged one
+  writes nothing) and `delete_suggestion(id)` ("Delete suggestion"), each an undoable `Op::Suggestion
+  { before, after }`. Spans are snapped like a recording's, must not overlap each other and must lie on one
+  local day (`spans`: "must lie on one day"); `source` is one line of at most 40 characters; the project
+  must not be archived. They may share time with recordings (migration `0011_stored_suggestions.sql`; spans
+  as JSON).
 - `day_of_rules` (`rules_today`): per active rule, the matched time (`suggest::matched_ms`) and the day's
   pending suggestions.
 - `preview` builds the views of the last days (`day::view_of`, without suggestions) and lists the
   blocks the input's conditions match on their own, most recent first (`PREVIEW_HITS`, 200), with the time
   of every hit and the number of days with one.
 - Every rule write emits `data_changed { kind: rules, day: null }`, so open views rebuild their
-  suggestions. Backups include the rules.
+  suggestions. Backups include the rules and the stored suggestions.
 
 ## Events to the page
 

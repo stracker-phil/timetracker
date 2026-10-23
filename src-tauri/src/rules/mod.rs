@@ -6,6 +6,7 @@ pub mod commands;
 pub mod matching;
 mod review;
 pub mod store;
+pub mod stored;
 pub mod suggest;
 #[cfg(test)]
 pub(crate) mod testing;
@@ -16,6 +17,7 @@ use crate::day::transform::continuity_ms;
 use crate::day::{ActivityBlock, DayView, Names, TimesheetCard};
 use crate::db::Db;
 use crate::db::dismissed::Dismissal;
+use crate::db::stored_suggestions::StoredSuggestion;
 use crate::db::time::{Day, Ms, now_ms};
 use crate::error::AppResult;
 use crate::store::settings::{DayTitle, Settings};
@@ -31,27 +33,34 @@ pub(crate) fn candidates(view: &DayView) -> Vec<&ActivityBlock> {
     view.rule_blocks.iter().collect()
 }
 
-/// The view's suggestions under `rules` (compiled, in order), without the `dismissed` time, each placed
-/// among the timesheet's cards.
+/// The view's suggestions, by start: the pieces of the `stored` ones, then those of `rules` (compiled, in
+/// order) in the time left, without the `dismissed` time; each placed among the timesheet's cards.
 pub fn day_suggestions(
     view: &DayView,
     rules: &[Compiled],
     names: &Names,
     settings: &Settings,
     dismissed: &[Dismissal],
+    stored: &[StoredSuggestion],
 ) -> Vec<Suggestion> {
-    if rules.is_empty() {
-        return Vec::new();
+    let recorded: Vec<(Ms, Ms)> = view.recordings.iter().map(|r| (r.start, r.end)).collect();
+    let mut suggestions = stored::pieces(stored, &recorded, names);
+    if !rules.is_empty() {
+        let taken: Vec<(Ms, Ms)> = recorded
+            .into_iter()
+            .chain(suggestions.iter().map(|s| (s.start, s.end)))
+            .collect();
+        suggestions.extend(suggest::suggest(
+            &candidates(view),
+            &taken,
+            &view.barriers,
+            rules,
+            names,
+            continuity_ms(settings.timeline.continuity),
+            dismissed,
+        ));
+        suggestions.sort_by_key(|s| s.start);
     }
-    let mut suggestions = suggest::suggest(
-        &candidates(view),
-        &view.recordings,
-        &view.barriers,
-        rules,
-        names,
-        continuity_ms(settings.timeline.continuity),
-        dismissed,
-    );
     for suggestion in &mut suggestions {
         suggestion.next_card = next_card(&view.timesheet, suggestion.start);
     }
@@ -149,6 +158,7 @@ mod tests {
     use crate::db::projects::{self, Project, ProjectInput};
     use crate::db::recordings as stored;
     use crate::db::recordings::Recording;
+    use crate::db::stored_suggestions;
     use crate::db::tags;
     use crate::error::ErrorKind;
     use crate::recordings::undo::UndoStack;
@@ -235,6 +245,59 @@ mod tests {
                 .await
                 .unwrap()
         }
+
+        /// Stored by another app for the project, with a note and the tag; `spans` as `(from, to)` hours
+        /// and minutes.
+        async fn stored_suggestion(
+            &self,
+            day: Day,
+            spans: &[((i64, i64), (i64, i64))],
+        ) -> StoredSuggestion {
+            let input = RecordingInput {
+                project_id: self.project.id.clone(),
+                spans: spans
+                    .iter()
+                    .map(|&(from, to)| Span {
+                        start: on(day, from.0, from.1),
+                        end: on(day, to.0, to.1),
+                    })
+                    .collect(),
+                note: "from claude".into(),
+                tag_id: Some(self.tag_id.clone()),
+            };
+            self.service()
+                .create_suggestion(input, "claude")
+                .await
+                .unwrap()
+                .value
+        }
+
+        async fn create_recording(&self, day: Day, from: (i64, i64), to: (i64, i64)) -> Recording {
+            self.service()
+                .create(self.input_on(day, from, to), Overlap::Cancel)
+                .await
+                .unwrap()
+                .value
+        }
+
+        async fn stored_of(&self, day: Day) -> Vec<StoredSuggestion> {
+            stored_suggestions::list_for_day(&self.db, day)
+                .await
+                .unwrap()
+        }
+    }
+
+    /// A suggestion stored for 9 to 12 and a recording over 10 to 11: the day shows two pieces of it.
+    async fn cut_stored(w: &World, today: Day) -> (StoredSuggestion, Recording, Vec<Suggestion>) {
+        let saved = w.stored_suggestion(today, &[((9, 0), (12, 0))]).await;
+        let recording = w.create_recording(today, (10, 0), (11, 0)).await;
+        let shown = w.suggestions(today).await;
+        assert_eq!(shown.len(), 2);
+        (saved, recording, shown)
+    }
+
+    fn times_of(suggestions: &[Suggestion]) -> Vec<(Ms, Ms)> {
+        suggestions.iter().map(|s| (s.start, s.end)).collect()
     }
 
     #[tokio::test]
@@ -267,7 +330,7 @@ mod tests {
             )
         );
         assert_eq!(recording.spans.len(), 1);
-        assert_eq!(suggestion.rule_id, rule.id);
+        assert_eq!(suggestion.rule_ids, [rule.id]);
         assert_eq!(w.recordings().await, [recording]);
         assert!(change.days.contains(&today));
     }
@@ -365,7 +428,7 @@ mod tests {
             .suggestions(today)
             .await
             .into_iter()
-            .map(|s| s.rule_id)
+            .flat_map(|s| s.rule_ids)
             .collect();
         assert_eq!(left, [code.id]);
 
@@ -866,7 +929,7 @@ mod tests {
             .suggestions(today)
             .await
             .into_iter()
-            .map(|s| (s.rule_id, s.start, s.end))
+            .map(|s| (s.rule_ids[0].clone(), s.start, s.end))
             .collect();
 
         assert_eq!(found, [(zoom.id, on(today, 10, 0), on(today, 10, 13))]);
@@ -921,8 +984,7 @@ mod tests {
         let (slack, code, joined) = joined_suggestion(&w, today).await;
 
         assert_eq!(joined.rule_ids, [slack.id.clone(), code.id]);
-        assert_eq!(joined.rule_id, slack.id);
-        assert_eq!(joined.rule_name, "Slack, Code");
+        assert_eq!(joined.by, "Slack, Code");
         assert_eq!(
             (joined.start, joined.end),
             (on(today, 9, 0), on(today, 11, 0))
@@ -1029,6 +1091,405 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn a_stored_suggestion_is_suggested_without_any_rule() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let saved = w.stored_suggestion(today, &[((9, 0), (10, 0))]).await;
+
+        let found = w.suggestions(today).await;
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            (
+                found[0].id.clone(),
+                found[0].stored_id.clone(),
+                found[0].rule_ids.clone(),
+                found[0].by.as_str(),
+                found[0].project_id.as_str(),
+                found[0].note.as_str(),
+                found[0].tag_id.clone(),
+                (found[0].start, found[0].end),
+            ),
+            (
+                format!(
+                    "stored:{}:{}:{}",
+                    saved.id,
+                    on(today, 9, 0),
+                    on(today, 10, 0)
+                ),
+                Some(saved.id.clone()),
+                Vec::new(),
+                "claude",
+                w.project.id.as_str(),
+                "from claude",
+                Some(w.tag_id.clone()),
+                (on(today, 9, 0), on(today, 10, 0)),
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn stored_suggestions_only_show_on_their_own_day() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.stored_suggestion(today, &[((9, 0), (10, 0))]).await;
+
+        assert!(w.suggestions(today.next()).await.is_empty());
+        assert!(w.suggestions(today.prev()).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn rule_suggestions_fill_only_the_time_stored_ones_leave_and_all_are_sorted_by_start() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let rule = w.app_rule("Slack").await;
+        w.work(today, "Slack", (9, 0), (11, 0)).await;
+        let saved = w.stored_suggestion(today, &[((9, 30), (10, 0))]).await;
+
+        let found = w.suggestions(today).await;
+
+        let owners: Vec<(Vec<String>, Option<String>)> = found
+            .iter()
+            .map(|s| (s.rule_ids.clone(), s.stored_id.clone()))
+            .collect();
+        assert_eq!(
+            times_of(&found),
+            [
+                (on(today, 9, 0), on(today, 9, 30)),
+                (on(today, 9, 30), on(today, 10, 0)),
+                (on(today, 10, 0), on(today, 11, 0)),
+            ]
+        );
+        assert_eq!(
+            owners,
+            [
+                (vec![rule.id.clone()], None),
+                (Vec::new(), Some(saved.id)),
+                (vec![rule.id], None),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stored_suggestion_points_at_the_first_card_that_starts_after_it() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.stored_suggestion(today, &[((9, 0), (10, 0))]).await;
+        let later = w.create_recording(today, (11, 0), (12, 0)).await;
+
+        let found = w.suggestions(today).await;
+
+        assert_eq!(found[0].next_card, Some(later.id));
+    }
+
+    #[tokio::test]
+    async fn recordings_cut_a_stored_suggestion_into_pieces_of_the_same_suggestion() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+
+        let (saved, _, shown) = cut_stored(&w, today).await;
+
+        assert_eq!(
+            times_of(&shown),
+            [
+                (on(today, 9, 0), on(today, 10, 0)),
+                (on(today, 11, 0), on(today, 12, 0)),
+            ]
+        );
+        assert!(
+            shown
+                .iter()
+                .all(|s| s.stored_id.as_deref() == Some(saved.id.as_str()))
+        );
+        assert_ne!(shown[0].id, shown[1].id);
+    }
+
+    #[tokio::test]
+    async fn approving_a_piece_of_a_stored_suggestion_records_all_its_pieces_as_one_recording() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (_, existing, shown) = cut_stored(&w, today).await;
+
+        let change = approve(&w.service(), &w.settings, today, &shown[0].id)
+            .await
+            .unwrap();
+
+        let recording = change.value;
+        assert_eq!(
+            (
+                recording.project_id.as_str(),
+                recording.note.as_str(),
+                recording.tag_id.clone(),
+            ),
+            (w.project.id.as_str(), "from claude", Some(w.tag_id.clone()))
+        );
+        let times: Vec<(Ms, Option<Ms>)> =
+            recording.spans.iter().map(|s| (s.start, s.end)).collect();
+        assert_eq!(
+            times,
+            [
+                (on(today, 9, 0), Some(on(today, 10, 0))),
+                (on(today, 11, 0), Some(on(today, 12, 0))),
+            ]
+        );
+        assert!(change.days.contains(&today));
+        assert_eq!(w.recordings().await, [recording, existing]);
+        assert!(w.stored_of(today).await.is_empty());
+        assert!(w.suggestions(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_approved_stored_suggestion_is_gone_and_a_stale_piece_id_is_not_found() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (_, _, shown) = cut_stored(&w, today).await;
+        approve(&w.service(), &w.settings, today, &shown[1].id)
+            .await
+            .unwrap();
+
+        let err = approve(&w.service(), &w.settings, today, &shown[0].id)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+        assert_eq!(w.recordings().await.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn undoing_the_approval_of_a_stored_suggestion_restores_it_and_removes_the_recording() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (saved, existing, shown) = cut_stored(&w, today).await;
+        let change = approve(&w.service(), &w.settings, today, &shown[1].id)
+            .await
+            .unwrap();
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert!(undone.days.contains(&today));
+        assert_eq!(w.recordings().await, [existing.clone()]);
+        assert_eq!(w.stored_of(today).await, [saved]);
+        assert_eq!(w.suggestions(today).await, shown);
+
+        w.service().redo().await.unwrap();
+
+        assert_eq!(w.recordings().await, [change.value, existing]);
+        assert!(w.stored_of(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn approving_several_pieces_of_one_stored_suggestion_records_it_once() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (saved, existing, shown) = cut_stored(&w, today).await;
+        let ids = ids_of(&shown);
+
+        let change = approve_all(&w.service(), &w.settings, today, &ids)
+            .await
+            .unwrap();
+
+        assert_eq!(change.value.len(), 1);
+        assert_eq!(change.value[0].spans.len(), 2);
+        assert_eq!(w.recordings().await.len(), 2);
+        assert!(w.stored_of(today).await.is_empty());
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Approve suggestion"));
+        assert_eq!(w.recordings().await, [existing]);
+        assert_eq!(w.stored_of(today).await, [saved]);
+    }
+
+    #[tokio::test]
+    async fn approving_a_rule_suggestion_and_a_stored_one_together_is_one_undo_step() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.app_rule("Slack").await;
+        w.work(today, "Slack", (14, 0), (15, 0)).await;
+        let saved = w.stored_suggestion(today, &[((9, 0), (12, 0))]).await;
+        let both = w.suggestions(today).await;
+        assert_eq!(both.len(), 2);
+
+        let change = approve_all(&w.service(), &w.settings, today, &ids_of(&both))
+            .await
+            .unwrap();
+
+        let times: Vec<Vec<(Ms, Option<Ms>)>> = change
+            .value
+            .iter()
+            .map(|r| r.spans.iter().map(|s| (s.start, s.end)).collect())
+            .collect();
+        assert_eq!(
+            times,
+            [
+                vec![(on(today, 9, 0), Some(on(today, 12, 0)))],
+                vec![(on(today, 14, 0), Some(on(today, 15, 0)))],
+            ]
+        );
+        assert!(w.stored_of(today).await.is_empty());
+        assert!(w.suggestions(today).await.is_empty());
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Approve 2 suggestions"));
+        assert!(w.recordings().await.is_empty());
+        assert_eq!(w.stored_of(today).await, [saved]);
+        assert_eq!(w.suggestions(today).await, both);
+    }
+
+    #[tokio::test]
+    async fn approving_a_rule_leaves_stored_suggestions_alone() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let rule = w.app_rule("Slack").await;
+        w.work(today, "Slack", (14, 0), (15, 0)).await;
+        let saved = w.stored_suggestion(today, &[((9, 0), (10, 0))]).await;
+
+        let change = approve_rule(&w.service(), &w.settings, today, &rule.id)
+            .await
+            .unwrap();
+
+        assert_eq!(change.value.len(), 1);
+        assert_eq!(w.stored_of(today).await, [saved]);
+    }
+
+    #[tokio::test]
+    async fn approving_an_edited_stored_suggestion_records_the_edit_and_deletes_it() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (saved, existing, shown) = cut_stored(&w, today).await;
+
+        let change = approve_edited(
+            &w.service(),
+            &w.settings,
+            today,
+            &shown[0].id,
+            w.input_on(today, (9, 0), (9, 30)),
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap();
+
+        let recording = change.value;
+        assert_eq!(
+            (recording.start(), recording.end()),
+            (on(today, 9, 0), Some(on(today, 9, 30)))
+        );
+        assert_eq!(w.recordings().await, [recording.clone(), existing.clone()]);
+        assert!(w.stored_of(today).await.is_empty());
+        assert!(w.suggestions(today).await.is_empty());
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Record 30m for Portal"));
+        assert_eq!(w.recordings().await, [existing.clone()]);
+        assert_eq!(w.stored_of(today).await, [saved]);
+        assert_eq!(w.suggestions(today).await, shown);
+
+        w.service().redo().await.unwrap();
+
+        assert_eq!(w.recordings().await, [recording, existing]);
+        assert!(w.stored_of(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn dismissing_a_stored_suggestion_deletes_it_and_undo_restores_it() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (saved, existing, shown) = cut_stored(&w, today).await;
+
+        let change = dismiss(&w.service(), &w.settings, today, &[shown[0].id.clone()])
+            .await
+            .unwrap();
+
+        assert_eq!(change.value, 1);
+        assert!(change.days.contains(&today));
+        assert!(w.stored_of(today).await.is_empty());
+        assert!(w.suggestions(today).await.is_empty());
+        assert_eq!(w.recordings().await, [existing]);
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Dismiss suggestion"));
+        assert_eq!(w.stored_of(today).await, [saved]);
+        assert_eq!(w.suggestions(today).await, shown);
+
+        w.service().redo().await.unwrap();
+
+        assert!(w.stored_of(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn dismissing_two_pieces_of_one_stored_suggestion_counts_it_once() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let (_, _, shown) = cut_stored(&w, today).await;
+
+        let change = dismiss(&w.service(), &w.settings, today, &ids_of(&shown))
+            .await
+            .unwrap();
+
+        assert_eq!(change.value, 1);
+        let undone = w.service().undo().await.unwrap();
+        assert_eq!(undone.value.as_deref(), Some("Dismiss suggestion"));
+    }
+
+    #[tokio::test]
+    async fn dismissing_a_stored_and_a_rule_suggestion_together_is_one_undo_step() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.app_rule("Slack").await;
+        w.work(today, "Slack", (14, 0), (15, 0)).await;
+        let saved = w.stored_suggestion(today, &[((9, 0), (10, 0))]).await;
+        let both = w.suggestions(today).await;
+
+        let change = dismiss(&w.service(), &w.settings, today, &ids_of(&both))
+            .await
+            .unwrap();
+
+        assert_eq!(change.value, 2);
+        assert!(w.suggestions(today).await.is_empty());
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Dismiss 2 suggestions"));
+        assert_eq!(w.stored_of(today).await, [saved]);
+        assert_eq!(w.suggestions(today).await, both);
+    }
+
+    #[tokio::test]
+    async fn approving_a_piece_that_would_overlap_once_snapped_is_refused_and_keeps_the_suggestion()
+    {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let saved = w.stored_suggestion(today, &[((10, 0), (11, 0))]).await;
+        let timer = crate::test_support::recording(
+            &w.db,
+            &w.project.id,
+            on(today, 10, 23),
+            Some(on(today, 10, 40)),
+        )
+        .await;
+        let shown = w.suggestions(today).await;
+        assert_eq!(
+            times_of(&shown),
+            [
+                (on(today, 10, 0), on(today, 10, 23)),
+                (on(today, 10, 40), on(today, 11, 0)),
+            ]
+        );
+
+        let err = approve(&w.service(), &w.settings, today, &shown[0].id)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::Overlap);
+        assert_eq!(w.stored_of(today).await, [saved]);
+        assert_eq!(w.recordings().await, [timer]);
+        assert_eq!(w.suggestions(today).await, shown);
     }
 
     #[tokio::test]

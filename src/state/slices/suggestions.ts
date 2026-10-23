@@ -97,7 +97,7 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
           projectId: suggestion.projectId,
           note: suggestion.note,
           tagId: suggestion.tagId,
-          suggestion: { id: suggestion.id, ruleName: suggestion.ruleName },
+          suggestion: { id: suggestion.id, by: suggestion.by },
         });
       },
     };

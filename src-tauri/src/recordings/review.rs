@@ -1,9 +1,8 @@
-//! Reviewing suggestions: dismissals, and a recording that settles its suggestion, each one undoable change.
+//! Reviewing suggestions: what settles them (dismissals, a stored suggestion's deletion) as one undoable
+//! change.
 
 use super::ops::Op;
-use super::{Change, Overlap, RecordingInput, Recordings};
-use crate::db::dismissed::Dismissal;
-use crate::db::recordings::Recording;
+use super::{Change, Recordings};
 use crate::error::AppResult;
 
 /// "Approve suggestion" for one, "Approve 3 suggestions" for several.
@@ -15,37 +14,17 @@ pub fn suggestions_label(verb: &str, count: usize) -> String {
 }
 
 impl Recordings<'_> {
-    /// Stores the dismissals of each suggestion as one undoable change; returns how many suggestions.
-    pub async fn record_dismissals(
-        &self,
-        suggestions: Vec<Vec<Dismissal>>,
-    ) -> AppResult<Change<usize>> {
+    /// Writes the ops that dismiss each suggestion as one undoable change; returns how many suggestions.
+    pub async fn dismiss_with(&self, suggestions: Vec<Vec<Op>>) -> AppResult<Change<usize>> {
         let mut undo = self.undo.lock().await;
         let count = suggestions.len();
         let label = suggestions_label("Dismiss", count);
-        let ops = suggestions
-            .into_iter()
-            .flatten()
-            .map(|dismissal| Op::Dismiss { dismissal })
-            .collect();
+        let ops = suggestions.into_iter().flatten().collect();
         let op = Op::Batch {
             label: label.clone(),
             ops,
         };
         let days = self.apply_and_push(&mut undo, label, op).await?;
         Ok(Change { value: count, days })
-    }
-    /// `input` as a new recording that also dismisses what is left of its suggestion.
-    pub async fn create_settling(
-        &self,
-        input: RecordingInput,
-        overlap: Overlap,
-        dismissals: Vec<Dismissal>,
-    ) -> AppResult<Change<Recording>> {
-        let ops = dismissals
-            .into_iter()
-            .map(|dismissal| Op::Dismiss { dismissal })
-            .collect();
-        self.create_with(input, overlap, ops).await
     }
 }

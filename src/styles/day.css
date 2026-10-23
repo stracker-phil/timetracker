@@ -39,7 +39,7 @@
 }
 .suggestion-card:hover { background: color-mix(in oklab, var(--block-fill) 45%, var(--bg-quiet)); }
 .suggestion-card .card-title, .suggestion-card .card-subtitle { padding-right: 4.2rem; }
-.suggestion-card-rule { overflow: hidden; text-overflow: ellipsis; }
+.suggestion-card-by { overflow: hidden; text-overflow: ellipsis; }
 .suggestion-card-actions { position: absolute; top: var(--space-2); right: var(--space-2); display: flex; gap: var(--space-1); }
 .suggestion-card-action {
   display: inline-flex; align-items: center; justify-content: center; width: 1.846rem; height: 1.846rem; padding: 0;

@@ -32,7 +32,17 @@ export const SUGGESTION_COMMANDS: Command[] = [
   { id: "suggestion.approve", title: "Approve suggestion", scope: "suggestion", defaultBinding: "Enter", menu: true, run: () => withFocused((s) => void store().approveSuggestion(s)) },
   { id: "suggestion.edit", title: "Edit suggestion", scope: "suggestion", defaultBinding: "E", menu: true, run: () => withFocused((s) => store().editSuggestion(s)) },
   { id: "suggestion.dismiss", title: "Dismiss suggestion", scope: "suggestion", defaultBinding: "Backspace", menu: true, run: () => withFocused((s) => void store().dismissSuggestions([s.id])) },
-  { id: "suggestion.approveRule", title: "Approve all suggestions of the rule", scope: "suggestion", menu: true, run: () => withFocused((s) => void store().approveRuleSuggestions(s.ruleId)) },
+  {
+    id: "suggestion.approveRule",
+    title: "Approve all suggestions of the rule",
+    scope: "suggestion",
+    menu: true,
+    when: () => (focusedSuggestion()?.ruleIds.length ?? 0) > 0,
+    run: () =>
+      withFocused((s) => {
+        if (s.ruleIds[0]) void store().approveRuleSuggestions(s.ruleIds[0]);
+      }),
+  },
   { id: "suggestion.approveAll", title: "Approve all suggestions", scope: "day", menu: true, when: hasSuggestions, run: () => void store().approveSuggestions(allIds()) },
   { id: "suggestion.dismissAll", title: "Dismiss all suggestions", scope: "day", menu: true, when: hasSuggestions, run: () => void store().dismissSuggestions(allIds()) },
 ];

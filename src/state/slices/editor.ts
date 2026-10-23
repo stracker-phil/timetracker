@@ -6,7 +6,7 @@ import type { Slice, View } from "../store";
 /** The suggestion a new recording approves once saved. */
 export interface EditedSuggestion {
   id: string;
-  ruleName: string;
+  by: string;
 }
 
 /**

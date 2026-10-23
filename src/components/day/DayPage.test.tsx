@@ -12,7 +12,7 @@ import { trackerStatus } from "../../test/data";
 import { appLane, at, block, dayApp, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane, timesheetCard, withTimesheet } from "../../test/dayFixtures";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
-import { suggestion } from "../../test/ruleFixtures";
+import { storedSuggestion, suggestion } from "../../test/ruleFixtures";
 import { settings } from "../../test/settings";
 import { Dialogs } from "../Dialogs";
 import { PermissionDialog } from "../PermissionDialog";
@@ -1546,8 +1546,8 @@ describe("DayPage", () => {
 
   describe("suggestions", () => {
     const review = timesheetCard({ id: "c1", projectId: "p-site", note: "review", start: at("10:00"), end: at("10:30") });
-    const standupIdea = suggestion({ ruleId: "rule-slack", ruleName: "Slack", projectId: "p-site", projectName: "Website", note: "standup", start: at("09:00"), end: at("09:45"), nextCard: "c1" });
-    const mailIdea = suggestion({ ruleId: "rule-mail", ruleName: "Mail", projectId: "p-site", projectName: "Website", start: at("14:00"), end: at("14:30"), nextCard: null });
+    const standupIdea = suggestion({ ruleIds: ["rule-slack"], by: "Slack", projectId: "p-site", projectName: "Website", note: "standup", start: at("09:00"), end: at("09:45"), nextCard: "c1" });
+    const mailIdea = suggestion({ ruleIds: ["rule-mail"], by: "Mail", projectId: "p-site", projectName: "Website", start: at("14:00"), end: at("14:30"), nextCard: null });
     const withSuggestions = () => dayView({ lanes: [lane({ blocks: [docs] })], timesheet: [review], suggestions: [standupIdea, mailIdea] });
     const standupCard = () => screen.findByRole("group", { name: /^Suggested: standup/ });
     const mailCard = () => screen.findByRole("group", { name: /^Suggested: Website, Website/ });
@@ -1565,6 +1565,13 @@ describe("DayPage", () => {
         expect(card.getByText("Suggested by Slack")).toBeInTheDocument();
         expect(card.getByText("45m")).toBeInTheDocument();
         expect(within(await mailCard()).getByText("Suggested by Mail")).toBeInTheDocument();
+      });
+
+      it("names the source of a stored suggestion", async () => {
+        const stored = storedSuggestion({ projectId: "p-site", projectName: "Website", note: "from cli", start: at("16:00"), end: at("16:30") });
+        renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [stored] }), withProject);
+        const card = await screen.findByRole("group", { name: /^Suggested: from cli.*, by cli$/ });
+        expect(within(card).getByText("Suggested by cli")).toBeInTheDocument();
       });
 
       it("shows the emoji of the suggested tag next to its name", async () => {
@@ -1625,6 +1632,13 @@ describe("DayPage", () => {
         expect(within(el).getByText("Slack")).toBeInTheDocument();
       });
 
+      it("names the source of a stored suggestion", async () => {
+        const stored = storedSuggestion({ projectId: "p-site", projectName: "Website", start: at("16:00"), end: at("16:30") });
+        renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [stored] }), withProject);
+        const el = await screen.findByRole("button", { name: "Suggested: Website 16:00–16:30, by cli" });
+        expect(within(el).getByText("cli")).toBeInTheDocument();
+      });
+
       it("opens the suggestion in the editor with a click", async () => {
         renderDay(withSuggestions(), withProject);
         await userEvent.click(await screen.findByRole("button", { name: "Suggested: Website 09:00–09:45, by Slack" }));
@@ -1644,6 +1658,14 @@ describe("DayPage", () => {
         expectSpan(form, "09:00", "09:45");
         expect(within(form).getByText("Suggested by Slack. Approve records it.")).toBeInTheDocument();
         expect(screen.queryByRole("group", { name: /^Suggested: standup/ })).not.toBeInTheDocument();
+      });
+
+      it("says who stored a stored suggestion", async () => {
+        const stored = storedSuggestion({ projectId: "p-site", projectName: "Website", note: "from cli", start: at("16:00"), end: at("16:30") });
+        renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [stored] }), withProject);
+        await userEvent.click(await screen.findByRole("group", { name: /^Suggested: from cli/ }));
+        const form = await editorForm("Edit suggestion");
+        expect(within(form).getByText("Suggested by cli. Approve records it.")).toBeInTheDocument();
       });
 
       it("approves the edited suggestion with Approve, sending the editor's input", async () => {

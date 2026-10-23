@@ -110,7 +110,7 @@ export type AwayRow = { id: number, start: number,
  */
 end: number | null, reason: AwayReason, };
 
-export type Backup = { version: number, exportedAt: number, clients: Array<Client>, projects: Array<Project>, tags: Array<Tag>, activities: Array<ActivityRow>, awaySpans: Array<AwayRow>, recordings: Array<Recording>, rules: Array<Rule>, savedReports: Array<SavedReport>, };
+export type Backup = { version: number, exportedAt: number, clients: Array<Client>, projects: Array<Project>, tags: Array<Tag>, activities: Array<ActivityRow>, awaySpans: Array<AwayRow>, recordings: Array<Recording>, storedSuggestions: Array<StoredSuggestion>, rules: Array<Rule>, savedReports: Array<SavedReport>, };
 
 export type BackupWritten = { bytes: number, recordings: number, activities: number, };
 
@@ -814,26 +814,42 @@ export type Span = { start: number, end: number, };
  */
 export type StatusReport = { version: string, tracker: TrackerStatus | null, timer: RunningTimer | null, billable: Billable | null, windowVisible: boolean, };
 
+export type StoredSuggestion = { id: string, projectId: string, note: string, tagId: string | null, 
 /**
- * A recording a rule proposes for time no recording covers yet; it becomes one only once approved.
+ * The app that stored it (`cli`, `claude`, or the caller's `--source`).
+ */
+source: string, 
+/**
+ * The local day all of its spans lie on.
+ */
+day: Day, 
+/**
+ * At least one, by start, never overlapping each other.
+ */
+spans: Array<Span>, createdAt: number, updatedAt: number, };
+
+/**
+ * A recording proposed for time no recording covers yet, by rules or stored by another app; it becomes one
+ * only once approved.
  */
 export type Suggestion = { 
 /**
- * `<rule id>:<start>:<end>`: the same after a reload.
+ * `<rule id>:<start>:<end>`, or `stored:<stored id>:<start>:<end>`: the same after a reload.
  */
 id: string, 
 /**
- * The first of `rule_ids`.
- */
-ruleId: string, 
-/**
- * The rules whose touching pieces it joins, in position order; they share project, note and tag.
+ * The rules whose touching pieces it joins, in position order; they share project, note and tag. Empty
+ * for a stored one.
  */
 ruleIds: Array<string>, 
 /**
- * Their names, comma separated.
+ * The stored suggestion it shows a piece of.
  */
-ruleName: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, start: number, end: number, durationMs: number, note: string, tagId: string | null, 
+storedId: string | null, 
+/**
+ * Who suggests it: the rules' names, comma separated, or the stored suggestion's source.
+ */
+by: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, start: number, end: number, durationMs: number, note: string, tagId: string | null, 
 /**
  * The tag's name.
  */

@@ -533,13 +533,15 @@ timeline's for every app.
 ## Rules and suggestions
 
 - **Suggestions to review**: a rule's match is a suggestion, a largely prefilled recording (the rule's project,
-  note and tag) that becomes a recording only once approved. Over the timesheet's cards a line in `--sel`
+  note and tag) that becomes a recording only once approved. Other apps store suggestions too (`timetracker
+  record` without `--final`, Claude over MCP; ADR 0028): they read "Suggested by cli" (or the source the app
+  gave), take their time before the rules do, and approving one records all of its spans as one recording. Over the timesheet's cards a line in `--sel`
   reads "3 suggestions · Approve all · Dismiss all" while the day has any (both act on the shown ones).
 - **Ghost cards** in the timesheet, in time order among the recordings' cards (Rust places each before the
   first card starting after it, `Suggestion.nextCard`): a card outlined dashed in `--block-meta` on a faint
   `--block-fill` (22% over `--bg-quiet`), the note as title (else the project), project and client, "Suggested
-  by <rule>" with a sparkle, the tag and the duration; ✓ (Approve) and ✕ (Dismiss) round buttons top right.
-  A click opens the inline editor prefilled with it ("Suggested by <rule>. Approve records it.", the primary
+  by <rule or source>" with a sparkle, the tag and the duration; ✓ (Approve) and ✕ (Dismiss) round buttons top right.
+  A click opens the inline editor prefilled with it ("Suggested by <rule or source>. Approve records it.", the primary
   button reads Approve): saving records it as edited and dismisses the rest of its time, one undo step.
 - **What rules see**: the summary, so each stretch counts as what was mostly done in it and a short glance
   stays part of the recording around it; imported activity counts on its own (ADR 0027).
@@ -804,7 +806,7 @@ recording commands'.
 | `rules.new` | New rule… | ⌘N | rules |
 | `rules.moveUp` / `rules.moveDown` | Move rule up / down (the rule whose row has the focus) | ⌥↑ / ⌥↓ | rules |
 | `suggestion.approve` / `suggestion.edit` / `suggestion.dismiss` | Approve / Edit / Dismiss the focused suggestion | ↵ / E / ⌫ | suggestion |
-| `suggestion.approveRule` | Approve all suggestions of the focused one's rule | menu | suggestion |
+| `suggestion.approveRule` | Approve all suggestions of the focused one's rule (not on a stored one) | menu | suggestion |
 | `suggestion.approveAll` / `suggestion.dismissAll` | Approve / Dismiss all the shown day's suggestions | menu | day |
 
 Keys of controls, not commands (they act on the focused control and are not rebindable):

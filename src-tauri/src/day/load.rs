@@ -4,19 +4,28 @@ use std::collections::HashMap;
 
 use super::{DayInput, DayTotals, DayView, Names, ProjectRef, TagRef, ViewSettings, totals, view};
 use crate::db::time::{Day, Ms};
-use crate::db::{Db, activities, away, clients, dismissed, projects, recordings, tags};
+use crate::db::{
+    Db, activities, away, clients, dismissed, projects, recordings, stored_suggestions, tags,
+};
 use crate::error::AppResult;
 use crate::rules::{self, matching::compile};
 use crate::store::settings::Settings;
 
-/// The day's view with the saved rules' suggestions.
+/// The day's view with its suggestions: the stored ones and the saved rules'.
 pub async fn load(db: &Db, day: Day, settings: &Settings, now: Ms) -> AppResult<DayView> {
     let names = names(db).await?;
     let mut view = build(db, day, settings, now, names.clone()).await?;
     let rules = rules::store::active(db).await?;
     let dismissed = dismissed::list_for_day(db, day).await?;
-    view.suggestions =
-        rules::day_suggestions(&view, &compile(&rules), &names, settings, &dismissed);
+    let stored = stored_suggestions::list_for_day(db, day).await?;
+    view.suggestions = rules::day_suggestions(
+        &view,
+        &compile(&rules),
+        &names,
+        settings,
+        &dismissed,
+        &stored,
+    );
     Ok(view)
 }
 

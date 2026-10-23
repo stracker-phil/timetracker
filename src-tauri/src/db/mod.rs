@@ -11,6 +11,7 @@ pub mod one_tag;
 pub mod projects;
 pub mod recordings;
 pub mod relocate;
+pub mod stored_suggestions;
 pub mod tags;
 pub mod time;
 
@@ -364,6 +365,7 @@ mod tests {
             "activities",
             "away_spans",
             "recordings",
+            "stored_suggestions",
         ] {
             assert!(tables.iter().any(|t| t == table), "{table} in {tables:?}");
         }

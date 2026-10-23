@@ -475,18 +475,83 @@ mod tests {
             let suggestion = &view.suggestions[0];
             assert_eq!(
                 (
-                    suggestion.rule_id.as_str(),
+                    suggestion.rule_ids.as_slice(),
                     suggestion.project_name.as_str(),
                     suggestion.start,
                     suggestion.end
                 ),
                 (
-                    rule.id.as_str(),
+                    [rule.id.clone()].as_slice(),
                     "Portal",
                     on(today, 9, 0),
                     on(today, 10, 0)
                 )
             );
+        }
+
+        async fn store(db: &Db, project_id: &str, today: Day, from: (i64, i64), to: (i64, i64)) {
+            use crate::db::recordings::Span;
+            use crate::db::stored_suggestions::{self, StoredSuggestion};
+            let suggestion = StoredSuggestion {
+                id: "s1".into(),
+                project_id: project_id.into(),
+                note: "review".into(),
+                tag_id: None,
+                source: "claude".into(),
+                day: today,
+                spans: vec![Span {
+                    start: on(today, from.0, from.1),
+                    end: on(today, to.0, to.1),
+                }],
+                created_at: 1,
+                updated_at: 1,
+            };
+            let mut conn = db.pool().acquire().await.unwrap();
+            stored_suggestions::put_on(&mut conn, &suggestion)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn load_shows_the_stored_suggestions_and_the_rules_fill_the_time_left() {
+            let db = Db::open_memory().await.unwrap();
+            let today = day("2026-01-05");
+            let rule = slack_rule(&db).await;
+            activity(&db, on(today, 9, 0), Some(on(today, 11, 0)), "Slack", "").await;
+            store(&db, &rule.project_id, today, (9, 30), (10, 0)).await;
+            let settings = plain_settings(Continuity::Off);
+
+            let view = load(&db, today, &settings, on(today, 20, 0)).await.unwrap();
+
+            assert_eq!(
+                spans(&view),
+                [
+                    (on(today, 9, 0), on(today, 9, 30)),
+                    (on(today, 9, 30), on(today, 10, 0)),
+                    (on(today, 10, 0), on(today, 11, 0)),
+                ]
+            );
+            let owners: Vec<Option<&str>> = view
+                .suggestions
+                .iter()
+                .map(|s| s.stored_id.as_deref())
+                .collect();
+            assert_eq!(owners, [None, Some("s1"), None]);
+        }
+
+        #[tokio::test]
+        async fn view_of_leaves_out_stored_suggestions() {
+            let db = Db::open_memory().await.unwrap();
+            let today = day("2026-01-05");
+            let p = project(&db, "Portal").await;
+            store(&db, &p.id, today, (9, 0), (10, 0)).await;
+            let settings = plain_settings(Continuity::Off);
+
+            let view = view_of(&db, today, &settings, on(today, 20, 0))
+                .await
+                .unwrap();
+
+            assert!(view.suggestions.is_empty());
         }
 
         #[tokio::test]

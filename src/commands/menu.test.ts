@@ -7,7 +7,7 @@ import { api } from "../api";
 import { VIEWS } from "../components/views";
 import { resetStore, useStore, type View } from "../state/store";
 import { at, DAY, dayView } from "../test/dayFixtures";
-import { suggestion } from "../test/ruleFixtures";
+import { storedSuggestion, suggestion } from "../test/ruleFixtures";
 import { settings } from "../test/settings";
 import { runningStatus } from "../test/timerFixtures";
 import { allCommands, getCommand, installCommands } from "./index";
@@ -164,6 +164,14 @@ describe("menuState", () => {
       expect(enabled().filter((id) => FOCUSED.includes(id))).toEqual([]);
       state().focusSuggestion(proposed.id);
       expect(enabled()).toEqual(expect.arrayContaining(FOCUSED));
+    });
+
+    it("disables Approve all of the rule for a focused stored suggestion and keeps the other items", () => {
+      const stored = storedSuggestion({ start: at("12:00"), end: at("12:30") });
+      resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed, stored] }) });
+      state().focusSuggestion(stored.id);
+      expect(enabled()).not.toContain("suggestion.approveRule");
+      expect(enabled()).toEqual(expect.arrayContaining(["suggestion.approve", "suggestion.edit", "suggestion.dismiss"]));
     });
 
     it("keeps them disabled for a focused suggestion the day does not hold", () => {

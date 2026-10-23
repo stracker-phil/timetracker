@@ -12,9 +12,9 @@ const mocked = vi.mocked(api, true);
 const state = () => useStore.getState();
 const toastMessages = () => state().toasts.map((t) => t.message);
 
-const first = suggestion({ ruleId: "rule-1", projectName: "Website", start: at("09:00"), end: at("09:30") });
-const second = suggestion({ ruleId: "rule-2", start: at("10:00"), end: at("10:30") });
-const third = suggestion({ ruleId: "rule-1", start: at("11:00"), end: at("11:30") });
+const first = suggestion({ ruleIds: ["rule-1"], projectName: "Website", start: at("09:00"), end: at("09:30") });
+const second = suggestion({ ruleIds: ["rule-2"], start: at("10:00"), end: at("10:30") });
+const third = suggestion({ ruleIds: ["rule-1"], start: at("11:00"), end: at("11:30") });
 
 describe("suggestions slice", () => {
   beforeEach(() => {
@@ -124,7 +124,7 @@ describe("suggestions slice", () => {
     });
 
     it("counts a suggestion joined from several rules as the rule's", async () => {
-      const joined = suggestion({ ruleId: "rule-0", ruleIds: ["rule-0", "rule-1"], start: at("08:00"), end: at("08:30") });
+      const joined = suggestion({ ruleIds: ["rule-0", "rule-1"], start: at("08:00"), end: at("08:30") });
       resetStore({ day: DAY, dayView: dayView({ suggestions: [joined, second, third] }), focusedSuggestion: joined.id });
       await state().approveRuleSuggestions("rule-1");
       expect(state().focusedSuggestion).toBe(second.id);
@@ -187,7 +187,7 @@ describe("suggestions slice", () => {
 
   describe("editSuggestion", () => {
     it("focuses the suggestion and opens the editor prefilled with it", async () => {
-      const proposed = suggestion({ ruleName: "Slack", projectId: "p-site", note: "standup", tagId: "tag-1", start: at("09:00"), end: at("09:30") });
+      const proposed = suggestion({ by: "Slack", projectId: "p-site", note: "standup", tagId: "tag-1", start: at("09:00"), end: at("09:30") });
       state().editSuggestion(proposed);
       expect(state().focusedSuggestion).toBe(proposed.id);
       expect(state().editor).toEqual({
@@ -197,7 +197,7 @@ describe("suggestions slice", () => {
         projectId: "p-site",
         note: "standup",
         tagId: "tag-1",
-        suggestion: { id: proposed.id, ruleName: "Slack" },
+        suggestion: { id: proposed.id, by: "Slack" },
       });
       await vi.waitFor(() => expect(state().draft).toMatchObject({ projectId: "p-site", note: "standup", tagId: "tag-1", spans: [{ start: at("09:00"), end: at("09:30") }] }));
     });

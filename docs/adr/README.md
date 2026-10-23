@@ -33,3 +33,4 @@ and a dated amendment under Status only corrects facts that changed.
 | [0025](0025-rust-labels-dates-and-durations.md) | Rust labels dates in the region's order; one duration format | Accepted (2026-10-22), implemented |
 | [0026](0026-timeline-pointer-input-snaps-to-ticks.md) | Timeline pointer input snaps to Rust-provided ticks | Accepted (2026-10-22), implemented |
 | [0027](0027-rules-match-the-summary.md) | Rules match the summary, not every activity | Accepted (2026-10-23), implemented |
+| [0028](0028-outside-writes-are-suggestions.md) | Writes from other apps are suggestions unless final | Accepted (2026-10-23), implemented |

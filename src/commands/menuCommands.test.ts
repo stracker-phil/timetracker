@@ -6,7 +6,7 @@ import { api, EMPTY_UI_STATE } from "../api";
 import { resetStore, useStore } from "../state/store";
 import { dataInfo } from "../test/data";
 import { at, DAY, dayView } from "../test/dayFixtures";
-import { suggestion } from "../test/ruleFixtures";
+import { storedSuggestion, suggestion } from "../test/ruleFixtures";
 import { settings } from "../test/settings";
 import { allCommands, conflicts, installCommands, runCommand, runMenuCommand } from "./index";
 import { menuState } from "./menu";
@@ -94,7 +94,7 @@ describe("nav.goToDate", () => {
 });
 
 describe("suggestion commands", () => {
-  const proposed = suggestion({ ruleId: "rule-slack" });
+  const proposed = suggestion({ ruleIds: ["rule-slack"] });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -116,10 +116,19 @@ describe("suggestion commands", () => {
     expect(mocked.suggestionApprove).not.toHaveBeenCalled();
   });
 
+  it("suggestion.approveRule does not run on a stored suggestion, which has no rule", () => {
+    const stored = storedSuggestion({ start: at("12:00"), end: at("12:30") });
+    resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed, stored] }) });
+    state().focusSuggestion(stored.id);
+    expect(runMenuCommand("suggestion.approveRule")).toBe(false);
+    expect(mocked.suggestionApproveRule).not.toHaveBeenCalled();
+    expect(runMenuCommand("suggestion.approve")).toBe(true);
+  });
+
   it("suggestion.edit opens the editor on the focused suggestion", () => {
     state().focusSuggestion(proposed.id);
     expect(runMenuCommand("suggestion.edit")).toBe(true);
-    expect(state().editor).toMatchObject({ mode: "create", suggestion: { id: proposed.id, ruleName: proposed.ruleName } });
+    expect(state().editor).toMatchObject({ mode: "create", suggestion: { id: proposed.id, by: proposed.by } });
   });
 
   it("suggestion.dismiss dismisses the focused suggestion", async () => {
@@ -129,7 +138,7 @@ describe("suggestion commands", () => {
   });
 
   it("suggestion.approveAll approves every suggestion of the shown day without a focus", async () => {
-    const other = suggestion({ ruleId: "rule-other", start: at("11:00"), end: at("11:30") });
+    const other = suggestion({ ruleIds: ["rule-other"], start: at("11:00"), end: at("11:30") });
     resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed, other] }) });
     expect(runMenuCommand("suggestion.approveAll")).toBe(true);
     await vi.waitFor(() => expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [proposed.id, other.id]));

@@ -118,7 +118,7 @@ describe("recording commands", () => {
 
     describe("with suggestions between the recordings", () => {
       const between = suggestion({ start: at("10:00"), end: at("10:30"), nextCard: "r2" });
-      const last = suggestion({ ruleId: "rule-2", start: at("13:00"), end: at("13:30"), nextCard: null });
+      const last = suggestion({ ruleIds: ["rule-2"], start: at("13:00"), end: at("13:30"), nextCard: null });
 
       beforeEach(() => {
         resetStore({

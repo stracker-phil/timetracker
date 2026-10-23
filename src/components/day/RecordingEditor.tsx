@@ -74,7 +74,7 @@ export function RecordingEditor({ id }: { id?: string }) {
       {suggestion && (
         <p className="editor-suggested" role="note">
           <Sparkles size="0.923rem" aria-hidden="true" />
-          Suggested by {suggestion.ruleName}. Approve records it.
+          Suggested by {suggestion.by}. Approve records it.
         </p>
       )}
       <div className="editor-section editor-note-row">

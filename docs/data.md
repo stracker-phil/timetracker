@@ -171,6 +171,7 @@ there are no `query!` macros (they need a database at compile time).
 | `activities.rs` | `apps_seen(from, now)`, `list_clipped(from, to, now)`, `close_stale(source, duration)`, `replace_open(id, NewActivity)`, `insert(NewActivity) -> id`, `close_open(source, end)`, `open_by_source`, `overlapping(source, start, end)`, `sources_with_prefix(prefix)` (latest first); `insert_on`, `get_on`, `close_open_on`, `open_by_source_on`, `overlapping_on` take a connection so a caller can combine them in a transaction; `list_for_range(from, to)`, `list_sources(from, to)`, `delete_range(from, to)`, `count_range(from, to)`, `count`, `first_start`; `take_range_on(from, to)` deletes and returns the rows, `restore_on(row)` inserts one under its id | ranges are `[from, to)` and include open spans; touching edges do not overlap; results are not clipped; `close_open` never sets an end before the start |
 | `away.rs` | `insert(NewAway) -> id`, `close_open(end)`, `open`, `list_for_range`, `delete_range`, `count_range`, `take_range_on`, `restore_on` | as for activities; `AwayReason` is stored and sent as `idle`, `sleep`, `lock`, `paused` |
 | `recordings/` | `insert(NewRecording)`, `get`, `update(id, RecordingPatch)`, `delete(id) -> Recording`, `list_for_range`, `running`, `latest(limit)`, `overlapping(start, end, except)`, `count`; `put_on(recording)` writes a row with all its spans, `remove_on`, `get_on`, `overlapping_on` take a connection (`mod.rs`); the types, `check_spans` and `respanned` are in `model.rs` | one transaction per write; the project and the tag (`tag_id`, optional) must exist (`not_found`); a note with a line break is `invalid_input`, notes are stored trimmed; a recording needs a span, each ending after it starts, none overlapping another of the recording, only the last open; a query returns whole recordings with every span (also those outside the range) by first span; `delete` returns the row so it can be restored under its id |
+| `stored_suggestions.rs` | `get`, `list_for_day`, `list_for_days(from, to)`, `put_on(suggestion)` (an exact upsert, what undo uses), `remove_on(id)` | `StoredSuggestion`: spans as JSON, all on `day`; written only through `recordings/stored.rs` (ADR 0028) |
 | `backup.rs` | `export(db) -> Backup`, `write_to(db, path)` | every table, read in one transaction |
 | `one_tag.rs` | `back_up(migrator, pool, dir) -> Option<TagsDropped>`, `TagsDropped::message` | see [Migrations](#migrations) |
 
@@ -225,17 +226,18 @@ the field:
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "exportedAt": 1792540800000,
   "clients": [], "projects": [], "tags": [],
   "activities": [], "awaySpans": [],
   "recordings": [{ "id": "…", "projectId": "…", "note": "", "tagId": null, "createdAt": 0, "updatedAt": 0, "spans": [{ "id": "…", "start": 0, "end": 0 }] }],
+  "storedSuggestions": [{ "id": "…", "projectId": "…", "note": "", "tagId": null, "source": "cli", "day": "2026-10-23", "spans": [{ "start": 0, "end": 0 }], "createdAt": 0, "updatedAt": 0 }],
   "rules": [{ "id": "…", "name": "Slack → Acme", "projectId": "…", "position": 0, "enabled": true, "note": "", "tagId": null, "conditions": [{ "id": "…", "field": "app", "op": "is", "value": "Slack" }] }], "savedReports": [{ "id": "…", "name": "This month", "filter": { "range": { "kind": "thisMonth" }, "…": "…" }, "position": 0 }]
 }
 ```
 
 Rows have the shape of their IPC types (`Client`, `Project`, `Tag`, `ActivityRow`, `AwayRow`, `Recording`,
-`Rule`, `SavedReport`). Version 1 (before migration 0006) had `tagIds` arrays on recordings and rules
+`StoredSuggestion`, `Rule`, `SavedReport`). Version 3 (before migration 0011) had no `storedSuggestions`. Version 1 (before migration 0006) had `tagIds` arrays on recordings and rules
 instead of `tagId`; the pre-0006 backup is written in it. Version 2 (before migration 0007) had `start` and
 `end` on recordings instead of `spans`. Projects carry `billable` since migration 0008 (an older file has
 none: not billable). There is no import yet; one would map a version 1
@@ -273,6 +275,9 @@ deleted writes nothing).
 
 `0010_tag_emoji.sql` adds `tags.emoji` (NULL for existing tags). The pre-0006 backup reads tags without it
 (`one_tag::LegacyTag`), since it runs before this migration.
+
+`0011_stored_suggestions.sql` adds `stored_suggestions` (ADR 0028): a suggested recording another app stored,
+with its `source`, its local `day` and its spans as a JSON array.
 
 ## Tests
 

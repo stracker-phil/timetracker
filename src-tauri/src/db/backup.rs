@@ -10,6 +10,7 @@ use super::away::AwayRow;
 use super::clients::Client;
 use super::projects::Project;
 use super::recordings::Recording;
+use super::stored_suggestions::{self, StoredSuggestion};
 use super::tags::Tag;
 use super::time::{Ms, now_ms};
 use super::{Db, activities, away, clients, projects, recordings, tags};
@@ -18,8 +19,8 @@ use crate::reports::saved::{self, SavedReport};
 use crate::rules::{self, types::Rule};
 
 /// 2: recordings and rules carry `tagId` instead of `tagIds` (ADR 0019). 3: recordings carry `spans`
-/// instead of `start` and `end` (ADR 0020).
-pub const BACKUP_VERSION: u32 = 3;
+/// instead of `start` and `end` (ADR 0020). 4: `storedSuggestions` (ADR 0028).
+pub const BACKUP_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +34,7 @@ pub struct Backup {
     pub activities: Vec<ActivityRow>,
     pub away_spans: Vec<AwayRow>,
     pub recordings: Vec<Recording>,
+    pub stored_suggestions: Vec<StoredSuggestion>,
     pub rules: Vec<Rule>,
     pub saved_reports: Vec<SavedReport>,
 }
@@ -48,6 +50,7 @@ pub async fn export(db: &Db) -> AppResult<Backup> {
         activities: activities::all(&mut tx).await?,
         away_spans: away::all(&mut tx).await?,
         recordings: recordings::all(&mut tx).await?,
+        stored_suggestions: stored_suggestions::all(&mut tx).await?,
         rules: rules::store::all(&mut tx).await?,
         saved_reports: saved::all(&mut tx).await?,
     };
@@ -148,14 +151,16 @@ mod tests {
                 "recordings",
                 "rules",
                 "savedReports",
+                "storedSuggestions",
                 "tags",
                 "version",
             ]
         );
-        assert_eq!(backup["version"], 3);
+        assert_eq!(backup["version"], 4);
         assert!(backup["exportedAt"].as_i64().unwrap() > 0);
         assert_eq!(backup["rules"], json!([]));
         assert_eq!(backup["savedReports"], json!([]));
+        assert_eq!(backup["storedSuggestions"], json!([]));
         for (key, len) in [
             ("clients", 1),
             ("projects", 1),
@@ -294,7 +299,7 @@ mod tests {
         let bytes = std::fs::read(&target).unwrap();
         assert_eq!(written.bytes, bytes.len() as u64);
         let json: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["version"], 3);
+        assert_eq!(json["version"], 4);
         assert!(!dir.path().join("backup.json.tmp").exists());
     }
 
@@ -353,6 +358,50 @@ mod tests {
                     ],
                 },
             ])
+        );
+    }
+
+    #[tokio::test]
+    async fn export_contains_the_stored_suggestions_with_their_spans() {
+        use crate::db::recordings::Span;
+        use crate::db::time::Day;
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "Website").await;
+        let stored = StoredSuggestion {
+            id: "s1".into(),
+            project_id: p.id.clone(),
+            note: "review".into(),
+            tag_id: None,
+            source: "claude".into(),
+            day: Day::parse("2026-01-05").unwrap(),
+            spans: vec![Span {
+                start: 1_000,
+                end: 2_000,
+            }],
+            created_at: 10,
+            updated_at: 20,
+        };
+        let mut conn = db.pool().acquire().await.unwrap();
+        stored_suggestions::put_on(&mut conn, &stored)
+            .await
+            .unwrap();
+        drop(conn);
+
+        let backup = serde_json::to_value(export(&db).await.unwrap()).unwrap();
+
+        assert_eq!(
+            backup["storedSuggestions"],
+            json!([{
+                "id": "s1",
+                "projectId": p.id,
+                "note": "review",
+                "tagId": null,
+                "source": "claude",
+                "day": "2026-01-05",
+                "spans": [{ "start": 1_000, "end": 2_000 }],
+                "createdAt": 10,
+                "updatedAt": 20,
+            }])
         );
     }
 

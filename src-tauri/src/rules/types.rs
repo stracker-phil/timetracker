@@ -76,19 +76,21 @@ pub struct RuleInput {
     pub conditions: Vec<ConditionInput>,
 }
 
-/// A recording a rule proposes for time no recording covers yet; it becomes one only once approved.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+/// A recording proposed for time no recording covers yet, by rules or stored by another app; it becomes one
+/// only once approved.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct Suggestion {
-    /// `<rule id>:<start>:<end>`: the same after a reload.
+    /// `<rule id>:<start>:<end>`, or `stored:<stored id>:<start>:<end>`: the same after a reload.
     pub id: String,
-    /// The first of `rule_ids`.
-    pub rule_id: String,
-    /// The rules whose touching pieces it joins, in position order; they share project, note and tag.
+    /// The rules whose touching pieces it joins, in position order; they share project, note and tag. Empty
+    /// for a stored one.
     pub rule_ids: Vec<String>,
-    /// Their names, comma separated.
-    pub rule_name: String,
+    /// The stored suggestion it shows a piece of.
+    pub stored_id: Option<String>,
+    /// Who suggests it: the rules' names, comma separated, or the stored suggestion's source.
+    pub by: String,
     pub project_id: String,
     pub project_name: String,
     pub client_name: Option<String>,

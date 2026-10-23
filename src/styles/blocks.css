@@ -98,7 +98,7 @@
 .suggestion:hover { background: var(--block-fill); }
 [data-input="keyboard"] .suggestion.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
 .suggestion-project { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.suggestion-rule { font-size: var(--data-font-size); color: var(--block-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.suggestion-by { font-size: var(--data-font-size); color: var(--block-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
 /* A project as a chip filled like a recording (a rule's project). */
 .project-chip {

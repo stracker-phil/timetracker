@@ -33,7 +33,7 @@ export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focu
       style={{ "--card-minutes": Math.round(s.durationMs / MINUTE_MS) } as CSSProperties}
       role="group"
       tabIndex={0}
-      aria-label={`Suggested: ${title}, ${project}, ${span}, by ${s.ruleName}`}
+      aria-label={`Suggested: ${title}, ${project}, ${span}, by ${s.by}`}
       data-suggestion-id={s.id}
       title={title}
       subtitle={
@@ -47,7 +47,7 @@ export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focu
       meta={
         <>
           <Sparkles size="0.846rem" aria-hidden="true" />
-          <span className="suggestion-card-rule">Suggested by {s.ruleName}</span>
+          <span className="suggestion-card-by">Suggested by {s.by}</span>
           {s.tag && <TagLabel name={s.tag} emoji={s.tagEmoji} />}
         </>
       }

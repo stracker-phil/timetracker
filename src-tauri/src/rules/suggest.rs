@@ -3,17 +3,17 @@
 
 use super::matching::{Compiled, matches};
 use super::types::Suggestion;
-use crate::day::{ActivityBlock, Names, RecordingBlock};
+use crate::day::{ActivityBlock, Names};
 use crate::db::dismissed::Dismissal;
 use crate::db::time::Ms;
 
 /// Shorter remainders are not worth a suggestion.
-const MIN_SUGGESTION_MS: Ms = 5 * 60_000;
+pub(super) const MIN_SUGGESTION_MS: Ms = 5 * 60_000;
 
-type Span = (Ms, Ms);
+pub(super) type Span = (Ms, Ms);
 
 /// Sorted, overlapping and touching spans merged.
-fn union(mut spans: Vec<Span>) -> Vec<Span> {
+pub(super) fn union(mut spans: Vec<Span>) -> Vec<Span> {
     spans.sort_unstable();
     let mut merged: Vec<Span> = Vec::with_capacity(spans.len());
     for (start, end) in spans {
@@ -26,7 +26,7 @@ fn union(mut spans: Vec<Span>) -> Vec<Span> {
 }
 
 /// `spans` without `cut`; both sorted and disjoint.
-fn subtract(spans: &[Span], cut: &[Span]) -> Vec<Span> {
+pub(super) fn subtract(spans: &[Span], cut: &[Span]) -> Vec<Span> {
     let mut rest = Vec::new();
     for &(start, end) in spans {
         let mut from = start;
@@ -147,11 +147,11 @@ fn join_touching(mut pieces: Vec<Piece>, rules: &[Compiled]) -> Vec<Run> {
 
 /// The suggestions of the day, by start. Matched time goes to its rule first; a run's bridged gaps only take
 /// time no rule matched, so suggestions never overlap. A rule's dismissed time stays its own and is not
-/// suggested again. Touching pieces of rules with the same project, note and tag are one suggestion. Tags
-/// deleted since the rule was saved are left out.
+/// suggested again, nor is `taken` time (recorded, or of stored suggestions). Touching pieces of rules with
+/// the same project, note and tag are one suggestion. Tags deleted since the rule was saved are left out.
 pub fn suggest(
     blocks: &[&ActivityBlock],
-    recordings: &[RecordingBlock],
+    taken: &[Span],
     barriers: &[Span],
     rules: &[Compiled],
     names: &Names,
@@ -163,7 +163,7 @@ pub fn suggest(
         .iter()
         .map(|spans| subtract(&runs(spans, barriers, bridge_ms), spans))
         .collect();
-    let recorded = union(recordings.iter().map(|r| (r.start, r.end)).collect());
+    let taken = union(taken.to_vec());
 
     let mut pieces: Vec<Piece> = Vec::new();
     for (index, (rule, claimed)) in rules.iter().zip(claimed_pieces(&own, &bridges)).enumerate() {
@@ -174,7 +174,7 @@ pub fn suggest(
             .iter()
             .filter(|d| d.rule_id == rule.rule_id)
             .map(|d| (d.start, d.end));
-        let cut = union(recorded.iter().copied().chain(rule_dismissed).collect());
+        let cut = union(taken.iter().copied().chain(rule_dismissed).collect());
         pieces.extend(
             subtract(&claimed, &cut)
                 .into_iter()
@@ -203,9 +203,9 @@ fn suggestion(rules: &[&Compiled], start: Ms, end: Ms, names: &Names) -> Option<
     let tag = rule.tag_id.as_ref().and_then(|id| names.tags.get(id));
     Some(Suggestion {
         id: format!("{}:{start}:{end}", rule.rule_id),
-        rule_id: rule.rule_id.clone(),
         rule_ids: rules.iter().map(|r| r.rule_id.clone()).collect(),
-        rule_name: rules
+        stored_id: None,
+        by: rules
             .iter()
             .map(|r| r.rule_name.as_str())
             .collect::<Vec<_>>()
@@ -260,7 +260,7 @@ mod tests {
     /// `(rule id, start minute, end minute)` of each suggestion.
     fn suggested(
         blocks: &[ActivityBlock],
-        recordings: &[RecordingBlock],
+        taken: &[(Ms, Ms)],
         barriers: &[(i64, i64)],
         bridge_min: i64,
     ) -> Vec<(String, i64, i64)> {
@@ -268,7 +268,7 @@ mod tests {
         let barriers: Vec<(Ms, Ms)> = barriers.iter().map(|&(s, e)| (s * MIN, e * MIN)).collect();
         suggest(
             &blocks,
-            recordings,
+            taken,
             &barriers,
             &compile(&rules()),
             &names(&["p1", "p2"], &[]),
@@ -276,7 +276,7 @@ mod tests {
             &[],
         )
         .into_iter()
-        .map(|s| (s.rule_id, s.start / MIN, s.end / MIN))
+        .map(|s| (s.rule_ids[0].clone(), s.start / MIN, s.end / MIN))
         .collect()
     }
 
@@ -398,7 +398,7 @@ mod tests {
 
     #[test]
     fn recordings_are_cut_out_of_a_run() {
-        let cases: [(&str, Vec<RecordingBlock>, Found); 8] = [
+        let cases: [(&str, Vec<(Ms, Ms)>, Found); 8] = [
             (
                 "a recording in the middle yields two",
                 vec![recorded(20, 40)],
@@ -490,9 +490,9 @@ mod tests {
             found,
             [Suggestion {
                 id: format!("r1:{}:{}", 10 * MIN, 20 * MIN),
-                rule_id: "r1".into(),
                 rule_ids: vec!["r1".into()],
-                rule_name: "Rule r1".into(),
+                stored_id: None,
+                by: "Rule r1".into(),
                 project_id: "p1".into(),
                 project_name: "Project p1".into(),
                 client_name: None,
@@ -622,7 +622,7 @@ mod tests {
             &dismissed,
         )
         .into_iter()
-        .map(|s| (s.rule_id, s.start / MIN, s.end / MIN))
+        .map(|s| (s.rule_ids[0].clone(), s.start / MIN, s.end / MIN))
         .collect()
     }
 
@@ -776,9 +776,9 @@ mod tests {
         assert_eq!(
             (
                 joined.id.as_str(),
-                joined.rule_id.as_str(),
+                joined.rule_ids[0].as_str(),
                 joined.rule_ids.clone(),
-                joined.rule_name.as_str(),
+                joined.by.as_str(),
                 joined.start,
                 joined.end,
                 joined.duration_ms,
@@ -802,8 +802,7 @@ mod tests {
         let found = suggestions_of_rules(&same_target_rules(), &blocks, &[]);
 
         assert_eq!(joined_spans(&found), [(ids(&["r1", "r2"]), 0, 20)]);
-        assert_eq!(found[0].rule_id, "r1");
-        assert_eq!(found[0].rule_name, "Rule r1, Rule r2");
+        assert_eq!(found[0].by, "Rule r1, Rule r2");
     }
 
     #[test]
@@ -827,7 +826,7 @@ mod tests {
         let found = suggestions_of_rules(&rules, &blocks, &[]);
 
         assert_eq!(joined_spans(&found), [(ids(&["r1", "r2", "r3"]), 0, 30)]);
-        assert_eq!(found[0].rule_name, "Rule r1, Rule r2, Rule r3");
+        assert_eq!(found[0].by, "Rule r1, Rule r2, Rule r3");
     }
 
     #[test]
@@ -900,7 +899,7 @@ mod tests {
         let found = suggestions_of_rules(&same_target_rules(), &[slack(0, 10)], &[]);
 
         assert_eq!(joined_spans(&found), [(ids(&["r1"]), 0, 10)]);
-        assert_eq!(found[0].rule_name, "Rule r1");
+        assert_eq!(found[0].by, "Rule r1");
     }
 
     #[test]

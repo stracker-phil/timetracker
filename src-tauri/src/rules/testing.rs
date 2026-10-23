@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::store;
 use super::types::{Condition, ConditionInput, Rule, RuleField, RuleInput, RuleOp};
-use crate::day::{ActivityBlock, Names, ProjectRef, RecordingBlock, TagRef};
+use crate::day::{ActivityBlock, Names, ProjectRef, TagRef};
 use crate::db::Db;
 use crate::db::time::{Day, Ms};
 use crate::error::AppError;
@@ -114,26 +114,9 @@ pub fn names(projects: &[&str], tags: &[&str]) -> Names {
     }
 }
 
-/// A recording of project `p1` from minute `start` to minute `end`.
-pub fn recorded(start: i64, end: i64) -> RecordingBlock {
-    RecordingBlock {
-        id: format!("rec{start}"),
-        span_id: format!("rec{start}-span"),
-        span_count: 1,
-        start: start * MIN,
-        end: end * MIN,
-        project_id: "p1".into(),
-        project_name: "Project p1".into(),
-        client_name: None,
-        color: "blue".into(),
-        shade: 4,
-        note: String::new(),
-        tag: None,
-        tag_emoji: None,
-        running: false,
-        clipped_start: false,
-        clipped_end: false,
-    }
+/// The time taken from minute `start` to minute `end`.
+pub fn recorded(start: i64, end: i64) -> (Ms, Ms) {
+    (start * MIN, end * MIN)
 }
 
 pub fn rule_input(name: &str, project_id: &str, conditions: &[Spec]) -> RuleInput {

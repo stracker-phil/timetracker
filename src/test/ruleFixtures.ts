@@ -13,12 +13,12 @@ export function rule(patch: Partial<Rule> = {}): Rule {
 export function suggestion(patch: Partial<Suggestion> = {}): Suggestion {
   const start = patch.start ?? at("09:00");
   const end = patch.end ?? at("09:45");
-  const ruleId = patch.ruleId ?? "rule-1";
+  const ruleIds = patch.ruleIds ?? ["rule-1"];
   return {
-    id: `${ruleId}:${start}:${end}`,
-    ruleId,
-    ruleIds: [ruleId],
-    ruleName: "Slack",
+    id: `${ruleIds[0] ?? patch.storedId ?? "none"}:${start}:${end}`,
+    ruleIds,
+    storedId: null,
+    by: "Slack",
     projectId: "project-1",
     projectName: "Website",
     clientName: null,
@@ -34,6 +34,13 @@ export function suggestion(patch: Partial<Suggestion> = {}): Suggestion {
     nextCard: null,
     ...patch,
   };
+}
+
+/** A suggestion another app stored (CLI, MCP): no rules, suggested by `cli`; `patch` overrides fields. */
+export function storedSuggestion(patch: Partial<Suggestion> = {}): Suggestion {
+  const start = patch.start ?? at("09:00");
+  const end = patch.end ?? at("09:45");
+  return suggestion({ ruleIds: [], storedId: "st-1", by: "cli", id: `stored:st-1:${start}:${end}`, ...patch });
 }
 
 /** Today of the default rule without matches; `patch` overrides fields. */
