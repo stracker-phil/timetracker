@@ -758,22 +758,27 @@ or fails becomes `IpcMessage::Error`: the window shows a toast, nothing is writt
 
 ## MCP server
 
-`timetracker mcp` (`mcp/`) is a read-only [MCP](https://modelcontextprotocol.io) server on stdio, built on
-`rmcp`, so Claude and other MCP clients can query recordings and reports. It is the one subcommand that opens
-the database itself, so it works while the app is closed; stdout carries only JSON-RPC, errors go to stderr,
+`timetracker mcp` (`mcp/`) is an [MCP](https://modelcontextprotocol.io) server on stdio, built on
+`rmcp`, so Claude and other MCP clients can query recordings and reports and suggest time. It is the one
+subcommand that opens the database itself (read-only), so the read tools work while the app is closed; the
+write tools ask the running app, like the CLI ([ADR 0028](adr/0028-outside-writes-are-suggestions.md)); stdout carries only JSON-RPC, errors go to stderr,
 nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) holds).
 
-- `mcp/mod.rs`: `TimeTrackerServer` (`#[tool_router]`, `#[tool_handler]`, args as `Parameters<…Args>`
-  deriving `JsonSchema`), `INSTRUCTIONS`, and `run(config_dir, socket) -> i32`, which builds its own
+- `mcp/mod.rs`: `TimeTrackerServer` (the read tools' `#[tool_router]`; `#[tool_handler]` serves
+  `all_tools()`, that router plus `writes.rs`'s `write_router`; args as `Parameters<…Args>` deriving `JsonSchema`), `INSTRUCTIONS`, and `run(config_dir, socket) -> i32`, which builds its own
   current-thread tokio runtime. Exit codes: 0 when the client disconnects, 1 on a handshake or transport
   error, 2 when the runtime cannot start.
 - `mcp/data/`: `Core`, the headless data access (`mod.rs`), with one file per tool area: `report.rs`,
-  `recordings.rs`, `catalog.rs` (projects, tags), `day_summary.rs`, `activity.rs`, `status.rs`; their tests
+  `recordings.rs`, `catalog.rs` (projects, clients, tags), `suggestions.rs`, `day_summary.rs`, `activity.rs`, `status.rs`; their tests
   share the seeded day in `fixtures.rs`. The database opens on first use with
   `Db::open_read_only` (path from `Settings::peek` and `db::data_dir`), so the handshake succeeds on a Mac
   that never ran the app, and a failed open is tried again on the next call. Settings are read on every call.
 - `mcp/ui.rs`: `ask(socket, message)` sends an `IpcMessage` like the CLI; no listener answers
   `NOT_RUNNING` (`TimeTracker is not running`).
+- `mcp/writes.rs`: the write tools. Each builds the CLI's `IpcMessage`, asks the app and answers with the
+  CLI's line (`cli::reply::render`). `final`/`draft`/`replace` mean what `--final`/`--draft`/`--replace` do;
+  spans are `[{ start, end }]` in `cli::time::instant` words. A suggestion's source is the client's
+  `clientInfo` title or name from the handshake (at most 40 characters), else `mcp`.
 
 | Tool | Args | Returns |
 |---|---|---|
@@ -781,6 +786,15 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
 | `recordings` | `from`, `to` (days, inclusive), `project`, `tag`, `limit` (default 500, at most 5000) | `[{ id, day, start_iso, end_iso, spans: [{ start_iso, end_iso }], duration_min, project, client?, note, tag }]` (`tag`: the name or `null`; `spans` the day's parts, `duration_min` their sum) by start, one row per recording and day, archived projects included |
 | `projects` | – | `[{ id, name, color, client?, billable, archived }]` |
 | `tags` | – | `[{ id, name }]` |
+| `clients` | – | `[{ id, name, archived }]` |
+| `suggestions` | `from`, `to` (default `from`; at most 62 days) | `[{ id, kind (rule, stored), by, day, spans: [{ start_iso, end_iso }], duration_min, project, client?, note, tag }]` from `scripting::listing::suggestions`; a stored one with all of its shown pieces |
+| `record` | `project`, `spans`, `note`, `tag`, `final`, `draft`, `replace` | `IpcMessage::Record`: a stored suggestion unless final; the CLI's `suggested …` / `recorded …` line |
+| `edit` | `id`, `project`, `note`, `tag`, `clear_tag`, `spans`, `final`, `draft`, `replace` | `IpcMessage::Edit`: changes a suggestion, records one with `final`, changes a recording only with `final` |
+| `delete` | `id`, `final`, `draft` | `IpcMessage::Delete`: dismisses a suggestion; deletes a recording only with `final` |
+| `approve` | `ids` | `IpcMessage::Approve`: one recording per suggestion |
+| `timer_start` | `project`, `note`, `tag` | `IpcMessage::TimerStart` |
+| `timer_stop` | – | `IpcMessage::TimerStop` |
+| `timer_update` | `project`, `note`, `tag`, `clear_tag` | `IpcMessage::TimerUpdate` |
 | `day_summary` | `day` | `{ day, recorded_min, tracked_min, away_min, by_project, by_tag }`; totals from `day::view_of`, the groups `[{ name, minutes, notes }]` from `reports::run` for that day |
 | `activity` | `day` | `{ activity: [{ start_iso, end_iso, app, title, url?, path?, source }], away: [{ start_iso, end_iso, reason }] }`; private rows keep only the app. Refused (`Activity is not exposed to MCP. Enable it in Settings → Data.`) unless `settings.mcp.exposeActivity` |
 | `status` | – | `IpcMessage::Status` to the app: `{ version, tracker: { state, text, current: { app, title?, url?, since_iso } }, timer: { project, client?, tag?, note, start_iso, elapsed_min }, window_visible }`; the current title and URL only when activity is exposed |
@@ -792,8 +806,9 @@ id, an exact name ignoring case, or a unique start; several matches are an error
 local ISO 8601 with offset (`db::time::to_local_iso`), durations minutes to one decimal. Results are pretty
 JSON; an `AppError` becomes a tool error with its message.
 
-**Adding a tool:** a `#[tool]` method on `TimeTrackerServer` with a description, its args struct, a `Core`
-method returning an MCP-only output struct (no `TS`), and a test over the JSON-RPC duplex
+**Adding a tool:** a `#[tool]` method on `TimeTrackerServer` with a description and its args struct; a read
+tool calls a `Core` method returning an MCP-only output struct (no `TS`), a write tool in `writes.rs` asks the
+app with an `IpcMessage`; and a test over the JSON-RPC duplex
 ([testing.md](testing.md#rust)).
 
 ## Tray

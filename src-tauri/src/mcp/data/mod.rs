@@ -8,6 +8,7 @@ mod fixtures;
 mod recordings;
 mod report;
 mod status;
+mod suggestions;
 
 use std::path::PathBuf;
 

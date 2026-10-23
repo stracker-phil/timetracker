@@ -179,7 +179,7 @@ enum Command {
     /// Pause, resume or show activity tracking
     #[command(subcommand)]
     Tracker(TrackerCommand),
-    /// Serve a read-only MCP server (works while the app is closed)
+    /// Serve an MCP server (reads work while the app is closed; writes make suggestions)
     Mcp,
     /// Developer tools (debug builds only)
     #[cfg(debug_assertions)]
@@ -733,7 +733,9 @@ mod tests {
     fn help_describes_the_mcp_subcommand() {
         let help = Cli::command().render_help().to_string();
         assert!(
-            help.contains("Serve a read-only MCP server (works while the app is closed)"),
+            help.contains(
+                "Serve an MCP server (reads work while the app is closed; writes make suggestions)"
+            ),
             "{help}"
         );
     }

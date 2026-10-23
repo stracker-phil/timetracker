@@ -1,13 +1,16 @@
-//! `timetracker mcp`: a read-only MCP server on stdio, built on `rmcp`. It reads the database itself, so
-//! it works while the app is closed, and never starts Tauri; stdout carries only JSON-RPC.
+//! `timetracker mcp`: an MCP server on stdio, built on `rmcp`. The read tools read the database itself, so
+//! they work while the app is closed; the write tools (`writes.rs`) ask the running app. It never starts
+//! Tauri; stdout carries only JSON-RPC.
 
 mod data;
 mod ui;
+mod writes;
 
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, ServerCapabilities, ServerConfig};
 use rmcp::schemars::JsonSchema;
@@ -23,8 +26,10 @@ const INSTRUCTIONS: &str = "Read-only access to TimeTracker, a local time tracke
 activity (what windows were in front; private, available only when the user enabled it), recordings \
 (time the user assigned to a project, with a one-line note and at most one tag; what reports show) and projects \
 (optionally under a client; a project is billable or not, and its recordings with it). Days are local calendar days `YYYY-MM-DD` (or today, yesterday); times \
-are local ISO 8601 with offset, durations are minutes. Nothing here writes. `status` and `open_day` \
-need the app running.";
+are local ISO 8601 with offset, durations are minutes. Writes go to suggestions the user reviews in the \
+Day view (`suggestions` lists them, `approve` records them); pass `final` only when the user asked to change \
+the timesheet itself. The timer tools act at once. `status`, `open_day`, the timer and every write need the \
+app running.";
 
 #[derive(Deserialize, JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
@@ -60,6 +65,15 @@ struct RecordingsArgs {
     tag: Option<String>,
     /// At most this many recordings (default 500, at most 5000)
     limit: Option<u32>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+struct SuggestionsArgs {
+    /// The first day: YYYY-MM-DD, today or yesterday
+    from: String,
+    /// The last day, inclusive (default `from`; at most 62 days)
+    to: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -129,7 +143,7 @@ fn answer<T: Serialize>(result: AppResult<T>) -> Result<String, String> {
     reason(result).and_then(|value| json(&value))
 }
 
-#[tool_handler]
+#[tool_handler(router = Self::all_tools())]
 impl ServerHandler for TimeTrackerServer {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
@@ -145,6 +159,11 @@ impl ServerHandler for TimeTrackerServer {
 impl TimeTrackerServer {
     pub fn new(core: Arc<Core>, socket: PathBuf) -> Self {
         Self { core, socket }
+    }
+
+    /// A handler serves one router; the write tools have theirs in `writes.rs`.
+    fn all_tools() -> ToolRouter<Self> {
+        Self::tool_router() + Self::write_router()
     }
 
     #[tool(
@@ -174,6 +193,21 @@ impl TimeTrackerServer {
     )]
     async fn projects(&self) -> Result<String, String> {
         answer(self.core.projects().await)
+    }
+
+    #[tool(description = "Every client and whether it is archived")]
+    async fn clients(&self) -> Result<String, String> {
+        answer(self.core.clients().await)
+    }
+
+    #[tool(
+        description = "The suggestions the Day view shows on a range of days, from rules or from other apps: id, kind (rule or stored), by, project, client, note, tag, spans, minutes"
+    )]
+    async fn suggestions(
+        &self,
+        Parameters(args): Parameters<SuggestionsArgs>,
+    ) -> Result<String, String> {
+        answer(self.core.suggestions(&args.from, args.to.as_deref()).await)
     }
 
     #[tool(description = "Every tag")]
@@ -259,15 +293,24 @@ mod tests {
     use tempfile::TempDir;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-    const TOOLS: [&str; 8] = [
+    const TOOLS: [&str; 17] = [
         "activity",
+        "approve",
+        "clients",
         "day_summary",
+        "delete",
+        "edit",
         "open_day",
         "projects",
+        "record",
         "recordings",
         "report",
         "status",
+        "suggestions",
         "tags",
+        "timer_start",
+        "timer_stop",
+        "timer_update",
     ];
 
     /// A socket path nothing listens on; macOS limits Unix socket paths to about 104 bytes.
@@ -300,8 +343,8 @@ mod tests {
     }
 
     #[test]
-    fn the_server_offers_exactly_the_eight_tools() {
-        let mut names: Vec<String> = TimeTrackerServer::tool_router()
+    fn the_server_offers_exactly_the_seventeen_read_and_write_tools() {
+        let mut names: Vec<String> = TimeTrackerServer::all_tools()
             .list_all()
             .iter()
             .map(|tool| tool.name.to_string())
@@ -314,6 +357,7 @@ mod tests {
     struct Client {
         reader: BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
         writer: tokio::io::WriteHalf<tokio::io::DuplexStream>,
+        socket: PathBuf,
         _socket_dir: TempDir,
     }
 
@@ -349,9 +393,14 @@ mod tests {
     }
 
     async fn connected(config_dir: &Path) -> (Client, Value) {
+        connected_as(config_dir, json!({"name": "test", "version": "0"})).await
+    }
+
+    async fn connected_as(config_dir: &Path, client_info: Value) -> (Client, Value) {
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (server_read, server_write) = tokio::io::split(server_io);
         let (server, socket_dir) = server(config_dir);
+        let socket = server.socket.clone();
         tokio::spawn(async move {
             let service = server.serve((server_read, server_write)).await.unwrap();
             let _ = service.waiting().await;
@@ -360,6 +409,7 @@ mod tests {
         let mut client = Client {
             reader: BufReader::new(read),
             writer,
+            socket,
             _socket_dir: socket_dir,
         };
         let init = client
@@ -369,7 +419,7 @@ mod tests {
                 json!({
                     "protocolVersion": "2025-03-26",
                     "capabilities": {},
-                    "clientInfo": {"name": "test", "version": "0"}
+                    "clientInfo": client_info
                 }),
             )
             .await;
@@ -550,5 +600,505 @@ mod tests {
             result,
             Err("Not a day: `soon` (use YYYY-MM-DD, today or yesterday)".to_string())
         );
+    }
+
+    mod write_tools {
+        use super::*;
+        use crate::db::recordings::Span;
+        use crate::db::stored_suggestions::StoredSuggestion;
+        use crate::error::ErrorKind;
+        use crate::ipc::{HandlerResult, IpcError, IpcReply, IpcRequest};
+        use crate::recordings::Overlap;
+        use crate::recordings::cli::RecordRequest;
+        use crate::scripting::writes::{EditRequest, Suggested, Written};
+        use crate::timers::commands::{TimerStartRequest, TimerUpdateRequest};
+        use chrono::{DateTime, Local, TimeZone};
+        use std::io::{BufRead as _, Write as _};
+        use std::os::unix::net::UnixListener;
+        use std::sync::mpsc;
+
+        /// 2026-10-21 at `hour:minute` local time.
+        fn local(hour: u32, minute: u32) -> i64 {
+            Local
+                .with_ymd_and_hms(2026, 10, 21, hour, minute, 0)
+                .unwrap()
+                .timestamp_millis()
+        }
+
+        fn utc(text: &str) -> i64 {
+            DateTime::parse_from_rfc3339(text)
+                .unwrap()
+                .timestamp_millis()
+        }
+
+        /// Plays the running app: answers one request per entry of `replies`, in order, and hands over the
+        /// messages it received.
+        fn fake_app(socket: &Path, replies: Vec<HandlerResult>) -> mpsc::Receiver<IpcMessage> {
+            let listener = UnixListener::bind(socket).unwrap();
+            let (sent, received) = mpsc::channel();
+            std::thread::spawn(move || {
+                for outcome in replies {
+                    let (stream, _) = listener.accept().unwrap();
+                    let mut line = String::new();
+                    std::io::BufReader::new(&stream)
+                        .read_line(&mut line)
+                        .unwrap();
+                    let request: IpcRequest = serde_json::from_str(&line).unwrap();
+                    sent.send(request.message).unwrap();
+                    let reply = match outcome {
+                        Ok(result) => IpcReply {
+                            id: request.id,
+                            ok: true,
+                            result,
+                            error: None,
+                        },
+                        Err(error) => IpcReply {
+                            id: request.id,
+                            ok: false,
+                            result: Value::Null,
+                            error: Some(error),
+                        },
+                    };
+                    writeln!(&stream, "{}", serde_json::to_string(&reply).unwrap()).unwrap();
+                }
+            });
+            received
+        }
+
+        struct Session {
+            client: Client,
+            app: mpsc::Receiver<IpcMessage>,
+            _config: TempDir,
+        }
+
+        impl Session {
+            async fn call(&mut self, tool: &str, arguments: Value) -> Value {
+                self.client.tool(tool, arguments).await["result"].clone()
+            }
+
+            fn asked(&self) -> IpcMessage {
+                self.app
+                    .recv_timeout(Duration::from_secs(5))
+                    .expect("the app was asked")
+            }
+        }
+
+        fn client_info(name: &str) -> Value {
+            json!({"name": name, "version": "0"})
+        }
+
+        async fn session(client_info: Value, replies: Vec<HandlerResult>) -> Session {
+            let config = temp_config_dir();
+            let (client, _) = connected_as(config.path(), client_info).await;
+            let app = fake_app(&client.socket, replies);
+            Session {
+                client,
+                app,
+                _config: config,
+            }
+        }
+
+        fn text(result: &Value) -> &str {
+            result["content"][0]["text"].as_str().unwrap()
+        }
+
+        fn nothing() -> HandlerResult {
+            Ok(Value::Null)
+        }
+
+        fn suggested_reply() -> HandlerResult {
+            let written = Written::Suggestion(Suggested {
+                suggestion: StoredSuggestion {
+                    id: "sg1".into(),
+                    project_id: "p1".into(),
+                    note: "review".into(),
+                    tag_id: None,
+                    source: "test".into(),
+                    day: Day::parse("2026-10-21").unwrap(),
+                    spans: vec![Span {
+                        start: local(9, 30),
+                        end: local(10, 0),
+                    }],
+                    created_at: 0,
+                    updated_at: 0,
+                },
+                project_name: "Portal".into(),
+            });
+            Ok(serde_json::to_value(written).unwrap())
+        }
+
+        fn record_args(extra: Value) -> Value {
+            let mut args = json!({
+                "project": "Portal",
+                "spans": [{"start": "2026-10-21T09:30", "end": "2026-10-21T10:00"}],
+                "note": "review",
+                "tag": "development",
+            });
+            args.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            args
+        }
+
+        async fn recorded_request(client_info: Value, extra: Value) -> RecordRequest {
+            let mut session = session(client_info, vec![suggested_reply()]).await;
+            session.call("record", record_args(extra)).await;
+            match session.asked() {
+                IpcMessage::Record { request } => request,
+                other => panic!("not a record: {other:?}"),
+            }
+        }
+
+        #[tokio::test]
+        async fn write_tools_say_that_timetracker_is_not_running_without_the_app() {
+            let dir = temp_config_dir();
+            let (mut client, _) = connected(dir.path()).await;
+
+            for (tool, arguments) in [
+                ("record", record_args(json!({}))),
+                ("edit", json!({"id": "sg1", "note": "x"})),
+                ("delete", json!({"id": "sg1"})),
+                ("approve", json!({"ids": ["sg1"]})),
+                ("timer_start", json!({"project": "Portal"})),
+                ("timer_stop", json!({})),
+                ("timer_update", json!({"note": "x"})),
+            ] {
+                let called = client.tool(tool, arguments).await;
+
+                assert_eq!(called["result"]["isError"], true, "{tool}");
+                assert_eq!(text(&called["result"]), ui::NOT_RUNNING, "{tool}");
+            }
+        }
+
+        #[tokio::test]
+        async fn a_bad_span_time_is_refused_before_asking_the_app() {
+            let mut session = session(client_info("test"), vec![nothing()]).await;
+            let bad = json!([{"start": "09:00", "end": "25:99"}]);
+
+            for (tool, arguments) in [
+                ("record", record_args(json!({"spans": bad}))),
+                ("edit", json!({"id": "sg1", "spans": bad})),
+            ] {
+                let called = session.call(tool, arguments).await;
+
+                assert_eq!(called["isError"], true, "{tool}");
+                assert_eq!(
+                    text(&called),
+                    "Not a time: `25:99` (use 2026-10-21T09:30, 09:30 or now)",
+                    "{tool}"
+                );
+            }
+            assert!(session.app.try_recv().is_err());
+        }
+
+        #[tokio::test]
+        async fn record_suggests_by_default_and_answers_with_the_clis_line() {
+            let mut session = session(client_info("Claude Desktop"), vec![suggested_reply()]).await;
+
+            let called = session.call("record", record_args(json!({}))).await;
+
+            assert_eq!(
+                session.asked(),
+                IpcMessage::Record {
+                    request: RecordRequest {
+                        project: "Portal".into(),
+                        spans: vec![Span {
+                            start: local(9, 30),
+                            end: local(10, 0),
+                        }],
+                        note: "review".into(),
+                        tag: Some("development".into()),
+                        overlap: Overlap::Cancel,
+                        final_write: false,
+                        source: Some("Claude Desktop".into()),
+                    }
+                }
+            );
+            assert_ne!(called["isError"], true);
+            assert_eq!(
+                text(&called),
+                "suggested 09:30–10:00 (0:30) for Portal · review; review it in the Day view (id sg1)"
+            );
+        }
+
+        #[tokio::test]
+        async fn record_reads_offsets_and_zulu_times() {
+            let extra = json!({"spans": [
+                {"start": "2026-10-21T09:30:00+02:00", "end": "2026-10-21T08:00:00Z"},
+            ]});
+
+            let request = recorded_request(client_info("test"), extra).await;
+
+            assert_eq!(
+                request.spans,
+                [Span {
+                    start: utc("2026-10-21T07:30:00Z"),
+                    end: utc("2026-10-21T08:00:00Z"),
+                }]
+            );
+        }
+
+        #[tokio::test]
+        async fn record_leaves_out_note_and_tag_as_empty_and_none() {
+            let mut session = session(client_info("test"), vec![suggested_reply()]).await;
+            let args = json!({
+                "project": "Portal",
+                "spans": [{"start": "2026-10-21T09:30", "end": "2026-10-21T10:00"}],
+            });
+
+            session.call("record", args).await;
+
+            let IpcMessage::Record { request } = session.asked() else {
+                panic!("not a record");
+            };
+            assert_eq!((request.note.as_str(), request.tag), ("", None));
+        }
+
+        #[tokio::test]
+        async fn the_suggestions_source_is_the_clients_name_or_title() {
+            let long = "x".repeat(50);
+            let cases = [
+                (client_info("claude-code"), "claude-code".to_string()),
+                (
+                    json!({"name": "cc", "title": "Claude Code", "version": "0"}),
+                    "Claude Code".to_string(),
+                ),
+                (client_info("  padded  "), "padded".to_string()),
+                (client_info("   "), "mcp".to_string()),
+                (client_info("two\nlines"), "mcp".to_string()),
+                (client_info(&long), "x".repeat(40)),
+            ];
+
+            for (info, expected) in cases {
+                let request = recorded_request(info.clone(), json!({})).await;
+
+                assert_eq!(request.source, Some(expected), "{info}");
+            }
+        }
+
+        #[tokio::test]
+        async fn final_records_unless_draft_and_replace_cuts_the_overlap() {
+            let cases = [
+                (json!({}), false, Overlap::Cancel),
+                (json!({"final": true}), true, Overlap::Cancel),
+                (
+                    json!({"final": true, "draft": true}),
+                    false,
+                    Overlap::Cancel,
+                ),
+                (json!({"draft": true}), false, Overlap::Cancel),
+                (
+                    json!({"final": true, "replace": true}),
+                    true,
+                    Overlap::Replace,
+                ),
+                (json!({"replace": true}), false, Overlap::Replace),
+            ];
+
+            for (extra, final_write, overlap) in cases {
+                let request = recorded_request(client_info("test"), extra.clone()).await;
+
+                assert_eq!(
+                    (request.final_write, request.overlap),
+                    (final_write, overlap),
+                    "{extra}"
+                );
+            }
+        }
+
+        #[tokio::test]
+        async fn the_apps_refusal_comes_back_as_the_error_text() {
+            let refusal = IpcError::new(ErrorKind::Overlap, "Overlaps the recording 09:00–10:00");
+            let mut session = session(client_info("test"), vec![Err(refusal)]).await;
+
+            let called = session
+                .call("record", record_args(json!({"final": true})))
+                .await;
+
+            assert_eq!(called["isError"], true);
+            assert_eq!(text(&called), "Overlaps the recording 09:00–10:00");
+        }
+
+        #[tokio::test]
+        async fn edit_carries_the_id_the_changes_and_the_new_spans() {
+            let mut session = session(client_info("test"), vec![suggested_reply()]).await;
+            let arguments = json!({
+                "id": "sg1",
+                "project": "Podcast",
+                "note": "edited",
+                "clear_tag": true,
+                "spans": [{"start": "2026-10-21T09:30", "end": "2026-10-21T10:00"}],
+                "final": true,
+                "replace": true,
+            });
+
+            session.call("edit", arguments).await;
+
+            assert_eq!(
+                session.asked(),
+                IpcMessage::Edit {
+                    request: EditRequest {
+                        id: "sg1".into(),
+                        project: Some("Podcast".into()),
+                        note: Some("edited".into()),
+                        tag: None,
+                        clear_tag: true,
+                        spans: Some(vec![Span {
+                            start: local(9, 30),
+                            end: local(10, 0),
+                        }]),
+                        final_write: true,
+                        overlap: Overlap::Replace,
+                    }
+                }
+            );
+        }
+
+        #[tokio::test]
+        async fn edit_leaves_out_what_is_not_given() {
+            let mut session = session(client_info("test"), vec![suggested_reply()]).await;
+
+            let called = session
+                .call("edit", json!({"id": "sg1", "tag": "focus"}))
+                .await;
+
+            assert_eq!(
+                session.asked(),
+                IpcMessage::Edit {
+                    request: EditRequest {
+                        id: "sg1".into(),
+                        project: None,
+                        note: None,
+                        tag: Some("focus".into()),
+                        clear_tag: false,
+                        spans: None,
+                        final_write: false,
+                        overlap: Overlap::Cancel,
+                    }
+                }
+            );
+            assert_eq!(
+                text(&called),
+                "suggested 09:30–10:00 (0:30) for Portal · review; review it in the Day view (id sg1)"
+            );
+        }
+
+        #[tokio::test]
+        async fn delete_dismisses_unless_final_and_says_what_went() {
+            let cases = [
+                (json!({}), false),
+                (json!({"final": true}), true),
+                (json!({"final": true, "draft": true}), false),
+            ];
+
+            for (extra, final_write) in cases {
+                let reply = Ok(json!({"kind": "suggestion", "id": "sg1"}));
+                let mut session = session(client_info("test"), vec![reply]).await;
+                let mut arguments = json!({"id": "sg1"});
+                arguments
+                    .as_object_mut()
+                    .unwrap()
+                    .extend(extra.as_object().unwrap().clone());
+
+                let called = session.call("delete", arguments).await;
+
+                assert_eq!(
+                    session.asked(),
+                    IpcMessage::Delete {
+                        id: "sg1".into(),
+                        final_write
+                    },
+                    "{extra}"
+                );
+                assert_eq!(text(&called), "deleted the suggestion sg1", "{extra}");
+            }
+        }
+
+        #[tokio::test]
+        async fn approve_sends_the_ids_and_says_when_nothing_was_approved() {
+            let mut session = session(client_info("test"), vec![Ok(json!([]))]).await;
+
+            let called = session.call("approve", json!({"ids": ["a", "b"]})).await;
+
+            assert_eq!(
+                session.asked(),
+                IpcMessage::Approve {
+                    ids: vec!["a".into(), "b".into()]
+                }
+            );
+            assert_eq!(text(&called), "nothing approved");
+        }
+
+        #[tokio::test]
+        async fn timer_start_sends_the_project_note_and_tag() {
+            let mut session = session(client_info("test"), vec![nothing(), nothing()]).await;
+
+            session
+                .call(
+                    "timer_start",
+                    json!({"project": "Portal", "note": "fix", "tag": "focus"}),
+                )
+                .await;
+            let with_all = session.asked();
+            session
+                .call("timer_start", json!({"project": "Portal"}))
+                .await;
+            let with_project = session.asked();
+
+            assert_eq!(
+                with_all,
+                IpcMessage::TimerStart {
+                    request: TimerStartRequest {
+                        project: "Portal".into(),
+                        note: "fix".into(),
+                        tag: Some("focus".into()),
+                    }
+                }
+            );
+            assert_eq!(
+                with_project,
+                IpcMessage::TimerStart {
+                    request: TimerStartRequest {
+                        project: "Portal".into(),
+                        note: String::new(),
+                        tag: None,
+                    }
+                }
+            );
+        }
+
+        #[tokio::test]
+        async fn timer_stop_says_when_no_timer_ran() {
+            let mut session = session(client_info("test"), vec![nothing()]).await;
+
+            let called = session.call("timer_stop", json!({})).await;
+
+            assert_eq!(session.asked(), IpcMessage::TimerStop);
+            assert_eq!(text(&called), "no timer running");
+        }
+
+        #[tokio::test]
+        async fn timer_update_sends_only_what_changes() {
+            let mut session = session(client_info("test"), vec![nothing()]).await;
+
+            session
+                .call(
+                    "timer_update",
+                    json!({"project": "Podcast", "note": "edit", "clear_tag": true}),
+                )
+                .await;
+
+            assert_eq!(
+                session.asked(),
+                IpcMessage::TimerUpdate {
+                    request: TimerUpdateRequest {
+                        project: Some("Podcast".into()),
+                        note: Some("edit".into()),
+                        tag: None,
+                        clear_tag: true,
+                    }
+                }
+            );
+        }
     }
 }

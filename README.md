@@ -106,7 +106,7 @@ reports can be saved under a name and sit under Reports in the sidebar.
 | `timetracker timer start PROJECT [--note N] [--tag T]`, `timer stop` | starts a timer now (a running one stops; the same project, note and tag continue today's recording) / stops it |
 | `timetracker timer status [--json]` | the running timer: `--json` has `running`, `project`, `client`, `tag`, `note`, `startedAt` (ms), `startedAtIso`, `elapsedMs` and the ids |
 | `timetracker timer update [--project P] [--note N] [--tag T\|--no-tag]` | changes the running timer in place |
-| `timetracker mcp` | serves the read-only MCP server on stdin/stdout, see [MCP](#mcp) |
+| `timetracker mcp` | serves the MCP server on stdin/stdout, see [MCP](#mcp) |
 | `timetracker dev seed [--years N] [--yes]` | debug builds only: writes N years (default 2) of generated workdays into the running app's database ([docs/testing.md](docs/testing.md#sample-data)) |
 
 Times are `2026-10-21T09:30` (local, or with `Z` or `±hh:mm`), `09:30` (today) or `now`. Every command except
@@ -163,7 +163,8 @@ CLI is in [docs/backend.md](docs/backend.md#cli-and-single-instance-handoff).
 ## MCP
 
 `timetracker mcp` lets Claude (or any MCP client) read your recordings, projects, tags and reports, also while
-the app is closed. It only reads; nothing leaves the Mac except what the client sends to its model. Add it to
+the app is closed, and suggest time for you to review. Nothing leaves the Mac except what the client sends to
+its model. Add it to
 Claude Code (Settings → Data shows this line with the path of your binary, ready to copy; add `--scope user`
 to use it in every project):
 
@@ -174,8 +175,15 @@ claude mcp add timetracker -- ~/.local/bin/timetracker mcp
 Then ask "what did I record yesterday by project?" or "how many hours of development this month?". The tools:
 `report` (the report text, or JSON with the billable minutes and percent), `recordings`, `projects` (with
 `billable`), `tags`, `day_summary`, `status` and `open_day`
-(these two need the app running), and `activity` (window titles and URLs), which stays off until you enable
-"Expose activity to the MCP server" in Settings → Data.
+(these two need the app running), `clients`, `suggestions`, and `activity` (window titles and URLs), which
+stays off until you enable "Expose activity to the MCP server" in Settings → Data.
+
+Writes need the app running and work like the CLI's ([Suggestions and recordings](#suggestions-and-recordings)):
+`record` and `edit` leave suggestions in the Day view, "Suggested by" the client's name (`claude-code`), until
+you approve or dismiss them; `final: true` changes the timesheet itself (`draft: true` keeps it a suggestion).
+`approve` records suggestions, `delete` dismisses one (a recording only with `final`), and `timer_start`,
+`timer_stop` and `timer_update` drive the timer directly. Ask "suggest 9 to 10:30 today for Acme with the note
+from this ticket".
 
 ## Privacy
 

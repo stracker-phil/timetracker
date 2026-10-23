@@ -1,4 +1,4 @@
-//! Projects and tags.
+//! Projects, clients and tags.
 
 use serde::Serialize;
 
@@ -14,6 +14,13 @@ pub struct ProjectOut {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client: Option<String>,
     pub billable: bool,
+    pub archived: bool,
+}
+
+#[derive(Serialize)]
+pub struct ClientOut {
+    pub id: String,
+    pub name: String,
     pub archived: bool,
 }
 
@@ -42,6 +49,18 @@ impl Core {
                 color: project.color,
                 billable: project.billable,
                 archived: project.archived_at.is_some(),
+            })
+            .collect())
+    }
+
+    pub async fn clients(&self) -> AppResult<Vec<ClientOut>> {
+        Ok(clients::list(self.db().await?, true)
+            .await?
+            .into_iter()
+            .map(|client| ClientOut {
+                archived: client.archived_at.is_some(),
+                id: client.id,
+                name: client.name,
             })
             .collect())
     }
@@ -97,6 +116,24 @@ mod tests {
                 "archived": true,
             })
         );
+    }
+
+    #[tokio::test]
+    async fn clients_list_archived_ones_too_with_the_flag() {
+        let seed = seeded().await;
+        let globex = crate::test_support::client(&seed.db, "Globex").await;
+        clients::set_archived(&seed.db, &globex.id, true)
+            .await
+            .unwrap();
+
+        let out = serde_json::to_value(seed.core.clients().await.unwrap()).unwrap();
+
+        assert_eq!(out.as_array().unwrap().len(), 2);
+        assert_eq!(
+            named(&out, "name", "Globex"),
+            &json!({"id": globex.id, "name": "Globex", "archived": true})
+        );
+        assert_eq!(named(&out, "name", "Acme")["archived"], false);
     }
 
     #[tokio::test]
