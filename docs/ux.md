@@ -372,19 +372,23 @@ The Day view reads like Timely's: the toolbar, the timesheet on the left, then t
 - **Timeline columns,** left to right: the hour axis (`--timeline-axis-w`, hour labels in `--fs-caption`
   `--o2`, tabular figures; hour hairlines in `--line`, half hours from 3 px per minute), the time column
   (`--recordings-col-w`, about 90 px: recordings and suggestions, where a drag selects time), the summary
-  lane, then the activity lanes: Activity, an app's own lane, an external source's lane. Lane heads stick to
-  the top with an icon (the app's for an app lane) and the name; the Activity head shows the day's tracked
-  time. Lanes take shares of the width by kind (summary 1.2, activity 2, app 0.6, source 1) with minimum
-  widths (`--summary-lane-min-w`, `--activity-lane-min-w`, `--app-lane-min-w`, `--lane-min-w`).
+  lane, then the pinned app lanes (an app's own lane), Activity and the external sources' lanes. Lane heads
+  stick to the top with an icon (the app's for an app lane) and the name; a pinned app lane's head shows only
+  the icon, and the Activity head shows the day's tracked time. Lanes take shares of the width by kind
+  (summary 1.2, activity 2, source 1; pinned app lanes stay at `--app-lane-min-w`) and never shrink below their
+  minimum (`--summary-lane-min-w`, `--activity-lane-min-w`, `--lane-min-w`), widened so each column of
+  overlapping blocks gets `--block-min-w` (`--pinned-block-min-w` in a pinned lane). Past that the timeline
+  scrolls sideways; the hour axis and the time column stay in place.
 - **Summary lane** works in clock-aligned buckets of the Summary interval (default 5 min): each bucket shows
   the app (or window, without grouping by app) with the most time in it, neighbouring buckets with the same
   winner merge, empty buckets stay empty, so a summary block always starts and ends on the grid (:45, :50,
   never :49). Blocks (`Block`, `summary-block`) are filled with the app icon and label, the active time at
   the bottom right when tall enough.
 - **Memories** (the activity, app and source lanes): each block is the app icon over a thin vertical bar as
-  long as the activity really is, the label (500, `--text-strong`) and its duration (`34m`, `--o3`) beside it,
-  on two lines when there is room, else on one; text may run past a short block, the bar keeps the real
-  length; tiny ones show only the bar. Private blocks read "Private" in `--o2`. Overlapping blocks of one lane
+  long as the activity really is, the label (500, `--text-strong`) and, when there is room for a second line,
+  its duration (`34m`, `--o3`) under it; a short block shows the label alone, and on hover the gear beside it.
+  Text may run past a short block, the bar keeps the real length; tiny ones show only the bar. A pinned app
+  lane shows only the icon and the duration; the hover card has the rest. Private blocks read "Private" in `--o2`. Overlapping blocks of one lane
   share its width side by side.
 - **Focus** (J/K/H/L or a click) is a 2px accent outline, drawn only while the keyboard is in use (a click
   focuses without an outline, see [Focus rings](#focus-rings)); Space opens the details card for it.

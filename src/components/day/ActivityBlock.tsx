@@ -1,19 +1,19 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { Settings2 } from "lucide-react";
 import type { ActivityBlock as ActivityBlockData } from "../../api";
 import { formatDuration } from "../../lib/format";
 import { AppIcon } from "../AppIcon";
 import { Block } from "../Block";
 
-/** Below `TEXT_MIN_PX` (px) a block shows no text; below `TWO_LINES_PX` (memory) or `ONE_LINE_PX` (summary), one line. */
+/** Below `TEXT_MIN_PX` (px) a block shows no text; below `TWO_LINES_PX` (memory) or `ONE_LINE_PX` (summary), one line without the duration. */
 const TEXT_MIN_PX = 12;
 const TWO_LINES_PX = 28;
 const ONE_LINE_PX = 40;
 
 interface Props {
   block: ActivityBlockData;
-  /** The summary lane's look, or an activity lane's. */
-  look: "summary" | "memory";
+  /** The summary lane's look, a pinned app lane's, or another activity lane's. */
+  look: "summary" | "memory" | "pinned";
   top: number;
   height: number;
   focused: boolean;
@@ -64,27 +64,46 @@ function SummaryBlock({ block, top, height, focused, selected }: BlockProps) {
   );
 }
 
-/** The app icon over a bar as long as the activity, the label and active time beside it. */
-function MemoryBlock({ block, top, height, focused, selected }: BlockProps) {
-  const text = height >= TEXT_MIN_PX;
-  const classes = ["memory", text && height < TWO_LINES_PX && "one-line", ...flags(block, focused, selected)];
+/** An activity lane's block: the bar as long as the activity, and `children` once tall enough for text. */
+function MemoryFrame({ block, top, height, focused, selected, modifier, children }: BlockProps & { modifier?: string; children: ReactNode }) {
+  const classes = ["memory", modifier, ...flags(block, focused, selected)];
   return (
     <div className={classes.filter(Boolean).join(" ")} data-block-id={block.id} aria-label={ariaLabel(block)} style={{ top, height, ...placement(block) }}>
       <span className="memory-bar" aria-hidden="true" />
-      {text && (
-        <>
-          <AppIcon app={block.app} bundleId={block.bundleId} size={16} />
-          <span className="memory-text">
-            <span className="memory-title">{block.label}</span>
-            <span className="memory-duration">{formatDuration(block.activeMs)}</span>
-          </span>
-          <Gear block={block} />
-        </>
-      )}
+      {height >= TEXT_MIN_PX && children}
     </div>
   );
 }
 
+/** The app icon over a bar as long as the activity, with the label and, when tall enough, the duration. */
+function MemoryBlock(props: BlockProps) {
+  const { block, height } = props;
+  return (
+    <MemoryFrame {...props}>
+      <AppIcon app={block.app} bundleId={block.bundleId} size={16} />
+      <span className="memory-text">
+        <span className="memory-title">{block.label}</span>
+        {height >= TWO_LINES_PX && <span className="memory-duration">{formatDuration(block.activeMs)}</span>}
+      </span>
+      <Gear block={block} />
+    </MemoryFrame>
+  );
+}
+
+/** A pinned app lane's memory: the icon and the duration; the hover card tells the rest. */
+function PinnedBlock(props: BlockProps) {
+  const { block } = props;
+  return (
+    <MemoryFrame {...props} modifier="memory--pinned">
+      <AppIcon app={block.app} bundleId={block.bundleId} size={16} />
+      <span className="memory-duration">{formatDuration(block.activeMs)}</span>
+    </MemoryFrame>
+  );
+}
+
+const LOOKS = { summary: SummaryBlock, memory: MemoryBlock, pinned: PinnedBlock };
+
 export const ActivityBlock = memo(function ActivityBlock({ look, ...props }: Props) {
-  return look === "summary" ? <SummaryBlock {...props} /> : <MemoryBlock {...props} />;
+  const Look = LOOKS[look];
+  return <Look {...props} />;
 });

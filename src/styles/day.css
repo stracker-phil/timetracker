@@ -57,22 +57,25 @@
 /* ---------- timeline: hour axis, time column, then the lanes ---------- */
 .timeline-frame { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 .timeline { flex: 1; overflow: auto; position: relative; }
-.timeline-head, .timeline-body { display: grid; grid-template-columns: var(--timeline-axis-w) var(--recordings-col-w) minmax(0, 1fr); min-width: min-content; }
+/* The lanes never shrink below their minimum widths: past that the timeline scrolls sideways, the axis and the
+   time column staying in place. */
+.timeline-head, .timeline-body { display: grid; grid-template-columns: var(--timeline-axis-w) var(--recordings-col-w) minmax(min-content, 1fr); min-width: min-content; }
+.head-axis, .head-col, .time-axis, .recordings-col { position: sticky; z-index: 2; background: var(--bg); }
+.head-axis, .time-axis { left: 0; }
+.head-col, .recordings-col { left: var(--timeline-axis-w); }
 .timeline-head { position: sticky; top: 0; z-index: 3; background: var(--bg); border-bottom: 1px solid var(--line); font-size: var(--fs-meta); }
 .lane-heads { display: flex; }
 .lane-head {
-  flex: 1 1 0; min-width: var(--lane-min-w); box-sizing: border-box; padding: var(--space-2); border-left: 1px solid var(--line);
+  box-sizing: border-box; padding: var(--space-2); border-left: 1px solid var(--line);
   color: var(--o2); font-weight: 600; display: flex; align-items: center; gap: var(--space-2);
 }
 .lane-head svg { flex: none; color: var(--o3); }
 .lane-head-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lane-head-total { margin-left: auto; color: var(--o3); font-weight: 400; white-space: nowrap; }
 .timeline-body { position: relative; }
-.recordings-col { position: relative; border-left: 1px solid var(--line); }
-.time-axis, .lanes { z-index: 1; }
+.recordings-col { border-left: 1px solid var(--line); }
+.lanes { z-index: 1; }
 
-
-.time-axis { position: relative; }
 .axis-mark { position: absolute; left: 0; right: 0; height: 0; }
 .axis-label { position: absolute; right: var(--space-2); top: -0.6em; font-size: var(--fs-caption); color: var(--o2); }
 
@@ -85,12 +88,17 @@
 }
 .lanes.half-hours { --half-line: color-mix(in oklab, var(--line) 50%, transparent); }
 /* The padding matches the head's, so both share the row alike; blocks are placed against the padding box. */
-.lane { position: relative; box-sizing: border-box; flex: 1 1 0; min-width: var(--lane-min-w); padding: 0 var(--space-2); border-left: 1px solid var(--line); z-index: 1; }
+.lane { position: relative; box-sizing: border-box; padding: 0 var(--space-2); border-left: 1px solid var(--line); z-index: 1; }
 
-/* Lane widths by kind, the same for a head and its lane. */
-.lane-head--summary, .lane--summary { flex: 1.2 1 0; min-width: var(--summary-lane-min-w); }
-.lane-head--activity, .lane--activity { flex: 2 1 0; min-width: var(--activity-lane-min-w); }
-.lane-head--app, .lane--app { flex: 0.6 1 0; min-width: var(--app-lane-min-w); }
+/* Min width, the same for a head and its lane: the kind's minimum, or a column per overlapping block (`--lane-cols`). */
+.lane-head, .lane {
+  --lane-min: var(--lane-min-w); --col-min: var(--block-min-w);
+  flex: 1 1 0; min-width: max(var(--lane-min), calc(var(--lane-cols, 1) * var(--col-min)));
+}
+.lane-head--summary, .lane--summary { flex-grow: 1.2; --lane-min: var(--summary-lane-min-w); }
+.lane-head--activity, .lane--activity { flex-grow: 2; --lane-min: var(--activity-lane-min-w); }
+.lane-head--app, .lane--app { flex-grow: 0; --lane-min: var(--app-lane-min-w); --col-min: var(--pinned-block-min-w); }
+.lane-head--app { justify-content: center; }
 
 .now-line { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--accent); z-index: 2; pointer-events: none; }
 

@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type CSSProperties } from "react";
 import type { Lane as LaneData } from "../../api";
 import { ActivityBlock } from "./ActivityBlock";
 import type { VisibleRange } from "./useVisibleRange";
@@ -17,12 +17,17 @@ interface Props {
   selectedBlocks: string[];
 }
 
+/** The most columns a cluster of the lane's overlapping blocks takes: the lane widens to fit them. */
+export const laneCols = (lane: LaneData) => lane.blocks.reduce((most, b) => Math.max(most, b.cols), 1);
+
+const LOOKS = { summary: "summary", app: "pinned" } as const;
+
 /** One lane's blocks, absolutely placed from their times and columns. */
 export const Lane = memo(function Lane({ lane, origin, pxPerMinute, range, focusedBlock, selectedBlocks }: Props) {
   const y = (ms: number) => ((ms - origin) / 60_000) * pxPerMinute;
-  const look = lane.kind === "summary" ? "summary" : "memory";
+  const look = LOOKS[lane.kind as keyof typeof LOOKS] ?? "memory";
   return (
-    <div className={`lane lane--${lane.kind}`} data-lane-id={lane.id}>
+    <div className={`lane lane--${lane.kind}`} data-lane-id={lane.id} style={{ "--lane-cols": laneCols(lane) } as CSSProperties}>
       {lane.blocks.map((block) => {
         const top = y(block.start);
         const height = Math.max(MIN_BLOCK_PX, y(block.end) - top);

@@ -464,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn lanes_are_activity_then_app_lanes_then_source_lanes_each_sorted() {
+    fn lanes_are_summary_then_app_lanes_then_activity_then_source_lanes_each_sorted() {
         let rows = vec![
             activity(1, mins(0), Some(mins(10)), "Mail", ""),
             activity(2, mins(10), Some(mins(20)), "Notes", ""),
@@ -472,29 +472,32 @@ mod tests {
             from_source(code(4, 30, 40), "external:planner"),
             from_source(code(5, 40, 50), "external:calendar"),
         ];
-        let settings = own_lane(own_lane(settings(), &bundle_of("Mail")), &bundle_of("Code"));
+        let settings = with_timeline(
+            own_lane(own_lane(settings(), &bundle_of("Mail")), &bundle_of("Code")),
+            |t| t.summary_lane = true,
+        );
 
         let view = view(&input(rows, vec![]), &settings);
 
         assert_eq!(
             lane_id_list(&view),
             [
-                "activity",
+                "summary",
                 "app:test.mail",
                 "app:test.code",
+                "activity",
                 "source:calendar",
                 "source:planner"
             ]
         );
-        let labels: Vec<&str> = view.lanes.iter().map(|l| l.label.as_str()).collect();
-        assert_eq!(labels, ["Activity", "Mail", "Code", "calendar", "planner"]);
         let kinds: Vec<LaneKind> = view.lanes.iter().map(|l| l.kind).collect();
         assert_eq!(
             kinds,
             [
+                LaneKind::Summary,
+                LaneKind::App,
+                LaneKind::App,
                 LaneKind::Activity,
-                LaneKind::App,
-                LaneKind::App,
                 LaneKind::Source,
                 LaneKind::Source
             ]
@@ -541,7 +544,7 @@ mod tests {
             &own_lane(hidden(settings(), &bundle_of("Code")), "other"),
         );
 
-        assert_eq!(lane_id_list(&by_name), ["activity", "app:Code"]);
+        assert_eq!(lane_id_list(&by_name), ["app:Code", "activity"]);
         assert_eq!(block_ids(lane_by_id(&by_name, "app:Code")), ["a1"]);
         assert_eq!(
             lane_by_id(&by_name, "app:Code").app_key.as_deref(),

@@ -160,7 +160,7 @@ mod tests {
         let view = load(&db, today, &settings, start + HOUR).await.unwrap();
 
         let ids: Vec<&str> = view.lanes.iter().map(|l| l.id.as_str()).collect();
-        assert_eq!(ids, ["summary", "activity", "app:com.apple.mail"]);
+        assert_eq!(ids, ["summary", "app:com.apple.mail", "activity"]);
     }
 
     #[tokio::test]

@@ -8,8 +8,8 @@ use crate::db::time::Ms;
 /// Shorter blocks never get room for a label at any zoom, so the activity lane leaves them out.
 const ACTIVITY_MIN_MS: Ms = 60_000;
 
-/// The activity lane (unless the settings leave it out), then app lanes by first appearance, then source
-/// lanes by name; each packed.
+/// The pinned app lanes by first appearance, then the activity lane (unless the settings leave it out), then
+/// source lanes by name; each packed.
 pub(super) fn lanes(
     mut tracker: Vec<ActivityBlock>,
     external: Vec<ActivityBlock>,
@@ -64,7 +64,13 @@ pub(super) fn lanes(
             .then_with(|| a.id.cmp(&b.id))
     });
 
-    let mut lanes = Vec::new();
+    let mut lanes: Vec<Lane> = app_lanes
+        .into_iter()
+        .map(|lane| Lane {
+            blocks: packed(lane.blocks),
+            ..lane
+        })
+        .collect();
     if settings.timeline.show_all_activity {
         lanes.push(Lane {
             id: "activity".into(),
@@ -80,10 +86,6 @@ pub(super) fn lanes(
             ),
         });
     }
-    lanes.extend(app_lanes.into_iter().map(|lane| Lane {
-        blocks: packed(lane.blocks),
-        ..lane
-    }));
     lanes.extend(source_lanes);
     lanes
 }
@@ -175,7 +177,7 @@ mod tests {
 
         assert_eq!(
             lane_id_list(&view),
-            ["activity", "app:test.zed", "app:test.alpha"]
+            ["app:test.zed", "app:test.alpha", "activity"]
         );
         assert_eq!(
             shape(lane_by_id(&view, "app:test.zed")),
@@ -235,9 +237,9 @@ mod tests {
         assert_eq!(
             bundle_ids,
             [
-                ("activity", None),
                 ("app:test.mail", Some("test.mail")),
                 ("app:Notes", None),
+                ("activity", None),
                 ("source:planner", None),
             ]
         );

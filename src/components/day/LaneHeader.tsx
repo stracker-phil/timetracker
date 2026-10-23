@@ -1,7 +1,9 @@
+import type { CSSProperties } from "react";
 import { History, Layers, Plug } from "lucide-react";
 import type { Lane } from "../../api";
 import { formatDuration } from "../../lib/format";
 import { AppIcon } from "../AppIcon";
+import { laneCols } from "./Lane";
 
 function LaneIcon({ lane }: { lane: Lane }) {
   switch (lane.kind) {
@@ -16,17 +18,24 @@ function LaneIcon({ lane }: { lane: Lane }) {
   }
 }
 
-/** The sticky heads over the lanes; the activity lane shows the day's tracked time. */
+/** The sticky heads over the lanes; the activity lane shows the day's tracked time, a pinned app lane only its icon. */
 export function LaneHeader({ lanes, trackedMs }: { lanes: Lane[]; trackedMs: number }) {
   return (
     <div className="timeline-head" role="row">
-      <span aria-hidden="true" />
-      <span aria-hidden="true" />
+      <span className="head-axis" aria-hidden="true" />
+      <span className="head-col" aria-hidden="true" />
       <div className="lane-heads">
         {lanes.map((lane) => (
-          <span key={lane.id} className={`lane-head lane-head--${lane.kind}`} role="columnheader" title={lane.label}>
+          <span
+            key={lane.id}
+            className={`lane-head lane-head--${lane.kind}`}
+            role="columnheader"
+            aria-label={lane.label}
+            title={lane.label}
+            style={{ "--lane-cols": laneCols(lane) } as CSSProperties}
+          >
             <LaneIcon lane={lane} />
-            <span className="lane-head-label">{lane.label}</span>
+            {lane.kind !== "app" && <span className="lane-head-label">{lane.label}</span>}
             {lane.kind === "activity" && <span className="lane-head-total">{formatDuration(trackedMs)}</span>}
           </span>
         ))}

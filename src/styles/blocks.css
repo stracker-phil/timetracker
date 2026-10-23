@@ -17,6 +17,8 @@
 .block.private .block-subtitle { color: var(--o2); }
 .block-gear { position: absolute; top: 1px; right: 1px; display: none; width: 1.385rem; height: 1.385rem; }
 .block:hover .block-gear { display: grid; }
+/* A compact block's duration sits where the gear shows. */
+.timeline--compact .block:hover .block-trailing { visibility: hidden; }
 .block.dimmed { background: var(--activity-fill-dim); opacity: 1; }
 .block.dimmed .block-title, .block.dimmed .block-subtitle { color: var(--o2); }
 .block.dimmed:hover { background: var(--activity-fill-hover); }
@@ -40,13 +42,16 @@
 .memory-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .memory-title { font-weight: 500; color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .memory-duration { font-size: var(--fs-caption); color: var(--o3); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.memory.one-line .memory-text { flex-direction: row; align-items: baseline; gap: var(--space-2); }
 .memory:hover { --memory-bar: var(--o2); }
 .memory:hover .memory-title { color: var(--accent-text); }
 .memory.private .memory-title, .memory.dimmed .memory-title { color: var(--o2); font-weight: 400; }
 [data-input="keyboard"] .memory.focused { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: var(--radius-sm); z-index: 2; }
 .memory.selected { --memory-bar: var(--accent); }
 .memory.selected .memory-title { color: var(--accent-text); }
+/* In the row's flow, so the text gives way to it instead of running under it. */
+.memory .block-gear { position: static; flex: none; margin-left: auto; }
+.memory--pinned { gap: var(--space-1); }
+.memory--pinned .memory-duration { line-height: 16px; }
 .memory:hover .block-gear { display: grid; }
 
 /* A recording (`Card`): filled with `--block-fill`, its text in `--block-text` (theme.css derives both from the

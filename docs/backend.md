@@ -308,9 +308,9 @@ from the day before included) and calls it. `ViewSettings` is a copy of `Setting
    Blocks shorter than the noise threshold (off 0, low 2, medium 4, high 6 min) are dropped. A block shows
    its longest row (`title`, `label`, URL, path); its id is `a<first member id>`, `members` every row,
    `activeMs` the time its rows fill (without the gaps it bridges).
-6. `lanes::lanes`: the `activity` lane (unless `showAllActivity` is off; without blocks shorter than a minute, which never have room for a label), one `app:<appKey>` lane per app
-   with `ownLane` in the order of first appearance (`bundleId` for its icon), one `source:<name>` lane per
-   external source by name;
+6. `lanes::lanes`: one `app:<appKey>` lane per app with `ownLane` (pinned) in the order of first appearance
+   (`bundleId` for its icon), the `activity` lane (unless `showAllActivity` is off; without blocks shorter
+   than a minute, which never have room for a label), one `source:<name>` lane per external source by name;
    `packed` per lane: by start, longer first, each block in the lowest free column, a cluster of overlapping
    blocks sharing its width (`col` of `cols`).
 7. `mark_covered`: a block of any lane is `covered` when at least half of it lies inside recordings.

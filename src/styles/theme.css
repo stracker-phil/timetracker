@@ -71,7 +71,10 @@
   --lane-min-w: 160px;
   --summary-lane-min-w: 200px;
   --activity-lane-min-w: 260px;
-  --app-lane-min-w: 96px;
+  --app-lane-min-w: 64px;
+  /* The narrowest column of overlapping blocks in a lane, and in a pinned lane. */
+  --block-min-w: 140px;
+  --pinned-block-min-w: 56px;
 }
 
 /* Shared controls inside the sidebar (buttons, key caps, rows) take the sidebar tokens; its accent hues come from
