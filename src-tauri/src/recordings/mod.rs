@@ -71,6 +71,14 @@ pub struct Change<T> {
 }
 
 impl<T> Change<T> {
+    /// Nothing written: no day changed.
+    pub fn unchanged(value: T) -> Self {
+        Change {
+            value,
+            days: Vec::new(),
+        }
+    }
+
     pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Change<U> {
         Change {
             value: f(self.value),

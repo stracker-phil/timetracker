@@ -10,10 +10,8 @@ html:has(.timer-picker), html:has(.timer-picker) body { background: transparent;
 .timer-form h1 { margin-bottom: var(--space-1); }
 .timer-picker .actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-1); }
 .timer-running { display: flex; align-items: center; gap: var(--space-2); }
-.timer-running .grow-text { font-weight: 600; }
-.timer-elapsed { font-size: var(--fs-display); font-weight: 700; color: var(--text-strong); }
-.timer-note { margin: 0; }
-.timer-running ~ .actions { margin-top: auto; }
+.timer-elapsed { font-weight: 600; color: var(--o2); font-variant-numeric: tabular-nums; }
+.timer-picker .timer-stop { margin-right: auto; }
 .timer-recent-label { padding-top: var(--space-2); border-top: 1px solid var(--line); font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }
 .timer-recent { margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) 0; padding: 0; list-style: none; overflow: auto; }
 .timer-recent button {

@@ -13,7 +13,7 @@ export interface SettingsSlice {
   saveTimeline: (patch: Partial<TimelineSettings>) => Promise<void>;
   saveKeybindings: (bindings: Keybindings) => Promise<void>;
   /** Resolves the reason when Rust refuses it (the system took the keys, or they are no chord). */
-  saveTimerShortcut: (binding: string) => Promise<string | null>;
+  saveTimerShortcut: (binding: string | null) => Promise<string | null>;
   /** One app's timeline override; resolves whether it was saved (a failure is toasted). */
   setAppSetting: (bundleId: string, patch: AppSettingPatch) => Promise<boolean>;
   /** Turns launch at login on or off; resolves whether it is on now, or `null` when it failed (toasted). */

@@ -90,6 +90,7 @@ pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         recordings::commands::recording_nudge,
         timers::commands::timer_start,
         timers::commands::timer_stop,
+        timers::commands::timer_update,
         timers::commands::timer_status,
         timers::commands::timers_recent,
         timers::commands::timer_picker_open,

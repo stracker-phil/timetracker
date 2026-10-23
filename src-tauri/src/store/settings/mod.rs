@@ -54,10 +54,14 @@ pub struct Settings {
     pub apps: HashMap<String, AppOverride>,
     #[serde(deserialize_with = "lenient")]
     pub reports: ReportSettings,
-    pub timer_shortcut: String,
+    /// The system-wide shortcut for the timer picker; `None` turns it off.
+    pub timer_shortcut: Option<String>,
     #[serde(deserialize_with = "lenient")]
     pub mcp: McpSettings,
 }
+
+/// ⌃⌥⌘T, which neither macOS nor common IDEs bind.
+pub const DEFAULT_TIMER_SHORTCUT: &str = "Mod+Ctrl+Alt+T";
 
 impl Default for Settings {
     fn default() -> Self {
@@ -77,7 +81,7 @@ impl Default for Settings {
             timeline: TimelineSettings::default(),
             apps: HashMap::new(),
             reports: ReportSettings::default(),
-            timer_shortcut: "Mod+Shift+T".into(),
+            timer_shortcut: Some(DEFAULT_TIMER_SHORTCUT.into()),
             mcp: McpSettings::default(),
         }
     }
@@ -119,7 +123,11 @@ impl Settings {
 
         // Drop app entries that hold no override.
         self.apps.retain(|_, app| *app != AppOverride::default());
-        if !is_global(&self.timer_shortcut) {
+        if self
+            .timer_shortcut
+            .as_deref()
+            .is_some_and(|b| !is_global(b))
+        {
             self.timer_shortcut = d.timer_shortcut;
         }
         self
@@ -526,18 +534,64 @@ mod tests {
     #[test]
     fn a_timer_shortcut_that_cannot_be_global_resets_to_the_default() {
         for (input, expected) in [
-            ("", "Mod+Shift+T"),
-            ("  ", "Mod+Shift+T"),
-            ("T", "Mod+Shift+T"),
-            ("Shift+T", "Mod+Shift+T"),
-            ("Alt+R", "Mod+Shift+T"),
-            ("Mod+", "Mod+Shift+T"),
+            ("", DEFAULT_TIMER_SHORTCUT),
+            ("  ", DEFAULT_TIMER_SHORTCUT),
+            ("T", DEFAULT_TIMER_SHORTCUT),
+            ("Shift+T", DEFAULT_TIMER_SHORTCUT),
+            ("Alt+R", DEFAULT_TIMER_SHORTCUT),
+            ("Mod+", DEFAULT_TIMER_SHORTCUT),
             ("Mod+Alt+R", "Mod+Alt+R"),
             ("Ctrl+Alt+K", "Ctrl+Alt+K"),
         ] {
-            let sanitized = settings(|s| s.timer_shortcut = input.into()).sanitized();
-            assert_eq!(sanitized.timer_shortcut, expected, "{input:?}");
+            let sanitized = settings(|s| s.timer_shortcut = Some(input.into())).sanitized();
+            assert_eq!(
+                sanitized.timer_shortcut.as_deref(),
+                Some(expected),
+                "{input:?}"
+            );
         }
+    }
+
+    #[test]
+    fn the_timer_shortcut_defaults_to_control_option_command_t() {
+        assert_eq!(DEFAULT_TIMER_SHORTCUT, "Mod+Ctrl+Alt+T");
+        assert_eq!(
+            Settings::default().timer_shortcut.as_deref(),
+            Some(DEFAULT_TIMER_SHORTCUT)
+        );
+        assert_eq!(
+            Settings::default().sanitized().timer_shortcut.as_deref(),
+            Some(DEFAULT_TIMER_SHORTCUT)
+        );
+    }
+
+    #[test]
+    fn a_null_timer_shortcut_loads_as_off_and_survives_sanitizing() {
+        let loaded: Settings = serde_json::from_value(json!({ "timerShortcut": null })).unwrap();
+
+        assert_eq!(loaded.timer_shortcut, None);
+        assert_eq!(loaded.sanitized().timer_shortcut, None);
+    }
+
+    #[test]
+    fn a_missing_timer_shortcut_gets_the_default() {
+        let loaded: Settings = serde_json::from_value(json!({ "accent": "teal" })).unwrap();
+
+        assert_eq!(
+            loaded.timer_shortcut.as_deref(),
+            Some(DEFAULT_TIMER_SHORTCUT)
+        );
+    }
+
+    #[test]
+    fn a_turned_off_timer_shortcut_round_trips_as_null() {
+        let original = settings(|s| s.timer_shortcut = None);
+
+        let value = serde_json::to_value(&original).unwrap();
+
+        assert_eq!(value["timerShortcut"], json!(null));
+        let back: Settings = serde_json::from_value(value).unwrap();
+        assert_eq!(back, original);
     }
 
     #[test]
@@ -660,7 +714,7 @@ mod tests {
                 },
                 "apps": {},
                 "reports": { "rounding": "none", "defaultGroup": "project" },
-                "timerShortcut": "Mod+Shift+T",
+                "timerShortcut": "Mod+Ctrl+Alt+T",
                 "mcp": { "exposeActivity": false }
             })
         );

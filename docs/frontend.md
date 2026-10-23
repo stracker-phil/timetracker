@@ -293,18 +293,21 @@ lane with blocks) for J/K/H/L. The status bar shows the selection as `09:00–10
 ### Timer
 
 The `timer` slice holds `timer` (`TimerStatus` from `timer_status` events and `loadTimer` at boot),
-`startTimer` (an `overlap` reads "A recording already covers now") and `stopTimer` (a toast with Undo).
+`startTimer` (an `overlap` reads "A recording already covers now"), `updateTimer` (the running timer's
+project, note and tag) and `stopTimer` (a toast with Undo).
 Commands `timer.start` (⌘T: `timerPickerOpen`), `timer.stop` (⌘⇧. while one runs), `timer.toggle`. The status
 bar shows the running timer. Settings → Shortcuts has a Global shortcut group above the in-app commands: the
-recorder saves `timerShortcut` through `saveTimerShortcut`, which shows Rust's refusal under the row.
+recorder saves `timerShortcut` through `saveTimerShortcut`, which shows Rust's refusal under the row. Every
+bound shortcut, global or in-app, has an X ("Remove shortcut for …") that saves it as `null`.
 
 Secondary windows are pages of their own in `src/windows/<name>/` (`index.html`, `main.tsx`), each a
 `build.rollupOptions.input` entry in `vite.config.ts`; they import `src/styles/index.ts` and use the same
 store and `api`. `windows/timer/TimerPicker.tsx` reloads settings, projects, the timer and the recent timers
 whenever the window gains focus (it is hidden, not closed, between uses), and reports its errors to the log.
-Its `StartForm` ("Start Timer") and the away window use the editor's field order with `FormField` labels:
+Its `TimerForm` ("Start Timer") and the away window use the editor's field order with `FormField` labels:
 Note (`NoteInput`, autofocus, `NOTE_PLACEHOLDER` "What did you work on?"), Project, Tag. While a timer runs the
-heading is its project's name.
+form is filled with it ("Timer running", elapsed time, the note selected on focus) and Save calls `updateTimer`;
+it is keyed by the recording, its `updatedAt` and the window's openings, so the minute ticks never reset it.
 
 ### Away window
 

@@ -151,6 +151,7 @@ export function createApiMock(): typeof realApi {
     savedReportRename: vi.fn(async (id: string, name: string) => savedReport({ id, name })),
     savedReportDelete: vi.fn().mockResolvedValue(null),
     timerStart: vi.fn(async (projectId: string, note: string, tagId: string | null) => recording({ id: "recording-timer", projectId, note, tagId, spans: [{ id: "recording-timer-s1", start: 0, end: null }] })),
+    timerUpdate: vi.fn(async (projectId: string, note: string, tagId: string | null) => recording({ id: "recording-timer", projectId, note, tagId, spans: [{ id: "recording-timer-s1", start: 0, end: null }] })),
     timerStop: vi.fn().mockResolvedValue(null),
     timerStatus: vi.fn().mockResolvedValue({ running: null }),
     timersRecent: vi.fn().mockResolvedValue([]),

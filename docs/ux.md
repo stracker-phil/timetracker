@@ -575,11 +575,13 @@ timeline's for every app.
   (still with reduced motion); it has no grips. Starting the timer for a project, note and tag already
   recorded today continues that recording with a new span. The menu bar item's title reads `⏱ 1h 23m Acme` while it runs, and the
   status bar shows `⏱ Acme 1:23` (a click stops it).
-- The picker (⌘⇧T from any app, ⌘T in the window, Start Timer… in the tray) is a small floating panel on
+- The picker (⌃⌥⌘T from any app, ⌘T in the window, Start Timer… in the tray) is a small floating panel on
   `--pop` with `--radius-lg` under the tray icon: "Start Timer", then the labelled fields in the editor's order
   (Note, focused, "What did you work on?"; Project; Tag), Start (↵), Cancel (Escape), and below a hairline the
-  "Recent" timers as rows with their project's dot. While a timer runs its title is the project's name with
-  its dot, then the elapsed time large, the note, Stop and "Start another…". It hides when it loses focus.
+  "Recent" timers as rows with their project's dot. While a timer runs the same form shows its note
+  (selected, to retype), project and tag under "Timer running" with the project's dot and the elapsed time;
+  Save (↵) changes the running recording, Stop (at the leading end) stops it, Cancel (Escape); no Recent. It
+  shows over full-screen apps on every space, never activates TimeTracker, and hides when it loses focus.
 
 ## Week and Month
 
@@ -756,7 +758,7 @@ recording commands'.
 | `window.hide` | Close window | ⌘W | global |
 | `tracker.pause` | Pause tracking (until resumed) | palette | global |
 | `tracker.resume` | Resume tracking | palette | global |
-| `timer.start` | Start timer… | ⌘T (⌘⇧T from any app) | global |
+| `timer.start` | Start timer… | ⌘T (⌃⌥⌘T from any app) | global |
 | `timer.stop` | Stop timer | ⌘⇧. | global |
 | `timer.toggle` | Start or stop timer | palette | global |
 | `edit.undo` / `edit.redo` | Undo / Redo: the text field's typing, else the last recording change (not while an overlay is open) | ⌘Z / ⌘⇧Z | global |

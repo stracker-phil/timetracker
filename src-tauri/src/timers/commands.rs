@@ -22,6 +22,12 @@ pub async fn stop(app: &AppHandle) -> AppResult<Option<Recording>> {
     Ok(stopped)
 }
 
+pub async fn update(app: &AppHandle, input: TimerInput) -> AppResult<Option<Recording>> {
+    let updated = changing(app, async |s| s.update_timer(input, now_ms()).await).await?;
+    publish(app).await;
+    Ok(updated)
+}
+
 /// `timetracker start`: the project by id, name or unique prefix, the tag by name.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TimerStartRequest {
@@ -127,6 +133,22 @@ pub async fn timer_start(
         tag_id,
     };
     start(&app, input).await
+}
+
+/// Changes the running timer's project, note and tag; `null` when none runs.
+#[tauri::command]
+pub async fn timer_update(
+    app: AppHandle,
+    project_id: String,
+    note: String,
+    tag_id: Option<String>,
+) -> AppResult<Option<Recording>> {
+    let input = TimerInput {
+        project_id,
+        note,
+        tag_id,
+    };
+    update(&app, input).await
 }
 
 #[tauri::command]

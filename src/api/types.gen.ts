@@ -788,7 +788,11 @@ accent: string, textSize: TextSize, calendarTitle: CalendarTitle, dayTitle: DayT
 /**
  * The data folder when moved away from the config dir.
  */
-dataDir: string | null, tracker: TrackerSettings, capture: CaptureSettings, timeline: TimelineSettings, apps: { [key in string]: AppOverride }, reports: ReportSettings, timerShortcut: string, mcp: McpSettings, };
+dataDir: string | null, tracker: TrackerSettings, capture: CaptureSettings, timeline: TimelineSettings, apps: { [key in string]: AppOverride }, reports: ReportSettings, 
+/**
+ * The system-wide shortcut for the timer picker; `None` turns it off.
+ */
+timerShortcut: string | null, mcp: McpSettings, };
 
 /**
  * What the main view shows, which the calendar highlights.

@@ -9,6 +9,8 @@ export interface TimerSlice {
   loadTimer: () => Promise<void>;
   /** Resolves whether it started. */
   startTimer: (projectId: string, note: string, tagId: string | null) => Promise<boolean>;
+  /** Gives the running timer another project, note and tag; resolves whether it saved. */
+  updateTimer: (projectId: string, note: string, tagId: string | null) => Promise<boolean>;
   stopTimer: () => Promise<void>;
 }
 
@@ -35,6 +37,15 @@ export const timerSlice: Slice<TimerSlice> = {
       } catch (e) {
         if (toAppError(e).kind === "overlap") get().toast("error", "A recording already covers now");
         else fail(e, "Could not start the timer");
+        return false;
+      }
+    },
+
+    async updateTimer(projectId, note, tagId) {
+      try {
+        return (await api.timerUpdate(projectId, note, tagId)) !== null;
+      } catch (e) {
+        fail(e, "Could not change the timer");
         return false;
       }
     },

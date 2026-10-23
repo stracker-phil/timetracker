@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { RotateCcw, Search } from "lucide-react";
+import { RotateCcw, Search, X } from "lucide-react";
 import { allCommands, bindingFor, bindingFromEvent, bindingLabel, conflicts, scopeLabel } from "../../commands";
 import { useStore } from "../../state/store";
 import { InsetField } from "../Field";
@@ -38,17 +38,27 @@ function ShortcutField({ value, onChange }: { value: string | null; onChange: (b
   );
 }
 
+function RemoveShortcut({ title, onRemove }: { title: string; onRemove: () => void }) {
+  return (
+    <button type="button" className="icon-btn tiny" aria-label={`Remove shortcut for ${title}`} title="Remove shortcut" onClick={onRemove}>
+      <X size="0.846rem" />
+    </button>
+  );
+}
+
 /** The shortcut that opens the timer picker from any app; Rust registers it with the system. */
 function GlobalShortcut() {
   const binding = useStore((s) => s.settings?.timerShortcut ?? null);
   const [error, setError] = useState<string | null>(null);
-  const change = async (next: string | null) => {
-    if (next) setError(await useStore.getState().saveTimerShortcut(next));
-  };
+  const change = async (next: string | null) => setError(await useStore.getState().saveTimerShortcut(next));
+  const title = "Start timer (system-wide)";
   return (
     <Group title="Global shortcut">
-      <Row label="Start timer (system-wide)" description={error ? <span role="alert">{error}</span> : "Opens the timer picker from any app."}>
-        <ShortcutField value={binding} onChange={(b) => void change(b)} />
+      <Row label={title} description={error ? <span role="alert">{error}</span> : "Opens the timer picker from any app."}>
+        <div className="shortcut-control">
+          {binding && <RemoveShortcut title={title} onRemove={() => void change(null)} />}
+          <ShortcutField value={binding} onChange={(b) => void change(b)} />
+        </div>
       </Row>
     </Group>
   );
@@ -85,6 +95,7 @@ export function ShortcutsPage() {
         {list.length === 0 && <div className="settings-row muted">No matching commands.</div>}
         {list.map((c) => {
           const overridden = Object.hasOwn(bindings, c.id);
+          const binding = bindingFor(c.id, bindings);
           return (
             <Row key={c.id} label={c.title} description={scopeLabel(c.scope)}>
               <div className="shortcut-control">
@@ -93,7 +104,8 @@ export function ShortcutsPage() {
                     <RotateCcw size="0.846rem" />
                   </button>
                 )}
-                <ShortcutField value={bindingFor(c.id, bindings)} onChange={(b) => set(c.id, b)} />
+                {binding && <RemoveShortcut title={c.title} onRemove={() => set(c.id, null)} />}
+                <ShortcutField value={binding} onChange={(b) => set(c.id, b)} />
               </div>
             </Row>
           );

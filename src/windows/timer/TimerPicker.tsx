@@ -44,60 +44,88 @@ function useRecentTimers(): RecentTimer[] {
   return recent;
 }
 
-function RunningTimer({ running, onAnother, onStop }: { running: Running; onAnother: () => void; onStop: () => void }) {
-  return (
-    <>
-      <h1 className="timer-running">
-        <AccentDot accent={running.color} shade={running.shade} />
-        <span className="grow-text">{running.projectName}</span>
-      </h1>
-      <span className="timer-elapsed">{formatDuration(running.elapsedMs)}</span>
-      {running.recording.note && <p className="timer-note o2">{running.recording.note}</p>}
-      <div className="actions">
-        <button type="button" className="btn" onClick={onAnother}>
-          Start another…
-        </button>
-        <button type="button" className="btn btn-primary" autoFocus onClick={onStop}>
-          <Square size="0.923rem" /> Stop
-        </button>
-      </div>
-    </>
-  );
+interface Fields {
+  projectId: string | null;
+  note: string;
+  tagId: string | null;
 }
 
-function StartForm({ onStart }: { onStart: Start }) {
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [note, setNote] = useState("");
-  const [tagId, setTagId] = useState<string | null>(null);
+const EMPTY: Fields = { projectId: null, note: "", tagId: null };
+
+/** Starts a timer, or edits the running one (the same fields, filled in). */
+function TimerForm({ running, onSubmit, onStop }: { running?: Running; onSubmit: Start; onStop?: () => void }) {
+  const initial: Fields = running ? { projectId: running.recording.projectId, note: running.recording.note, tagId: running.recording.tagId } : EMPTY;
+  const [fields, setFields] = useState(initial);
+  const change = (patch: Partial<Fields>) => setFields((f) => ({ ...f, ...patch }));
   const noteId = useId();
+  const { projectId, note, tagId } = fields;
   return (
     <form
       className="timer-form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (projectId) onStart(projectId, note.trim(), tagId);
+        if (projectId) onSubmit(projectId, note.trim(), tagId);
       }}
     >
-      <h1>Start Timer</h1>
+      {running ? (
+        <h1 className="timer-running">
+          <AccentDot accent={running.color} shade={running.shade} />
+          <span className="grow-text">Timer running</span>
+          <span className="timer-elapsed">{formatDuration(running.elapsedMs)}</span>
+        </h1>
+      ) : (
+        <h1>Start Timer</h1>
+      )}
       <FormField label="Note" htmlFor={noteId}>
-        <NoteInput id={noteId} placeholder={NOTE_PLACEHOLDER} autoFocus maxLength={500} value={note} onChange={setNote} />
+        <NoteInput
+          id={noteId}
+          placeholder={NOTE_PLACEHOLDER}
+          autoFocus
+          maxLength={500}
+          value={note}
+          onChange={(next) => change({ note: next })}
+          // Selected, so a typed note replaces the working one.
+          onFocus={running ? (e) => e.currentTarget.select() : undefined}
+        />
       </FormField>
       <FormField label="Project">
-        <ProjectPicker value={projectId} onChange={setProjectId} />
+        <ProjectPicker value={projectId} onChange={(next) => change({ projectId: next })} />
       </FormField>
       <FormField label="Tag">
-        <TagPicker value={tagId} onChange={setTagId} />
+        <TagPicker value={tagId} onChange={(next) => change({ tagId: next })} />
       </FormField>
       <div className="actions">
+        {onStop && (
+          <button type="button" className="btn timer-stop" onClick={onStop}>
+            <Square size="0.923rem" /> Stop
+          </button>
+        )}
         <button type="button" className="btn" onClick={close}>
           Cancel
         </button>
         <button type="submit" className="btn btn-primary" disabled={!projectId}>
-          <Play size="0.923rem" /> Start
+          {running ? (
+            "Save"
+          ) : (
+            <>
+              <Play size="0.923rem" /> Start
+            </>
+          )}
         </button>
       </div>
     </form>
   );
+}
+
+/** Counts the window's openings (focus): it is hidden, not closed, between uses. */
+function useOpenings(): number {
+  const [opened, setOpened] = useState(0);
+  useEffect(() => {
+    const count = () => setOpened((n) => n + 1);
+    window.addEventListener("focus", count);
+    return () => window.removeEventListener("focus", count);
+  }, []);
+  return opened;
 }
 
 function RecentTimers({ recent, onStart }: { recent: RecentTimer[]; onStart: Start }) {
@@ -120,13 +148,13 @@ function RecentTimers({ recent, onStart }: { recent: RecentTimer[]; onStart: Sta
   );
 }
 
-/** The small window under the tray icon: start a timer (note, project, tag), or stop the running one. */
+/** The small window under the tray icon: start a timer, or edit or stop the running one. */
 export function TimerPicker() {
   const recent = useRecentTimers();
   const running = useStore((s) => s.timer?.running);
+  const opened = useOpenings();
   // A new form after every start, so it opens empty next time.
   const [formKey, setFormKey] = useState(0);
-  const [another, setAnother] = useState(false);
 
   const start: Start = (projectId, note, tagId) =>
     void useStore
@@ -135,9 +163,13 @@ export function TimerPicker() {
       .then((started) => {
         if (!started) return;
         setFormKey((k) => k + 1);
-        setAnother(false);
         close();
       });
+  const save: Start = (projectId, note, tagId) =>
+    void useStore
+      .getState()
+      .updateTimer(projectId, note, tagId)
+      .then((saved) => saved && close());
   const stop = () => void useStore.getState().stopTimer().then(close);
 
   return (
@@ -147,7 +179,12 @@ export function TimerPicker() {
         if (e.key === "Escape" && !e.defaultPrevented) close();
       }}
     >
-      {running && !another ? <RunningTimer running={running} onAnother={() => setAnother(true)} onStop={stop} /> : <StartForm key={formKey} onStart={start} />}
+      {running ? (
+        // Filled anew on every opening and after every change, never while typing (the clock ticks).
+        <TimerForm key={`${running.recording.id}:${running.recording.updatedAt}:${opened}`} running={running} onSubmit={save} onStop={stop} />
+      ) : (
+        <TimerForm key={formKey} onSubmit={start} />
+      )}
       {!running && recent.length > 0 && <RecentTimers recent={recent} onStart={start} />}
     </div>
   );

@@ -110,6 +110,8 @@ export const api = {
   timerStart: (projectId: string, note: string, tagId: string | null) => invoke<Recording>("timer_start", { projectId, note, tagId }),
   /** `null` when no timer ran. */
   timerStop: () => invoke<Recording | null>("timer_stop"),
+  /** The running timer with another project, note and tag; `null` when none runs. */
+  timerUpdate: (projectId: string, note: string, tagId: string | null) => invoke<Recording | null>("timer_update", { projectId, note, tagId }),
   timerStatus: () => invoke<TimerStatus>("timer_status"),
   timersRecent: () => invoke<RecentTimer[]>("timers_recent"),
   timerPickerOpen: () => invoke<null>("timer_picker_open"),

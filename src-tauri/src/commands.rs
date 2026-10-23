@@ -65,7 +65,7 @@ pub async fn update_settings(
     settings.data_dir = state.settings.get().data_dir;
     // A shortcut the system refuses is reported on its row and not saved.
     if settings.timer_shortcut != state.settings.get().timer_shortcut {
-        timers::shortcut::register(&app, &settings.timer_shortcut)?;
+        timers::shortcut::register(&app, settings.timer_shortcut.as_deref())?;
     }
     save_settings(&app, &state, settings).await
 }
@@ -334,7 +334,7 @@ mod tests {
             ("accent", settings(|s| s.accent = "teal".into())),
             (
                 "timer shortcut",
-                settings(|s| s.timer_shortcut = "Mod+Alt+R".into()),
+                settings(|s| s.timer_shortcut = Some("Mod+Alt+R".into())),
             ),
         ] {
             assert_eq!(settings_effects(Some(&previous), &saved), nothing, "{name}");

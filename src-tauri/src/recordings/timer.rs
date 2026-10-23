@@ -41,10 +41,7 @@ impl Recordings<'_> {
         if let Some(r) = &running
             && same_timer(r, &project.id, &note, input.tag_id.as_deref())
         {
-            return Ok(Change {
-                value: r.clone(),
-                days: Vec::new(),
-            });
+            return Ok(Change::unchanged(r.clone()));
         }
         let start = match &running {
             Some(r) => stop_time(open_start(r), now, self.snap_minutes),
@@ -107,10 +104,7 @@ impl Recordings<'_> {
     pub async fn stop_timer(&self, now: Ms) -> AppResult<Change<Option<Recording>>> {
         let mut undo = self.undo.lock().await;
         let Some(running) = recordings::running(self.db).await? else {
-            return Ok(Change {
-                value: None,
-                days: Vec::new(),
-            });
+            return Ok(Change::unchanged(None));
         };
         let id = running.id.clone();
         let end = stop_time(open_start(&running), now, self.snap_minutes);
@@ -122,6 +116,39 @@ impl Recordings<'_> {
                 &id,
             )
             .await?;
+        Ok(change.map(Some))
+    }
+
+    /// Gives the running timer another project, note and tag; its spans stay. `None` when none runs; an
+    /// unchanged timer is not written.
+    pub async fn update_timer(
+        &self,
+        input: TimerInput,
+        now: Ms,
+    ) -> AppResult<Change<Option<Recording>>> {
+        let mut undo = self.undo.lock().await;
+        let Some(running) = recordings::running(self.db).await? else {
+            return Ok(Change::unchanged(None));
+        };
+        let note = checked_note(&input.note)?;
+        let project = usable_project(self.db, &input.project_id, Some(&running.project_id)).await?;
+        check_tag(self.db, input.tag_id.as_deref()).await?;
+        if same_timer(&running, &project.id, &note, input.tag_id.as_deref()) {
+            return Ok(Change::unchanged(Some(running)));
+        }
+        let id = running.id.clone();
+        let after = Recording {
+            project_id: project.id,
+            note,
+            tag_id: input.tag_id,
+            updated_at: now,
+            ..running.clone()
+        };
+        let op = Op::Update {
+            before: running,
+            after,
+        };
+        let change = self.commit(&mut undo, "Edit timer".into(), op, &id).await?;
         Ok(change.map(Some))
     }
 }
@@ -769,6 +796,170 @@ mod tests {
             w.status().await.undo_label.as_deref(),
             Some("Start timer for Beta")
         );
+    }
+
+    #[tokio::test]
+    async fn updating_the_running_timer_changes_project_note_and_tag_and_keeps_it_open() {
+        let w = World::new().await;
+        let running = w
+            .service()
+            .start_timer(review(&w), at(10, 0))
+            .await
+            .unwrap()
+            .value;
+        let input = TimerInput {
+            project_id: w.other.id.clone(),
+            note: "Planning".into(),
+            tag_id: Some(w.beta.id.clone()),
+        };
+
+        let change = w.service().update_timer(input, at(10, 20)).await.unwrap();
+
+        let updated = change.value.expect("the running recording");
+        assert_eq!(updated.id, running.id);
+        assert_eq!(updated.updated_at, at(10, 20));
+        assert_eq!(w.status().await.undo_label.as_deref(), Some("Edit timer"));
+        assert_eq!(updated.project_id, w.other.id);
+        assert_eq!(updated.note, "Planning");
+        assert_eq!(updated.tag_id, Some(w.beta.id.clone()));
+        assert_eq!(updated.spans, running.spans);
+        assert_eq!((updated.start(), updated.end()), (at(10, 0), None));
+        assert!(change.days.contains(&Day::of(at(10, 0))));
+        assert_eq!(w.rows().await, [updated]);
+    }
+
+    #[tokio::test]
+    async fn updating_without_a_running_timer_returns_none_and_changes_nothing() {
+        let w = World::new().await;
+        let existing = w.create(at(10, 0), at(11, 0)).await;
+        let status = w.status().await;
+
+        let change = w
+            .service()
+            .update_timer(review(&w), at(12, 0))
+            .await
+            .unwrap();
+
+        assert_eq!(change.value, None);
+        assert!(change.days.is_empty());
+        assert_eq!(w.rows().await, [existing]);
+        assert_eq!(w.status().await, status);
+    }
+
+    #[tokio::test]
+    async fn updating_the_running_timer_without_a_tag_removes_the_tag() {
+        let w = World::new().await;
+        w.service()
+            .start_timer(review(&w), at(10, 0))
+            .await
+            .unwrap();
+
+        let updated = w
+            .service()
+            .update_timer(timer(&w), at(10, 20))
+            .await
+            .unwrap()
+            .value
+            .unwrap();
+
+        assert_eq!(updated.tag_id, None);
+        assert_eq!(updated.note, "");
+        assert_eq!(w.rows().await, [updated]);
+    }
+
+    #[tokio::test]
+    async fn updating_the_running_timer_to_an_unusable_project_or_tag_is_refused() {
+        let w = World::new().await;
+        let running = w
+            .service()
+            .start_timer(review(&w), at(10, 0))
+            .await
+            .unwrap()
+            .value;
+        projects::set_archived(&w.db, &w.other.id, true)
+            .await
+            .unwrap();
+        let cases = [
+            (
+                "archived project",
+                TimerInput {
+                    project_id: w.other.id.clone(),
+                    ..review(&w)
+                },
+                ErrorKind::InvalidInput,
+            ),
+            (
+                "unknown project",
+                TimerInput {
+                    project_id: "nope".into(),
+                    ..review(&w)
+                },
+                ErrorKind::NotFound,
+            ),
+            (
+                "unknown tag",
+                TimerInput {
+                    tag_id: Some("nope".into()),
+                    ..review(&w)
+                },
+                ErrorKind::InvalidInput,
+            ),
+        ];
+        for (name, input, kind) in cases {
+            let err = w
+                .service()
+                .update_timer(input, at(10, 20))
+                .await
+                .unwrap_err();
+
+            assert_eq!(err.kind(), kind, "{name}");
+        }
+        assert_eq!(w.rows().await, [running]);
+    }
+
+    #[tokio::test]
+    async fn undoing_a_timer_update_restores_project_note_and_tag() {
+        let w = World::new().await;
+        let running = w
+            .service()
+            .start_timer(review(&w), at(10, 0))
+            .await
+            .unwrap()
+            .value;
+        let input = TimerInput {
+            project_id: w.other.id.clone(),
+            ..timer(&w)
+        };
+        w.service().update_timer(input, at(10, 20)).await.unwrap();
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Edit timer"));
+        assert_eq!(w.rows().await, [running]);
+    }
+
+    #[tokio::test]
+    async fn updating_the_running_timer_to_what_it_already_is_changes_nothing_and_adds_no_undo_entry()
+     {
+        let w = World::new().await;
+        let running = w
+            .service()
+            .start_timer(review(&w), at(10, 0))
+            .await
+            .unwrap()
+            .value;
+        let status = w.status().await;
+
+        let change = w
+            .service()
+            .update_timer(review(&w), at(10, 20))
+            .await
+            .unwrap();
+
+        assert_eq!(change.value, Some(running.clone()));
+        assert!(change.days.is_empty());
+        assert_eq!(w.rows().await, [running]);
+        assert_eq!(w.status().await, status);
     }
 
     #[tokio::test]

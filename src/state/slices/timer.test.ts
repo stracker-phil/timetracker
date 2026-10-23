@@ -59,6 +59,26 @@ describe("timer slice", () => {
     });
   });
 
+  describe("updateTimer", () => {
+    it("sends project, note and tag and resolves true", async () => {
+      await expect(useStore.getState().updateTimer("p2", "review", "t2")).resolves.toBe(true);
+      expect(mocked.timerUpdate).toHaveBeenCalledWith("p2", "review", "t2");
+      expect(toasts()).toEqual([]);
+    });
+
+    it("resolves false without a toast when no timer runs", async () => {
+      mocked.timerUpdate.mockResolvedValueOnce(null);
+      await expect(useStore.getState().updateTimer("p2", "", null)).resolves.toBe(false);
+      expect(toasts()).toEqual([]);
+    });
+
+    it("toasts that the timer could not be changed when the call fails", async () => {
+      mocked.timerUpdate.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
+      await expect(useStore.getState().updateTimer("p2", "", null)).resolves.toBe(false);
+      expect(toastMessages()).toContain("Could not change the timer: Disk full");
+    });
+  });
+
   describe("stopTimer", () => {
     it("toasts Timer stopped with Undo when a recording came back", async () => {
       mocked.timerStop.mockResolvedValueOnce(recording());

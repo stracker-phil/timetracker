@@ -246,6 +246,32 @@ describe("SettingsDialog", () => {
       });
     });
 
+    describe("removing a shortcut", () => {
+      it("turns the global shortcut off and hides the X", async () => {
+        renderDialog();
+        await openPage("Shortcuts");
+        await userEvent.click(screen.getByRole("button", { name: "Remove shortcut for Start timer (system-wide)" }));
+        expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ timerShortcut: null }));
+        await vi.waitFor(() => expect(globalField()).toHaveTextContent("unbound"));
+        expect(screen.queryByRole("button", { name: "Remove shortcut for Start timer (system-wide)" })).not.toBeInTheDocument();
+      });
+
+      it("shows no X for an unbound global shortcut", async () => {
+        renderDialog({ settings: settings({ timerShortcut: null }) });
+        await openPage("Shortcuts");
+        expect(screen.queryByRole("button", { name: "Remove shortcut for Start timer (system-wide)" })).not.toBeInTheDocument();
+      });
+
+      it("saves a null override for an in-app command", async () => {
+        renderDialog();
+        await openShortcuts();
+        await userEvent.click(screen.getByRole("button", { name: "Remove shortcut for Toggle sidebar" }));
+        expect(mocked.setKeybindings).toHaveBeenLastCalledWith({ "sidebar.toggle": null });
+        await vi.waitFor(() => expect(commandField()).toHaveTextContent("unbound"));
+        expect(screen.queryByRole("button", { name: "Remove shortcut for Toggle sidebar" })).not.toBeInTheDocument();
+      });
+    });
+
     it("groups the in-app commands under In TimeTracker", async () => {
       renderDialog();
       await openPage("Shortcuts");

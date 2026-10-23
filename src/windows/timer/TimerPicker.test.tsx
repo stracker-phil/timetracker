@@ -137,17 +137,45 @@ describe("TimerPicker", () => {
 
   describe("with a running timer", () => {
     beforeEach(() => {
-      mocked.timerStatus.mockResolvedValue(runningStatus({ projectName: "Docs", recording: recording({ end: null, note: "writing" }) }));
+      mocked.timerStatus.mockResolvedValue(runningStatus({ projectName: "Website", recording: recording({ end: null, projectId: "p-site", note: "writing", tagId: "tag-support" }) }));
       mocked.timersRecent.mockResolvedValue([recentTimer()]);
     });
 
-    it("shows the project, the elapsed time and the note instead of the form", async () => {
+    it("shows the form filled with the running note, project and tag, and the elapsed time", async () => {
       renderPicker();
-      expect(await screen.findByRole("heading", { level: 1, name: "Docs" })).toBeInTheDocument();
-      expect(screen.getByText("1h 23m")).toBeInTheDocument();
-      expect(screen.getByText("writing")).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { level: 1, name: /Timer running/ })).toHaveTextContent("1h 23m");
+      expect(noteField()).toHaveValue("writing");
+      await vi.waitFor(() => expect(screen.getByRole("combobox", { name: "Project" })).toHaveDisplayValue("Website"));
+      expect(screen.getByRole("combobox", { name: "Tag" })).toHaveDisplayValue("support");
       expect(screen.queryByRole("heading", { name: "Start Timer" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Start another…" })).not.toBeInTheDocument();
+    });
+
+    it("hides the recent timers", async () => {
+      renderPicker();
+      await screen.findByRole("heading", { name: /Timer running/ });
       expect(screen.queryByRole("list", { name: "Recent timers" })).not.toBeInTheDocument();
+      expect(screen.queryByText("Recent")).not.toBeInTheDocument();
+    });
+
+    it("saves the edited note with the unchanged project and tag, then closes", async () => {
+      renderPicker();
+      await screen.findByRole("heading", { name: /Timer running/ });
+      await userEvent.clear(noteField());
+      await userEvent.type(noteField(), "  reviewing ");
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect(mocked.timerUpdate).toHaveBeenCalledWith("p-site", "reviewing", "tag-support");
+      expect(mocked.timerStart).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(mocked.timerPickerClose).toHaveBeenCalled());
+    });
+
+    it("stays open when the timer cannot be changed", async () => {
+      mocked.timerUpdate.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
+      renderPicker();
+      await screen.findByRole("heading", { name: /Timer running/ });
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      await vi.waitFor(() => expect(useStore.getState().toasts.map((t) => t.message)).toContain("Could not change the timer: Disk full"));
+      expect(mocked.timerPickerClose).not.toHaveBeenCalled();
     });
 
     it("stops the timer and closes on Stop", async () => {
@@ -157,11 +185,12 @@ describe("TimerPicker", () => {
       await vi.waitFor(() => expect(mocked.timerPickerClose).toHaveBeenCalled());
     });
 
-    it("shows the start form on Start another…", async () => {
+    it("closes without saving on Cancel", async () => {
       renderPicker();
-      await userEvent.click(await screen.findByRole("button", { name: "Start another…" }));
-      expect(screen.getByRole("heading", { name: "Start Timer" })).toBeInTheDocument();
-      expect(startButton()).toBeDisabled();
+      await screen.findByRole("heading", { name: /Timer running/ });
+      await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(mocked.timerPickerClose).toHaveBeenCalled();
+      expect(mocked.timerUpdate).not.toHaveBeenCalled();
     });
 
     it("closes on Escape", async () => {

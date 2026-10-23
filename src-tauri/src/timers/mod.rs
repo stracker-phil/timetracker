@@ -2,6 +2,8 @@
 //! global shortcut that start one. Starting and stopping are recordings changes (`recordings::timer`).
 
 pub mod commands;
+#[cfg(target_os = "macos")]
+mod panel;
 pub mod picker;
 pub mod shortcut;
 

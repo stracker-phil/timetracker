@@ -65,9 +65,10 @@ pub fn start(
             state.launches.push(initial);
             commands::apply_settings(app.handle(), None, &state.settings.get());
             tray::install(app.handle())?;
-            if let Err(e) =
-                timers::shortcut::register(app.handle(), &state.settings.get().timer_shortcut)
-            {
+            if let Err(e) = timers::shortcut::register(
+                app.handle(),
+                state.settings.get().timer_shortcut.as_deref(),
+            ) {
                 log::warn!("{e}");
             }
             timers::start_ticking(app.handle());
