@@ -27,13 +27,13 @@ Build from source (needs Xcode Command Line Tools, rustup and bun; details in [A
 
 ```sh
 bun install
-bun run release          # src-tauri/target/release/bundle/macos/TimeTracker.app and a .dmg
-scripts/install-app.sh   # links the app into ~/Applications (Spotlight, Launchpad)
-scripts/install-cli.sh   # links the `timetracker` command into ~/.local/bin
+bun run release          # builds and installs the app (Spotlight, Launchpad) and the `timetracker` command
 ```
 
-Both scripts link the release build; `--debug` links the debug build of `bun run build:app` instead. The links
-point at the build output, so a rebuild is picked up without installing again. Updates are a new build.
+`bun run release` ends with `scripts/install.sh`: `~/Applications/TimeTracker.app` links to the release build,
+`~/.local/bin/timetracker` links through that app, and a running TimeTracker restarts on the new build, so one
+version runs on the machine. Updates are a new build. Debug builds (`bun run build:app`) are never installed;
+`scripts/dev/launch.sh` runs one by its path.
 
 On first launch a welcome sheet explains what is recorded, asks for the **Accessibility** permission (window
 titles and document paths) and offers **launch at login**. Without Accessibility the tracker records nothing.
@@ -43,7 +43,8 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
   `timetracker --hidden`: no window, only the menu bar icon.
 - **The Accessibility grant belongs to the app's code signature.** Builds are signed ad hoc, so every rebuild
   is a new app to macOS and may ask again. A rebuilt debug app asks after every build; the installed release
-  app keeps the grant across launches and restarts until you rebuild it.
+  app keeps the grant across launches and restarts until you rebuild it. The debug app is a separate entry
+  in Privacy & Security, "TimeTracker (Debug)".
 
 ## The Day view
 

@@ -16,9 +16,9 @@
     "test:db": "cargo test --manifest-path src-tauri/Cargo.toml -- --ignored",
     "lint": "bun run types && git diff --exit-code -- src/api/types.gen.ts && tsc --noEmit && eslint . && cargo clippy --manifest-path src-tauri/Cargo.toml --lib --bins -- -D warnings",
     "types": "PATH=/opt/homebrew/opt/rustup/bin:$PATH cargo test --manifest-path src-tauri/Cargo.toml --lib export_bindings",
-    "build:app": "VITE_DEV_HOOKS=1 tauri build --debug --bundles app",
-    "release": "tauri build",
-    "app": "bun run build:app && open src-tauri/target/debug/bundle/macos/TimeTracker.app"
+    "build:app": "VITE_DEV_HOOKS=1 tauri build --debug --bundles app --config src-tauri/tauri.debug.conf.json",
+    "release": "tauri build && scripts/install.sh",
+    "app": "bun run build:app && open 'src-tauri/target/debug/bundle/macos/TimeTracker (Debug).app'"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

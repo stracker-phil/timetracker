@@ -45,7 +45,15 @@ use crate::ipc::IpcMessage;
 use crate::state::AppState;
 use crate::store::json_file::create_private_dir;
 
+/// The data folder's name; also the release bundle's identifier. The debug bundle has its own identifier
+/// (`tauri.debug.conf.json`), so macOS grants it apart, but shares this folder.
 const IDENTIFIER: &str = "com.philippstracker.timetracker";
+/// Debug builds go by their own name in the menu bar and the tray.
+pub const APP_NAME: &str = if cfg!(debug_assertions) {
+    "TimeTracker (Debug)"
+} else {
+    "TimeTracker"
+};
 const SOCKET_NAME: &str = "timetracker.sock";
 
 /// Same directory Tauri resolves as `app_config_dir`, but available before the app starts.

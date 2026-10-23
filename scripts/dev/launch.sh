@@ -4,13 +4,13 @@
 # Signing identity: $TIMETRACKER_SIGN_IDENTITY (a code-signing certificate in the keychain); ad hoc without it.
 set -e
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-APP="$ROOT/src-tauri/target/debug/bundle/macos/TimeTracker.app"
+APP="$ROOT/src-tauri/target/debug/bundle/macos/TimeTracker (Debug).app"
 BIN="$APP/Contents/MacOS/timetracker"
 [[ -x "$BIN" ]] || { echo "Build first: bun run build:app"; exit 1; }
 
 # The Accessibility grant belongs to the code signature. A certificate keeps it across rebuilds;
 # an ad hoc signature changes with every build, so macOS asks again.
-codesign --force --sign "${TIMETRACKER_SIGN_IDENTITY:--}" --identifier com.philippstracker.timetracker "$APP"
+codesign --force --sign "${TIMETRACKER_SIGN_IDENTITY:--}" --identifier com.philippstracker.timetracker.debug "$APP"
 [[ -n "$TIMETRACKER_SIGN_IDENTITY" ]] || echo "Signed ad hoc: grant Accessibility again after each rebuild (see docs/testing.md)"
 
 FRAME=$(swift - "${TIMETRACKER_DEV_TERMINAL:-Terminal}" <<'SWIFT' 2>/dev/null
@@ -39,11 +39,9 @@ let w = min(free.width - 16, 1600), h = min(free.height - 16, 1200)
 print("\(Int(free.minX + 8)),\(Int(free.minY + 8)),\(Int(w)),\(Int(h))")
 SWIFT
 )
-# One instance runs at a time (shared data and socket), so an installed app stops too; say so.
-pgrep -f "target/release/bundle/macos/TimeTracker.app" >/dev/null \
-  && echo "Stopped the installed app; reopen it with: open ~/Applications/TimeTracker.app"
-pkill -x timetracker 2>/dev/null || true
-sleep 0.5
+# One instance runs at a time (shared data and socket), so the installed release app stops too; while the
+# debug app runs, `timetracker` on the PATH talks to it. `bun run release` brings the release app back.
+"$ROOT/scripts/stop-app.sh" "$BIN"
 LOG="${TMPDIR:-/tmp}/timetracker-dev.log"
 TIMETRACKER_WINDOW_FRAME="$FRAME" TIMETRACKER_BACKGROUND=1 nohup "$BIN" "$@" >"$LOG" 2>&1 &
 disown

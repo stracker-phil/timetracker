@@ -89,7 +89,7 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
     let sub = |title: &str, ids: &[&[&str]]| {
         groups(app, SubmenuBuilder::new(app, title), bindings, state, ids)
     };
-    let app_menu = SubmenuBuilder::new(app, "TimeTracker")
+    let app_menu = SubmenuBuilder::new(app, crate::APP_NAME)
         .about(Some(AboutMetadata::default()))
         .separator()
         .item(&build_item(app, bindings, state, "settings.toggle")?)

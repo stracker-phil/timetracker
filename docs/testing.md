@@ -81,7 +81,7 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 
 | Script | Does |
 |---|---|
-| `bun run build:app` | builds the debug `.app` bundle (`src-tauri/target/debug/bundle/macos/TimeTracker.app`) |
+| `bun run build:app` | builds the debug `.app` bundle (`src-tauri/target/debug/bundle/macos/TimeTracker (Debug).app`, named apart by `tauri.debug.conf.json`) |
 | `scripts/dev/launch.sh [cli args]` | kills a running `timetracker` and starts the debug build next to the terminal window, without focus. The log goes to `$TMPDIR/timetracker-dev.log`. The terminal app is set by `TIMETRACKER_DEV_TERMINAL` (default `Terminal`) |
 | `scripts/dev/js.sh '<js>'` | runs JavaScript in the running debug app over the IPC socket. Fire-and-forget: no return value, and top-level `const` declarations collide across calls, so wrap them in an IIFE |
 | `scripts/dev/screenshot.sh out.png` | captures the TimeTracker window, also while it is in the background |
@@ -101,9 +101,10 @@ scripts/dev/js.sh 'timetracker.getState().setView("week")'
 ### Accessibility in dev builds
 
 The tracker needs Accessibility for window titles. macOS keys the grant to the app's code signature. An ad
-hoc signature is a hash of the build, so every rebuild asks again: remove the old TimeTracker entry in
-System Settings → Privacy & Security → Accessibility and grant the new one. `launch.sh` signs the bundle
-before starting it, with the identifier `com.philippstracker.timetracker` and the keychain identity in
+hoc signature is a hash of the build, so every rebuild asks again: remove the old TimeTracker (Debug) entry
+in System Settings → Privacy & Security → Accessibility and grant the new one. The debug app is its own
+entry there, apart from the installed TimeTracker, so neither grant replaces the other; both share the data.
+`launch.sh` signs the bundle before starting it, with the identifier `com.philippstracker.timetracker.debug` and the keychain identity in
 `TIMETRACKER_SIGN_IDENTITY`, or ad hoc without it. With a certificate (for example a self-signed
 "Code Signing" certificate made in Keychain Access), the grant survives rebuilds.
 

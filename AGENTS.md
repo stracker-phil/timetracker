@@ -29,13 +29,13 @@ support. As shipped it builds and runs on **macOS on Apple Silicon** only; every
 git clone <this repository>
 cd timetracker
 bun install
-bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/TimeTracker.app
+bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/TimeTracker (Debug).app
 bun run release          # release bundle: src-tauri/target/release/bundle/macos/TimeTracker.app and a .dmg
 ```
 
-The first Rust build takes several minutes. Optional links for the user: `scripts/install-cli.sh` (the
-`timetracker` command in `~/.local/bin`) and `scripts/install-app.sh` (the app in `~/Applications`); both
-link the release build, or the debug build with `--debug`.
+The first Rust build takes several minutes. `bun run release` also installs the build (`scripts/install.sh`):
+the app in `~/Applications` and the `timetracker` command in `~/.local/bin` link to the release build, and a
+running TimeTracker restarts on it. Debug builds are never installed; call them by path.
 
 ## Verify
 

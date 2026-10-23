@@ -85,7 +85,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(Image::from_bytes(ICON)?)
         .icon_as_template(true)
-        .tooltip("TimeTracker")
+        .tooltip(crate::APP_NAME)
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| on_menu_event(app, event.id().as_ref()))

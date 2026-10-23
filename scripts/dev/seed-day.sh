@@ -6,7 +6,7 @@
 set -eu
 day=${1:?usage: seed-day.sh YYYY-MM-DD [count]}
 count=${2:-3000}
-cli=${TIMETRACKER_CLI:-$(command -v timetracker || echo "src-tauri/target/debug/bundle/macos/TimeTracker.app/Contents/MacOS/timetracker")}
+cli=${TIMETRACKER_CLI:-"src-tauri/target/debug/bundle/macos/TimeTracker (Debug).app/Contents/MacOS/timetracker"}
 start_ms=$(( $(date -j -f "%Y-%m-%d %H:%M:%S" "$day 00:00:00" +%s) * 1000 ))
 python3 -I - "$start_ms" "$count" <<'PY' | "$cli" activity add --json >/dev/null
 import json, sys

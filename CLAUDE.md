@@ -57,9 +57,9 @@ Test, lint and format-check commands run through the `ci` agent, never in the ma
 - `bun run test:db`: `#[ignore]` integration tests on temp SQLite files (no Docker), including
   `src-tauri/tests/performance.rs` (two seeded years, median limits per view)
 - `bun run lint`: IPC types drift check (`src/api/types.gen.ts`), tsc, ESLint and clippy on production code (warnings are errors)
-- `bun run release`: release `.app` and `.dmg` in `src-tauri/target/release/bundle/`, signed ad hoc
-- `scripts/install-cli.sh` / `scripts/install-app.sh` `[--debug]`: symlink the `timetracker` command into
-  `~/.local/bin` and the app into `~/Applications`; release build by default, `--debug` for the debug one
+- `bun run release`: release `.app` and `.dmg` in `src-tauri/target/release/bundle/`, signed ad hoc, then installed
+- `scripts/install.sh` (the end of `bun run release`): links the release build as the app and the
+  `timetracker` command, restarting a running TimeTracker on it; debug builds are never linked
 - `timetracker dev seed --years N` (debug builds): sample history in the running app's database
 - `bun run build:app` + `scripts/dev/launch.sh`: debug build, restarted next to the terminal without stealing focus
 - `scripts/dev/js.sh` / `scripts/dev/screenshot.sh`: drive (store: `window.timetracker`) and capture the running window in the background
