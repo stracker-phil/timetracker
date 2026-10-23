@@ -48,7 +48,11 @@ impl Buckets {
     }
 }
 
-/// Each bucket's key with the most time in it (on a tie, the one that started first); `None` without activity.
+/// A bucket's winner fills at least this share of it (90 s of 5 min), so a stray moment never makes a block.
+const MIN_SHARE: (Ms, Ms) = (3, 10);
+
+/// Each bucket's key with the most time in it (on a tie, the one that started first); `None` when no key fills
+/// `MIN_SHARE` of it.
 fn bucket_winners<'a>(pieces: &'a [Piece], buckets: &Buckets) -> Vec<Option<&'a str>> {
     let mut shares: Vec<HashMap<&str, Share>> = vec![HashMap::new(); buckets.count()];
     for piece in pieces {
@@ -68,11 +72,13 @@ fn bucket_winners<'a>(pieces: &'a [Piece], buckets: &Buckets) -> Vec<Option<&'a 
             entry.first_start = entry.first_start.min(block.start);
         }
     }
+    let min_time = buckets.bucket * MIN_SHARE.0 / MIN_SHARE.1;
     shares
         .iter()
         .map(|share| {
             share
                 .iter()
+                .filter(|(_, s)| s.time >= min_time)
                 .max_by(|(a_key, a), (b_key, b)| {
                     a.time
                         .cmp(&b.time)
@@ -151,9 +157,9 @@ mod tests {
                 5,
                 (13 * 60 + 10, 13 * 60 + 50),
             ),
-            ((7, 8), 15, (0, 15)),
-            ((62, 63), 30, (60, 90)),
-            ((61, 62), 60, (60, 120)),
+            ((7, 13), 15, (0, 15)),
+            ((62, 72), 30, (60, 90)),
+            ((61, 80), 60, (60, 120)),
         ];
 
         for ((start, end), minutes, expected) in cases {
@@ -170,8 +176,8 @@ mod tests {
     #[test]
     fn buckets_count_from_the_start_of_the_day_and_the_last_one_is_cut_at_its_end() {
         let rows = vec![
-            activity(1, mins(20), Some(mins(21)), "Code", ""),
-            activity(2, mins(66), Some(mins(69)), "Mail", ""),
+            activity(1, mins(20), Some(mins(26)), "Code", ""),
+            activity(2, mins(63), Some(mins(69)), "Mail", ""),
         ];
         let input = DayInput {
             bounds: (mins(2), mins(70)),
@@ -191,17 +197,22 @@ mod tests {
         let off_grid =
             |id: i64, start: i64, end: i64, app: &str| activity(id, start, Some(end), app, "");
         let inputs: Vec<Vec<ActivityRow>> = vec![
-            vec![off_grid(1, 1_234, mins(7) + 999, "Code")],
+            vec![off_grid(1, 1_234, mins(40) + 999, "Code")],
             vec![
                 off_grid(1, 1_234, mins(7) + 999, "Code"),
-                off_grid(2, mins(7) + 999, mins(23) + 17, "Mail"),
+                off_grid(2, mins(7) + 999, mins(40) + 17, "Mail"),
                 off_grid(3, mins(60) + 1, mins(61), "Code"),
             ],
             vec![
                 off_grid(1, mins(59) + 59_999, mins(61) + 1, "Code"),
                 off_grid(2, mins(61) + 1, mins(200) + 12_345, "Mail"),
             ],
-            vec![off_grid(1, DAY_LENGTH - 1_000, DAY_LENGTH + 5_000, "Code")],
+            vec![off_grid(
+                1,
+                DAY_LENGTH - mins(30) - 1_000,
+                DAY_LENGTH + 5_000,
+                "Code",
+            )],
         ];
 
         for (n, rows) in inputs.into_iter().enumerate() {
@@ -346,19 +357,107 @@ mod tests {
         }
     }
 
+    /// An activity of `app` from minute `start` for `seconds` seconds.
+    fn moment(id: i64, start: i64, seconds: i64, app: &str) -> ActivityRow {
+        activity(
+            id,
+            mins(start),
+            Some(mins(start) + seconds * 1_000),
+            app,
+            "",
+        )
+    }
+
+    #[test]
+    fn a_winner_must_fill_three_tenths_of_a_five_minute_bucket() {
+        let cases = [
+            (40, vec![]),
+            (89, vec![]),
+            (90, vec![(260, 265, vec![1])]),
+            (300, vec![(260, 265, vec![1])]),
+        ];
+
+        for (seconds, expected) in cases {
+            let view = render(vec![moment(1, 260, seconds, "Code")], &summarizing(5));
+
+            assert_eq!(
+                shape(lane_by_id(&view, "summary")),
+                expected,
+                "{seconds} seconds"
+            );
+        }
+    }
+
+    #[test]
+    fn keys_that_each_fall_short_of_the_share_leave_the_bucket_empty_even_together() {
+        let rows = vec![
+            moment(1, 260, 80, "Code"),
+            activity(2, mins(260) + 80_000, Some(mins(260) + 160_000), "Mail", ""),
+        ];
+
+        let view = render(rows, &summarizing(5));
+
+        assert!(lane_by_id(&view, "summary").blocks.is_empty());
+    }
+
+    #[test]
+    fn the_required_share_scales_with_the_bucket_size() {
+        let cases = [
+            (5, 89, false),
+            (5, 90, true),
+            (30, 539, false),
+            (30, 540, true),
+            (60, 1079, false),
+            (60, 1080, true),
+        ];
+
+        for (bucket, seconds, expected) in cases {
+            let view = render(vec![moment(1, 600, seconds, "Code")], &summarizing(bucket));
+
+            assert_eq!(
+                !lane_by_id(&view, "summary").blocks.is_empty(),
+                expected,
+                "{seconds} seconds in a {bucket} minute bucket"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stray_moment_beside_real_work_gets_no_block_of_its_own() {
+        let rows = vec![code(1, 0, 10), moment(2, 10, 40, "Mail")];
+
+        let view = render(rows, &summarizing(5));
+
+        assert_eq!(shape(lane_by_id(&view, "summary")), [(0, 10, vec![1])]);
+    }
+
+    #[test]
+    fn time_in_a_hidden_app_does_not_help_the_rest_reach_the_share() {
+        let rows = vec![
+            moment(1, 260, 40, "Code"),
+            activity(2, mins(260) + 40_000, Some(mins(264) + 40_000), "Notes", ""),
+        ];
+
+        let shown = render(rows.clone(), &summarizing(5));
+        let hiding = render(rows, &hidden(summarizing(5), &bundle_of("Notes")));
+
+        assert_eq!(shape(lane_by_id(&shown, "summary")), [(260, 265, vec![2])]);
+        assert!(lane_by_id(&hiding, "summary").blocks.is_empty());
+    }
+
     #[test]
     fn the_summary_counts_own_lane_apps_and_noise_but_not_hidden_apps() {
         let rows = rows(&[
             (0, 10, "Mail", ""),
             (20, 30, "Notes", ""),
-            (40, 41, "Code", ""),
+            (40, 45, "Code", ""),
         ]);
         let settings = with_timeline(
             own_lane(
                 hidden(summarizing(15), &bundle_of("Notes")),
                 &bundle_of("Mail"),
             ),
-            |t| t.noise = Noise::Low,
+            |t| t.noise = Noise::High,
         );
 
         let view = render(rows, &settings);

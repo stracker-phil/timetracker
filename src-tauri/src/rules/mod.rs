@@ -1076,7 +1076,7 @@ mod tests {
         for i in 0..250 {
             let start = midnight + i * 5 * MIN;
             let title = format!("window {i}");
-            activity(&w.db, start, Some(start + MIN), "Slack", &title).await;
+            activity(&w.db, start, Some(start + 2 * MIN), "Slack", &title).await;
         }
         let input = rule_input("Slack", &w.project.id, &[(App, RuleOp::Is, "Slack")]);
 
@@ -1085,7 +1085,7 @@ mod tests {
         assert_eq!(preview.hits.len(), PREVIEW_HITS);
         assert_eq!(preview.hits[0].block.start, midnight + 249 * 5 * MIN);
         assert_eq!(preview.hits[199].block.start, midnight + 50 * 5 * MIN);
-        assert_eq!((preview.total_ms, preview.days), (250 * MIN, 1));
+        assert_eq!((preview.total_ms, preview.days), (500 * MIN, 1));
     }
 
     #[tokio::test]

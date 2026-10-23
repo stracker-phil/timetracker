@@ -240,6 +240,31 @@ mod tests {
     }
 
     #[test]
+    fn a_brief_moment_in_a_bucket_makes_no_rule_block() {
+        let cases = [(40_000, true), (89_999, true), (90_000, false)];
+        for (length, empty) in cases {
+            let start = mins(600);
+            let moment = activity(1, start, Some(start + length), "Zoom", "");
+
+            let view = render(vec![moment], &five_minute_buckets());
+
+            assert_eq!(view.rule_blocks.is_empty(), empty, "{length} ms");
+        }
+    }
+
+    #[test]
+    fn a_moment_next_to_real_work_adds_no_rule_block() {
+        let rows = vec![
+            code(1, 600, 610),
+            activity(2, mins(610), Some(mins(610) + 40_000), "Slack", ""),
+        ];
+
+        let view = render(rows, &five_minute_buckets());
+
+        assert_eq!(blocks_of(&view), [(600, 610, "Code", "")]);
+    }
+
+    #[test]
     fn a_day_without_activity_has_no_rule_blocks() {
         let view = render(Vec::new(), &five_minute_buckets());
 

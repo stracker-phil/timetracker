@@ -296,7 +296,8 @@ from the day before included) and calls it. `ViewSettings` is a copy of `Setting
    label, a per-app override winning over `timeline`; private rows get a key of their own.
 4. `summary::summary` (with `summaryLane`; `bucket_winners`, then `run_blocks`): the day in buckets of `summaryMinutes` (default 5) from local
    midnight, so they sit on the clock (:00, :05, …); each bucket goes to the key with the most time in it
-   (ties: the earlier start), a bucket without activity stays empty, and a run of buckets with one winner is
+   (ties: the earlier start) if that fills at least `MIN_SHARE` of it (3/10: 90 s of 5 min), else it stays
+   empty, as does a bucket without activity, and a run of buckets with one winner is
    one block over the whole run, id `s<start>`. Every summary block starts and ends on the grid (:45, :50,
    never :49); its `activeMs` is the winner's time inside it.
    `rule_blocks::rule_blocks` builds `DayView.rule_blocks` (`#[serde(skip)]`) for the rules (ADR 0027) whether or

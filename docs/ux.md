@@ -382,8 +382,10 @@ The Day view reads like Timely's: the toolbar, the timesheet on the left, then t
 - **Summary lane** works in clock-aligned buckets of the Summary interval (default 5 min): each bucket shows
   the app (or window, without grouping by app) with the most time in it, neighbouring buckets with the same
   winner merge, empty buckets stay empty, so a summary block always starts and ends on the grid (:45, :50,
-  never :49). Blocks (`Block`, `summary-block`) are filled with the app icon and label, the active time at
-  the bottom right when tall enough.
+  never :49). A bucket also stays empty until one app or window fills 30% of it (90 s of 5 min): a brief
+  return after a break, or what hiding an app leaves, never makes a block or a suggestion, and the current
+  13:00 bucket shows from 13:01:30 at the earliest. Blocks (`Block`, `summary-block`) are filled with the app
+  icon and label, the active time at the bottom right when tall enough.
 - **Memories** (the activity, app and source lanes): each block is the app icon over a thin vertical bar as
   long as the activity really is, the label (500, `--text-strong`) and, when there is room for a second line,
   its duration (`34m`, `--o3`) under it; a short block shows the label alone, and on hover the gear beside it.
