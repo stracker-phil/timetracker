@@ -45,9 +45,16 @@ use crate::ipc::IpcMessage;
 use crate::state::AppState;
 use crate::store::json_file::create_private_dir;
 
-/// The data folder's name; also the release bundle's identifier. The debug bundle has its own identifier
-/// (`tauri.debug.conf.json`), so macOS grants it apart, but shares this folder.
 const IDENTIFIER: &str = "com.philippstracker.timetracker";
+/// `tauri.debug.conf.json`'s identifier, so macOS lists and grants the debug build apart.
+const DEBUG_IDENTIFIER: &str = "com.philippstracker.timetracker.debug";
+/// Names the config dir. Each build has its own settings, data, socket and lock, so a debug build
+/// starts next to a running release app instead of handing off to it.
+const BUILD_IDENTIFIER: &str = if cfg!(debug_assertions) {
+    DEBUG_IDENTIFIER
+} else {
+    IDENTIFIER
+};
 /// Debug builds go by their own name in the menu bar and the tray.
 pub const APP_NAME: &str = if cfg!(debug_assertions) {
     "TimeTracker (Debug)"
@@ -61,7 +68,8 @@ fn config_dir() -> PathBuf {
     let Some(home) = std::env::home_dir() else {
         fail("Cannot locate the home directory for TimeTracker's settings");
     };
-    home.join("Library/Application Support").join(IDENTIFIER)
+    home.join("Library/Application Support")
+        .join(BUILD_IDENTIFIER)
 }
 
 fn fail(message: &str) -> ! {
@@ -143,6 +151,13 @@ mod tests {
         let conf: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
         assert_eq!(conf["identifier"], serde_json::json!(IDENTIFIER));
+    }
+
+    #[test]
+    fn debug_identifier_matches_the_debug_tauri_config() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.debug.conf.json")).unwrap();
+        assert_eq!(conf["identifier"], serde_json::json!(DEBUG_IDENTIFIER));
     }
 
     #[test]

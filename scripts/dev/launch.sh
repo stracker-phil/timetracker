@@ -35,8 +35,8 @@ let w = min(free.width - 16, 1600), h = min(free.height - 16, 1200)
 print("\(Int(free.minX + 8)),\(Int(free.minY + 8)),\(Int(w)),\(Int(h))")
 SWIFT
 )
-# One instance runs at a time (shared data and socket), so the installed release app stops too; while the
-# debug app runs, `timetracker` on the PATH talks to it. `bun run release` brings the release app back.
+# Only the debug app restarts: it has its own config dir and socket, so the release app keeps running and
+# `timetracker` on the PATH keeps talking to it.
 "$ROOT/scripts/stop-app.sh" "$BIN"
 LOG="${TMPDIR:-/tmp}/timetracker-dev.log"
 TIMETRACKER_WINDOW_FRAME="$FRAME" TIMETRACKER_BACKGROUND=1 nohup "$BIN" "$@" >"$LOG" 2>&1 &

@@ -128,8 +128,8 @@ Recording an hour of activity:
                                                     data/timetracker.sqlite
 ```
 
-- **One instance.** The first process binds `timetracker.sock` in the config dir and holds
-  `timetracker.lock`. A second `timetracker …` sends its request over the socket and exits
+- **One instance** per build. The first process binds `timetracker.sock` in the config dir and holds
+  `timetracker.lock`; a debug build has its own config dir, so it runs next to the release app. A second `timetracker …` sends its request over the socket and exits
   ([backend: single instance](backend.md#cli-and-single-instance-handoff),
   [ADR 0017](adr/0017-cli-asks-the-running-app.md)). Every subcommand is a message the running app answers;
   other apps (a planner) add activity this way or through `timetracker://` links, each in its own lane

@@ -79,7 +79,7 @@ pub fn start(
             deep_link::listen(app.handle());
             // The window starts invisible (tauri.conf.json), so a hidden start never flashes it.
             if !hidden {
-                window::show_main_in_background(app.handle());
+                window::show_main(app.handle());
             }
             Ok(())
         })

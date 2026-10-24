@@ -82,7 +82,7 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 | Script | Does |
 |---|---|
 | `bun run build:app` | builds the debug `.app` bundle (`src-tauri/target/debug/bundle/macos/TimeTracker (Debug).app`, named apart by `tauri.debug.conf.json`) |
-| `scripts/dev/launch.sh [cli args]` | kills a running `timetracker` and starts the debug build next to the terminal window, without focus. The log goes to `$TMPDIR/timetracker-dev.log`. The terminal app is set by `TIMETRACKER_DEV_TERMINAL` (default `Terminal`) |
+| `scripts/dev/launch.sh [cli args]` | quits a running debug app (`scripts/stop-app.sh`; the release app keeps running) and starts the debug build next to the terminal window, without focus. The log goes to `$TMPDIR/timetracker-dev.log`. The terminal app is set by `TIMETRACKER_DEV_TERMINAL` (default `Terminal`) |
 | `scripts/dev/js.sh '<js>'` | runs JavaScript in the running debug app over the IPC socket. Fire-and-forget: no return value, and top-level `const` declarations collide across calls, so wrap them in an IIFE |
 | `scripts/dev/screenshot.sh out.png` | captures the TimeTracker window, also while it is in the background |
 | `scripts/dev/screenshot-looks.sh <dir> [view]` | captures a view (default `day`) in each scheme of the current macOS mode as `<scheme>-<mode>-<view>.png`, then restores the settings; switch the system appearance and run it again for the other mode ([ux.md](ux.md#scheme-audit)) |
@@ -107,7 +107,8 @@ Accessibility and grant the new one). `scripts/create-signing-cert.sh` creates t
 Local Signing" certificate once per Mac; `scripts/sign-app.sh` signs with `TIMETRACKER_SIGN_IDENTITY`, else
 that certificate, else ad hoc. `launch.sh` signs the debug bundle (`com.philippstracker.timetracker.debug`)
 before starting it, `scripts/install.sh` the release bundle (`com.philippstracker.timetracker`). The two are
-separate entries in Privacy & Security, each granted once; both share the data.
+separate entries in Privacy & Security, each granted once. Each has its own config dir (settings, data, socket,
+lock), so the debug build runs next to the release app.
 
 ### Sample data
 

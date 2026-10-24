@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Installs the release build as the one TimeTracker of this machine: ~/Applications/TimeTracker.app links to
-# it and the `timetracker` command links through that app. A running TimeTracker (any build) restarts on it,
-# its window shown or hidden as before.
+# it and the `timetracker` command links through that app. A running release TimeTracker restarts on it, its
+# window shown or hidden as before; a running debug build is left alone.
 # `bun run release` ends here; debug builds are never installed (scripts/dev/launch.sh runs them by path).
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -10,7 +10,7 @@ APP="$ROOT/src-tauri/target/release/bundle/macos/TimeTracker.app"
 LINK="$HOME/Applications/TimeTracker.app"
 BIN="$LINK/Contents/MacOS/timetracker"
 
-running() { pgrep -f 'TimeTracker( \(Debug\))?\.app/Contents/MacOS/timetracker( --hidden)?$' >/dev/null; }
+running() { pgrep -f 'TimeTracker\.app/Contents/MacOS/timetracker( --hidden)?$' >/dev/null; }
 # Re-signing a running app's files can get it killed, so it quits first; a hidden window stays hidden.
 if running; then
   WAS_RUNNING=1

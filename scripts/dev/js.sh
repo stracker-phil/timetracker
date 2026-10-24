@@ -2,7 +2,7 @@
 # Runs JavaScript in the running debug app without focusing it (dev builds only).
 # Usage: scripts/dev/js.sh 'document.querySelector("[aria-label=\"Settings\"]").click()'
 # Another window: a first line `@<label>`, e.g. $'@timer\nlocation.reload()'.
-SOCK="$HOME/Library/Application Support/com.philippstracker.timetracker/timetracker.sock"
+SOCK="$HOME/Library/Application Support/com.philippstracker.timetracker.debug/timetracker.sock"
 python3 -I - "$SOCK" "$1" <<'PY'
 import json, socket, sys
 s = socket.socket(socket.AF_UNIX)

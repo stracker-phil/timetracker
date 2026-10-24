@@ -48,9 +48,9 @@ running TimeTracker restarts on it. Debug builds are never installed; call them 
 | `bun run release` | `TimeTracker.app` and a `.dmg` in `src-tauri/target/release/bundle/` |
 
 Try the app: `scripts/dev/launch.sh` starts the debug build next to the terminal without taking focus.
-Its data and settings live in `~/Library/Application Support/com.philippstracker.timetracker/`, shared with the
-release build. `timetracker dev seed --years 2` (debug builds) fills a dev data folder with sample history;
-never run it against real data.
+Its data and settings live in `~/Library/Application Support/com.philippstracker.timetracker.debug/`, apart from
+the release build's, so it runs next to the release app. `timetracker dev seed --years 2` (debug builds) fills
+that folder with sample history.
 [docs/testing.md](docs/testing.md) covers the suites and the scripts that drive the running app.
 
 ## Adapt

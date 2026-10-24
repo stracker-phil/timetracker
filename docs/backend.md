@@ -38,7 +38,7 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
    (`tray::install`), starts the tracker (`start_tracker`: only with an open data store; see
    [capture.md](capture.md)), applies `TIMETRACKER_WINDOW_FRAME` in debug builds (`apply_dev_frame`), binds and
    serves the socket (`start_ipc`; a bind error is logged and the app runs without handoff), registers
-   `deep_link::listen`, and shows the window (`window::show_main_in_background`) unless started with
+   `deep_link::listen`, and shows the window in front (`window::show_main`) unless started with
    `--hidden`. The window is declared `"visible": false`, so a hidden start never flashes it.
 
    The run loop prevents `RunEvent::ExitRequested { code: None }`, which macOS sends when the last window
@@ -626,8 +626,8 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 `parse(args, now, tz, stdin) -> Result<CliOutcome, CliError>` is pure: `CliOutcome` is `Run { hidden,
 log_level }`, `Exit { message }` (help, version), `Mcp` or `Remote { message, json, starts_app }`. The CLI checks
 what it can before sending (times, `activity::external::validate`); the app checks again. `CliError.in_app`
-is true for a plain launch with bad arguments, which also shows the error in the app (it may have been opened
-from Finder); a subcommand's error only prints.
+is true for a plain launch with bad options, which also shows the error in the app (it may have been opened
+from Finder); a subcommand's error, or a word that names no subcommand (`timetracker stauts`), only prints.
 
 `cli/time.rs`: `instant` reads `2026-10-21T09:30[:15]` (local), the same with `Z` or `±hh:mm`, `09:30`
 (today, local) and `now`; `day` reads `today`, `yesterday` and `YYYY-MM-DD`; `pause` reads the pause words.
@@ -874,7 +874,8 @@ A timer is a recording with an open span, so the overlap rule, undo and reports 
 
 ## Persistence
 
-Everything lives in the config dir, `~/Library/Application Support/com.philippstracker.timetracker/`.
+Everything lives in the config dir, `~/Library/Application Support/com.philippstracker.timetracker/`
+(debug builds: `com.philippstracker.timetracker.debug/`, with their own settings, data, socket and lock).
 JSON stores wrap a `JsonStore<T>` (`store/json_store.rs`): the parsed value behind an `RwLock`, with
 `read(|t| ..)`, `update` and `update_async(|t| ..) -> AppResult<R>`. `update_async` runs on a blocking thread:
 under a write gate it applies the closure to a clone, saves the clone and only then swaps it in, so a failed

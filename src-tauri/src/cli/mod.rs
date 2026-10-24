@@ -224,8 +224,8 @@ pub enum CliOutcome {
 #[derive(Debug, PartialEq)]
 pub struct CliError {
     pub message: String,
-    /// A plain launch with bad arguments also reports them in the app, which may have been opened
-    /// from Finder; a subcommand's error is for the terminal only.
+    /// A plain launch with bad options also reports them in the app, which may have been opened
+    /// from Finder; a subcommand's error, or a word that is not a subcommand, is for the terminal only.
     pub in_app: bool,
 }
 
@@ -254,6 +254,10 @@ where
                         message: e.to_string(),
                     })
                 }
+                clap::error::ErrorKind::InvalidSubcommand => Err(CliError {
+                    message: e.to_string(),
+                    in_app: false,
+                }),
                 _ => Err(error(e.to_string())),
             };
         }
@@ -473,6 +477,15 @@ mod tests {
         for args in [&["--nope"][..], &["--log-level", "loud"]] {
             let err = run(args).unwrap_err();
             assert!(err.in_app, "{args:?}");
+            assert!(!err.message.is_empty(), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn a_mistyped_subcommand_is_reported_in_the_terminal_only() {
+        for args in [&["stauts"][..], &["reprot"]] {
+            let err = run(args).unwrap_err();
+            assert!(!err.in_app, "{args:?}");
             assert!(!err.message.is_empty(), "{args:?}");
         }
     }
