@@ -19,7 +19,7 @@ registries, CSS structure): [frontend.md](frontend.md#styling).
   entry.
 - The system font (SF Pro) for all text, titles included, at the macOS text styles; numbers in tabular
   figures; mono (SF Mono) only for machine text such as paths, URLs, ids and commands.
-- Native: it reads as a macOS app beside Calendar and System Settings (unified toolbar, inset groups,
+- Native: it reads as a macOS app beside Calendar and System Settings (unified toolbar, row groups,
   AppKit-sized controls; [ADR 0024](adr/0024-native-macos-look.md)), never as a web page.
 - Hierarchy comes from weight, opacity and space: a strong title, then a normal subtitle, then meta in
   `--o2`. Recordings are filled cards in their project's color; activity is a soft grey surface.
@@ -40,12 +40,13 @@ page, no outlined cards.
 | `--bg-quiet` | a pane beside the active one (the timesheet), weekend columns |
 | `--chrome` | the status bar, the Settings page list |
 | `--pop` | overlays: palette, popovers, context menus, dialogs, toasts |
-| `--fill-quiet` | inset groups (System Settings style): Settings groups, the Projects and Rules lists, the Reports cards |
+| `--fill-quiet` | full-width band rows (a Reports client row), the editor's logged-time band |
 
 Separators are `--line` hairlines (`--sidebar-line` beside the sidebar). Bars inside content stay on `--bg`.
-Grouped content is an **inset group**: `--fill-quiet`, `--radius` (10px), no border, rows divided by
-`--line` hairlines inside the group's 12px padding, no hover fill on plain rows; its heading (13px semibold
-`--text`, or a name with a dot) sits above it, outside the fill. In the Default scheme the dark sidebar is
+Grouped content is a **row group**: no box and no fill, a faint `--line-faint` hairline (`--line` at 50%)
+above and below, rows divided by the same hairline from the text's edge, generous row height, no hover fill
+on plain rows; its heading (13px semibold `--text`, or a name with a dot) sits above it. Never rounded boxes
+of grey on grey. In the Default scheme the dark sidebar is
 opaque; in the Light scheme in light mode and the Dark scheme in dark mode the sidebar is transparent, so the
 window's `sidebar` material (vibrancy) shows through, and it greys out while the window is inactive.
 
@@ -62,7 +63,8 @@ One place for views and one place for dates: the sidebar.
     Appearance → Calendar title on Full), ‹ › to page months, a week-number column (`Wk`, ISO
     numbers, a hairline beside it) and weekday initials from Monday. Six weeks always, so the sidebar never
     changes height; days outside the month are dimmed, today sits in an accent circle with `--on-accent`
-    text, and a small dot under a day means it has recordings. It shows the month of the shown date (the
+    text, and a small `--style-green` dot under a day means it has recordings (none under today, whose circle
+    stands alone). It shows the month of the shown date (the
     report's first day for a custom report, else today); ‹ › page it until the shown date changes. The shown range is highlighted: the day on `--sidebar-selected` (Day view), the whole week row as a
     rounded `--sidebar-selected` band with its number in the accent (Week view), or the title (Month view);
     Reports highlight their period the same way when it is one day, week or month. A click on a day shows it
@@ -122,8 +124,9 @@ tokens; no color literal appears outside them (`src/styles/colors.test.ts`).
 | `--chrome` | `#f5f5f5` | `#252525` | status bar, Settings page list |
 | `--pop` | `#ffffff` | `#2c2c2c` | overlays |
 | `--text`, `--text-strong` | `#262626`, black | `#e6e6e6`, white | primary text (`--o2`, `--o3` derive from it); titles and pressed segments |
-| `--fill-quiet`, `--fill`, `--fill-strong` | black at 3.5, 5.5 and 10% | white at 4.5, 8 and 14% | translucent fills over any surface: inset groups; hover bezels, the segmented track, search fields, key caps; pressed bezels, the switch track |
+| `--fill-quiet`, `--fill`, `--fill-strong` | black at 3.5, 5.5 and 10% | white at 4.5, 8 and 14% | translucent fills over any surface: band rows; hover bezels, the segmented track, search fields, key caps; pressed bezels, the switch track |
 | `--line` | black at 12% | white at 10% | hairlines |
+| `--line-faint` | `--line` at 50% | `--line` at 50% | hairlines between rows of a list or table |
 | `--control`, `--control-pressed` | white, `#ebebeb` | `#4a4a4a`, `#5c5c5c` | push button and popup button bezel; pressed |
 | `--control-shadow` | a hairline ring and a 1px drop | a top highlight, a dark ring | the push button bezel's edge |
 | `--field`, `--field-line` | white, black at 16% | white at 5%, white at 16% | text field fill and its 1px inset frame |
@@ -159,14 +162,14 @@ Derived tokens in `src/styles/theme.css`, the same for every palette:
 | `--o2`, `--o3` | `--text` at 68% and 52% | secondary and tertiary text |
 | `--sel` | `--accent` at 20% (`--sidebar-selected` in the sidebar) | selected row |
 | `--accent-text` | `--accent` with its lightness capped at `--accent-text-max-l` | the accent as text |
-| `--focus-ring` | a 3px ring of the accent at 45% | focus on fields, buttons, segments |
+| `--focus-ring` | a 3px ring of the accent at 45% | focus on fields, buttons, segments; it replaces the control's frame or bezel, never adds to it |
 | `--block-fill`, `--block-text`, `--block-meta` | from the project's shade `--rec` on `.card`, `.suggestion`, `.project-chip` | a filled recording: the fill, its text, its foot (text 75% over the fill) |
 | `--ui-font-size`, `--data-font-size` | 13px, 12px | set from the Text size setting by `applyAppearance` (`lib/theme.ts`) |
 | `--fs-display`, `--fs-title`, `--fs-body`, `--fs-meta`, `--fs-caption` | 22, 15, 13, 11 and 10px in rem | the type scale |
 | `--space-1` … `--space-6`, `--space-8`, `--margin` | 4 to 24px and 32px in rem; 20px | spacing; content margins |
 | `--control-h`, `--toolbar-control-h` | 22px, 28px in rem | push buttons, fields, popup buttons, menu items; toolbar buttons |
 | `--font-ui`, `--font-mono` | the system font (SF Pro), SF Mono | fixed |
-| `--radius-sm`, `--radius`, `--radius-lg` | 6, 10, 12px | controls; menus, popovers and inset groups; sheets and panels |
+| `--radius-sm`, `--radius`, `--radius-lg` | 6, 10, 12px | controls; menus and popovers; sheets and panels |
 | `--radius-block`, `--radius-card` | 6, 8px | activity blocks; recording cards |
 | `--toolbar-height`, `--traffic-lights` | 52px, 84px | the unified toolbar (centered on the window buttons); its left inset without the sidebar (px: they don't scale) |
 
@@ -239,7 +242,7 @@ labels.
 ## Spacing and radius
 
 Spacing sits on an 8px grid with 4px half steps (`--space-1` 4px to `--space-8` 32px, in rem so it zooms);
-content keeps 20px margins (`--margin`). Rows are at least 28px (inset group rows 36px). Recording cards have
+content keeps 20px margins (`--margin`). Rows are at least 28px (row group rows 36px). Recording cards have
 an 8px radius and 4px by 8px padding; activity blocks a 6px radius and a 1px gap to their neighbours; inset
 groups and popovers a 10px radius; sheets 20px padding and a 12px radius.
 
@@ -255,7 +258,7 @@ AppKit sizes and looks ([ADR 0024](adr/0024-native-macos-look.md)), in `styles/c
 | Borderless | `.btn-quiet`, `.icon-btn` | no bezel until hovered (`--fill`), pressed `--fill-strong`; icons in `--o2`. `.icon-btn` is a 22px square |
 | Toolbar button | `.btn` or `.icon-btn` inside `.toolbar` | borderless, 28px high, icon and label, hover bezel |
 | Popup button | `select.input` | WebKit's native chevrons inside the push button bezel |
-| Text field | `.input` | 22px, `--field` with a 1px inset `--field-line` frame, 6px radius; focus adds `--focus-ring` |
+| Text field | `.input` | 22px, `--field` with a 1px inset `--field-line` frame, 6px radius; focus swaps the frame for `--focus-ring` |
 | Search field | `InsetField` (`.inset-field`) | a `--fill` capsule with a leading icon and an optional key cap; on focus the field surface, frame and ring |
 | Segmented control | `SegmentedControl` (`.segmented`) | a 22px `--fill` track with 2px padding; segments in `--text`; the pressed one raised on `--raised` with `--shadow-small`, its label `--text-strong` |
 | Switch | `.switch` | 32 by 18px, a `--fill-strong` track, a white `--knob` thumb with `--shadow-small`; on, the track is the accent |
@@ -288,11 +291,11 @@ leading end (the recording editor's Delete).
 ## Rows
 
 Every list shares one row: sidebar entries, palette results, settings lists. A 20px line with padding above
-and below (at least 28px; 36px in inset groups), hairlines between rows, no hover fill on plain rows, `--sel`
+and below (at least 28px; 36px in row groups), hairlines between rows, no hover fill on plain rows, `--sel`
 when selected. Sidebar entries have 2px more padding, an 8px inset and a 6px radius; the active one is
 `--sidebar-selected` with its label in `--sidebar-strong` (500) and its icon in the accent.
 
-Lists grouped under a heading are inset groups (see Surfaces): the Projects screen has one per client and
+Lists grouped under a heading are row groups (see Surfaces): the Projects screen has one per client and
 one for the tags, the heading above each the client's color dot and name (600) with `3 projects` in `--o3`
 and the column labels. Archived rows are dimmed (55% opacity) and keep a Restore action. A project row starts
 with a color dot (`AccentDot`, in its shade); a billable project carries `billable` as a secondary label
@@ -306,13 +309,15 @@ one ringed. A tag is plain text, never a pill; a recording has at most one
 Inputs look like AppKit's (see Controls), never like rows. A text field is a 22px frame on `--field` with a
 1px inset `--field-line` and the accent focus ring; a search field (`InsetField`, `components/Field.tsx`) a
 `--fill` capsule with a leading icon, the placeholder in `--o3` and an optional key cap that follows the
-user's bindings. A select is a popup button. The segmented control serves the Day mode switch, the report's
-Period and Settings choices.
+user's bindings. A select is a popup button. The segmented control serves the Day mode switch and Settings
+choices; the report's Period is a popup button.
 
 ### Focus rings
 
 A focus ring is for the keyboard only; a click never draws one. Buttons, rows, cards and links show theirs on
-`:focus-visible`; text fields keep the accent ring on any focus, since they take typing. The Day view's key
+`:focus-visible`; text fields keep the accent ring on any focus, since they take typing. The ring takes the
+place of the control's frame or bezel: a focused control shows one edge, never a grey frame inside a colored
+ring. The Day view's key
 focus (a block, recording, suggestion or card marked `.focused`, also set by a click) and the Week's focused
 card show their accent outline only while `<html data-input="keyboard">` is set (`lib/inputModality.ts`): a
 key press outside a text field (or Tab in one) sets it, a pointer press clears it.
@@ -572,7 +577,7 @@ timeline's for every app.
   filled in; nothing is saved before Save. From the keyboard, the block menu's Make a rule… (⌃↵) opens the
   sheet with the block's conditions and no project.
 - **Rules screen**: the toolbar with New rule, the intro (ending "Hold ⌥ and drag an activity onto a project
-  to make a rule."), then one inset group of rules (at most 52rem
+  to make a rule."), then one row group of rules (at most 52rem
   wide), a row per rule divided by hairlines: a grip, the enable switch, the name (600) with today's matches
   on the right ("1h 20m today · 2 to review" in the accent while suggestions wait, "Nothing today", "Off" when
   disabled), then the project as a dot in its shade with its name and the conditions in `--o2`; a disabled
@@ -629,7 +634,7 @@ timeline's for every app.
 
 ## Projects
 
-- The toolbar holds Show archived, New client and New project (toolbar buttons). Below, one inset group per
+- The toolbar holds Show archived, New client and New project (toolbar buttons). Below, one row group per
   client (by name; client-less projects under "No client" last) under its heading: the client's dot, its
   name (a click edits it), `3 projects` in `--o3`, the column labels This week and This month, and + for a
   new project of that client. Each project row: its dot, the name (a click edits it), `billable` and
@@ -641,7 +646,7 @@ timeline's for every app.
 
 - A page of its own (⌘6): the toolbar reads `Tags` and `One per recording, for kinds of work across projects.`
   New tag (⌘N, `tags.new`) in the toolbar asks for a name in a sheet, as Projects and Rules add theirs.
-  Below, one inset group with a row per tag (its emoji, its name, the number of recordings, a pencil to rename, ✕ to
+  Below, one row group with a row per tag (its emoji, its name, the number of recordings, a pencil to rename, ✕ to
   delete; a confirm first when recordings carry it); the pencil and ✕ show while the row is hovered or holds
   the focus, and Tab still reaches them. Without tags: `No tags yet.`
 - The emoji is a small field before the name, framed only on hover and focus: type or pick one (⌃⌘Space),
@@ -660,7 +665,7 @@ timeline's for every app.
 - A panel in the System Settings layout: the page list on `--chrome` (28px rows; the current page filled
   with the accent and `--on-accent` text, as a focused macOS sidebar) and the page on `--bg`: the title in
   `--fs-title` bold, the intro in `--o2`, then groups. A group heading is 13px semibold `--text` over its
-  inset group; each row (at least 36px) has the label and its description (`--fs-meta`, `--o2`) on the left
+  row group; each row (at least 36px) has the label and its description (`--fs-meta`, `--o2`) on the left
   and the control on the right, hairlines between rows. A row that depends on a switch sits indented under
   it; number fields and number popups share one width. Counts and durations use tabular
   figures; paths, bundle ids and commands are mono and selectable. A failure reads in red on a light red
@@ -680,11 +685,13 @@ timeline's for every app.
 ## Reports
 
 The Reports screen follows Timely's day report, without money. The toolbar has the period as title, then
-Copy as text as a split button (the main part copies with the current grouping; its chevron opens a menu
-that picks it: By project, tag, day, week or month, the current one checked) and Save report…; below, one
-slim filter bar (Period presets as a segmented control, Custom revealing dates, clients, projects, tags,
-rounding, an Include archived switch). The
-P and N step the period, O goes to the one holding today, and the sidebar's calendar highlights it when it is one day, week or month. The content sits in inset groups:
+Report options (a sliders button: a popover with Rounding and an Include archived switch), Copy as text as a
+split button (the main part copies with the current grouping; its chevron opens a menu that picks it: By
+project, tag, day, week or month, the current one checked) and Save report…; below, one slim filter bar: the
+Period as a popup button (Today to Last month, Custom revealing dates), then compact clients, projects and
+tags fields. The
+P and N step the period, O goes to the one holding today, and the sidebar's calendar highlights it when it is one day, week or month. The sections stand on the page without boxes, set apart by whitespace and a
+faint hairline; headings are `--fs-title` semibold:
 
 1. **Totals:** `Total` with the hours large (`--text-strong`, `--fs-display` bold), then Recordings,
    Projects, Untagged (only when there is untagged time) and `Billable 6h 24m · 80 %` (of the rounded total;
@@ -695,11 +702,13 @@ P and N step the period, O goes to the one holding today, and the sidebar's cale
    accent by its place in the tag list, graphite for No client and Untagged) on a `--fill` track, the
    percentages outside the ring in `--o2` (from 3 %), the total and the count (`2 clients`) in the center,
    and a legend with a dot, the name and the hours.
-3. **Table:** rows divided by hairlines: client rows (600) with their hours; project rows with a color dot,
-   the name, `billable` as a secondary label, the number of recordings, a borderless **Copy notes** button
-   and the hours; a click on a project
-   unfolds its recordings (Expand all / Collapse all for every project). A recording row shows its day and
-   all its times of the day (`Wed, Oct 21 · 14:25–15:00, 16:05–20:15`), the note and the tag below. Copy
+3. **Table:** no column header; rows divided by `--line-faint` hairlines. A client is a full-width
+   `--fill-quiet` band (600) with its hours, space above each but the first; project rows with a chevron,
+   a color dot, the name (600), `billable` as a secondary label, the number of recordings, a borderless
+   **Copy notes** button and the hours; a click on a project unfolds its recordings (Expand all / Collapse
+   all for every project). A recording row lines up in columns under the project's name: its times of the
+   day (`14:25–15:00, 16:05–20:15`, `--o2`, preceded by the day `Wed, Oct 21` only when the report spans
+   several days), the note, the tag (`--o2`) and the hours. Copy
    notes copies the project's notes for the period, by first span, one per line (empty notes skipped,
    repeated notes kept, a recording's note once) and toasts `Copied 4 notes for Northwind / Support`; it is
    disabled when the project has no notes. Copy Report Notes (⌥⌘C) copies every note of the report the same
@@ -866,8 +875,8 @@ From any view, with the documented default keys only (the pointer ways in bracke
 9. Back to step 2 for the next stretch (J moves on from the last focused activity). P and N step to other days.
 10. ⌘2 shows the week (P N by week; Tab to a day head and ↵ opens it, Tab to a card and ↵ edits it), ⌘3 the
     month (by month; Tab to a day and ↵ opens it).
-11. ⌘4 shows Reports (P N step its period, O goes back to the current one): Tab to the Period presets, on
-    to the client, project and tag pickers and Rounding, then the charts' By selects and the table's project
+11. ⌘4 shows Reports (P N step its period, O goes back to the current one): Tab to the Period, on
+    to the client, project and tag pickers, then the charts' By selects and the table's project
     rows (↵ unfolds one) and Copy notes buttons; ⌘⇧C copies the report as text, ⌥⌘C all its notes, ⌘K
     `> save` saves it under a name.
 

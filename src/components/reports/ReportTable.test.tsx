@@ -74,16 +74,36 @@ describe("ReportTable", () => {
       expect(screen.queryByText("Fixed the header")).not.toBeInTheDocument();
     });
 
-    it("show the day, spans, note, tag and hours of each recording when the project is unfolded", async () => {
+    it("show the times, note, tag and hours of each recording when the project is unfolded", async () => {
       renderTable();
       await userEvent.click(toggle("Portal"));
       expect(toggle("Portal")).toHaveAttribute("aria-expanded", "true");
       const first = screen.getByRole("row", { name: /Fixed the header/ });
-      expect(first).toHaveTextContent("Wed, Oct 21 · 09:00–09:45");
+      expect(within(first).getByText("09:00–09:45")).toBeInTheDocument();
+      expect(within(first).getByText("Fixed the header")).toBeInTheDocument();
       expect(within(first).getByText("support")).toBeInTheDocument();
       expect(first).toHaveTextContent("45m");
       expect(screen.getByText(/14:00–15:00/).closest("tr")).toHaveTextContent("1h 00m");
       expect(screen.queryAllByText(/09:00–09:45/)).toHaveLength(1);
+    });
+
+    it("leave out the day when the report covers a single day", async () => {
+      renderTable();
+      await userEvent.click(toggle("Portal"));
+      expect(screen.queryByText("Wed, Oct 21")).not.toBeInTheDocument();
+    });
+
+    it("lead with the day when the report covers several days", async () => {
+      render(<ReportTable clients={clients} multiDay />);
+      await userEvent.click(toggle("Portal"));
+      const first = screen.getByRole("row", { name: /Fixed the header/ });
+      expect(within(first).getByText("Wed, Oct 21")).toBeInTheDocument();
+      expect(within(first).getByText("09:00–09:45")).toBeInTheDocument();
+    });
+
+    it("has no column headers", () => {
+      renderTable();
+      expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
     });
 
     it("show every span of a recording in one row", async () => {

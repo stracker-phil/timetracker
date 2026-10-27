@@ -5,6 +5,8 @@
    drives times, durations and data values; the row anatomy and the window's own chrome (traffic lights, the
    toolbar beside them) are in px. */
 :root {
+  /* Rows within a list: half as strong as the hairlines between surfaces. */
+  --line-faint: color-mix(in srgb, var(--line) 50%, transparent);
   --font-ui: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
   --ui-font-size: 13px;

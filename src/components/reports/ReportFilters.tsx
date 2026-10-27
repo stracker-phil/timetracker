@@ -1,5 +1,5 @@
 import { Building2, FolderKanban, Tag } from "lucide-react";
-import type { Range, ReportFilter, Rounding } from "../../api";
+import type { Range, ReportFilter } from "../../api";
 import { today } from "../../lib/day";
 import { projectLabel } from "../../state/slices/projects";
 import { useStore } from "../../state/store";
@@ -15,13 +15,6 @@ const PRESETS: { kind: RangeKind; label: string }[] = [
   { kind: "thisMonth", label: "This month" },
   { kind: "lastMonth", label: "Last month" },
   { kind: "custom", label: "Custom" },
-];
-
-const ROUNDING_STEPS = [5, 6, 10, 15, 30] as const;
-const ROUNDINGS: { value: Rounding; label: string }[] = [
-  { value: "none", label: "No rounding" },
-  ...ROUNDING_STEPS.map((m) => ({ value: `nearest${m}` satisfies Rounding, label: `Nearest ${m} min` })),
-  ...ROUNDING_STEPS.map((m) => ({ value: `up${m}` satisfies Rounding, label: `Up to ${m} min` })),
 ];
 
 interface Props {
@@ -40,13 +33,13 @@ function RangePicker({ range, shown, onChange }: { range: Range; shown: Props["s
   const setBound = (bound: "from" | "to", day: string) => range.kind === "custom" && day && onChange({ ...range, [bound]: day });
   return (
     <div className="report-range">
-      <div className="segmented" role="group" aria-label="Period">
+      <select className="input" aria-label="Period" value={range.kind} onChange={(e) => pick(e.target.value as RangeKind)}>
         {PRESETS.map((p) => (
-          <button key={p.kind} type="button" aria-pressed={range.kind === p.kind} onClick={() => pick(p.kind)}>
+          <option key={p.kind} value={p.kind}>
             {p.label}
-          </button>
+          </option>
         ))}
-      </div>
+      </select>
       {range.kind === "custom" && (
         <>
           <input className="input" type="date" aria-label="From" value={range.from} max={range.to} onChange={(e) => setBound("from", e.target.value)} />
@@ -82,19 +75,6 @@ export function ReportFilters({ filter, shown, onChange }: Props) {
           onChange={(projectIds) => onChange({ projectIds })}
         />
         <MultiSelect label="Tags" icon={<Tag size="1.077rem" />} items={tags.map((t) => ({ id: t.id, label: t.name }))} value={filter.tagIds} onChange={(tagIds) => onChange({ tagIds })} />
-      </div>
-      <div className="report-options">
-        <select className="input" aria-label="Rounding" value={filter.rounding} onChange={(e) => onChange({ rounding: e.target.value as Rounding })}>
-          {ROUNDINGS.map((r) => (
-            <option key={r.value} value={r.value}>
-              {r.label}
-            </option>
-          ))}
-        </select>
-        <label className="inline-switch">
-          <input className="switch" type="checkbox" role="switch" checked={filter.includeArchived} onChange={(e) => onChange({ includeArchived: e.target.checked })} />
-          Include archived
-        </label>
       </div>
     </div>
   );

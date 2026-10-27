@@ -88,5 +88,5 @@
 .shortcuts h3 { margin: var(--space-1) 0 0; font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }
 .shortcuts dl { margin: 0; }
 .shortcut-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); padding: var(--space-1) 0; }
-.shortcut-row + .shortcut-row { border-top: 1px solid var(--line); }
+.shortcut-row + .shortcut-row { border-top: 1px solid var(--line-faint); }
 .shortcut-row dd { margin: 0; }

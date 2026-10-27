@@ -364,18 +364,20 @@ The editor's `edit` request may carry `at` (a span of the recording), so views o
 ### Reports screen
 
 `components/reports/`: `ReportsView` (the `reports` view) runs `reportRun(filter)` keyed by the filter and
-`changeCount`: a `Toolbar` with `result.title` (Rust, in the Day title's format), `CopyTextButton` (a split
+`changeCount`: a `Toolbar` with `result.title` (Rust, in the Day title's format), Report options (the
+`reportOptions` dialog: `ReportOptionsPopover`, Rounding and Include archived, anchored at `[data-report-options]`), `CopyTextButton` (a split
 button: Copy as text, `reports.copyText`, ⌘⇧C: `reportText` to the clipboard; its chevron, "Group copied text
 by", opens a `useContextMenu` menu of checkable By project, tag, day, week, month that sets
 `reportFilter.groupBy`) and Save report… (`reports.save`: the `prompt` dialog, then `saveReport`);
-`ReportFilters`, one slim row (Period presets as a segmented control, Custom revealing dates, `MultiSelect`
-for clients, projects and tags, Rounding, Include archived). Below, all rendered from `ReportResult` as Rust
+`ReportFilters`, one slim row (the Period as a select, Custom revealing dates, a 12rem `MultiSelect` each
+for clients, projects and tags). Below, all rendered from `ReportResult` as Rust
 built it: `ReportTotals` (the total large, recordings, projects, untagged time, `Billable 6:24 h · 80 %`),
 two `ReportChart`s (SVG donuts of `result.charts`, by client and by tag, each with a By select for Client,
 Project or Tag, the total and count in the center, percentages on the ring and a legend; colors through
-`accentColor` in `Accent.tsx`), and `ReportTable` (`result.clients`: client rows, project rows that unfold
-their recordings, Expand all / Collapse all; a recording row shows its day, all its spans of the day
-`14:25–15:00, 16:05–20:15`, note and tag). A project row's Copy notes puts `project.notes.text` in the
+`accentColor` in `Accent.tsx`), and `ReportTable` (`result.clients`: client band rows, project rows that unfold
+their recordings, Expand all / Collapse all; a recording row has columns for all its spans of the day
+`14:25–15:00, 16:05–20:15` (after its day only with `multiDay`, which `ReportsView` sets when `from` ≠ `to`),
+the note, the tag and the hours). A project row's Copy notes puts `project.notes.text` in the
 clipboard and toasts `Copied 4 notes for Acme / Portal` (`copyNotes` in `actions.ts`, which also
 holds the commands' actions). The sidebar
 lists saved reports under Reports: a click opens one, right-click renames (prompt) or deletes (confirm).
@@ -385,7 +387,7 @@ lists saved reports under Reports: a click opens one, right-click renames (promp
 ### Projects screen
 
 `components/projects/`: `ProjectsPage` (the `projects` view; it reloads the projects on `changeCount`, so the
-hours follow every recording): a `Toolbar` (Show archived, New client, New project), then an inset group per
+hours follow every recording): a `Toolbar` (Show archived, New client, New project), then an row group per
 client by name (`ClientHead` above it: its color dot, the name, which edits the client, the number of projects, the labels
 This week and This month, and a `+` that creates a project for that client, except on archived clients;
 "No projects" when empty), client-less projects under "No client" last. A
@@ -481,8 +483,9 @@ and `--on-accent` to `--on-system-accent`; `applyInitialLook` sets it before set
   strip); `user-select: none` applies globally, inputs and `.selectable` opt back in. The body is
   transparent; `sidebar.css` makes the sidebar transparent where its tone matches `prefers-color-scheme`, so
   the window's `sidebar` effect (vibrancy) shows through.
-- **Groups.** Grouped content is an inset group (`--fill-quiet`, `--radius`, no border; one shared rule in `base.css`): `.settings-card`,
-  `.project-rows` and `.tag-rows`, `.rule-rows`, `.report-totals`, `.report-chart`, `.report-table`.
+- **Groups.** Grouped content is a row group: no box, faint `--line-faint` hairlines above and below (one shared rule in
+  `base.css`) and between its rows: `.settings-card`, `.project-rows` and `.tag-rows`, `.rule-rows`. The Reports
+  sections stand on the page, set apart by whitespace and a faint hairline.
 
 ## Tests
 

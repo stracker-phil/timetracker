@@ -54,6 +54,17 @@ describe("ReportsView", () => {
       expect(screen.getByRole("region", { name: "Recordings by project" })).toBeInTheDocument();
     });
 
+    it.each([
+      ["a single day", "2026-03-09", "2026-03-09", false],
+      ["several days", "2026-03-09", "2026-03-15", true],
+    ])("shows the day of the recordings only for %s", async (_label, from, to, shown) => {
+      mocked.reportRun.mockResolvedValue(reportResult({ from, to }));
+      await renderView();
+      await userEvent.click(screen.getByRole("button", { name: "Expand all" }));
+      const days = within(screen.getByRole("region", { name: "Recordings by project" })).queryAllByText("Wed, Oct 21");
+      expect(days.length > 0).toBe(shown);
+    });
+
     it("says there are no recordings and shows neither charts nor table when the report is empty", async () => {
       mocked.reportRun.mockResolvedValue(reportResult({ clients: [], totalMs: 0, totalRoundedMs: 0, recordingCount: 0, projectCount: 0 }));
       await renderView();
@@ -86,10 +97,16 @@ describe("ReportsView", () => {
       ["Yesterday", "yesterday"],
     ])("runs the report again with the period %s", async (label, kind) => {
       await renderView();
-      const period = within(screen.getByRole("group", { name: "Period" }));
-      await userEvent.click(period.getByRole("button", { name: label }));
+      const period = screen.getByRole("combobox", { name: "Period" });
+      await userEvent.selectOptions(period, label);
       await vi.waitFor(() => expect(lastFilter().range).toEqual({ kind }));
-      expect(period.getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "true");
+      expect(period).toHaveValue(kind);
+    });
+
+    it("no longer offers the rounding or archived projects in the filter bar", async () => {
+      await renderView();
+      expect(screen.queryByRole("combobox", { name: "Rounding" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("switch", { name: "Include archived" })).not.toBeInTheDocument();
     });
 
     it("runs the report again with the grouping chosen for the copied text, without copying", async () => {
@@ -109,20 +126,32 @@ describe("ReportsView", () => {
       ["No rounding", "none"],
     ])("runs the report again with the %s rounding", async (label, value) => {
       await renderView({ reportFilter: { ...defaultFilter(settings()), rounding: value === "none" ? "up5" : "none" } });
-      await userEvent.selectOptions(screen.getByRole("combobox", { name: "Rounding" }), label);
+      await userEvent.click(screen.getByRole("button", { name: "Report options" }));
+      const options = within(await screen.findByRole("dialog", { name: "Report options" }));
+      await userEvent.selectOptions(options.getByRole("combobox", { name: "Rounding" }), label);
       await vi.waitFor(() => expect(lastFilter().rounding).toBe(value));
     });
 
-    it("runs the report again with archived projects included", async () => {
+    it("runs the report again with archived projects included from the report options", async () => {
       await renderView();
-      await userEvent.click(screen.getByRole("switch", { name: "Include archived" }));
+      await userEvent.click(screen.getByRole("button", { name: "Report options" }));
+      const options = within(await screen.findByRole("dialog", { name: "Report options" }));
+      await userEvent.click(options.getByRole("switch", { name: "Include archived" }));
       await vi.waitFor(() => expect(lastFilter().includeArchived).toBe(true));
+    });
+
+    it("shows the current rounding and archived setting in the report options", async () => {
+      await renderView({ reportFilter: { ...defaultFilter(settings()), rounding: "up30", includeArchived: true } });
+      await userEvent.click(screen.getByRole("button", { name: "Report options" }));
+      const options = within(await screen.findByRole("dialog", { name: "Report options" }));
+      expect(options.getByRole("combobox", { name: "Rounding" })).toHaveValue("up30");
+      expect(options.getByRole("switch", { name: "Include archived" })).toBeChecked();
     });
 
     it("starts a custom range from the days shown", async () => {
       mocked.reportRun.mockResolvedValue(reportResult({ from: "2026-03-09", to: "2026-03-15" }));
       await renderView();
-      await userEvent.click(within(screen.getByRole("group", { name: "Period" })).getByRole("button", { name: "Custom" }));
+      await userEvent.selectOptions(screen.getByRole("combobox", { name: "Period" }), "Custom");
       expect(await screen.findByLabelText("From")).toHaveValue("2026-03-09");
       expect(screen.getByLabelText("To")).toHaveValue("2026-03-15");
       await vi.waitFor(() => expect(lastFilter().range).toEqual({ kind: "custom", from: "2026-03-09", to: "2026-03-15" }));
@@ -265,7 +294,7 @@ describe("ReportsView", () => {
       const saved = savedReport({ filter: { ...defaultFilter(null), range: { kind: "lastWeek" }, groupBy: "tag" } });
       act(() => useStore.getState().openSavedReport(saved));
       await vi.waitFor(() => expect(lastFilter()).toEqual(saved.filter));
-      expect(within(screen.getByRole("group", { name: "Period" })).getByRole("button", { name: "Last week" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("combobox", { name: "Period" })).toHaveValue("lastWeek");
       await userEvent.click(screen.getByRole("button", { name: "Group copied text by" }));
       expect(screen.getByRole("menuitemcheckbox", { name: "By tag" })).toHaveAttribute("aria-checked", "true");
     });

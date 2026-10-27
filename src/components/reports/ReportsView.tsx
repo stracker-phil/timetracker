@@ -1,4 +1,4 @@
-import { Save } from "lucide-react";
+import { Save, SlidersHorizontal } from "lucide-react";
 import { api, type ReportResult } from "../../api";
 import { useApiResult } from "../../lib/useApiResult";
 import { defaultFilter } from "../../state/slices/reports";
@@ -27,7 +27,7 @@ function ReportBody({ result }: { result: ReportResult }) {
         <ReportChart charts={result.charts} totalMs={result.totalRoundedMs} initial="client" />
         <ReportChart charts={result.charts} totalMs={result.totalRoundedMs} initial="tag" />
       </div>
-      <ReportTable clients={result.clients} />
+      <ReportTable clients={result.clients} multiDay={result.from !== result.to} />
     </>
   );
 }
@@ -46,6 +46,17 @@ export function ReportsView() {
   return (
     <section className="reports-page" aria-label="Reports">
       <Toolbar title={result?.title}>
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Report options"
+          aria-haspopup="dialog"
+          title="Report options"
+          data-report-options
+          onClick={() => useStore.getState().openDialog({ type: "reportOptions" })}
+        >
+          <SlidersHorizontal size="1.154rem" />
+        </button>
         <CopyTextButton groupBy={filter.groupBy} onGroupBy={(groupBy) => setReportFilter({ groupBy })} />
         <button type="button" className="btn" onClick={() => promptSaveReport()}>
           <Save size="1.154rem" /> Save report…

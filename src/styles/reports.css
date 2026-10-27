@@ -3,15 +3,21 @@
 
 /* The slim filter bar: one wrapping row. */
 .report-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--margin); border-bottom: 1px solid var(--line); }
-.report-range, .report-options { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.report-range .input, .report-options select.input { width: auto; }
-.report-pickers { flex: 1; min-width: 24rem; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.report-range { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.report-range .input { width: auto; }
+.report-range select.input { min-width: 8.5rem; }
+.report-pickers { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.report-pickers .multi-select { width: 12rem; }
 .multi-select-chosen { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
 
-.report-result { flex: 1; overflow: auto; padding: var(--margin) var(--margin) var(--space-8); display: flex; flex-direction: column; gap: var(--space-5); }
+.report-result { flex: 1; overflow: auto; padding: var(--space-6) var(--margin) var(--space-8); display: flex; flex-direction: column; gap: var(--space-8); }
+
+/* Sections sit on the page without boxes, set apart by whitespace and a faint hairline. */
+.report-section-head { display: flex; align-items: center; gap: var(--space-2); min-height: var(--toolbar-control-h); }
+.report-section-head h2 { margin: 0 auto 0 0; font-size: var(--fs-title); font-weight: 600; color: var(--text-strong); }
 
 /* Totals: the total large, the rest beside it. */
-.report-totals { margin: 0; display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4) var(--space-8); padding: var(--space-4) var(--margin); }
+.report-totals { margin: 0; display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4) var(--space-8); padding-bottom: var(--space-6); border-bottom: 1px solid var(--line-faint); }
 .report-stat { display: flex; flex-direction: column; gap: var(--space-1); }
 .report-stat dt { color: var(--o2); font-size: var(--fs-meta); }
 .report-stat dd { margin: 0; font-size: var(--fs-title); font-weight: 600; }
@@ -19,37 +25,43 @@
 .report-stat dd.report-stat-note { font-size: var(--fs-meta); font-weight: 400; color: var(--o3); }
 
 /* Charts: two donuts side by side, each with its legend. */
-.report-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: var(--space-5); }
-.report-chart { padding: var(--space-3) var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
-.report-chart-head { display: flex; align-items: center; gap: var(--space-2); font-weight: 600; }
+.report-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: var(--space-6) var(--space-8); padding-bottom: var(--space-6); border-bottom: 1px solid var(--line-faint); }
+.report-chart { display: flex; flex-direction: column; gap: var(--space-3); }
+.report-chart-head { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-title); font-weight: 600; color: var(--text-strong); }
 .report-chart-head select.input { width: auto; font-weight: 600; }
-.report-chart-body { display: flex; align-items: center; gap: var(--space-5); }
+.report-chart-body { display: flex; align-items: center; gap: var(--space-6); }
 .donut { flex: none; width: 12rem; height: 12rem; }
 .donut circle { fill: none; stroke-width: 20; }
 .donut-track { stroke: var(--fill); }
 .donut text { text-anchor: middle; dominant-baseline: middle; fill: var(--o2); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
 .donut .donut-total { fill: var(--text-strong); font-size: var(--fs-title); font-weight: 600; }
-.report-legend { flex: 1; min-width: 0; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
+.report-legend { flex: 1; min-width: 0; max-width: 24rem; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
 .report-legend li { display: flex; align-items: center; gap: var(--space-2); }
 
-/* Table: client, project, recordings. */
-.report-table { padding: var(--space-3) var(--space-3) var(--space-2); }
-.report-table-head { display: flex; align-items: center; gap: var(--space-2); padding-bottom: var(--space-2); }
-.report-table-head h2 { margin: 0 auto 0 0; font-size: var(--fs-body); font-weight: 600; }
+/* Table: a client is a full-width tinted row, its projects below, a project's recordings in columns:
+   times, note, tag, hours. */
+.report-table { display: flex; flex-direction: column; gap: var(--space-3); }
 .report-rows { width: 100%; border-collapse: collapse; }
-.report-rows th, .report-rows td { padding: var(--space-2); text-align: left; vertical-align: middle; }
-.report-rows tbody tr + tr > * { box-shadow: inset 0 1px 0 var(--line); }
-.report-rows thead th { color: var(--o2); font-size: var(--fs-meta); font-weight: 400; padding-block: 0 var(--space-1); }
+.report-rows th, .report-rows td { padding: var(--space-2) var(--space-3); text-align: left; vertical-align: baseline; }
+.report-rows tr + tr > * { border-top: 1px solid var(--line-faint); }
 .report-hours { font-variant-numeric: tabular-nums; }
 .report-rows .report-hours { width: 1%; white-space: nowrap; text-align: right; }
-.report-client th { font-weight: 600; }
+.report-client > * { background: var(--fill-quiet); padding-block: var(--space-3); }
+.report-client th { font-weight: 600; color: var(--text-strong); }
+.report-client .report-hours { font-weight: 600; color: var(--text-strong); }
 .report-client th .accent-dot { display: inline-block; margin-right: var(--space-2); }
-.report-client th, .report-client td { padding-top: var(--space-3); }
-.report-project-toggle { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 0 0 0 var(--space-3); border: none; background: none; color: inherit; text-align: left; }
-.report-project-name { font-weight: 500; }
-.report-project-actions { width: 1%; white-space: nowrap; }
+/* Space between clients: a border in the page color, since table rows take no margin. */
+.report-rows tbody + tbody .report-client > * { border-top: var(--space-5) solid var(--bg); }
+.report-project > * { padding-block: var(--space-3); vertical-align: middle; }
+.report-project-toggle { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 0; border: none; background: none; color: inherit; text-align: left; }
+.report-project-name { font-weight: 600; }
+.report-project .report-hours { font-weight: 600; }
+.report-project-actions { width: 1%; white-space: nowrap; padding-block: 0; }
 
-.report-recording td:first-child { padding-left: calc(var(--space-8) + var(--space-3)); }
-.report-recording td { font-size: var(--fs-meta); color: var(--o2); }
-.report-recording td:first-child > span { display: block; }
-.report-recording-note { font-size: var(--fs-body); color: var(--text); }
+.report-recording > * { padding-block: var(--space-2); }
+/* The times line up under the project's name, past its chevron. */
+.report-rows .report-when { width: 1%; white-space: nowrap; padding-left: calc(var(--space-3) + 1.6rem); color: var(--o2); font-variant-numeric: tabular-nums; }
+.report-day { margin-right: var(--space-3); color: var(--text); }
+.report-note { color: var(--text); line-height: 1.4; }
+.report-tag { white-space: nowrap; color: var(--o2); }
+.report-recording .report-hours { color: var(--text); }

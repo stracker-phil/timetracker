@@ -33,9 +33,7 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 ) { isolation: isolate; }
 
 /* Inset groups (docs/ux.md, Surfaces): each screen's own rule sets only its padding. */
-:is(.settings-card, .project-rows, .tag-rows, .project-none, .rule-rows, .report-totals, .report-chart, .report-table) {
-  background: var(--fill-quiet); border-radius: var(--radius);
-}
+:is(.settings-card, .project-rows, .tag-rows, .project-none, .rule-rows) { border-block: 1px solid var(--line-faint); }
 
 .hint { font-size: var(--fs-meta); color: var(--o3); }
 .muted { color: var(--o2); }

@@ -7,6 +7,7 @@ import { Modal } from "./Modal";
 import { PromptDialog } from "./PromptDialog";
 import { ClientSheet } from "./projects/ClientSheet";
 import { ProjectSheet } from "./projects/ProjectSheet";
+import { ReportOptionsPopover } from "./reports/ReportOptionsPopover";
 import { RuleSheet } from "./rules/RuleSheet";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
@@ -51,6 +52,8 @@ export function Dialogs() {
       return <PromptDialog {...dialog} />;
     case "viewOptions":
       return <ViewOptionsPopover />;
+    case "reportOptions":
+      return <ReportOptionsPopover />;
     case "datePicker":
       return <DatePickerPopover />;
     case "deleteActivity":
