@@ -369,7 +369,7 @@ mod tests {
         let p = project(&db, "Website").await;
         let stored = StoredSuggestion {
             id: "s1".into(),
-            project_id: p.id.clone(),
+            project_id: Some(p.id.clone()),
             note: "review".into(),
             tag_id: None,
             source: "claude".into(),

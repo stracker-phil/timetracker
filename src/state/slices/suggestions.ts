@@ -9,11 +9,11 @@ export interface SuggestionsSlice {
   focusedSuggestion: string | null;
   /** Focuses a suggestion, taking the focus off recordings, blocks and the selection. */
   focusSuggestion: (id: string | null) => void;
-  /** Records the suggestion on the shown day as it is. */
+  /** Records the suggestion on the shown day as it is; one without a project opens the editor to pick one. */
   approveSuggestion: (suggestion: Suggestion) => Promise<void>;
   /** Records every suggestion of the rule on the shown day. */
   approveRuleSuggestions: (ruleId: string) => Promise<void>;
-  /** Records the shown day's suggestions `ids` as one undoable change. */
+  /** Records the shown day's suggestions `ids` that have a project as one undoable change; the rest stay. */
   approveSuggestions: (ids: string[]) => Promise<void>;
   /** Dismisses the shown day's suggestions `ids` as one undoable change. */
   dismissSuggestions: (ids: string[]) => Promise<void>;
@@ -23,6 +23,12 @@ export interface SuggestionsSlice {
 
 /** The shown day's suggestions, once its view is loaded. */
 export const shownSuggestions = (s: Store) => (s.dayView?.day === s.day ? s.dayView.suggestions : []);
+
+/** What a suggestion without a project shows in its place. */
+export const NO_PROJECT = "No project";
+
+/** A suggestion without a project waits for the owner to pick one before it can be approved (ADR 0030). */
+export const isApprovable = (suggestion: Suggestion) => suggestion.projectId !== null;
 
 export const suggestionsSlice: Slice<SuggestionsSlice> = {
   create: (set, get) => {
@@ -46,6 +52,10 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
       },
 
       async approveSuggestion(suggestion) {
+        if (!isApprovable(suggestion)) {
+          get().editSuggestion(suggestion);
+          return;
+        }
         try {
           const { durationMs } = await api.suggestionApprove(get().day, suggestion.id);
           focusNextAfter([suggestion.id]);
@@ -65,7 +75,10 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
         }
       },
 
-      async approveSuggestions(ids) {
+      async approveSuggestions(requested) {
+        const ids = shownSuggestions(get())
+          .filter((s) => requested.includes(s.id) && isApprovable(s))
+          .map((s) => s.id);
         if (ids.length === 0) return;
         try {
           const recorded = await api.suggestionsApprove(get().day, ids);
@@ -94,7 +107,7 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
           mode: "create",
           start: suggestion.start,
           end: suggestion.end,
-          projectId: suggestion.projectId,
+          projectId: suggestion.projectId ?? undefined,
           note: suggestion.note,
           tagId: suggestion.tagId,
           suggestion: { id: suggestion.id, by: suggestion.by },

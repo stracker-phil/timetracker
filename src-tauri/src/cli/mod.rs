@@ -48,6 +48,7 @@ const EXAMPLES: &str = "Examples:
   timetracker activity stop --source planner
   timetracker record --project acme --from 09:00 --to 09:30 --note standup --tag \"internal meeting\"
   timetracker record --project acme --span 14:25-15:00 --span 16:05-20:15 --final
+  timetracker record --span 11:00-12:00 --note \"call with Ana\"
   timetracker suggestions --json       today's suggestions with their ids
   timetracker approve <id>             record a suggestion as it is
   timetracker timer update --note \"ID-123: Payment bug\"

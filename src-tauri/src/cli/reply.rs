@@ -582,7 +582,7 @@ mod tests {
     fn record_message() -> IpcMessage {
         IpcMessage::Record {
             request: RecordRequest {
-                project: "ac".into(),
+                project: Some("ac".into()),
                 spans: vec![Span { start: 0, end: 1 }],
                 note: String::new(),
                 tag: None,

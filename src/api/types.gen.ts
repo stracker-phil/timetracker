@@ -814,7 +814,11 @@ export type Span = { start: number, end: number, };
  */
 export type StatusReport = { version: string, tracker: TrackerStatus | null, timer: TimerState, billable: Billable | null, windowVisible: boolean, };
 
-export type StoredSuggestion = { id: string, projectId: string, note: string, tagId: string | null, 
+export type StoredSuggestion = { id: string, 
+/**
+ * None until the owner picks one; it can't be approved without (ADR 0030).
+ */
+projectId: string | null, note: string, tagId: string | null, 
 /**
  * The app that stored it (`cli`, `claude`, or the caller's `--source`).
  */
@@ -849,7 +853,15 @@ storedId: string | null,
 /**
  * Who suggests it: the rules' names, comma separated, or the stored suggestion's source.
  */
-by: string, projectId: string, projectName: string, clientName: string | null, color: string, shade: number, start: number, end: number, durationMs: number, note: string, tagId: string | null, 
+by: string, 
+/**
+ * None for a stored one waiting for the owner to pick it (ADR 0030); not approvable until then.
+ */
+projectId: string | null, projectName: string | null, clientName: string | null, 
+/**
+ * The project's accent, `graphite` without one.
+ */
+color: string, shade: number, start: number, end: number, durationMs: number, note: string, tagId: string | null, 
 /**
  * The tag's name.
  */

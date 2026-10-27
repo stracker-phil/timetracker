@@ -39,13 +39,17 @@ fn note_part(note: &str) -> String {
     }
 }
 
+/// Shown in place of a missing project.
+const NO_PROJECT: &str = "no project";
+
 /// `Acme · note #tag`.
 fn labels_text(labels: &Labels) -> String {
     let tag = labels
         .tag
         .as_ref()
         .map_or_else(String::new, |t| format!(" #{t}"));
-    format!("{}{}{tag}", labels.project, note_part(&labels.note))
+    let project = labels.project.as_deref().unwrap_or(NO_PROJECT);
+    format!("{project}{}{tag}", note_part(&labels.note))
 }
 
 fn recorded_text<Tz: TimeZone>(recorded: &Recorded, now: Ms, tz: &Tz) -> String {
@@ -68,7 +72,7 @@ fn written_text<Tz: TimeZone>(written: &Written, now: Ms, tz: &Tz) -> String {
                 "suggested {} ({}) for {}{}; review it in the Day view (id {})",
                 spans_text(s.spans.iter().map(|p| (p.start, Some(p.end))), tz),
                 format_hm(s.duration()),
-                suggested.project_name,
+                suggested.project_name.as_deref().unwrap_or(NO_PROJECT),
                 note_part(&s.note),
                 s.id
             )
@@ -209,7 +213,7 @@ mod tests {
     fn record_message() -> IpcMessage {
         IpcMessage::Record {
             request: RecordRequest {
-                project: "acme".into(),
+                project: Some("acme".into()),
                 spans: vec![Span { start: 0, end: 1 }],
                 note: String::new(),
                 tag: None,
@@ -275,7 +279,7 @@ mod tests {
         Written::Suggestion(Suggested {
             suggestion: StoredSuggestion {
                 id: "sg1".into(),
-                project_id: "p1".into(),
+                project_id: Some("p1".into()),
                 note: note.into(),
                 tag_id: None,
                 source: "cli".into(),
@@ -290,8 +294,60 @@ mod tests {
                 created_at: 0,
                 updated_at: 0,
             },
-            project_name: "Internal".into(),
+            project_name: Some("Internal".into()),
         })
+    }
+
+    fn suggested_without_project(note: &str, spans: &[(&str, &str)]) -> Written {
+        let Written::Suggestion(with_project) = suggested(note, spans) else {
+            unreachable!("suggested builds a suggestion");
+        };
+        Written::Suggestion(Suggested {
+            suggestion: StoredSuggestion {
+                project_id: None,
+                ..with_project.suggestion
+            },
+            project_name: None,
+        })
+    }
+
+    #[test]
+    fn a_suggested_record_without_a_project_says_no_project() {
+        let written = suggested_without_project(
+            "note",
+            &[("2026-10-21T06:00:00+02:00", "2026-10-21T06:30:00+02:00")],
+        );
+
+        assert_eq!(
+            text(&record_message(), &serde_json::to_value(written).unwrap()),
+            "suggested 06:00–06:30 (0:30) for no project · note; review it in the Day view (id sg1)"
+        );
+    }
+
+    #[test]
+    fn a_listed_suggestion_without_a_project_says_no_project() {
+        let result = json!([{
+            "id": "sg1", "kind": "stored", "by": "claude", "day": "2026-10-21",
+            "durationMs": 1_800_000,
+            "spans": [{
+                "start": ms("2026-10-21T06:00:00+02:00"),
+                "end": ms("2026-10-21T06:30:00+02:00"),
+                "startIso": "2026-10-21T06:00:00+02:00",
+                "endIso": "2026-10-21T06:30:00+02:00"
+            }],
+            "projectId": null, "project": null, "client": null,
+            "tagId": null, "tag": null, "note": "note"
+        }]);
+
+        assert_eq!(
+            text(
+                &IpcMessage::Suggestions {
+                    range: crate::reports::Range::Today
+                },
+                &result
+            ),
+            "2026-10-21 06:00–06:30 (0:30) no project · note by claude  sg1"
+        );
     }
 
     #[test]

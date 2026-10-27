@@ -16,7 +16,8 @@ pub struct SuggestionOut {
     pub day: Day,
     pub spans: Vec<SuggestionSpanOut>,
     pub duration_min: f64,
-    pub project: String,
+    /// `null` until the user picks one; not approvable until then.
+    pub project: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client: Option<String>,
     pub note: String,
@@ -72,11 +73,21 @@ mod tests {
     use crate::mcp::data::fixtures::{DAY, Seed, at, iso, seeded};
 
     async fn store_on(seed: &Seed, id: &str, day: &str, spans: &[(i64, i64, i64, i64)]) {
+        store_for(seed, Some(seed.portal.id.clone()), id, day, spans).await;
+    }
+
+    async fn store_for(
+        seed: &Seed,
+        project_id: Option<String>,
+        id: &str,
+        day: &str,
+        spans: &[(i64, i64, i64, i64)],
+    ) {
         let day = Day::parse(day).unwrap();
         let shift = day.bounds().0 - Day::parse(DAY).unwrap().bounds().0;
         let suggestion = StoredSuggestion {
             id: id.into(),
-            project_id: seed.portal.id.clone(),
+            project_id,
             note: "review PR".into(),
             tag_id: Some(seed.development.id.clone()),
             source: "Claude Desktop".into(),
@@ -118,6 +129,29 @@ mod tests {
                 "duration_min": 75.0,
                 "project": "Portal",
                 "client": "Acme",
+                "note": "review PR",
+                "tag": "development",
+            }])
+        );
+    }
+
+    #[tokio::test]
+    async fn a_suggestion_without_a_project_has_a_null_project_and_no_client() {
+        let seed = seeded().await;
+        store_for(&seed, None, "s1", DAY, &[(15, 0, 15, 45)]).await;
+
+        let out = serde_json::to_value(seed.core.suggestions(DAY, None).await.unwrap()).unwrap();
+
+        assert_eq!(
+            out,
+            json!([{
+                "id": "s1",
+                "kind": "stored",
+                "by": "Claude Desktop",
+                "day": DAY,
+                "spans": [{"start_iso": iso(15, 0), "end_iso": iso(15, 45)}],
+                "duration_min": 45.0,
+                "project": null,
                 "note": "review PR",
                 "tag": "development",
             }])

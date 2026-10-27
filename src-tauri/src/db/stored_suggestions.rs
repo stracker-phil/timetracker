@@ -16,7 +16,8 @@ use crate::error::{AppError, AppResult};
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct StoredSuggestion {
     pub id: String,
-    pub project_id: String,
+    /// None until the owner picks one; it can't be approved without (ADR 0030).
+    pub project_id: Option<String>,
     pub note: String,
     pub tag_id: Option<String>,
     /// The app that stored it (`cli`, `claude`, or the caller's `--source`).
@@ -145,7 +146,7 @@ mod tests {
     fn suggestion(id: &str, project_id: &str, day: Day, spans: &[(Ms, Ms)]) -> StoredSuggestion {
         StoredSuggestion {
             id: id.into(),
-            project_id: project_id.into(),
+            project_id: Some(project_id.into()),
             note: "note".into(),
             tag_id: None,
             source: "cli".into(),
@@ -182,6 +183,32 @@ mod tests {
         put(&db, &written).await;
 
         assert_eq!(get(&db, "s1").await.unwrap(), written);
+    }
+
+    #[tokio::test]
+    async fn a_suggestion_without_a_project_reads_back_exactly_as_written() {
+        let db = Db::open_memory().await.unwrap();
+        let written = StoredSuggestion {
+            project_id: None,
+            ..suggestion("s1", "unused", day("2026-01-05"), &[(1_000, 2_000)])
+        };
+
+        put(&db, &written).await;
+
+        assert_eq!(get(&db, "s1").await.unwrap(), written);
+    }
+
+    #[test]
+    fn a_suggestion_without_a_project_serializes_the_project_id_as_null() {
+        let s = StoredSuggestion {
+            project_id: None,
+            ..suggestion("s1", "unused", day("2026-01-05"), &[(1_000, 2_000)])
+        };
+
+        assert_eq!(
+            serde_json::to_value(&s).unwrap()["projectId"],
+            serde_json::Value::Null
+        );
     }
 
     #[tokio::test]

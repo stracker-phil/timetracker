@@ -1624,6 +1624,52 @@ describe("DayPage", () => {
       });
     });
 
+    describe("without a project", () => {
+      const unassigned = suggestion({ ruleIds: ["rule-none"], by: "cli", projectId: null, projectName: null, color: "graphite", start: at("16:00"), end: at("16:30"), nextCard: null });
+      const withUnassigned = () => dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [unassigned, mailIdea] });
+      const unassignedCard = () => screen.findByRole("group", { name: /^Suggested: No project, No project, 16:00–16:30/ });
+
+      it("names the card and the time-column block No project", async () => {
+        renderDay(withUnassigned(), withProject);
+        expect(within(await unassignedCard()).getByText("No project")).toBeInTheDocument();
+        const block = await screen.findByRole("button", { name: "Suggested: No project 16:00–16:30, by cli" });
+        expect(within(block).getByText("No project")).toBeInTheDocument();
+      });
+
+      it("offers Pick a project instead of Approve, which opens the editor without recording", async () => {
+        renderDay(withUnassigned(), withProject);
+        const card = within(await unassignedCard());
+        expect(card.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+        await userEvent.click(card.getByRole("button", { name: "Pick a project" }));
+        const form = await editorForm("Edit suggestion");
+        expect(within(form).getByRole("combobox", { name: "Project" })).toHaveValue("");
+        expect(mocked.suggestionApprove).not.toHaveBeenCalled();
+      });
+
+      it("opens the editor with ↵ on the focused card", async () => {
+        renderDay(withUnassigned(), withProject);
+        await focusCard(unassignedCard());
+        await userEvent.keyboard("{Enter}");
+        expect(await editorForm("Edit suggestion")).toBeInTheDocument();
+        expect(mocked.suggestionApprove).not.toHaveBeenCalled();
+      });
+
+      it("approves only the suggestions with a project on Approve all", async () => {
+        mocked.suggestionsApprove.mockResolvedValueOnce([recording({ id: "r1" })]);
+        renderDay(withUnassigned(), withProject);
+        await userEvent.click(within(await screen.findByRole("group", { name: "Suggestions to review" })).getByRole("button", { name: "Approve all" }));
+        expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [mailIdea.id]);
+        expect(await screen.findByText("Recorded 1 suggestion")).toBeInTheDocument();
+      });
+
+      it("disables Approve all when no suggestion has a project", async () => {
+        renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [unassigned] }), withProject);
+        const line = within(await screen.findByRole("group", { name: "Suggestions to review" }));
+        expect(line.getByRole("button", { name: "Approve all" })).toBeDisabled();
+        expect(line.getByRole("button", { name: "Dismiss all" })).toBeEnabled();
+      });
+    });
+
     describe("the time column", () => {
       it("draws each suggestion as a hatched button in the recordings column", async () => {
         renderDay(withSuggestions(), withProject);

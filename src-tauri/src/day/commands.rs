@@ -476,13 +476,13 @@ mod tests {
             assert_eq!(
                 (
                     suggestion.rule_ids.as_slice(),
-                    suggestion.project_name.as_str(),
+                    suggestion.project_name.as_deref(),
                     suggestion.start,
                     suggestion.end
                 ),
                 (
                     [rule.id.clone()].as_slice(),
-                    "Portal",
+                    Some("Portal"),
                     on(today, 9, 0),
                     on(today, 10, 0)
                 )
@@ -494,7 +494,7 @@ mod tests {
             use crate::db::stored_suggestions::{self, StoredSuggestion};
             let suggestion = StoredSuggestion {
                 id: "s1".into(),
-                project_id: project_id.into(),
+                project_id: Some(project_id.into()),
                 note: "review".into(),
                 tag_id: None,
                 source: "claude".into(),

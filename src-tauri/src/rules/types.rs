@@ -91,9 +91,11 @@ pub struct Suggestion {
     pub stored_id: Option<String>,
     /// Who suggests it: the rules' names, comma separated, or the stored suggestion's source.
     pub by: String,
-    pub project_id: String,
-    pub project_name: String,
+    /// None for a stored one waiting for the owner to pick it (ADR 0030); not approvable until then.
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
     pub client_name: Option<String>,
+    /// The project's accent, `graphite` without one.
     pub color: String,
     pub shade: u8,
     pub start: Ms,

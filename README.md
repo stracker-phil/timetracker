@@ -94,7 +94,7 @@ reports can be saved under a name and sit under Reports in the sidebar.
 | `timetracker activity add\|start\|stop …` | writes another app's activity, see [Scripting](#scripting) |
 | `timetracker activity delete <DAY>` / `activity delete <FROM> <TO>` | deletes the activity and away spans of a day or range (whole when they cross it; recordings stay) |
 | `timetracker activity undo` | restores the last delete, within 30 s of it |
-| `timetracker record --project P --from T --to T [--note N] [--tag T] [--source S]` | suggests time for a project (by id, name or a unique start of its name; one tag by name), to review in the Day view ("Suggested by cli", or `S`); see [Suggestions and recordings](#suggestions-and-recordings) |
+| `timetracker record [--project P] --from T --to T [--note N] [--tag T] [--source S]` | suggests time for a project (by id, name or a unique start of its name; one tag by name), to review in the Day view ("Suggested by cli", or `S`); without `--project` you pick it there; see [Suggestions and recordings](#suggestions-and-recordings) |
 | `timetracker record … --final [--replace]` | records it instead; refuses to overlap another recording unless `--replace` |
 | `timetracker record --project P --span 14:25-15:00 --span 16:05-20:15 …` | several separate spans (`--from`/`--to` counts as one more) |
 | `timetracker edit ID [--project P] [--note N] [--tag T\|--no-tag] [--span …] [--final [--replace]]` | changes a suggestion; with `--final` changes a recording, or records the suggestion with the changes |
@@ -128,6 +128,10 @@ Writes from other apps are suggestions you review, unless they say `--final` (AD
 approve it there or with `approve`, and every change is undoable. `--draft` keeps a write a suggestion even
 next to `--final`, so a wrapper script can't be talked into changing recordings. The timer is direct: `timer
 start`, `stop` and `update` change the running recording.
+
+A suggestion may leave out the project (ADR [0030](docs/adr/0030-suggestions-may-have-no-project.md)), as a
+reminder that time was spent: it shows as "No project" and can't be approved until you pick one, in the
+Day view (✓ reads "Pick a project") or with `edit ID --project P`. `--final` always needs `--project`.
 
 ## Scripting
 
@@ -209,6 +213,7 @@ stays off until you enable "Expose activity to the MCP server" in Settings → D
 Writes need the app running and work like the CLI's ([Suggestions and recordings](#suggestions-and-recordings)):
 `record` and `edit` leave suggestions in the Day view, "Suggested by" the client's name (`claude-code`), until
 you approve or dismiss them; `final: true` changes the timesheet itself (`draft: true` keeps it a suggestion).
+`record` may leave out the project when the client doesn't know it; you pick it before approving.
 `approve` records suggestions, `delete` dismisses one (a recording only with `final`), and `timer_start`,
 `timer_stop` and `timer_update` drive the timer directly; `timer_picker` opens the timer picker for you to
 choose. Ask "suggest 9 to 10:30 today for Acme with the note

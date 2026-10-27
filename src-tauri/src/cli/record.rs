@@ -10,9 +10,10 @@ use crate::recordings::{Overlap, Span};
 
 #[derive(Args, Debug)]
 pub struct RecordArgs {
-    /// The project's id, name or a unique start of its name
+    /// The project's id, name or a unique start of its name; a suggestion may leave it out for the owner to
+    /// pick
     #[arg(long)]
-    project: String,
+    project: Option<String>,
     /// 2026-10-21T09:30 (local, or with Z or ±hh:mm), 09:30 (today) or now
     #[arg(long, requires = "to")]
     from: Option<String>,
@@ -51,6 +52,9 @@ impl RecordArgs {
         let final_write = is_final(self.final_write, self.draft);
         if self.replace && !final_write {
             return Err("--replace changes recordings; add --final".into());
+        }
+        if final_write && self.project.is_none() {
+            return Err("--final records time; add --project".into());
         }
         Ok(RecordRequest {
             project: self.project,
@@ -106,7 +110,7 @@ mod tests {
     fn record_request(note: &str, tag: Option<&str>, end: &str, overlap: Overlap) -> IpcMessage {
         IpcMessage::Record {
             request: RecordRequest {
-                project: "ac".into(),
+                project: Some("ac".into()),
                 spans: vec![Span {
                     start: ms("2026-10-21T09:00:00+02:00"),
                     end: ms(end),
@@ -140,7 +144,7 @@ mod tests {
     fn spans_request(spans: &[(&str, &str)]) -> IpcMessage {
         IpcMessage::Record {
             request: RecordRequest {
-                project: "ac".into(),
+                project: Some("ac".into()),
                 spans: spans
                     .iter()
                     .map(|&(start, end)| Span {
@@ -347,7 +351,7 @@ mod tests {
         assert_eq!(
             request,
             RecordRequest {
-                project: "ac".into(),
+                project: Some("ac".into()),
                 spans: vec![Span {
                     start: ms("2026-10-21T09:00:00+02:00"),
                     end: ms("2026-10-21T10:30:00+02:00"),
@@ -372,6 +376,33 @@ mod tests {
         ] {
             assert_eq!(request_of(&extra).final_write, expected, "{extra:?}");
         }
+    }
+
+    #[test]
+    fn record_without_a_project_sends_none_for_a_suggestion() {
+        for extra in [vec![], vec!["--draft"], vec!["--final", "--draft"]] {
+            let args: Vec<&str> = ["record", "--span", "14:25-15:00"]
+                .iter()
+                .chain(&extra)
+                .copied()
+                .collect();
+
+            let request = match remote(&args).0 {
+                IpcMessage::Record { request } => request,
+                other => panic!("not a record: {other:?}"),
+            };
+
+            assert_eq!(request.project, None, "{extra:?}");
+            assert!(!request.final_write, "{extra:?}");
+        }
+    }
+
+    #[test]
+    fn record_final_without_a_project_is_refused_in_the_terminal() {
+        let err = run(&["record", "--span", "14:25-15:00", "--final"]).unwrap_err();
+
+        assert!(!err.in_app);
+        assert_eq!(err.message, "--final records time; add --project");
     }
 
     #[test]
@@ -436,10 +467,6 @@ mod tests {
     #[test]
     fn record_errors_name_the_problem_and_stay_in_the_terminal() {
         let cases: Vec<(Vec<&str>, &str)> = vec![
-            (
-                vec!["record", "--from", "09:00", "--to", "10:00"],
-                "--project",
-            ),
             (vec!["record", "--project", "ac", "--to", "10:00"], "--from"),
             (vec!["record", "--project", "ac", "--from", "09:00"], "--to"),
             (

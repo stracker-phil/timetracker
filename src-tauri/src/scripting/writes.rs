@@ -12,20 +12,20 @@ use crate::db::{Db, projects, tags};
 use crate::error::{AppError, AppResult};
 use crate::recordings::cli::{RecordRequest, Recorded, record as record_final};
 use crate::recordings::commands::changing;
-use crate::recordings::{Overlap, RecordingInput, Span};
+use crate::recordings::{Overlap, Span, SuggestionInput};
 use crate::rules;
 use crate::state::AppState;
 
 /// The source of suggestions the CLI stores without `--source`.
 pub const CLI_SOURCE: &str = "cli";
 
-/// A stored suggestion with the project name the CLI prints.
+/// A stored suggestion with the project name the CLI prints; none while it has no project.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Suggested {
     #[serde(flatten)]
     pub suggestion: StoredSuggestion,
-    pub project_name: String,
+    pub project_name: Option<String>,
 }
 
 /// What a write left: a recording or a stored suggestion.
@@ -140,7 +140,10 @@ async fn first_piece(app: &AppHandle, db: &Db, suggestion: &StoredSuggestion) ->
 }
 
 async fn suggested(db: &Db, suggestion: StoredSuggestion) -> AppResult<Written> {
-    let project_name = projects::get(db, &suggestion.project_id).await?.name;
+    let project_name = match &suggestion.project_id {
+        Some(id) => Some(projects::get(db, id).await?.name),
+        None => None,
+    };
     Ok(Written::Suggestion(Suggested {
         suggestion,
         project_name,
@@ -155,16 +158,20 @@ async fn recorded(db: &Db, recording: Recording) -> AppResult<Recorded> {
     })
 }
 
-/// A suggestion unless `request.final_write`; then a recording, refused on overlap unless replacing.
+/// A suggestion unless `request.final_write`; then a recording, refused on overlap unless replacing. Only
+/// a suggestion may lack a project.
 pub async fn record(app: &AppHandle, request: RecordRequest) -> AppResult<Written> {
     if request.final_write {
         return Ok(Written::Recording(record_final(app, request).await?));
     }
     let db = app.state::<AppState>().data.db()?;
-    let project = projects::resolve(&db, &request.project).await?;
+    let project_id = match &request.project {
+        Some(project) => Some(projects::resolve(&db, project).await?.id),
+        None => None,
+    };
     let tag_id = tags::resolve_optional_name(&db, request.tag.as_deref()).await?;
-    let input = RecordingInput {
-        project_id: project.id,
+    let input = SuggestionInput {
+        project_id,
         spans: request.spans,
         note: request.note,
         tag_id,
@@ -344,7 +351,7 @@ mod tests {
     fn a_stored_suggestion() -> StoredSuggestion {
         StoredSuggestion {
             id: "sg1".into(),
-            project_id: "p1".into(),
+            project_id: Some("p1".into()),
             note: "standup".into(),
             tag_id: None,
             source: "planner".into(),
@@ -380,7 +387,7 @@ mod tests {
     fn a_written_suggestion_is_tagged_and_carries_the_project_name_beside_the_suggestion() {
         let written = Written::Suggestion(Suggested {
             suggestion: a_stored_suggestion(),
-            project_name: "Portal".into(),
+            project_name: Some("Portal".into()),
         });
 
         let wire = json!({
@@ -390,6 +397,28 @@ mod tests {
             "spans": [{ "start": 1000, "end": 2000 }],
             "createdAt": 1000, "updatedAt": 2000,
             "projectName": "Portal"
+        });
+        assert_eq!(serde_json::to_value(&written).unwrap(), wire);
+        assert_eq!(serde_json::from_value::<Written>(wire).unwrap(), written);
+    }
+
+    #[test]
+    fn a_written_suggestion_without_a_project_has_a_null_project_and_project_name() {
+        let written = Written::Suggestion(Suggested {
+            suggestion: StoredSuggestion {
+                project_id: None,
+                ..a_stored_suggestion()
+            },
+            project_name: None,
+        });
+
+        let wire = json!({
+            "kind": "suggestion",
+            "id": "sg1", "projectId": null, "note": "standup", "tagId": null,
+            "source": "planner", "day": "2026-01-05",
+            "spans": [{ "start": 1000, "end": 2000 }],
+            "createdAt": 1000, "updatedAt": 2000,
+            "projectName": null
         });
         assert_eq!(serde_json::to_value(&written).unwrap(), wire);
         assert_eq!(serde_json::from_value::<Written>(wire).unwrap(), written);
@@ -443,8 +472,8 @@ mod tests {
             undo: &undo,
             snap_minutes: 5,
         };
-        let input = RecordingInput {
-            project_id: portal.id.clone(),
+        let input = SuggestionInput {
+            project_id: Some(portal.id.clone()),
             spans: vec![Span { start, end }],
             note: "standup".into(),
             tag_id: None,

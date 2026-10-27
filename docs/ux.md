@@ -556,6 +556,9 @@ timeline's for every app.
 - **Focus and keys**: ] and [ step through the timesheet, recordings and suggestions alike; Tab reaches a ghost
   card. A focused suggestion (accent ring on card and block) takes ↵ approve, E edit, ⌫ dismiss; after
   approving or dismissing, the focus moves to the next suggestion. Approve and dismiss each toast with Undo.
+- **Without a project**: a stored suggestion may come without a project (ADR 0030), a reminder that time
+  was spent. It shows in graphite with "No project"; its ✓ (and ↵) reads "Pick a project" and opens the
+  editor, whose Approve records it once a project is picked. Approve all leaves it waiting.
 - **Dismissed stays dismissed**: a dismissed suggestion's time is never suggested again by that rule on that
   day, also after the rule is edited or a recording over it is deleted; only Undo brings it back.
 - **Drop strip**: ⌥-dragging an activity block (while no recording editor is open) shows the recent projects on `--pop` over the top of the

@@ -144,6 +144,29 @@ describe("suggestion commands", () => {
     await vi.waitFor(() => expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [proposed.id, other.id]));
   });
 
+  it("suggestion.approveAll approves only the suggestions that have a project", async () => {
+    const unassigned = suggestion({ ruleIds: ["rule-none"], projectId: null, projectName: null, color: "graphite", start: at("11:00"), end: at("11:30") });
+    resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed, unassigned] }) });
+    expect(runMenuCommand("suggestion.approveAll")).toBe(true);
+    await vi.waitFor(() => expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [proposed.id]));
+  });
+
+  it("suggestion.approveAll does not run when no suggestion has a project, but suggestion.dismissAll does", () => {
+    const unassigned = suggestion({ projectId: null, projectName: null, color: "graphite" });
+    resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [unassigned] }) });
+    expect(runMenuCommand("suggestion.approveAll")).toBe(false);
+    expect(runMenuCommand("suggestion.dismissAll")).toBe(true);
+  });
+
+  it("suggestion.approve on a focused suggestion without a project opens the editor", () => {
+    const unassigned = suggestion({ projectId: null, projectName: null, color: "graphite" });
+    resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [unassigned] }) });
+    state().focusSuggestion(unassigned.id);
+    expect(runMenuCommand("suggestion.approve")).toBe(true);
+    expect(mocked.suggestionApprove).not.toHaveBeenCalled();
+    expect(state().editor).toMatchObject({ mode: "create", suggestion: { id: unassigned.id } });
+  });
+
   it("suggestion.dismissAll dismisses every suggestion of the shown day", async () => {
     expect(runMenuCommand("suggestion.dismissAll")).toBe(true);
     await vi.waitFor(() => expect(mocked.suggestionsDismiss).toHaveBeenCalledWith(DAY, [proposed.id]));

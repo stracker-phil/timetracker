@@ -574,6 +574,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_projectless_suggestions_migration_keeps_stored_suggestions_and_allows_none() {
+        let tmp = temp_config_dir();
+        let file = tmp.path().join(DB_FILE);
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&file)
+                    .create_if_missing(true)
+                    .foreign_keys(true),
+            )
+            .await
+            .unwrap();
+        sqlx::migrate!("./migrations")
+            .run_to(11, &pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(
+            "INSERT INTO projects (id, name, color, created_at) VALUES ('p', 'P', 'blue', 1);
+             INSERT INTO stored_suggestions
+               (id, project_id, note, tag_id, source, day, spans, created_at, updated_at)
+             VALUES ('s1', 'p', 'review', NULL, 'cli', '2026-01-05',
+                     '[{\"start\":1000,\"end\":2000}]', 1000, 2000);",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        let db = Db::open(&file).await.unwrap();
+        sqlx::raw_sql(
+            "INSERT INTO stored_suggestions
+               (id, project_id, note, tag_id, source, day, spans, created_at, updated_at)
+             VALUES ('s2', NULL, '', NULL, 'cli', '2026-01-05',
+                     '[{\"start\":3000,\"end\":4000}]', 1000, 2000);",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let day = time::Day::parse("2026-01-05").unwrap();
+        let found = stored_suggestions::list_for_day(&db, day).await.unwrap();
+        assert_eq!(
+            found
+                .iter()
+                .map(|s| (s.id.as_str(), s.project_id.as_deref()))
+                .collect::<Vec<_>>(),
+            [("s1", Some("p")), ("s2", None)]
+        );
+        assert_eq!(found[0].note, "review");
+    }
+
+    #[tokio::test]
     async fn meta_records_the_schema_version_and_creation_time() {
         let db = Db::open_memory().await.unwrap();
         assert_eq!(

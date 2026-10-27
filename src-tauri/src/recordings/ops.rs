@@ -308,7 +308,7 @@ mod tests {
     fn stored(id: &str, note: &str, day: Day) -> StoredSuggestion {
         StoredSuggestion {
             id: id.into(),
-            project_id: "p".into(),
+            project_id: Some("p".into()),
             note: note.into(),
             tag_id: None,
             source: "cli".into(),
@@ -392,7 +392,7 @@ mod tests {
         let w = World::new().await;
         let day = Day::of(at(12, 0));
         let new = StoredSuggestion {
-            project_id: w.project.id.clone(),
+            project_id: Some(w.project.id.clone()),
             tag_id: Some(w.alpha.id.clone()),
             ..stored("s", "new", day)
         };
@@ -411,11 +411,11 @@ mod tests {
         let w = World::new().await;
         let day = Day::of(at(12, 0));
         let old = StoredSuggestion {
-            project_id: w.project.id.clone(),
+            project_id: Some(w.project.id.clone()),
             ..stored("s", "old", day)
         };
         let new = StoredSuggestion {
-            project_id: w.other.id.clone(),
+            project_id: Some(w.other.id.clone()),
             tag_id: Some(w.beta.id.clone()),
             updated_at: 9_000,
             ..stored("s", "new", day)
@@ -437,7 +437,7 @@ mod tests {
         let w = World::new().await;
         let day = Day::of(at(12, 0));
         let gone = StoredSuggestion {
-            project_id: w.project.id.clone(),
+            project_id: Some(w.project.id.clone()),
             ..stored("gone", "", day)
         };
         let kept = saved(&w, None, at(10, 0), at(11, 0)).await;

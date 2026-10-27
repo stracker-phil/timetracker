@@ -7,6 +7,7 @@ import { at, DAY, dayView } from "../../test/dayFixtures";
 import { recording } from "../../test/recordingFixtures";
 import { suggestion } from "../../test/ruleFixtures";
 import { resetStore, useStore } from "../store";
+import { isApprovable } from "./suggestions";
 
 const mocked = vi.mocked(api, true);
 const state = () => useStore.getState();
@@ -15,6 +16,7 @@ const toastMessages = () => state().toasts.map((t) => t.message);
 const first = suggestion({ ruleIds: ["rule-1"], projectName: "Website", start: at("09:00"), end: at("09:30") });
 const second = suggestion({ ruleIds: ["rule-2"], start: at("10:00"), end: at("10:30") });
 const third = suggestion({ ruleIds: ["rule-1"], start: at("11:00"), end: at("11:30") });
+const unassigned = suggestion({ ruleIds: ["rule-3"], projectId: null, projectName: null, color: "graphite", start: at("12:00"), end: at("12:30") });
 
 describe("suggestions slice", () => {
   beforeEach(() => {
@@ -97,6 +99,26 @@ describe("suggestions slice", () => {
     });
   });
 
+  describe("approveSuggestion without a project", () => {
+    it("opens the editor without a project instead of approving", async () => {
+      await state().approveSuggestion(unassigned);
+      expect(mocked.suggestionApprove).not.toHaveBeenCalled();
+      expect(state().focusedSuggestion).toBe(unassigned.id);
+      expect(state().editor).toMatchObject({ mode: "create", start: unassigned.start, end: unassigned.end, suggestion: { id: unassigned.id, by: unassigned.by } });
+      expect(state().editor).toHaveProperty("projectId", undefined);
+      expect(toastMessages()).toEqual([]);
+    });
+  });
+
+  describe("isApprovable", () => {
+    it.each([
+      ["has a project", first, true],
+      ["has none", unassigned, false],
+    ])("is decided by the project: a suggestion that %s", (_, s, expected) => {
+      expect(isApprovable(s)).toBe(expected);
+    });
+  });
+
   describe("approveRuleSuggestions", () => {
     it("approves every suggestion of the rule on the shown day", async () => {
       mocked.suggestionApproveRule.mockResolvedValueOnce([recording({ id: "r1" }), recording({ id: "r2" })]);
@@ -142,6 +164,20 @@ describe("suggestions slice", () => {
 
     it("asks for nothing without suggestions", async () => {
       await state().approveSuggestions([]);
+      expect(mocked.suggestionsApprove).not.toHaveBeenCalled();
+      expect(toastMessages()).toEqual([]);
+    });
+
+    it("sends only the suggestions that have a project", async () => {
+      resetStore({ day: DAY, dayView: dayView({ suggestions: [first, unassigned, second] }) });
+      mocked.suggestionsApprove.mockResolvedValueOnce([recording({ id: "r1" }), recording({ id: "r2" })]);
+      await state().approveSuggestions([first.id, unassigned.id, second.id]);
+      expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [first.id, second.id]);
+    });
+
+    it("asks for nothing when none of the suggestions has a project", async () => {
+      resetStore({ day: DAY, dayView: dayView({ suggestions: [unassigned] }) });
+      await state().approveSuggestions([unassigned.id]);
       expect(mocked.suggestionsApprove).not.toHaveBeenCalled();
       expect(toastMessages()).toEqual([]);
     });
@@ -205,7 +241,7 @@ describe("suggestions slice", () => {
 
   describe("approving an edited suggestion", () => {
     it("saves the editor's input as the suggestion's approval instead of a plain recording", async () => {
-      const input = { projectId: first.projectId, spans: [{ start: first.start, end: first.end }], note: "changed", tagId: null };
+      const input = { projectId: "project-1", spans: [{ start: first.start, end: first.end }], note: "changed", tagId: null };
       await state().createRecording(input, first.id);
       expect(mocked.suggestionApproveEdited).toHaveBeenCalledWith(DAY, first.id, input, "cancel");
       expect(mocked.recordingCreate).not.toHaveBeenCalled();

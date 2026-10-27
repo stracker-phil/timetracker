@@ -210,8 +210,8 @@ fn suggestion(rules: &[&Compiled], start: Ms, end: Ms, names: &Names) -> Option<
             .map(|r| r.rule_name.as_str())
             .collect::<Vec<_>>()
             .join(", "),
-        project_id: rule.project_id.clone(),
-        project_name: project.name.clone(),
+        project_id: Some(rule.project_id.clone()),
+        project_name: Some(project.name.clone()),
         client_name: project.client_name.clone(),
         color: project.color.clone(),
         shade: project.shade,
@@ -493,8 +493,8 @@ mod tests {
                 rule_ids: vec!["r1".into()],
                 stored_id: None,
                 by: "Rule r1".into(),
-                project_id: "p1".into(),
-                project_name: "Project p1".into(),
+                project_id: Some("p1".into()),
+                project_name: Some("Project p1".into()),
                 client_name: None,
                 color: "blue".into(),
                 shade: 4,

@@ -15,7 +15,8 @@ use crate::state::AppState;
 /// `timetracker record`: the project by id, name or unique prefix, the tag by name.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecordRequest {
-    pub project: String,
+    /// Required for a recording; a suggestion may leave it to the owner (ADR 0030).
+    pub project: Option<String>,
     /// At least one.
     pub spans: Vec<Span>,
     pub note: String,
@@ -39,8 +40,11 @@ pub struct Recorded {
 }
 
 pub async fn record(app: &AppHandle, request: RecordRequest) -> AppResult<Recorded> {
+    let Some(project) = &request.project else {
+        return Err(AppError::InvalidInput("A recording needs a project".into()));
+    };
     let db = app.state::<AppState>().data.db()?;
-    let project = projects::resolve(&db, &request.project).await?;
+    let project = projects::resolve(&db, project).await?;
     let tag_id = tags::resolve_optional_name(&db, request.tag.as_deref()).await?;
     let input = RecordingInput {
         project_id: project.id,

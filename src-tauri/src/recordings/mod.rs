@@ -38,6 +38,7 @@ pub use snap::{
     NEW_RECORDING_MINUTES, SnapEdge, default_span, default_span_on, grid_step, snap, snap_moving,
     snap_span, ticks,
 };
+pub use stored::SuggestionInput;
 use undo::{Entry, UndoStack};
 
 const MINUTE_MS: Ms = 60_000;
@@ -1268,7 +1269,7 @@ mod tests {
     fn stored(w: &World, id: &str, start: Ms, end: Ms) -> StoredSuggestion {
         StoredSuggestion {
             id: id.into(),
-            project_id: w.project.id.clone(),
+            project_id: Some(w.project.id.clone()),
             note: String::new(),
             tag_id: None,
             source: "cli".into(),

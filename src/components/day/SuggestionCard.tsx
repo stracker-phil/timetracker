@@ -1,7 +1,8 @@
 import { memo, useEffect, useRef, type CSSProperties } from "react";
-import { Check, Sparkles, X } from "lucide-react";
+import { Check, FolderPlus, Sparkles, X } from "lucide-react";
 import type { Suggestion } from "../../api";
 import { formatClock, formatDuration } from "../../lib/format";
+import { NO_PROJECT, isApprovable } from "../../state/slices/suggestions";
 import { useStore } from "../../state/store";
 import { AccentDot, shadeColor } from "../Accent";
 import { Card } from "../Card";
@@ -20,8 +21,12 @@ export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focu
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView?.({ block: "nearest" });
   }, [focused]);
-  const project = s.clientName ? `${s.projectName} | ${s.clientName}` : s.projectName;
-  const title = s.note || s.projectName;
+  const projectName = s.projectName ?? NO_PROJECT;
+  const project = s.clientName ? `${projectName} | ${s.clientName}` : projectName;
+  const title = s.note || projectName;
+  const approve = isApprovable(s)
+    ? { label: "Approve", icon: <Check size="1rem" aria-hidden="true" /> }
+    : { label: "Pick a project", icon: <FolderPlus size="1rem" aria-hidden="true" /> };
   const subtitle = s.note ? project : s.clientName;
   const span = `${formatClock(s.start)}–${formatClock(s.end)}`;
   const store = useStore.getState;
@@ -59,14 +64,14 @@ export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focu
         <button
           type="button"
           className="suggestion-card-action"
-          aria-label="Approve"
-          title="Approve (↵)"
+          aria-label={approve.label}
+          title={`${approve.label} (↵)`}
           onClick={(e) => {
             e.stopPropagation();
             void store().approveSuggestion(s);
           }}
         >
-          <Check size="1rem" aria-hidden="true" />
+          {approve.icon}
         </button>
         <button
           type="button"

@@ -63,8 +63,9 @@ impl FinalArgs {
 #[derive(Deserialize, JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 struct RecordArgs {
-    /// The project: its name, a unique start of it, or its id
-    project: String,
+    /// The project: its name, a unique start of it, or its id. Leave it out when unsure: the suggestion
+    /// waits for the user to pick one. Required with `final`
+    project: Option<String>,
     /// At least one; all on one day for a suggestion
     spans: Vec<SpanArg>,
     /// One line
@@ -172,7 +173,7 @@ impl TimeTrackerServer {
     }
 
     #[tool(
-        description = "Suggests time for a project, which the user reviews in the Day view; with final it records it instead. Answers with the suggestion's id"
+        description = "Suggests time, for a project or for the user to assign one, which the user reviews in the Day view; with final it records it instead. Answers with the suggestion's id"
     )]
     async fn record(
         &self,

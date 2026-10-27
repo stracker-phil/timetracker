@@ -44,8 +44,9 @@ impl SpanEntry {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Labels {
-    pub project_id: String,
-    pub project: String,
+    /// None for a stored suggestion without a project (ADR 0030).
+    pub project_id: Option<String>,
+    pub project: Option<String>,
     pub client: Option<String>,
     pub tag_id: Option<String>,
     pub tag: Option<String>,
@@ -53,11 +54,12 @@ pub struct Labels {
 }
 
 impl Labels {
-    fn new(names: &Names, project_id: &str, tag_id: Option<&str>, note: &str) -> Self {
-        let project = names.projects.get(project_id);
+    fn new(names: &Names, project_id: Option<&str>, tag_id: Option<&str>, note: &str) -> Self {
+        let project = project_id.and_then(|id| names.projects.get(id));
         Self {
-            project_id: project_id.to_string(),
-            project: project.map_or_else(|| project_id.to_string(), |p| p.name.clone()),
+            project_id: project_id.map(String::from),
+            project: project_id
+                .map(|id| project.map_or_else(|| id.to_string(), |p| p.name.clone())),
             client: project.and_then(|p| p.client_name.clone()),
             tag_id: tag_id.map(String::from),
             tag: tag_id
@@ -117,7 +119,7 @@ fn recording_entry(recording: Recording, names: &Names, now: Ms) -> RecordingEnt
             .collect(),
         labels: Labels::new(
             names,
-            &recording.project_id,
+            Some(&recording.project_id),
             recording.tag_id.as_deref(),
             &recording.note,
         ),
@@ -159,7 +161,7 @@ fn suggestion_entry(
             .collect(),
         labels: Labels::new(
             names,
-            &first.project_id,
+            first.project_id.as_deref(),
             first.tag_id.as_deref(),
             &first.note,
         ),
@@ -235,7 +237,7 @@ mod tests {
     use crate::db::tags::{self, Tag};
     use crate::error::ErrorKind;
     use crate::recordings::undo::UndoStack;
-    use crate::recordings::{RecordingInput, Recordings, Span};
+    use crate::recordings::{RecordingInput, Recordings, Span, SuggestionInput};
     use crate::rules::testing::{on, plain_settings, rule_input};
     use crate::rules::types::{RuleField, RuleOp};
     use crate::store::settings::Continuity;
@@ -351,8 +353,8 @@ mod tests {
 
         fn portal_labels(&self, note: &str, tagged: bool) -> Labels {
             Labels {
-                project_id: self.portal.id.clone(),
-                project: "Portal".into(),
+                project_id: Some(self.portal.id.clone()),
+                project: Some("Portal".into()),
                 client: Some("Acme".into()),
                 tag_id: tagged.then(|| self.billing.id.clone()),
                 tag: tagged.then(|| "billing".into()),
@@ -396,8 +398,8 @@ mod tests {
                     duration_ms: 25 * MIN,
                     spans: vec![SpanEntry::new(on(today, 8, 0), Some(on(today, 8, 25)))],
                     labels: Labels {
-                        project_id: w.podcast.id.clone(),
-                        project: "Podcast".into(),
+                        project_id: Some(w.podcast.id.clone()),
+                        project: Some("Podcast".into()),
                         client: None,
                         tag_id: None,
                         tag: None,
@@ -504,6 +506,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_stored_suggestion_without_a_project_is_listed_with_no_project_labels() {
+        let w = World::new().await;
+        let today = day_of("2026-01-05");
+        let input = SuggestionInput {
+            project_id: None,
+            spans: vec![Span {
+                start: on(today, 9, 0),
+                end: on(today, 10, 0),
+            }],
+            note: "to sort".into(),
+            tag_id: None,
+        };
+        let saved = w
+            .service()
+            .create_suggestion(input, "planner")
+            .await
+            .unwrap()
+            .value;
+        let settings = plain_settings(Continuity::Off);
+
+        let entries = suggestions(&w.db, &settings, today, today).await.unwrap();
+
+        assert_eq!(
+            entries,
+            [SuggestionEntry {
+                id: saved.id,
+                kind: SuggestionKind::Stored,
+                by: "planner".into(),
+                day: today,
+                duration_ms: 60 * MIN,
+                spans: vec![SpanEntry::new(on(today, 9, 0), Some(on(today, 10, 0)))],
+                labels: Labels {
+                    project_id: None,
+                    project: None,
+                    client: None,
+                    tag_id: None,
+                    tag: None,
+                    note: "to sort".into(),
+                },
+            }]
+        );
+        let json = serde_json::to_value(&entries[0]).unwrap();
+        assert_eq!(
+            (&json["projectId"], &json["project"], &json["client"]),
+            (
+                &serde_json::Value::Null,
+                &serde_json::Value::Null,
+                &serde_json::Value::Null
+            )
+        );
+    }
+
+    #[tokio::test]
     async fn a_rule_suggestion_is_listed_under_its_piece_id_and_the_rules_name() {
         let w = World::new().await;
         let today = day_of("2026-01-05");
@@ -594,8 +649,8 @@ mod tests {
     #[test]
     fn entries_have_camel_case_fields_with_the_labels_beside_them() {
         let labels = Labels {
-            project_id: "p1".into(),
-            project: "Portal".into(),
+            project_id: Some("p1".into()),
+            project: Some("Portal".into()),
             client: None,
             tag_id: Some("t1".into()),
             tag: Some("billing".into()),

@@ -828,7 +828,7 @@ mod tests {
             let written = Written::Suggestion(Suggested {
                 suggestion: StoredSuggestion {
                     id: "sg1".into(),
-                    project_id: "p1".into(),
+                    project_id: Some("p1".into()),
                     note: "review".into(),
                     tag_id: None,
                     source: "test".into(),
@@ -840,7 +840,7 @@ mod tests {
                     created_at: 0,
                     updated_at: 0,
                 },
-                project_name: "Portal".into(),
+                project_name: Some("Portal".into()),
             });
             Ok(serde_json::to_value(written).unwrap())
         }
@@ -920,7 +920,7 @@ mod tests {
                 session.asked(),
                 IpcMessage::Record {
                     request: RecordRequest {
-                        project: "Portal".into(),
+                        project: Some("Portal".into()),
                         spans: vec![Span {
                             start: local(9, 30),
                             end: local(10, 0),
@@ -971,6 +971,22 @@ mod tests {
                 panic!("not a record");
             };
             assert_eq!((request.note.as_str(), request.tag), ("", None));
+        }
+
+        #[tokio::test]
+        async fn record_without_a_project_asks_for_a_suggestion_the_user_assigns() {
+            let mut session = session(client_info("test"), vec![suggested_reply()]).await;
+            let args = json!({
+                "spans": [{"start": "2026-10-21T09:30", "end": "2026-10-21T10:00"}],
+            });
+
+            let called = session.call("record", args).await;
+
+            let IpcMessage::Record { request } = session.asked() else {
+                panic!("not a record");
+            };
+            assert_eq!((request.project, request.final_write), (None, false));
+            assert_ne!(called["isError"], true);
         }
 
         #[tokio::test]

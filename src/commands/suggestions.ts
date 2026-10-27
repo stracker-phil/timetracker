@@ -1,5 +1,5 @@
 import type { Suggestion } from "../api";
-import { shownSuggestions } from "../state/slices/suggestions";
+import { isApprovable, shownSuggestions } from "../state/slices/suggestions";
 import { useStore } from "../state/store";
 import type { Command } from "./registry";
 import { registerScope } from "./scopes";
@@ -26,6 +26,7 @@ function withFocused(act: (suggestion: Suggestion) => void) {
 
 const hasSuggestions = () => useStore.getState().view === "day" && shownSuggestions(useStore.getState()).length > 0;
 const allIds = () => shownSuggestions(useStore.getState()).map((s) => s.id);
+const hasApprovable = () => useStore.getState().view === "day" && shownSuggestions(useStore.getState()).some(isApprovable);
 const store = useStore.getState;
 
 export const SUGGESTION_COMMANDS: Command[] = [
@@ -43,6 +44,6 @@ export const SUGGESTION_COMMANDS: Command[] = [
         if (s.ruleIds[0]) void store().approveRuleSuggestions(s.ruleIds[0]);
       }),
   },
-  { id: "suggestion.approveAll", title: "Approve all suggestions", scope: "day", menu: true, when: hasSuggestions, run: () => void store().approveSuggestions(allIds()) },
+  { id: "suggestion.approveAll", title: "Approve all suggestions", scope: "day", menu: true, when: hasApprovable, run: () => void store().approveSuggestions(allIds()) },
   { id: "suggestion.dismissAll", title: "Dismiss all suggestions", scope: "day", menu: true, when: hasSuggestions, run: () => void store().dismissSuggestions(allIds()) },
 ];

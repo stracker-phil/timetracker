@@ -14,8 +14,18 @@ use crate::recordings::ops::Op;
 use crate::recordings::{Change, Overlap, RecordingInput, Recordings, Span, suggestions_label};
 use crate::store::settings::Settings;
 
-/// What approving `suggestion` records; `shown` are the day's suggestions, for a stored one's other pieces.
-fn input_of(suggestion: &Suggestion, shown: &[Suggestion]) -> RecordingInput {
+const NO_PROJECT: &str = "The suggestion has no project yet; pick one first";
+
+/// What approving `suggestion` records, under `project_id` when given (an edit); `shown` are the day's
+/// suggestions, for a stored one's other pieces. Refused when neither names a project (ADR 0030).
+fn input_of(
+    suggestion: &Suggestion,
+    shown: &[Suggestion],
+    project_id: Option<String>,
+) -> AppResult<RecordingInput> {
+    let project_id = project_id
+        .or_else(|| suggestion.project_id.clone())
+        .ok_or_else(|| AppError::InvalidInput(NO_PROJECT.into()))?;
     let pieces: Vec<&Suggestion> = match &suggestion.stored_id {
         Some(id) => shown
             .iter()
@@ -23,8 +33,8 @@ fn input_of(suggestion: &Suggestion, shown: &[Suggestion]) -> RecordingInput {
             .collect(),
         None => vec![suggestion],
     };
-    RecordingInput {
-        project_id: suggestion.project_id.clone(),
+    Ok(RecordingInput {
+        project_id,
         spans: pieces
             .iter()
             .map(|s| Span {
@@ -34,7 +44,7 @@ fn input_of(suggestion: &Suggestion, shown: &[Suggestion]) -> RecordingInput {
             .collect(),
         note: suggestion.note.clone(),
         tag_id: suggestion.tag_id.clone(),
-    }
+    })
 }
 
 /// What settles `suggestion` once approved or dismissed: a rule's dismissals (one per rule, each over all
@@ -146,7 +156,7 @@ async fn approve_found(
     let mut inputs = Vec::new();
     for suggestion in &found {
         let settles = settled_by_approval(service, day, suggestion).await?;
-        inputs.push((input_of(suggestion, &shown), settles));
+        inputs.push((input_of(suggestion, &shown, None)?, settles));
     }
     service.create_all_with(inputs, label).await
 }
@@ -163,7 +173,11 @@ pub async fn approve(
     let suggestion = &found[0];
     let settles = settled_by_approval(service, day, suggestion).await?;
     service
-        .create_with(input_of(suggestion, &shown), Overlap::Cancel, settles)
+        .create_with(
+            input_of(suggestion, &shown, None)?,
+            Overlap::Cancel,
+            settles,
+        )
         .await
 }
 
@@ -194,12 +208,12 @@ pub async fn approve_patched(
 ) -> AppResult<Change<Recording>> {
     let Found { found, shown } = find_all(service, settings, day, &[id.to_string()]).await?;
     let suggestion = &found[0];
-    let base = input_of(suggestion, &shown);
+    let base = input_of(suggestion, &shown, patch.project_id)?;
     let input = RecordingInput {
-        project_id: patch.project_id.unwrap_or(base.project_id),
         spans: patch.spans.unwrap_or(base.spans),
         note: patch.note.unwrap_or(base.note),
         tag_id: patch.tag_id.unwrap_or(base.tag_id),
+        ..base
     };
     let settles = settling(service, day, suggestion).await?;
     service.create_with(input, overlap, settles).await

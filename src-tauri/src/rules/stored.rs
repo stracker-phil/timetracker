@@ -1,22 +1,38 @@
 //! Stored suggestions on the Day view (ADR 0028): each span without the time recordings, or a suggestion
 //! stored before it, already take. A piece the cut leaves shorter than `MIN_SUGGESTION_MS` is dropped; a
-//! whole span stays at any length.
+//! whole span stays at any length. One without a project shows in graphite (ADR 0030).
 
 use super::suggest::{MIN_SUGGESTION_MS, Span, subtract, union};
 use super::types::Suggestion;
 use crate::day::Names;
 use crate::db::stored_suggestions::StoredSuggestion;
 
+const NO_PROJECT_COLOR: &str = "graphite";
+const NO_PROJECT_SHADE: u8 = 4;
+
 /// The pieces of `stored` (by creation, the earlier keeping shared time) outside `recorded`, by start; a
-/// suggestion whose project is gone is left out.
+/// suggestion whose project is gone is left out, one without a project is not.
 pub fn pieces(stored: &[StoredSuggestion], recorded: &[Span], names: &Names) -> Vec<Suggestion> {
     let mut by_creation: Vec<&StoredSuggestion> = stored.iter().collect();
     by_creation.sort_by_key(|s| (s.created_at, s.id.clone()));
     let mut taken = union(recorded.to_vec());
     let mut found = Vec::new();
     for suggestion in by_creation {
-        let Some(project) = names.projects.get(&suggestion.project_id) else {
-            continue;
+        let project = match &suggestion.project_id {
+            Some(id) => match names.projects.get(id) {
+                Some(project) => Some(project),
+                None => continue,
+            },
+            None => None,
+        };
+        let (project_name, client_name, color, shade) = match project {
+            Some(p) => (
+                Some(p.name.clone()),
+                p.client_name.clone(),
+                p.color.clone(),
+                p.shade,
+            ),
+            None => (None, None, NO_PROJECT_COLOR.to_string(), NO_PROJECT_SHADE),
         };
         let tag_id = suggestion
             .tag_id
@@ -37,10 +53,10 @@ pub fn pieces(stored: &[StoredSuggestion], recorded: &[Span], names: &Names) -> 
                     stored_id: Some(suggestion.id.clone()),
                     by: suggestion.source.clone(),
                     project_id: suggestion.project_id.clone(),
-                    project_name: project.name.clone(),
-                    client_name: project.client_name.clone(),
-                    color: project.color.clone(),
-                    shade: project.shade,
+                    project_name: project_name.clone(),
+                    client_name: client_name.clone(),
+                    color: color.clone(),
+                    shade,
                     start,
                     end,
                     duration_ms: end - start,
@@ -69,7 +85,7 @@ mod tests {
     fn stored(id: &str, created_at: Ms, spans: &[(i64, i64)]) -> StoredSuggestion {
         StoredSuggestion {
             id: id.into(),
-            project_id: "p1".into(),
+            project_id: Some("p1".into()),
             note: "review".into(),
             tag_id: None,
             source: "claude".into(),
@@ -119,8 +135,8 @@ mod tests {
                 rule_ids: Vec::new(),
                 stored_id: Some("s1".into()),
                 by: "claude".into(),
-                project_id: "p1".into(),
-                project_name: "Project p1".into(),
+                project_id: Some("p1".into()),
+                project_name: Some("Project p1".into()),
                 client_name: None,
                 color: "blue".into(),
                 shade: 4,
@@ -275,13 +291,58 @@ mod tests {
     #[test]
     fn a_suggestion_of_an_unknown_project_is_left_out_and_takes_no_time() {
         let gone = StoredSuggestion {
-            project_id: "gone".into(),
+            project_id: Some("gone".into()),
             ..stored("a", 1, &[(0, 30)])
         };
 
         let found = pieces_of(&[gone, stored("b", 2, &[(0, 30)])], &[]);
 
         assert_eq!(owners_and_minutes(&found), [("b", 0, 30)]);
+    }
+
+    #[test]
+    fn a_suggestion_without_a_project_is_a_graphite_piece_with_no_project_names() {
+        let unassigned = StoredSuggestion {
+            project_id: None,
+            ..stored("s1", 1, &[(10, 30)])
+        };
+
+        let found = pieces_of(&[unassigned], &[]);
+
+        assert_eq!(
+            found,
+            [Suggestion {
+                id: format!("stored:s1:{}:{}", 10 * MIN, 30 * MIN),
+                rule_ids: Vec::new(),
+                stored_id: Some("s1".into()),
+                by: "claude".into(),
+                project_id: None,
+                project_name: None,
+                client_name: None,
+                color: "graphite".into(),
+                shade: 4,
+                start: 10 * MIN,
+                end: 30 * MIN,
+                duration_ms: 20 * MIN,
+                note: "review".into(),
+                tag_id: None,
+                tag: None,
+                tag_emoji: None,
+                next_card: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn a_suggestion_without_a_project_takes_time_from_a_later_one() {
+        let unassigned = StoredSuggestion {
+            project_id: None,
+            ..stored("a", 1, &[(0, 30)])
+        };
+
+        let found = pieces_of(&[unassigned, stored("b", 2, &[(20, 50)])], &[]);
+
+        assert_eq!(owners_and_minutes(&found), [("a", 0, 30), ("b", 30, 50)]);
     }
 
     #[test]

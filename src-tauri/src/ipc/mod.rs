@@ -555,7 +555,7 @@ mod tests {
     fn suggestion_message() -> IpcMessage {
         IpcMessage::Record {
             request: RecordRequest {
-                project: "acme".into(),
+                project: Some("acme".into()),
                 spans: vec![Span {
                     start: 1_000,
                     end: 2_000,
@@ -631,7 +631,7 @@ mod tests {
     fn record_message() -> IpcMessage {
         IpcMessage::Record {
             request: RecordRequest {
-                project: "acme".into(),
+                project: Some("acme".into()),
                 spans: vec![
                     Span {
                         start: 1_000,

@@ -1,5 +1,5 @@
 //! Stored suggestions as other apps write them (ADR 0028): checked and snapped like a recording, on one local
-//! day, free to share time with anything until approved, and undoable.
+//! day, free to share time with anything until approved, and undoable. One may have no project yet (ADR 0030).
 
 use super::checks::{check_tag, checked_note, invalid, snapped_spans, usable_project};
 use super::ops::Op;
@@ -11,6 +11,26 @@ use crate::db::time::{Day, format_duration, now_ms};
 use crate::error::AppResult;
 
 const MAX_SOURCE_CHARS: usize = 40;
+
+/// A recording's input whose project may be left for the owner to pick.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuggestionInput {
+    pub project_id: Option<String>,
+    pub spans: Vec<Span>,
+    pub note: String,
+    pub tag_id: Option<String>,
+}
+
+impl From<RecordingInput> for SuggestionInput {
+    fn from(input: RecordingInput) -> Self {
+        Self {
+            project_id: Some(input.project_id),
+            spans: input.spans,
+            note: input.note,
+            tag_id: input.tag_id,
+        }
+    }
+}
 
 fn checked_source(source: &str) -> AppResult<String> {
     let source = source.trim();
@@ -40,19 +60,23 @@ fn checked_spans(spans: &[Span], snap_minutes: u32) -> AppResult<(Vec<Span>, Day
 impl Recordings<'_> {
     pub async fn create_suggestion(
         &self,
-        input: RecordingInput,
+        input: impl Into<SuggestionInput>,
         source: &str,
     ) -> AppResult<Change<StoredSuggestion>> {
+        let input = input.into();
         let mut undo = self.undo.lock().await;
         let (spans, day) = checked_spans(&input.spans, self.snap_minutes)?;
         let note = checked_note(&input.note)?;
         let source = checked_source(source)?;
-        let project = usable_project(self.db, &input.project_id, None).await?;
+        let project = match &input.project_id {
+            Some(id) => Some(usable_project(self.db, id, None).await?),
+            None => None,
+        };
         check_tag(self.db, input.tag_id.as_deref()).await?;
         let now = now_ms();
         let suggestion = StoredSuggestion {
             id: new_id(),
-            project_id: project.id,
+            project_id: project.as_ref().map(|p| p.id.clone()),
             note,
             tag_id: input.tag_id,
             source,
@@ -65,11 +89,11 @@ impl Recordings<'_> {
             before: None,
             after: Some(suggestion.clone()),
         };
-        let label = format!(
-            "Suggest {} for {}",
-            format_duration(suggestion.duration()),
-            project.name
-        );
+        let duration = format_duration(suggestion.duration());
+        let label = match project {
+            Some(project) => format!("Suggest {duration} for {}", project.name),
+            None => format!("Suggest {duration}"),
+        };
         let days = self.apply_and_push(&mut undo, label, op).await?;
         Ok(Change {
             value: suggestion,
@@ -77,7 +101,7 @@ impl Recordings<'_> {
         })
     }
 
-    /// `patch` applied like a recording's; the source stays.
+    /// `patch` applied like a recording's; the source stays, and so does a project once picked.
     pub async fn update_suggestion(
         &self,
         id: &str,
@@ -93,10 +117,13 @@ impl Recordings<'_> {
             Some(note) => checked_note(note)?,
             None => current.note.clone(),
         };
-        let project_id = patch
-            .project_id
-            .unwrap_or_else(|| current.project_id.clone());
-        usable_project(self.db, &project_id, Some(&current.project_id)).await?;
+        let project_id = match patch.project_id {
+            Some(id) => {
+                usable_project(self.db, &id, current.project_id.as_deref()).await?;
+                Some(id)
+            }
+            None => current.project_id.clone(),
+        };
         let tag_id = match patch.tag_id {
             Some(tag_id) => {
                 check_tag(self.db, tag_id.as_deref()).await?;
@@ -203,7 +230,7 @@ mod tests {
             saved,
             StoredSuggestion {
                 id: saved.id.clone(),
-                project_id: w.project.id.clone(),
+                project_id: Some(w.project.id.clone()),
                 note: "review PR".into(),
                 tag_id: Some(w.alpha.id.clone()),
                 source: "claude".into(),
@@ -437,7 +464,7 @@ mod tests {
         assert_eq!(
             updated.value,
             StoredSuggestion {
-                project_id: w.other.id.clone(),
+                project_id: Some(w.other.id.clone()),
                 note: "later".into(),
                 tag_id: Some(w.beta.id.clone()),
                 spans: vec![span(local(14, 0), local(15, 0))],
@@ -518,7 +545,7 @@ mod tests {
         let before = w.status().await;
         let same = [
             patch(|_| {}),
-            patch(|p| p.project_id = Some(saved.project_id.clone())),
+            patch(|p| p.project_id = saved.project_id.clone()),
             patch(|p| p.note = Some(saved.note.clone())),
             patch(|p| p.tag_id = Some(None)),
             respan(local(10, 2), local(10, 58)),
@@ -628,9 +655,137 @@ mod tests {
             .value;
 
         assert_eq!(
-            (updated.note.as_str(), updated.project_id.as_str()),
-            ("n", w.project.id.as_str())
+            (updated.note.as_str(), updated.project_id.as_deref()),
+            ("n", Some(w.project.id.as_str()))
         );
+    }
+
+    async fn suggest_without_project(
+        w: &World,
+        from: (i64, i64),
+        to: (i64, i64),
+    ) -> StoredSuggestion {
+        let input = SuggestionInput {
+            project_id: None,
+            spans: vec![span(local(from.0, from.1), local(to.0, to.1))],
+            note: "review".into(),
+            tag_id: None,
+        };
+        w.service()
+            .create_suggestion(input, "cli")
+            .await
+            .unwrap()
+            .value
+    }
+
+    #[tokio::test]
+    async fn a_suggestion_can_be_created_without_a_project_and_is_labelled_without_one() {
+        let w = World::new().await;
+
+        let saved = suggest_without_project(&w, (10, 0), (11, 0)).await;
+
+        assert_eq!(saved.project_id, None);
+        assert_eq!(stored_rows(&w).await, [saved]);
+        assert_eq!(w.status().await, undo_label("Suggest 1h 00m"));
+    }
+
+    #[tokio::test]
+    async fn a_suggestion_without_a_project_still_refuses_an_unknown_tag() {
+        let w = World::new().await;
+        let input = SuggestionInput {
+            project_id: None,
+            spans: vec![span(local(10, 0), local(11, 0))],
+            note: String::new(),
+            tag_id: Some("nope".into()),
+        };
+
+        let err = w
+            .service()
+            .create_suggestion(input, "cli")
+            .await
+            .unwrap_err();
+
+        assert_eq!(field_of(&err).as_deref(), Some("tagId"));
+        assert!(stored_rows(&w).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn update_with_a_project_gives_a_suggestion_without_one_that_project() {
+        let w = World::new().await;
+        let saved = suggest_without_project(&w, (10, 0), (11, 0)).await;
+
+        let updated = w
+            .service()
+            .update_suggestion(
+                &saved.id,
+                patch(|p| p.project_id = Some(w.other.id.clone())),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(updated.days, [today()]);
+        assert_eq!(
+            updated.value,
+            StoredSuggestion {
+                project_id: Some(w.other.id.clone()),
+                updated_at: updated.value.updated_at,
+                ..saved
+            }
+        );
+        assert_eq!(stored_rows(&w).await, [updated.value]);
+    }
+
+    #[tokio::test]
+    async fn update_with_an_archived_project_is_refused_for_a_suggestion_without_one() {
+        let w = World::new().await;
+        let saved = suggest_without_project(&w, (10, 0), (11, 0)).await;
+        projects::set_archived(&w.db, &w.other.id, true)
+            .await
+            .unwrap();
+
+        let err = w
+            .service()
+            .update_suggestion(
+                &saved.id,
+                patch(|p| p.project_id = Some(w.other.id.clone())),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(field_of(&err).as_deref(), Some("projectId"));
+        assert_eq!(stored_rows(&w).await, [saved]);
+    }
+
+    #[tokio::test]
+    async fn update_without_a_project_in_the_patch_keeps_a_suggestion_projectless() {
+        let w = World::new().await;
+        let saved = suggest_without_project(&w, (10, 0), (11, 0)).await;
+
+        let updated = w
+            .service()
+            .update_suggestion(&saved.id, patch(|p| p.note = Some("later".into())))
+            .await
+            .unwrap()
+            .value;
+
+        assert_eq!(updated.project_id, None);
+        assert_eq!(updated.note, "later");
+    }
+
+    #[tokio::test]
+    async fn undo_then_redo_restores_the_creation_of_a_suggestion_without_a_project() {
+        let w = World::new().await;
+        let saved = suggest_without_project(&w, (10, 0), (11, 0)).await;
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Suggest 1h 00m"));
+        assert!(stored_rows(&w).await.is_empty());
+
+        let redone = w.service().redo().await.unwrap();
+
+        assert_eq!(redone.value.as_deref(), Some("Suggest 1h 00m"));
+        assert_eq!(stored_rows(&w).await, [saved]);
     }
 
     #[tokio::test]

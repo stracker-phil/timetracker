@@ -5,6 +5,7 @@ import type { Draft, Editor } from "../../state/slices/editor";
 import { runCommand, useBindingLabel } from "../../commands";
 import { formatDuration } from "../../lib/format";
 import { sheetEntries, type SheetEntry } from "../../lib/sheet";
+import { isApprovable } from "../../state/slices/suggestions";
 import { useStore } from "../../state/store";
 import { RecordingEditor } from "./RecordingEditor";
 import { SuggestionCard } from "./SuggestionCard";
@@ -36,7 +37,12 @@ function ReviewLine({ suggestions }: { suggestions: Suggestion[] }) {
   return (
     <div className="timesheet-review" role="group" aria-label="Suggestions to review">
       <span className="timesheet-review-count">{count}</span>
-      <button type="button" className="btn btn-quiet timesheet-review-action" onClick={() => void useStore.getState().approveSuggestions(ids)}>
+      <button
+        type="button"
+        className="btn btn-quiet timesheet-review-action"
+        disabled={!suggestions.some(isApprovable)}
+        onClick={() => void useStore.getState().approveSuggestions(ids)}
+      >
         <Check size="0.923rem" aria-hidden="true" />
         Approve all
       </button>

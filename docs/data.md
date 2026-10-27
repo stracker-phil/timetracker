@@ -171,7 +171,7 @@ there are no `query!` macros (they need a database at compile time).
 | `activities.rs` | `apps_seen(from, now)`, `list_clipped(from, to, now)`, `close_stale(source, duration)`, `replace_open(id, NewActivity)`, `insert(NewActivity) -> id`, `close_open(source, end)`, `open_by_source`, `overlapping(source, start, end)`, `sources_with_prefix(prefix)` (latest first); `insert_on`, `get_on`, `close_open_on`, `open_by_source_on`, `overlapping_on` take a connection so a caller can combine them in a transaction; `list_for_range(from, to)`, `list_sources(from, to)`, `delete_range(from, to)`, `count_range(from, to)`, `count`, `first_start`; `take_range_on(from, to)` deletes and returns the rows, `restore_on(row)` inserts one under its id | ranges are `[from, to)` and include open spans; touching edges do not overlap; results are not clipped; `close_open` never sets an end before the start |
 | `away.rs` | `insert(NewAway) -> id`, `close_open(end)`, `open`, `list_for_range`, `delete_range`, `count_range`, `take_range_on`, `restore_on` | as for activities; `AwayReason` is stored and sent as `idle`, `sleep`, `lock`, `paused` |
 | `recordings/` | `insert(NewRecording)`, `get`, `update(id, RecordingPatch)`, `delete(id) -> Recording`, `list_for_range`, `running`, `latest(limit)`, `overlapping(start, end, except)`, `count`; `put_on(recording)` writes a row with all its spans, `remove_on`, `get_on`, `overlapping_on` take a connection (`mod.rs`); the types, `check_spans` and `respanned` are in `model.rs` | one transaction per write; the project and the tag (`tag_id`, optional) must exist (`not_found`); a note with a line break is `invalid_input`, notes are stored trimmed; a recording needs a span, each ending after it starts, none overlapping another of the recording, only the last open; a query returns whole recordings with every span (also those outside the range) by first span; `delete` returns the row so it can be restored under its id |
-| `stored_suggestions.rs` | `get`, `list_for_day`, `list_for_days(from, to)`, `put_on(suggestion)` (an exact upsert, what undo uses), `remove_on(id)` | `StoredSuggestion`: spans as JSON, all on `day`; written only through `recordings/stored.rs` (ADR 0028) |
+| `stored_suggestions.rs` | `get`, `list_for_day`, `list_for_days(from, to)`, `put_on(suggestion)` (an exact upsert, what undo uses), `remove_on(id)` | `StoredSuggestion`: spans as JSON, all on `day`; `project_id` optional (ADR 0030); written only through `recordings/stored.rs` (ADR 0028) |
 | `backup.rs` | `export(db) -> Backup`, `write_to(db, path)` | every table, read in one transaction |
 | `one_tag.rs` | `back_up(migrator, pool, dir) -> Option<TagsDropped>`, `TagsDropped::message` | see [Migrations](#migrations) |
 
@@ -278,6 +278,9 @@ deleted writes nothing).
 
 `0011_stored_suggestions.sql` adds `stored_suggestions` (ADR 0028): a suggested recording another app stored,
 with its `source`, its local `day` and its spans as a JSON array.
+
+`0012_suggestions_without_project.sql` rebuilds `stored_suggestions` with a nullable `project_id` (ADR 0030),
+keeping every row.
 
 ## Tests
 

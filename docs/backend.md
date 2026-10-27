@@ -526,7 +526,8 @@ through the CLI and MCP, share the list and the review.
   `list_for_day`) without recorded time and without the time of suggestions stored before it (by
   `createdAt`); a piece the cut leaves under `MIN_SUGGESTION_MS` is dropped, a whole span stays at any
   length. Ids are `stored:<id>:<start>:<end>`, `storedId` is the stored id, `ruleIds` is empty and `by` is
-  the source.
+  the source. One without a project (`projectId: null`, ADR 0030) has `projectId`, `projectName` and
+  `clientName` null and the `graphite` accent (`NO_PROJECT_COLOR`, `NO_PROJECT_SHADE`).
 - `review.rs` (re-exported from `rules/mod.rs`): `approve`, `approve_all(ids)`, `approve_rule`, `approve_edited`
   and `dismiss(ids)` rebuild the day's suggestions and find them again through one lookup (`find_where`; a
   stale id is `not_found`: "The suggestion is gone", "The suggestions are gone", or "The rule has no
@@ -540,14 +541,17 @@ through the CLI and MCP, share the list and the review.
   includes the joined suggestions the rule shares; its time stays the rule's even after the rule is edited
   or a recording over it is deleted. `approve_edited` creates the edited recording and dismisses the
   suggestion's span (or deletes the stored suggestion) in one `Op::Batch` (`Recordings::create_with`), so
-  what the edit left out does not come back.
+  what the edit left out does not come back. `input_of` refuses a suggestion without a project ("The
+  suggestion has no project yet; pick one first") unless the approval names one (`approve_patched`'s
+  patch, `approve_edited`'s input), so `approve` and `approve_all` change nothing when one of them lacks it.
 - Stored suggestions are written by `recordings/stored.rs`: `Recordings::create_suggestion(input, source)`
-  ("Suggest 0:30 for Acme"), `update_suggestion(id, RecordingPatch)` ("Edit suggestion"; an unchanged one
-  writes nothing) and `delete_suggestion(id)` ("Delete suggestion"), each an undoable `Op::Suggestion
+  (a `SuggestionInput`, or a `RecordingInput` through `From`; "Suggest 0:30 for Acme", or "Suggest 0:30"
+  without a project), `update_suggestion(id, RecordingPatch)` ("Edit suggestion"; a patch's project sets or
+  changes it, none keeps it; an unchanged one writes nothing) and `delete_suggestion(id)` ("Delete suggestion"), each an undoable `Op::Suggestion
   { before, after }`. Spans are snapped like a recording's, must not overlap each other and must lie on one
   local day (`spans`: "must lie on one day"); `source` is one line of at most 40 characters; the project
-  must not be archived. They may share time with recordings (migration `0011_stored_suggestions.sql`; spans
-  as JSON).
+  must not be archived, and may be left out (ADR 0030). They may share time with recordings (migration
+  `0011_stored_suggestions.sql`; spans as JSON; `0012` makes the project nullable).
 - `day_of_rules` (`rules_today`): per active rule, the matched time (`suggest::matched_ms`) and the day's
   pending suggestions.
 - `preview` builds the views of the last days (`day::view_of`, without suggestions) and lists the
@@ -621,7 +625,7 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `timer recent [--limit N]` | `timerRecent { limit }` (default `timers::RECENT`, 8; 1 to `timers::MAX_RECENT`, 100; `scripting::timer::recent` clamps any other sender's) | one line each, `Portal · standup #development  <projectId>`, or `no recent timers`; `--json`: `RecentTimerEntry[]` |
 | `mcp` | none: serves MCP on stdin/stdout (`CliOutcome::Mcp`) | only JSON-RPC on stdout |
 | `watch` | none: a `watch` request that stays open (`CliOutcome::Watch { json }`, `instance::watch`; [Watching](#watching)) | one line per event until the app quits (exit 2) |
-| `record --project P (--from ISO --to ISO \| --span FROM-TO…) [--note N] [--tag T] [--source S] [--final [--replace]] [--draft]` | `record { request: RecordRequest { spans, final, source, … } }`: `--from`/`--to` is one span, each `--span` (`14:25-15:00`, ends as `instant`, joined by `-` or `–`; `time::span`) another (`overlap: replace` with `--replace`, else `cancel`; `--replace` without an effective `--final` is a parse error; one `--tag`, a second is a parse error); the app resolves the project (`projects::resolve`) and the tag by name (`tags::resolve_name`, unknown → `not_found`). Without `final` it stores a suggestion (`Recordings::create_suggestion`, source `cli` by default) | `suggested 06:00–06:30 (0:30) for Acme · fix login; review it in the Day view (id …)`, or with `--final` `recorded 14:25–15:00, 16:05–20:15 (4:45) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: `Written`, `{ kind: suggestion \| recording, … }` with the stored suggestion or the recording plus `projectName` |
+| `record [--project P] (--from ISO --to ISO \| --span FROM-TO…) [--note N] [--tag T] [--source S] [--final [--replace]] [--draft]` | `record { request: RecordRequest { spans, final, source, … } }`: `--from`/`--to` is one span, each `--span` (`14:25-15:00`, ends as `instant`, joined by `-` or `–`; `time::span`) another (`overlap: replace` with `--replace`, else `cancel`; `--replace` without an effective `--final` is a parse error; one `--tag`, a second is a parse error); the app resolves the project (`projects::resolve`) and the tag by name (`tags::resolve_name`, unknown → `not_found`). Without `final` it stores a suggestion (`Recordings::create_suggestion`, source `cli` by default), with no project when `--project` is left out (an effective `--final` without it is a parse error, `--final records time; add --project`; the app refuses a final `RecordRequest` without one, "A recording needs a project") | `suggested 06:00–06:30 (0:30) for Acme · fix login; review it in the Day view (id …)`, or with `--final` `recorded 14:25–15:00, 16:05–20:15 (4:45) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: `Written`, `{ kind: suggestion \| recording, … }` with the stored suggestion or the recording plus `projectName` (null for a suggestion without a project, which the line names `no project`) |
 | `edit ID [--project P] [--note N] [--tag T\|--no-tag] [--from/--to \| --span…] [--final [--replace]] [--draft]` | `edit { request: EditRequest }`; spans given replace all | the written suggestion or recording, as `record` |
 | `delete ID [--final] [--draft]` | `delete { id, final }` | `deleted the suggestion ID` / `deleted the recording ID`; `--json`: `Deleted { kind, id }` |
 | `approve ID…` | `approve { ids }`: each one `rules::approve`, one undo step each, stopping at the first refused | one `recorded …` line each |
@@ -838,7 +842,7 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
 | `recent_timers` | `limit` (default 8, held to 1 to 100) | `[{ project_id, project, client?, tag?, note, last_used_iso }]` from `scripting::timer::recent`, newest first |
 | `clients` | – | `[{ id, name, archived }]` |
 | `suggestions` | `from`, `to` (default `from`; at most 62 days) | `[{ id, kind (rule, stored), by, day, spans: [{ start_iso, end_iso }], duration_min, project, client?, note, tag }]` from `scripting::listing::suggestions`; a stored one with all of its shown pieces |
-| `record` | `project`, `spans`, `note`, `tag`, `final`, `draft`, `replace` | `IpcMessage::Record`: a stored suggestion unless final; the CLI's `suggested …` / `recorded …` line |
+| `record` | `project` (optional; required with `final`), `spans`, `note`, `tag`, `final`, `draft`, `replace` | `IpcMessage::Record`: a stored suggestion unless final; the CLI's `suggested …` / `recorded …` line |
 | `edit` | `id`, `project`, `note`, `tag`, `clear_tag`, `spans`, `final`, `draft`, `replace` | `IpcMessage::Edit`: changes a suggestion, records one with `final`, changes a recording only with `final` |
 | `delete` | `id`, `final`, `draft` | `IpcMessage::Delete`: dismisses a suggestion; deletes a recording only with `final` |
 | `approve` | `ids` | `IpcMessage::Approve`: one recording per suggestion |

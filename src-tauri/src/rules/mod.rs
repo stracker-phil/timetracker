@@ -160,9 +160,9 @@ mod tests {
     use crate::db::recordings::{Recording, RecordingPatch};
     use crate::db::stored_suggestions;
     use crate::db::tags;
-    use crate::error::ErrorKind;
+    use crate::error::{AppError, ErrorKind};
     use crate::recordings::undo::UndoStack;
-    use crate::recordings::{Overlap, RecordingInput, Recordings, Span};
+    use crate::recordings::{Overlap, RecordingInput, Recordings, Span, SuggestionInput};
     use crate::store::settings::Continuity;
     use crate::test_support::{activity, project};
 
@@ -264,6 +264,29 @@ mod tests {
                     .collect(),
                 note: "from claude".into(),
                 tag_id: Some(self.tag_id.clone()),
+            };
+            self.service()
+                .create_suggestion(input, "claude")
+                .await
+                .unwrap()
+                .value
+        }
+
+        /// Like `stored_suggestion`, but with no project yet.
+        async fn projectless_suggestion(
+            &self,
+            day: Day,
+            from: (i64, i64),
+            to: (i64, i64),
+        ) -> StoredSuggestion {
+            let input = SuggestionInput {
+                project_id: None,
+                spans: vec![Span {
+                    start: on(day, from.0, from.1),
+                    end: on(day, to.0, to.1),
+                }],
+                note: "from claude".into(),
+                tag_id: None,
             };
             self.service()
                 .create_suggestion(input, "claude")
@@ -1108,7 +1131,7 @@ mod tests {
                 found[0].stored_id.clone(),
                 found[0].rule_ids.clone(),
                 found[0].by.as_str(),
-                found[0].project_id.as_str(),
+                found[0].project_id.as_deref(),
                 found[0].note.as_str(),
                 found[0].tag_id.clone(),
                 (found[0].start, found[0].end),
@@ -1123,7 +1146,7 @@ mod tests {
                 Some(saved.id.clone()),
                 Vec::new(),
                 "claude",
-                w.project.id.as_str(),
+                Some(w.project.id.as_str()),
                 "from claude",
                 Some(w.tag_id.clone()),
                 (on(today, 9, 0), on(today, 10, 0)),
@@ -1536,6 +1559,165 @@ mod tests {
         assert_eq!(w.recordings().await, [existing]);
         assert_eq!(w.stored_of(today).await, [saved]);
         assert_eq!(w.suggestions(today).await, shown);
+    }
+
+    const NO_PROJECT_MESSAGE: &str = "The suggestion has no project yet; pick one first";
+
+    #[tokio::test]
+    async fn a_suggestion_without_a_project_is_shown_without_project_names() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.projectless_suggestion(today, (9, 0), (10, 0)).await;
+
+        let found = w.suggestions(today).await;
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            (
+                found[0].project_id.clone(),
+                found[0].project_name.clone(),
+                found[0].client_name.clone(),
+                found[0].color.as_str(),
+                found[0].shade,
+            ),
+            (None, None, None, "graphite", 4)
+        );
+    }
+
+    #[tokio::test]
+    async fn approving_a_suggestion_without_a_project_is_refused_and_changes_nothing() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let saved = w.projectless_suggestion(today, (9, 0), (10, 0)).await;
+        let shown = w.suggestions(today).await;
+
+        let err = approve(&w.service(), &w.settings, today, &shown[0].id)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(&err, AppError::InvalidInput(m) if m == NO_PROJECT_MESSAGE));
+        assert_eq!(w.stored_of(today).await, [saved]);
+        assert!(w.recordings().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn approving_all_with_one_suggestion_without_a_project_is_refused_and_records_nothing() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.stored_suggestion(today, &[((8, 0), (8, 30))]).await;
+        w.projectless_suggestion(today, (9, 0), (10, 0)).await;
+        let shown = w.suggestions(today).await;
+        let ids = ids_of(&shown);
+
+        let err = approve_all(&w.service(), &w.settings, today, &ids)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(&err, AppError::InvalidInput(m) if m == NO_PROJECT_MESSAGE));
+        assert_eq!(w.stored_of(today).await.len(), 2);
+        assert!(w.recordings().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_patch_without_a_project_cannot_approve_a_suggestion_without_one() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        let saved = w.projectless_suggestion(today, (9, 0), (10, 0)).await;
+        let shown = w.suggestions(today).await;
+
+        let err = approve_patched(
+            &w.service(),
+            &w.settings,
+            today,
+            &shown[0].id,
+            note_patch("patched"),
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(&err, AppError::InvalidInput(m) if m == NO_PROJECT_MESSAGE));
+        assert_eq!(w.stored_of(today).await, [saved]);
+        assert!(w.recordings().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_patch_naming_a_project_approves_a_suggestion_without_one_under_it() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.projectless_suggestion(today, (9, 0), (10, 0)).await;
+        let shown = w.suggestions(today).await;
+        let patch = RecordingPatch {
+            project_id: Some(w.project.id.clone()),
+            ..RecordingPatch::default()
+        };
+
+        let change = approve_patched(
+            &w.service(),
+            &w.settings,
+            today,
+            &shown[0].id,
+            patch,
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap();
+
+        let recording = change.value;
+        assert_eq!(
+            (
+                recording.project_id.as_str(),
+                recording.note.as_str(),
+                recording.start(),
+                recording.end(),
+            ),
+            (
+                w.project.id.as_str(),
+                "from claude",
+                on(today, 9, 0),
+                Some(on(today, 10, 0)),
+            )
+        );
+        assert_eq!(w.recordings().await, [recording]);
+        assert!(w.stored_of(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_edit_that_picks_a_project_approves_a_suggestion_without_one() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.projectless_suggestion(today, (9, 0), (10, 0)).await;
+        let shown = w.suggestions(today).await;
+
+        let change = approve_edited(
+            &w.service(),
+            &w.settings,
+            today,
+            &shown[0].id,
+            w.input_on(today, (9, 0), (10, 0)),
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(change.value.project_id, w.project.id);
+        assert_eq!(w.recordings().await, [change.value]);
+        assert!(w.stored_of(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn dismissing_a_suggestion_without_a_project_deletes_it() {
+        let w = World::new().await;
+        let today = day("2026-01-05");
+        w.projectless_suggestion(today, (9, 0), (10, 0)).await;
+        let shown = w.suggestions(today).await;
+
+        let change = dismiss(&w.service(), &w.settings, today, &ids_of(&shown))
+            .await
+            .unwrap();
+
+        assert_eq!(change.value, 1);
+        assert!(w.stored_of(today).await.is_empty());
     }
 
     #[tokio::test]
