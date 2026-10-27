@@ -63,13 +63,18 @@
 .lane-head-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lane-head-total { margin-left: auto; color: var(--o3); font-weight: 400; white-space: nowrap; }
 .timeline-body { position: relative; }
-/* The time column: a faint line every 5 minutes (once zoomed in far enough), a stronger one every 15. */
+/* The time column: faint lines every 5 minutes (once zoomed in far enough), stronger ones every 15, the hours as
+   strong as the lanes' hairlines. The layers stack, so each adds to the ones below. They stop 1px short of both
+   edges: crossing the column's borders would draw brighter dots there. */
 .recordings-col {
   border-left: 1px solid var(--line);
-  background:
-    repeating-linear-gradient(to bottom, color-mix(in oklab, var(--line) 70%, transparent) 0 1px, transparent 1px calc(var(--hour-px) / 4)),
-    repeating-linear-gradient(to bottom, var(--five-line, transparent) 0 1px, transparent 1px calc(var(--hour-px) / 12)),
-    var(--bg);
+  background-color: var(--bg);
+  background-image:
+    repeating-linear-gradient(to bottom, color-mix(in oklab, var(--line) 35%, transparent) 0 1px, transparent 1px var(--hour-px)),
+    repeating-linear-gradient(to bottom, color-mix(in oklab, var(--line) 25%, transparent) 0 1px, transparent 1px calc(var(--hour-px) / 4)),
+    repeating-linear-gradient(to bottom, var(--five-line, transparent) 0 1px, transparent 1px calc(var(--hour-px) / 12));
+  background-origin: padding-box; background-clip: padding-box;
+  background-size: calc(100% - 1px) 100%; background-repeat: no-repeat;
 }
 .five-minutes { --five-line: color-mix(in oklab, var(--line) 40%, transparent); }
 .lanes { z-index: 1; }

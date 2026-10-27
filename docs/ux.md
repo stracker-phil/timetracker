@@ -382,8 +382,9 @@ before its first activity (08:00 without any).
   lights up its card. The open editor takes its place among the cards (see [Recordings](#recordings)).
 - **Timeline columns,** left to right: the hour axis (`--timeline-axis-w`, hour labels in `--fs-caption`
   `--o2`, tabular figures; hour hairlines in `--line`, half hours from 3 px per minute), the time column
-  (`--recordings-col-w`, about 90 px: recordings and suggestions, where a drag selects time; `--line` at
-  70% every 15 minutes and a fainter one every 5 from 1.2 px per minute), the summary
+  (`--recordings-col-w`, about 90 px: recordings and suggestions, where a drag selects time; a line every 5
+  minutes from 1.2 px per minute, stronger every 15 and as strong as the lanes' hour hairlines on the hour,
+  kept off the column's edges), the summary
   lane, then the pinned app lanes (an app's own lane), Activity and the external sources' lanes. Lane heads
   stick to the top with an icon (the app's for an app lane) and the name; a pinned app lane's head shows only
   the icon, and the Activity head shows the day's tracked time. Lanes take shares of the width by kind
