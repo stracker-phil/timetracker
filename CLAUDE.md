@@ -39,7 +39,7 @@ line number.
 - Rust owns all logic; React only renders. Only `api.ts` files call `invoke`/`listen` (`src/api/index.ts`
   for the core). Tests mock them.
 - `src-tauri/src/`: `lib.rs` (startup), `instance.rs` (handoff to the running app), `app.rs` (Tauri builder),
-  `handlers.rs` (command registration), `cli/` (argv, replies, time and report words), `ipc.rs`
+  `handlers.rs` (command registration), `cli/` (argv, replies, time and report words), `ipc/`
   (single-instance socket), `pending.rs`, `launch.rs`, `remote.rs` (requests the page answers), `deep_link.rs`,
   `events.rs` (every event name and payload), `state.rs` (`AppState`), `store/` (JSON files), `db/` (SQLite,
   repositories, backup, `relocate.rs`), `capture/` (`Source`, `macos.rs`), `tracker/`, `activity/` (external

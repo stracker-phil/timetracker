@@ -78,6 +78,13 @@ struct SuggestionsArgs {
 
 #[derive(Deserialize, JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
+struct RecentArgs {
+    /// At most this many (default 8, at most 100)
+    limit: Option<u32>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
 struct DayArgs {
     /// YYYY-MM-DD, today or yesterday
     day: String,
@@ -216,6 +223,16 @@ impl TimeTrackerServer {
     }
 
     #[tool(
+        description = "The recently recorded combinations of project, note and tag, newest first, as the menu bar offers them to start a timer again (archived projects left out): project, client, tag, note, when last used"
+    )]
+    async fn recent_timers(
+        &self,
+        Parameters(args): Parameters<RecentArgs>,
+    ) -> Result<String, String> {
+        answer(self.core.recent_timers(args.limit).await)
+    }
+
+    #[tool(
         description = "A day's recorded, tracked and away minutes, and its recorded minutes and notes by project and by tag"
     )]
     async fn day_summary(&self, Parameters(args): Parameters<DayArgs>) -> Result<String, String> {
@@ -293,7 +310,7 @@ mod tests {
     use tempfile::TempDir;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-    const TOOLS: [&str; 18] = [
+    const TOOLS: [&str; 19] = [
         "activity",
         "approve",
         "clients",
@@ -302,6 +319,7 @@ mod tests {
         "edit",
         "open_day",
         "projects",
+        "recent_timers",
         "record",
         "recordings",
         "report",
@@ -344,7 +362,7 @@ mod tests {
     }
 
     #[test]
-    fn the_server_offers_exactly_the_eighteen_read_and_write_tools() {
+    fn the_server_offers_exactly_the_nineteen_read_and_write_tools() {
         let mut names: Vec<String> = TimeTrackerServer::all_tools()
             .list_all()
             .iter()
@@ -476,6 +494,105 @@ mod tests {
                 "archived": false,
             }])
         );
+    }
+
+    async fn record_notes(db: &crate::db::Db, project: &crate::db::projects::Project, count: i64) {
+        for i in 0..count {
+            let start = 1_000_000 + i * 3_600_000;
+            crate::db::recordings::insert(
+                db,
+                crate::db::recordings::NewRecording {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    project_id: project.id.clone(),
+                    spans: vec![(start, Some(start + 60_000))],
+                    note: format!("n{i}"),
+                    tag_id: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+    }
+
+    async fn recent_count(server: &TimeTrackerServer, limit: Option<u32>) -> usize {
+        let text = server
+            .recent_timers(Parameters(RecentArgs { limit }))
+            .await
+            .unwrap();
+        serde_json::from_str::<Value>(&text)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len()
+    }
+
+    #[tokio::test]
+    async fn a_client_calls_the_recent_timers_tool_over_json_rpc() {
+        let (dir, db) = temp_db().await;
+        let acme = crate::test_support::client(&db, "Acme").await;
+        let portal = crate::db::projects::insert(
+            &db,
+            crate::db::projects::ProjectInput {
+                client_id: Some(acme.id),
+                name: "Portal".into(),
+                color: "blue".into(),
+                shade: None,
+                billable: true,
+            },
+        )
+        .await
+        .unwrap();
+        let admin = project(&db, "admin").await;
+        let dev = crate::db::tags::insert(&db, "dev").await.unwrap();
+        recording(&db, &admin.id, 1_000_000, Some(2_000_000)).await;
+        crate::db::recordings::insert(
+            &db,
+            crate::db::recordings::NewRecording {
+                id: uuid::Uuid::new_v4().to_string(),
+                project_id: portal.id.clone(),
+                spans: vec![(5_000_000, Some(6_000_000))],
+                note: "standup".into(),
+                tag_id: Some(dev.id),
+            },
+        )
+        .await
+        .unwrap();
+        let (mut client, _) = connected(dir.path()).await;
+
+        let called = client.tool("recent_timers", json!({})).await;
+
+        let text = called["result"]["content"][0]["text"].as_str().unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(text).unwrap(),
+            json!([
+                {
+                    "project_id": portal.id,
+                    "project": "Portal",
+                    "client": "Acme",
+                    "tag": "dev",
+                    "note": "standup",
+                    "last_used_iso": crate::db::time::to_local_iso(5_000_000),
+                },
+                {
+                    "project_id": admin.id,
+                    "project": "admin",
+                    "note": "",
+                    "last_used_iso": crate::db::time::to_local_iso(1_000_000),
+                },
+            ])
+        );
+    }
+
+    #[tokio::test]
+    async fn recent_timers_default_to_eight_and_hold_the_limit_to_one_to_a_hundred() {
+        let (dir, db) = temp_db().await;
+        let podcast = project(&db, "Podcast").await;
+        record_notes(&db, &podcast, 101).await;
+        let (server, _socket) = server(dir.path());
+
+        for (limit, expected) in [(None, 8), (Some(3), 3), (Some(0), 1), (Some(500), 100)] {
+            assert_eq!(recent_count(&server, limit).await, expected, "{limit:?}");
+        }
     }
 
     #[tokio::test]

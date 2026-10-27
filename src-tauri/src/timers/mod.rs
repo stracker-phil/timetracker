@@ -23,10 +23,12 @@ use crate::error::AppResult;
 use crate::events::TIMER_STATUS_EVENT;
 use crate::recordings::timer::TimerInput;
 use crate::state::AppState;
-use crate::tray;
+use crate::{tray, watch};
 
 /// How many recent timers the tray and the picker offer.
 pub const RECENT: usize = 8;
+/// The most recent timers a script may ask for.
+pub const MAX_RECENT: usize = 100;
 /// Finished recordings read to find the recent timers.
 const RECENT_SCAN: u32 = 500;
 /// The tray title and the page's elapsed time move on at this pace while a timer runs.
@@ -124,7 +126,7 @@ pub async fn recent(db: &Db, limit: usize) -> AppResult<Vec<RecentTimer>> {
     Ok(recent)
 }
 
-/// Tells the page and the tray where the timer stands; returns whether a timer runs.
+/// Tells the page, the tray and the watchers where the timer stands; returns whether a timer runs.
 pub async fn publish(app: &AppHandle) -> bool {
     let Ok(db) = app.state::<AppState>().data.db() else {
         return false;
@@ -140,6 +142,7 @@ pub async fn publish(app: &AppHandle) -> bool {
         log::warn!("Couldn't notify the page of the timer: {e}");
     }
     tray::set_timer(app, status.running.as_ref(), recent);
+    watch::timer_changed(app).await;
     status.running.is_some()
 }
 

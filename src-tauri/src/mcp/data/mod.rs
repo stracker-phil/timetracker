@@ -5,6 +5,7 @@ mod catalog;
 mod day_summary;
 #[cfg(test)]
 mod fixtures;
+mod recent;
 mod recordings;
 mod report;
 mod status;

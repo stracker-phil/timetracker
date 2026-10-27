@@ -577,6 +577,9 @@ activity writes emit one per local day the span touches (`activity::external::da
 that day's version (or every day's for `null`), so views showing the day reload
 ([frontend.md](frontend.md)).
 
+Other processes get the same changes over the socket with `timetracker watch` ([Watching](#watching)):
+`events::data_changed`, `timers::publish` and `tracker::task::forward_statuses` also hand them to `watch.rs`.
+
 ## CLI and single-instance handoff
 
 The `timetracker` command is the app binary. Without a subcommand it starts the app, or activates the
@@ -589,7 +592,8 @@ and exits ([ADR 0017](adr/0017-cli-asks-the-running-app.md)). It never opens the
 `cli/mod.rs` (clap derive; `Cli`, `Command`, `parse` and `message`), with the larger subcommands' flags and
 messages in their own files: `cli/activity.rs` (`ActivityCommand`), `cli/record.rs` (`RecordArgs`,
 `is_final`: `--final` unless `--draft`), `cli/report.rs` (`ReportArgs`), `cli/scripting.rs` (`EditArgs`,
-`DeleteArgs`, `ListRange`, `TimerCommand`, `TrackerCommand`); `cli/batch.rs` holds `split`; `cli/testing.rs` the tests' shared helpers.
+`DeleteArgs`, `ListRange`, `TimerCommand`, `TrackerCommand`), `cli/watch.rs` (`line`, the text of a `watch`
+event); `cli/batch.rs` holds `split`; `cli/testing.rs` the tests' shared helpers.
 Global flags: `--hidden` (start without the window; a running instance stays
 as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting for this run), `--json`
 (replies as JSON), `--help`, `--version`.
@@ -614,17 +618,20 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `timer status` | `timerStatus` | `timer: Acme · standup · 0:25` or `timer: none`; `--json`: `TimerState` |
 | `timer update [--project P] [--note N] [--tag T\|--no-tag]` | `timerUpdate { request: TimerUpdateRequest }`: absent fields stay (`timers::commands::update_by_name`); refused without a timer | `timer: …` |
 | `timer pick` | `timerPicker`: `timers::picker::open` on the focused screen, as the timer shortcut; the main window stays as it is | – |
+| `timer recent [--limit N]` | `timerRecent { limit }` (default `timers::RECENT`, 8; 1 to `timers::MAX_RECENT`, 100; `scripting::timer::recent` clamps any other sender's) | one line each, `Portal · standup #development  <projectId>`, or `no recent timers`; `--json`: `RecentTimerEntry[]` |
 | `mcp` | none: serves MCP on stdin/stdout (`CliOutcome::Mcp`) | only JSON-RPC on stdout |
+| `watch` | none: a `watch` request that stays open (`CliOutcome::Watch { json }`, `instance::watch`; [Watching](#watching)) | one line per event until the app quits (exit 2) |
 | `record --project P (--from ISO --to ISO \| --span FROM-TO…) [--note N] [--tag T] [--source S] [--final [--replace]] [--draft]` | `record { request: RecordRequest { spans, final, source, … } }`: `--from`/`--to` is one span, each `--span` (`14:25-15:00`, ends as `instant`, joined by `-` or `–`; `time::span`) another (`overlap: replace` with `--replace`, else `cancel`; `--replace` without an effective `--final` is a parse error; one `--tag`, a second is a parse error); the app resolves the project (`projects::resolve`) and the tag by name (`tags::resolve_name`, unknown → `not_found`). Without `final` it stores a suggestion (`Recordings::create_suggestion`, source `cli` by default) | `suggested 06:00–06:30 (0:30) for Acme · fix login; review it in the Day view (id …)`, or with `--final` `recorded 14:25–15:00, 16:05–20:15 (4:45) for Acme · fix login`; an overlap exits 1 with `overlaps 09:15–09:45 Acme · standup (use --replace)`. `--json`: `Written`, `{ kind: suggestion \| recording, … }` with the stored suggestion or the recording plus `projectName` |
 | `edit ID [--project P] [--note N] [--tag T\|--no-tag] [--from/--to \| --span…] [--final [--replace]] [--draft]` | `edit { request: EditRequest }`; spans given replace all | the written suggestion or recording, as `record` |
 | `delete ID [--final] [--draft]` | `delete { id, final }` | `deleted the suggestion ID` / `deleted the recording ID`; `--json`: `Deleted { kind, id }` |
 | `approve ID…` | `approve { ids }`: each one `rules::approve`, one undo step each, stopping at the first refused | one `recorded …` line each |
 | `suggestions [RANGE]`, `recordings [RANGE]` | `suggestions { range }`, `recordings { range }` (`Range` as `report`'s) | one line each with its id, or `no suggestions` / `no recordings`; `--json`: `SuggestionEntry[]` / `RecordingEntry[]` |
-| `projects [--archived]`, `clients [--archived]`, `tags` | `projects { archived }`, `clients { archived }`, `tags` | one line each with its id; `--json`: `ProjectEntry[]` / `ClientEntry[]` / `TagEntry[]` |
+| `projects [--archived]`, `clients [--archived]`, `tags` | `projects { archived }`, `clients { archived }`, `tags` | one line each with its id; `--json`: `ProjectEntry[]` (with `color`, an accent name, and `shade`, 0 to 8) / `ClientEntry[]` / `TagEntry[]` |
 | `undo`, `redo` | `undo`, `redo` (`Recordings::undo/redo`, the app's ⌘Z stack) | `undid Record 30m for Acme` or `nothing to undo` |
 
 `parse(args, now, tz, stdin) -> Result<CliOutcome, CliError>` is pure: `CliOutcome` is `Run { hidden,
-log_level }`, `Exit { message }` (help, version), `Mcp` or `Remote { message, json, starts_app }`. The CLI checks
+log_level }`, `Exit { message }` (help, version), `Mcp`, `Watch { json }` or `Remote { message, json,
+starts_app }`. The CLI checks
 what it can before sending (times, `activity::external::validate`); the app checks again. `CliError.in_app`
 is true for a plain launch with bad options, which also shows the error in the app (it may have been opened
 from Finder); a subcommand's error, or a word that names no subcommand (`timetracker stauts`), only prints.
@@ -655,14 +662,16 @@ startedAtIso, elapsedMs }`, every field but `running` `null` without a timer); a
 **Scripting** (`scripting/`, ADR 0028): what the CLI reads and writes for other apps. `catalog.rs`
 (`projects`, `clients`, `tags`), `listing.rs` (`recordings`, `suggestions`, and `recordings_in` / `suggestions_in` for a `Range`: a stored suggestion's
 shown pieces as one entry, rule suggestions by piece; at most `MAX_SUGGESTION_DAYS`, 62), `timer.rs` (`TimerState`,
-`state`) and `writes.rs` (`record`, `edit`, `delete`, `approve`). An id is resolved by `target`:
+`state`; `RecentTimerEntry { projectId, project, client, tagId, tag, note, lastUsedAt }`, `recent`: `timers::recent`
+with the client's and the tag's names) and `writes.rs` (`record`, `edit`, `delete`, `approve`). An id is resolved by `target`:
 `stored:<id>:<start>:<end>` and a bare stored id name a stored suggestion, `<rule id>:<start>:<end>` a rule's
 suggestion on the day of its start, anything else a recording. Changing a recording needs `final` (else
 `` `ID` is a recording; add --final to change it ``); `edit SUGGESTION --final` records it with the changes
 (`rules::approve_patched`), a rule's suggestion can't be edited without it. `cli/written.rs` prints the
 replies.
 
-**Exit codes:** 0 ok; 1 the app answered with an error; 2 bad arguments, or TimeTracker is not running.
+**Exit codes:** 0 ok; 1 the app answered with an error; 2 bad arguments, or TimeTracker is not running (and
+`watch` when the app quits).
 With no instance, `show` and `focus` start the app with their message queued (`starts_app`); every other
 subcommand exits 2 with `TimeTracker is not running`.
 
@@ -671,7 +680,8 @@ in `remote::handle`, a `reply::render` arm when it prints something, and parser 
 
 ### Socket and protocol
 
-`ipc.rs`:
+`ipc/`: the messages and their wire shapes in `mod.rs`, the sending side (`request`, `open_request`,
+`try_forward`) in `client.rs`, the app's (`bind`, `serve`) in `server.rs`.
 
 - **Socket:** a Unix domain socket at `<config dir>/timetracker.sock`, mode 0600 in a 0700 dir. `serve` drops
   peers with another uid (`same_user`, `libc::getuid`).
@@ -687,6 +697,9 @@ in `remote::handle`, a `reply::render` arm when it prints something, and parser 
   ← {"id":"7f0c…","ok":true,"result":{"id":4711,"source":"external:planner",…},"error":null}
   ```
 
+  - watch (an `IpcRequest` with `{"type":"watch"}`): the reply, then one line per change on the same
+    connection ([Watching](#watching)).
+
   Malformed, oversized or incomplete lines get no answer. `cli::split` cuts an `activity add` batch into
   requests of at most 200 items that each fit the limit; such a batch is written part by part, and a failing
   part stops the rest (the CLI prints the ids already written).
@@ -694,7 +707,7 @@ in `remote::handle`, a `reply::render` arm when it prints something, and parser 
   missing or refused: start the app), `Rejected` (no `ok`) or an error such as a timeout (print and exit 2,
   so a hung instance never leads to a second one).
 - **Messages** (`IpcMessage`, tagged by `type`): `activate { hidden }`, `error { message }`, the subcommand
-  messages above, `eval { js }` (debug builds only, sent by `scripts/dev/js.sh`) and `devSeed { years, yes }`
+  messages above, `watch`, `eval { js }` (debug builds only, sent by `scripts/dev/js.sh`) and `devSeed { years, yes }`
   (debug builds only, sent by `timetracker dev seed`; its sender waits up to 120 s instead of 5 s,
   `IpcMessage::reply_timeout`).
 - **Stale sockets:** `bind` removes a leftover socket only when connecting to it is refused; it refuses to
@@ -718,6 +731,8 @@ Every message is logged by type (`IpcMessage::kind`, never the contents).
 | `projects`, `clients`, `tags` | `scripting::catalog` | `ProjectEntry[]`, `ClientEntry[]`, `TagEntry[]` |
 | `timerStart`, `timerStop`, `timerStatus`, `timerUpdate` | `timers::commands::start_by_name`, `stop`, `scripting::timer::state`, `timers::commands::update_by_name` | `TimerStarted`, `Recording \| null`, `TimerState`, `TimerState` |
 | `timerPicker` | `timers::picker::open(app, Place::OnFocusedScreen)` | `null` |
+| `timerRecent { limit }` | `scripting::timer::recent` | `RecentTimerEntry[]` |
+| `watch` | `watch::current`; `ipc` then streams (only as a request) | `WatchEvent[]`: the timer, and the tracker unless it is off |
 | `undo`, `redo` | `Recordings::undo`, `redo` | the label or `null` |
 | `activityAdd { items }` | `activity::add` | `{ ids }` |
 | `activityStart { input }` | `activity::start` | `ActivityRow` |
@@ -731,6 +746,38 @@ Every message is logged by type (`IpcMessage::kind`, never the contents).
 (migration 0006, [data.md](data.md#migrations)). Messages that start the app are pushed to `LaunchQueue` in
 `setup` instead: `show` becomes
 `LaunchEvent::ShowDay { day }`, so the page navigates once it has loaded.
+
+### Watching
+
+`timetracker watch` lets other apps follow the timer, the tracker and the data without polling
+([ADR 0029](adr/0029-other-apps-may-subscribe-over-the-socket.md)). `watch.rs`:
+
+- `WatchEvent`, one JSON line each, tagged `{ "event", "data" }`: `timer` (`TimerState`), `tracker`
+  (`TrackerStatus`), `data` (`DataChanged`).
+- `Watchers` (managed state): a `broadcast` channel of 64 events and the last timer and tracker sent.
+  `send` drops a repeat: a timer equal but for `elapsedMs` (the minute ticks), a tracker with the same state and
+  permission (the heartbeats, a new current activity). `subscribe` forgets the last ones, since the new
+  watcher's reply carries the current state.
+- `timer_changed(app)` (from `timers::publish`, and after every `recordings` `data_changed`, so undoing a timer
+  start counts too), `tracker_changed(app, status)` (from `tracker::task::forward_statuses`) and
+  `data_changed(app, changed)` (from `events::data_changed`) read and send only while someone watches.
+- `ipc::server::handle_connection` subscribes a `watch` request before the handler runs, writes the reply (the
+  current `WatchEvent[]`, `watch::current`), then `watch::stream` writes every event until the client closes
+  the connection (a read of 0 bytes), a write fails, or the client falls more than 64 events behind (it is
+  disconnected and reconnects). What the client sends meanwhile is ignored.
+
+```
+→ {"id":"1b2e…","message":{"type":"watch"}}
+← {"id":"1b2e…","ok":true,"result":[{"event":"timer","data":{"running":false,…}},{"event":"tracker","data":{…}}],"error":null}
+← {"event":"timer","data":{"running":true,"project":"Acme",…}}
+← {"event":"data","data":{"kind":"recordings","day":"2026-10-27"}}
+```
+
+The CLI (`instance::watch` and `follow`, over `ipc::open_request`, which drops the read timeout) prints the reply's events and then every line: as it
+came with `--json`, else `cli::watch::line` (`timer: Acme · standup · 0:25`, `tracker: paused`, `data:
+recordings 2026-10-27`; an event it does not know as JSON). It exits 2 with `TimeTracker quit` when the
+connection ends, 0 when its stdout closes. The socket goes away with the app, so a client reconnects
+after TimeTracker restarts (retrying while it is down) and takes the reply as the current state.
 
 ### Requests the page answers
 
@@ -771,7 +818,7 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
   current-thread tokio runtime. Exit codes: 0 when the client disconnects, 1 on a handshake or transport
   error, 2 when the runtime cannot start.
 - `mcp/data/`: `Core`, the headless data access (`mod.rs`), with one file per tool area: `report.rs`,
-  `recordings.rs`, `catalog.rs` (projects, clients, tags), `suggestions.rs`, `day_summary.rs`, `activity.rs`, `status.rs`; their tests
+  `recordings.rs`, `catalog.rs` (projects, clients, tags), `recent.rs`, `suggestions.rs`, `day_summary.rs`, `activity.rs`, `status.rs`; their tests
   share the seeded day in `fixtures.rs`. The database opens on first use with
   `Db::open_read_only` (path from `Settings::peek` and `db::data_dir`), so the handshake succeeds on a Mac
   that never ran the app, and a failed open is tried again on the next call. Settings are read on every call.
@@ -788,6 +835,7 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
 | `recordings` | `from`, `to` (days, inclusive), `project`, `tag`, `limit` (default 500, at most 5000) | `[{ id, day, start_iso, end_iso, spans: [{ start_iso, end_iso }], duration_min, project, client?, note, tag }]` (`tag`: the name or `null`; `spans` the day's parts, `duration_min` their sum) by start, one row per recording and day, archived projects included |
 | `projects` | – | `[{ id, name, color, client?, billable, archived }]` |
 | `tags` | – | `[{ id, name }]` |
+| `recent_timers` | `limit` (default 8, held to 1 to 100) | `[{ project_id, project, client?, tag?, note, last_used_iso }]` from `scripting::timer::recent`, newest first |
 | `clients` | – | `[{ id, name, archived }]` |
 | `suggestions` | `from`, `to` (default `from`; at most 62 days) | `[{ id, kind (rule, stored), by, day, spans: [{ start_iso, end_iso }], duration_min, project, client?, note, tag }]` from `scripting::listing::suggestions`; a stored one with all of its shown pieces |
 | `record` | `project`, `spans`, `note`, `tag`, `final`, `draft`, `replace` | `IpcMessage::Record`: a stored suggestion unless final; the CLI's `suggested …` / `recorded …` line |
@@ -851,7 +899,7 @@ A timer is a recording with an open span, so the overlap rule, undo and reports 
   the timer run again.
 - `timers/mod.rs`: `status(db, now) -> TimerStatus { running: Option<RunningTimer { recording, projectName,
   color, shade, elapsedMs }> }` (`elapsedMs` since the open span started, `open_start`), `recent(db, 8) -> RecentTimer[]` (distinct project, note and tag of finished
-  recordings, newest first, archived projects left out), `publish(app)` (the `timer_status` event and the tray),
+  recordings, newest first, archived projects left out; also `timer recent` and the MCP `recent_timers`), `publish(app)` (the `timer_status` event, the tray and the watchers),
   `start_ticking(app)` (publishes at startup and every minute while a timer runs).
 - `timers/commands.rs`: `timer_start(projectId, note, tagId)`, `timer_stop` (`null` without a timer),
   `timer_update(projectId, note, tagId)` (the running timer's fields through `Recordings::update_timer`, spans

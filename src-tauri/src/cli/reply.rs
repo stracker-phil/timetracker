@@ -186,7 +186,11 @@ pub(super) fn timer(timer: &TimerState, now: Ms) -> String {
     parts.join(" · ")
 }
 
-fn tracker_state<Tz: TimeZone>(status: Option<&TrackerStatus>, now: Ms, tz: &Tz) -> String {
+pub(super) fn tracker_state<Tz: TimeZone>(
+    status: Option<&TrackerStatus>,
+    now: Ms,
+    tz: &Tz,
+) -> String {
     let Some(status) = status else {
         return "off".into();
     };

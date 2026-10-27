@@ -14,7 +14,7 @@ use crate::state::AppState;
 use crate::tracker::Tracker;
 use crate::{
     app_icons, away_prompt, capture, commands, db, deep_link, ipc, menu, remote, timers, tracker,
-    tray, window,
+    tray, watch, window,
 };
 
 const MAX_LOG_BYTES: u128 = 5 * 1024 * 1024;
@@ -36,6 +36,7 @@ pub fn start(
         .manage(state)
         .manage(Arc::new(icons))
         .manage(remote::Bridge::default())
+        .manage(watch::Watchers::default())
         .manage(menu::MenuSync::default())
         .manage(away_prompt::AwayPromptState::default())
         .plugin(log_plugin())
@@ -146,7 +147,8 @@ fn start_ipc(handle: AppHandle, socket: &Path) {
             return;
         }
     };
-    tauri::async_runtime::spawn(ipc::serve(listener, move |message| {
+    let watchers = handle.state::<watch::Watchers>().inner().clone();
+    tauri::async_runtime::spawn(ipc::serve(listener, watchers, move |message| {
         remote::handle(handle.clone(), message)
     }));
 }

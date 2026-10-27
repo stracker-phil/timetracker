@@ -11,7 +11,7 @@ use crate::ipc::IpcMessage;
 use crate::recordings::cli::Recorded;
 use crate::scripting::catalog::{ClientEntry, ProjectEntry, TagEntry};
 use crate::scripting::listing::{Labels, RecordingEntry, SpanEntry, SuggestionEntry};
-use crate::scripting::timer::TimerState;
+use crate::scripting::timer::{RecentTimerEntry, TimerState};
 use crate::scripting::writes::{Deleted, DeletedKind, Written};
 
 /// `09:15–09:45, 14:00–now`.
@@ -164,6 +164,15 @@ pub fn render<Tz: TimeZone>(
                 .map_or_else(String::new, |e| format!("{e} "));
             format!("{emoji}{}  {}", t.name, t.id)
         })?,
+        IpcMessage::TimerRecent { .. } => {
+            listing(result, "no recent timers", |t: &RecentTimerEntry| {
+                let tag = t
+                    .tag
+                    .as_ref()
+                    .map_or_else(String::new, |tag| format!(" #{tag}"));
+                format!("{}{}{tag}  {}", t.project, note_part(&t.note), t.project_id)
+            })?
+        }
         IpcMessage::TimerStatus | IpcMessage::TimerUpdate { .. } => {
             format!("timer: {}", timer(&read::<TimerState>(result)?, now))
         }
@@ -467,11 +476,11 @@ mod tests {
     fn projects_clients_and_tags_are_listed_with_their_ids() {
         let projects = json!([
             { "id": "p1", "name": "Portal", "clientId": "c1", "client": "Acme",
-              "billable": true, "archived": false },
+              "color": "teal", "shade": 4, "billable": true, "archived": false },
             { "id": "p2", "name": "Podcast", "clientId": null, "client": null,
-              "billable": false, "archived": false },
+              "color": "blue", "shade": 4, "billable": false, "archived": false },
             { "id": "p3", "name": "Old", "clientId": "c1", "client": "Acme",
-              "billable": true, "archived": true },
+              "color": "teal", "shade": 1, "billable": true, "archived": true },
         ]);
         let clients = json!([
             { "id": "c1", "name": "Acme", "archived": false },
@@ -494,6 +503,23 @@ mod tests {
     }
 
     #[test]
+    fn recent_timers_are_listed_with_note_tag_and_project_id() {
+        let recent = json!([
+            { "projectId": "p1", "project": "Portal", "client": "Acme", "tagId": "t1",
+              "tag": "dev", "note": "standup", "lastUsedAt": 2_000 },
+            { "projectId": "p2", "project": "Podcast", "client": null, "tagId": null,
+              "tag": null, "note": "", "lastUsedAt": 1_000 },
+            { "projectId": "p3", "project": "Admin", "client": null, "tagId": "t2",
+              "tag": "focus", "note": "", "lastUsedAt": 500 },
+        ]);
+
+        assert_eq!(
+            text(&IpcMessage::TimerRecent { limit: 8 }, &recent),
+            "Portal · standup #dev  p1\nPodcast  p2\nAdmin #focus  p3"
+        );
+    }
+
+    #[test]
     fn empty_listings_say_so() {
         let range = crate::reports::Range::Today;
         for (message, expected) in [
@@ -507,6 +533,7 @@ mod tests {
             (IpcMessage::Projects { archived: false }, "no projects"),
             (IpcMessage::Clients { archived: false }, "no clients"),
             (IpcMessage::Tags, "no tags"),
+            (IpcMessage::TimerRecent { limit: 8 }, "no recent timers"),
         ] {
             assert_eq!(text(&message, &json!([])), expected, "{message:?}");
         }
@@ -547,6 +574,7 @@ mod tests {
             IpcMessage::Projects { archived: false },
             IpcMessage::Clients { archived: false },
             IpcMessage::Tags,
+            IpcMessage::TimerRecent { limit: 8 },
             IpcMessage::Undo,
             IpcMessage::Redo,
         ] {

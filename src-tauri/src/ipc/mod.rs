@@ -1,20 +1,17 @@
 //! Single-instance handoff: a second `timetracker` process sends its request over a Unix socket
-//! (mode 0600, same user only) to the running app and exits.
+//! (mode 0600, same user only) to the running app and exits. The messages are here, the sending side in
+//! `client.rs`, the app's side in `server.rs`.
 //!
 //! One JSON line per connection. A bare `IpcMessage` (the one-way form) is acknowledged with
 //! the line `ok` before it is handled; an `IpcRequest` is answered with an `IpcReply` line
-//! once it is handled.
+//! once it is handled. A `watch` request stays open after its reply and streams changes (`watch`).
 
-use std::io::{self, BufRead, BufReader, Write};
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
-use std::sync::Arc;
+mod client;
+mod server;
+
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
-use tokio::net::unix::OwnedWriteHalf;
 
 use crate::activity::ActivityInput;
 use crate::db::time::{Day, Ms};
@@ -25,6 +22,22 @@ use crate::reports::cli::{ReportOutput, ReportRequest};
 use crate::scripting::writes::EditRequest;
 use crate::timers::commands::{TimerStartRequest, TimerUpdateRequest};
 use crate::tracker::PauseUntil;
+pub use client::{Forward, open_request, request, try_forward};
+pub use server::{bind, serve};
+
+// The tests' own imports, as they had them when this was one file.
+#[cfg(test)]
+use crate::watch::Watchers;
+#[cfg(test)]
+use std::io::{self, BufRead, BufReader};
+#[cfg(test)]
+use std::os::unix::fs::PermissionsExt;
+#[cfg(test)]
+use std::os::unix::net::{UnixListener, UnixStream};
+#[cfg(test)]
+use std::path::Path;
+#[cfg(test)]
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// Every request another process can make. Each CLI subcommand is one message; `remote::handle`
 /// dispatches them.
@@ -84,6 +97,10 @@ pub enum IpcMessage {
     TimerStatus,
     /// The timer picker on the focused screen, as the timer shortcut opens it.
     TimerPicker,
+    /// The latest distinct project, note and tag combinations, as the tray offers them.
+    TimerRecent {
+        limit: u32,
+    },
     TrackerStatus,
     TimerUpdate {
         request: TimerUpdateRequest,
@@ -115,6 +132,8 @@ pub enum IpcMessage {
     Tags,
     Undo,
     Redo,
+    /// As a request: replies with the current timer and tracker, then streams every change.
+    Watch,
     /// Runs JavaScript in the window (used by scripts/dev to drive the UI).
     #[cfg(debug_assertions)]
     Eval {
@@ -152,6 +171,7 @@ impl IpcMessage {
             IpcMessage::TimerStop => "TimerStop",
             IpcMessage::TimerStatus => "TimerStatus",
             IpcMessage::TimerPicker => "TimerPicker",
+            IpcMessage::TimerRecent { .. } => "TimerRecent",
             IpcMessage::TrackerStatus => "TrackerStatus",
             IpcMessage::TimerUpdate { .. } => "TimerUpdate",
             IpcMessage::Edit { .. } => "Edit",
@@ -164,6 +184,7 @@ impl IpcMessage {
             IpcMessage::Tags => "Tags",
             IpcMessage::Undo => "Undo",
             IpcMessage::Redo => "Redo",
+            IpcMessage::Watch => "Watch",
             #[cfg(debug_assertions)]
             IpcMessage::Eval { .. } => "Eval",
             #[cfg(debug_assertions)]
@@ -250,13 +271,6 @@ impl From<AppError> for IpcError {
 /// What handling a message produced: a JSON result, or an error for the sender.
 pub type HandlerResult = Result<serde_json::Value, IpcError>;
 
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum Incoming {
-    Request(IpcRequest),
-    OneWay(IpcMessage),
-}
-
 const ACK: &str = "ok";
 /// Longer lines get no answer; the CLI splits larger activity batches (`cli::split`).
 pub const MAX_MESSAGE_BYTES: u64 = 64 * 1024;
@@ -264,188 +278,6 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
 /// Seeding years of data takes seconds.
 #[cfg(debug_assertions)]
 const SEED_TIMEOUT: Duration = Duration::from_secs(120);
-const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Forward {
-    Delivered,
-    /// Nothing listens on the socket; this process may become the app.
-    NoInstance,
-    /// An instance listens but did not acknowledge the message.
-    Rejected,
-}
-
-fn no_listener(e: &io::Error) -> bool {
-    matches!(
-        e.kind(),
-        io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
-    )
-}
-
-/// Sends `value` as one line and reads the answer line; `None` when nothing listens.
-fn send_line(
-    socket: &Path,
-    value: &impl Serialize,
-    timeout: Duration,
-) -> io::Result<Option<String>> {
-    let mut stream = match UnixStream::connect(socket) {
-        Ok(s) => s,
-        Err(e) if no_listener(&e) => return Ok(None),
-        Err(e) => return Err(e),
-    };
-    stream.set_read_timeout(Some(timeout))?;
-    let mut line = serde_json::to_string(value).map_err(io::Error::other)?;
-    line.push('\n');
-    stream.write_all(line.as_bytes())?;
-    let mut answer = String::new();
-    BufReader::new(stream).read_line(&mut answer)?;
-    Ok(Some(answer))
-}
-
-/// A timeout or other socket error is an `Err`: an instance may be alive but hung.
-pub fn try_forward(socket: &Path, message: &IpcMessage) -> io::Result<Forward> {
-    Ok(match send_line(socket, message, CLIENT_TIMEOUT)? {
-        None => Forward::NoInstance,
-        Some(answer) if answer.trim() == ACK => Forward::Delivered,
-        Some(_) => Forward::Rejected,
-    })
-}
-
-/// Sends `message` as a request and waits for its reply; `None` when nothing listens.
-pub fn request(socket: &Path, message: IpcMessage) -> io::Result<Option<IpcReply>> {
-    let timeout = message.reply_timeout();
-    let request = IpcRequest {
-        id: uuid::Uuid::new_v4().to_string(),
-        message,
-    };
-    let Some(answer) = send_line(socket, &request, timeout)? else {
-        return Ok(None);
-    };
-    match serde_json::from_str::<IpcReply>(&answer) {
-        Ok(reply) if reply.id == request.id => Ok(Some(reply)),
-        _ => Err(io::Error::other(
-            "the running TimeTracker instance did not answer the request; it may be older than this command",
-        )),
-    }
-}
-
-/// Binds the socket, replacing a stale file but never a live listener. Blocking std
-/// listener, so it can be created outside the async runtime; `serve` converts it.
-pub fn bind(socket: &Path) -> io::Result<UnixListener> {
-    match UnixStream::connect(socket) {
-        Ok(_) => {
-            return Err(io::Error::new(
-                io::ErrorKind::AddrInUse,
-                "another TimeTracker instance is listening on the socket",
-            ));
-        }
-        Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => std::fs::remove_file(socket)?,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e),
-    }
-    let listener = UnixListener::bind(socket)?;
-    listener.set_nonblocking(true)?;
-    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))?;
-    Ok(listener)
-}
-
-/// Calls `handler` for every message on the listener and writes each request's result back to its client.
-pub async fn serve<F, Fut>(listener: UnixListener, handler: F)
-where
-    F: Fn(IpcMessage) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = HandlerResult> + Send + 'static,
-{
-    let listener = match tokio::net::UnixListener::from_std(listener) {
-        Ok(l) => l,
-        Err(e) => {
-            log::error!("Cannot serve IPC socket: {e}");
-            return;
-        }
-    };
-    let handler = Arc::new(handler);
-    loop {
-        let (stream, _) = match listener.accept().await {
-            Ok(conn) => conn,
-            Err(e) => {
-                log::warn!("IPC accept failed: {e}");
-                tokio::time::sleep(ACCEPT_BACKOFF).await;
-                continue;
-            }
-        };
-        tokio::spawn(handle_connection(stream, handler.clone()));
-    }
-}
-
-async fn handle_connection<F, Fut>(stream: tokio::net::UnixStream, handler: Arc<F>)
-where
-    F: Fn(IpcMessage) -> Fut,
-    Fut: Future<Output = HandlerResult>,
-{
-    let (incoming, mut write) = match tokio::time::timeout(CLIENT_TIMEOUT, receive(stream)).await {
-        Ok(Some(received)) => received,
-        Ok(None) => return,
-        Err(_) => {
-            log::warn!("IPC client timed out");
-            return;
-        }
-    };
-    match incoming {
-        Incoming::OneWay(message) => {
-            write_line(&mut write, ACK).await;
-            let kind = message.kind();
-            if let Err(e) = handler(message).await {
-                log::warn!("Handling {kind} from another process failed: {}", e.message);
-            }
-        }
-        Incoming::Request(IpcRequest { id, message }) => {
-            let reply = IpcReply::new(id, handler(message).await);
-            match serde_json::to_string(&reply) {
-                Ok(line) => write_line(&mut write, &line).await,
-                Err(e) => log::warn!("IPC reply not serializable: {e}"),
-            }
-        }
-    }
-}
-
-async fn write_line(write: &mut OwnedWriteHalf, line: &str) {
-    if let Err(e) = write.write_all(format!("{line}\n").as_bytes()).await {
-        log::debug!("IPC reply failed: {e}");
-    }
-}
-
-/// Reads one message or request; `None` when the client is refused.
-async fn receive(stream: tokio::net::UnixStream) -> Option<(Incoming, OwnedWriteHalf)> {
-    if !same_user(&stream) {
-        log::warn!("Refusing IPC connection from another user");
-        return None;
-    }
-    let (read, write) = stream.into_split();
-    let mut line = String::new();
-    if let Err(e) = tokio::io::BufReader::new(read.take(MAX_MESSAGE_BYTES))
-        .read_line(&mut line)
-        .await
-    {
-        log::warn!("IPC read failed: {e}");
-        return None;
-    }
-    if !line.ends_with('\n') {
-        log::warn!("Ignoring incomplete or oversized IPC message");
-        return None;
-    }
-    match serde_json::from_str::<Incoming>(&line) {
-        Ok(incoming) => Some((incoming, write)),
-        Err(e) => {
-            log::warn!("Ignoring malformed IPC message: {e}");
-            None
-        }
-    }
-}
-
-fn same_user(stream: &tokio::net::UnixStream) -> bool {
-    // SAFETY: getuid has no preconditions and cannot fail.
-    let uid = unsafe { libc::getuid() };
-    stream.peer_cred().is_ok_and(|cred| cred.uid() == uid)
-}
 
 #[cfg(test)]
 mod tests {
@@ -459,16 +291,17 @@ mod tests {
     fn serve_into_channel(socket: &Path) -> mpsc::UnboundedReceiver<IpcMessage> {
         let (tx, rx) = mpsc::unbounded_channel();
         let listener = bind(socket).unwrap();
-        tokio::spawn(serve(listener, move |m| {
+        tokio::spawn(serve(listener, Watchers::default(), move |m| {
             let _ = tx.send(m);
             async { Ok(serde_json::Value::Null) }
         }));
         rx
     }
 
-    fn serve_answering(socket: &Path) {
+    fn serve_answering(socket: &Path) -> Watchers {
         let listener = bind(socket).unwrap();
-        tokio::spawn(serve(listener, |m| async move {
+        let watchers = Watchers::default();
+        tokio::spawn(serve(listener, watchers.clone(), |m| async move {
             match m {
                 IpcMessage::Error { message } => Err(IpcError::new(
                     ErrorKind::Overlap,
@@ -477,6 +310,67 @@ mod tests {
                 other => Ok(serde_json::json!({ "handled": other.kind() })),
             }
         }));
+        watchers
+    }
+
+    /// Like `serve_answering`, but `watch` itself fails.
+    fn serve_refusing_watch(socket: &Path) -> Watchers {
+        let listener = bind(socket).unwrap();
+        let watchers = Watchers::default();
+        tokio::spawn(serve(listener, watchers.clone(), |m| async move {
+            match m {
+                IpcMessage::Watch => Err(IpcError::new(ErrorKind::Io, "no watching")),
+                other => Ok(serde_json::json!({ "handled": other.kind() })),
+            }
+        }));
+        watchers
+    }
+
+    type Lines = BufReader<UnixStream>;
+
+    async fn open_watch(socket: &Path) -> (IpcReply, Lines) {
+        let socket = socket.to_path_buf();
+        tokio::task::spawn_blocking(move || open_request(&socket, IpcMessage::Watch))
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap()
+    }
+
+    /// The next line after the reply; empty once the server closed the connection.
+    async fn next_line(mut lines: Lines) -> (String, Lines) {
+        tokio::task::spawn_blocking(move || {
+            let mut line = String::new();
+            lines.read_line(&mut line).unwrap();
+            (line, lines)
+        })
+        .await
+        .unwrap()
+    }
+
+    async fn wait_until_unwatched(watchers: &Watchers) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while watchers.is_watched() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the watching connection should end");
+    }
+
+    fn projects_changed() -> crate::watch::WatchEvent {
+        crate::watch::WatchEvent::Data(crate::events::DataChanged {
+            kind: crate::events::DataKind::Projects,
+            day: None,
+        })
+    }
+
+    fn request_line(message: IpcMessage) -> String {
+        let request = IpcRequest {
+            id: "r1".into(),
+            message,
+        };
+        format!("{}\n", serde_json::to_string(&request).unwrap())
     }
 
     async fn ask(socket: &Path, message: IpcMessage) -> io::Result<Option<IpcReply>> {
@@ -599,6 +493,7 @@ mod tests {
             IpcMessage::TimerStop,
             IpcMessage::TimerStatus,
             IpcMessage::TimerPicker,
+            IpcMessage::TimerRecent { limit: 5 },
             IpcMessage::TrackerStatus,
             timer_update_message(),
             suggestion_message(),
@@ -624,6 +519,7 @@ mod tests {
             IpcMessage::Tags,
             IpcMessage::Undo,
             IpcMessage::Redo,
+            IpcMessage::Watch,
         ]
     }
 
@@ -688,6 +584,12 @@ mod tests {
         assert_eq!(timer_start_message().kind(), "TimerStart");
         assert_eq!(IpcMessage::TimerStop.kind(), "TimerStop");
         assert_eq!(IpcMessage::TimerPicker.kind(), "TimerPicker");
+        assert_eq!(IpcMessage::TimerRecent { limit: 5 }.kind(), "TimerRecent");
+    }
+
+    #[test]
+    fn a_watch_message_is_of_the_kind_watch() {
+        assert_eq!(IpcMessage::Watch.kind(), "Watch");
     }
 
     #[cfg(debug_assertions)]
@@ -860,9 +762,14 @@ mod tests {
                 serde_json::json!({ "type": "timerPicker" }),
             ),
             (
+                IpcMessage::TimerRecent { limit: 5 },
+                serde_json::json!({ "type": "timerRecent", "limit": 5 }),
+            ),
+            (
                 IpcMessage::TrackerStatus,
                 serde_json::json!({ "type": "trackerStatus" }),
             ),
+            (IpcMessage::Watch, serde_json::json!({ "type": "watch" })),
             (
                 timer_update_message(),
                 serde_json::json!({
@@ -1190,6 +1097,113 @@ mod tests {
         let mut received = vec![rx.recv().await.unwrap(), rx.recv().await.unwrap()];
         received.sort_by_key(|m| format!("{m:?}"));
         assert_eq!(received, vec![first, second]);
+    }
+
+    #[tokio::test]
+    async fn a_watch_request_gets_its_reply_and_then_every_change() {
+        let dir = temp_config_dir();
+        let socket = dir.path().join("tt.sock");
+        let watchers = serve_answering(&socket);
+
+        let (reply, lines) = open_watch(&socket).await;
+        assert!(reply.ok);
+        assert_eq!(reply.result, serde_json::json!({ "handled": "Watch" }));
+
+        watchers.send(projects_changed());
+        let (line, lines) = next_line(lines).await;
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&line).unwrap(),
+            serde_json::json!({ "event": "data", "data": { "kind": "projects", "day": null } })
+        );
+
+        watchers.send(projects_changed());
+        let (line, _lines) = next_line(lines).await;
+        assert_eq!(
+            serde_json::from_str::<crate::watch::WatchEvent>(&line).unwrap(),
+            projects_changed()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_watch_request_gets_its_error_and_no_stream() {
+        let dir = temp_config_dir();
+        let socket = dir.path().join("tt.sock");
+        let watchers = serve_refusing_watch(&socket);
+
+        let (reply, lines) = open_watch(&socket).await;
+        assert_eq!(
+            reply.into_result(),
+            Err(IpcError::new(ErrorKind::Io, "no watching"))
+        );
+
+        wait_until_unwatched(&watchers).await;
+        watchers.send(projects_changed());
+        assert_eq!(next_line(lines).await.0, "");
+    }
+
+    #[tokio::test]
+    async fn closing_the_watching_client_ends_its_subscription() {
+        let dir = temp_config_dir();
+        let socket = dir.path().join("tt.sock");
+        let watchers = serve_answering(&socket);
+
+        let (_, lines) = open_watch(&socket).await;
+        assert!(watchers.is_watched());
+
+        drop(lines);
+        wait_until_unwatched(&watchers).await;
+    }
+
+    #[tokio::test]
+    async fn a_watcher_that_falls_too_far_behind_is_disconnected() {
+        let dir = temp_config_dir();
+        let socket = dir.path().join("tt.sock");
+        let watchers = serve_answering(&socket);
+
+        let (_, lines) = open_watch(&socket).await;
+        for _ in 0..100 {
+            watchers.send(projects_changed());
+        }
+
+        assert_eq!(next_line(lines).await.0, "");
+        wait_until_unwatched(&watchers).await;
+    }
+
+    #[tokio::test]
+    async fn a_one_way_watch_is_acknowledged_and_closed() {
+        let dir = temp_config_dir();
+        let socket = dir.path().join("tt.sock");
+        let mut rx = serve_into_channel(&socket);
+
+        let line = format!("{}\n", serde_json::to_string(&IpcMessage::Watch).unwrap());
+        assert_eq!(raw_exchange(&socket, line.as_bytes()).await, "ok\n");
+        assert_eq!(rx.recv().await.unwrap(), IpcMessage::Watch);
+    }
+
+    #[tokio::test]
+    async fn other_requests_get_one_reply_and_are_closed_while_someone_watches() {
+        let dir = temp_config_dir();
+        let socket = dir.path().join("tt.sock");
+        let watchers = serve_answering(&socket);
+        let (_, _lines) = open_watch(&socket).await;
+
+        let answer = raw_exchange(&socket, request_line(IpcMessage::TimerStatus).as_bytes()).await;
+        watchers.send(projects_changed());
+
+        let reply: IpcReply = serde_json::from_str(answer.trim_end()).unwrap();
+        assert_eq!(answer.lines().count(), 1);
+        assert_eq!(reply.id, "r1");
+        assert_eq!(
+            reply.result,
+            serde_json::json!({ "handled": "TimerStatus" })
+        );
+    }
+
+    #[test]
+    fn open_request_without_a_socket_returns_none() {
+        let dir = temp_config_dir();
+        let opened = open_request(&dir.path().join("none.sock"), IpcMessage::Watch).unwrap();
+        assert!(opened.is_none());
     }
 
     #[test]

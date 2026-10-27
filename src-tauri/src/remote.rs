@@ -24,7 +24,7 @@ use crate::scripting::{catalog, listing, writes};
 use crate::state::AppState;
 use crate::timers;
 use crate::tracker::{Tracker, TrackerStatus};
-use crate::window;
+use crate::{watch, window};
 
 /// Below the IPC client's timeout, so the sender still reads the reply.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(4);
@@ -221,7 +221,9 @@ pub async fn handle(app: AppHandle, message: IpcMessage) -> HandlerResult {
             timers::picker::open(&app, timers::picker::Place::OnFocusedScreen);
             Ok(serde_json::Value::Null)
         }
+        IpcMessage::TimerRecent { limit } => json(timer::recent(&db(&app)?, limit).await?),
         IpcMessage::TrackerStatus => json(tracker(&app)?.status()),
+        IpcMessage::Watch => json(watch::current(&app).await),
         IpcMessage::TimerUpdate { request } => {
             timers::commands::update_by_name(&app, request).await?;
             json(timer::state(&db(&app)?, now_ms()).await?)

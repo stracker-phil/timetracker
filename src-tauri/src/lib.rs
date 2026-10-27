@@ -36,6 +36,7 @@ pub mod test_support;
 pub mod timers;
 pub mod tracker;
 pub mod tray;
+pub mod watch;
 pub mod window;
 
 use std::path::PathBuf;
@@ -97,6 +98,10 @@ pub fn run() {
             std::process::exit(0);
         }
         Ok(CliOutcome::Mcp) => std::process::exit(mcp::run(&config_dir, socket)),
+        Ok(CliOutcome::Watch { json }) => match instance::watch(&socket, json) {
+            Some(code) => std::process::exit(code),
+            None => fail("TimeTracker is not running"),
+        },
         Ok(CliOutcome::Run { hidden, log_level }) => {
             (IpcMessage::Activate { hidden }, log_level, hidden)
         }

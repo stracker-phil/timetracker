@@ -123,7 +123,7 @@ Recording an hour of activity:
 │  Tray icon (menu bar)  ◀────────────▶│ AppState: stores, Db           │    │
 │                                      │ store/ (JSON files)            │    │
 └──────────────────────────────────────┴──────┬────────────┬──────────────────┘
-                     Unix socket (ipc.rs)     │            │ sqlx
+                     Unix socket (ipc/)       │            │ sqlx
   `timetracker …` (2nd process, CLI) ─────────┘            ▼
                                                     data/timetracker.sqlite
 ```
@@ -147,7 +147,9 @@ Recording an hour of activity:
 - **The native menu and the tray emit `command` events** carrying a command id. The page runs that id
   through the same registry that handles shortcuts and the palette. The page reports back which menu items
   can run and which are checked (`menu_sync`), so Rust greys them out.
-- **Data changes** are announced with `data_changed { kind, day }`; views showing that day reload.
+- **Data changes** are announced with `data_changed { kind, day }`; views showing that day reload. Other
+  apps get them, the timer and the tracker over the socket with `timetracker watch`
+  ([backend: watching](backend.md#watching), [ADR 0029](adr/0029-other-apps-may-subscribe-over-the-socket.md)).
 
 ## Repository map
 
@@ -162,8 +164,9 @@ src-tauri/
   src/instance.rs            socket handoff to the running app, instance lock, subcommand replies
   src/app.rs handlers.rs     Tauri builder (plugins, setup, run loop); every registered command
   src/main.rs
-  src/cli/                   CLI: command tree (mod.rs), time words (time.rs), report words (report.rs), human replies (reply.rs)
-  src/ipc.rs remote.rs pending.rs launch.rs   socket, dispatch and requests the page answers, launch queue
+  src/cli/                   CLI: command tree (mod.rs), time words (time.rs), report words (report.rs), human replies (reply.rs), watch lines (watch.rs)
+  src/ipc/ remote.rs pending.rs launch.rs   socket (messages in mod.rs, client.rs, server.rs), dispatch and requests the page answers, launch queue
+  src/watch.rs               changes streamed to other processes (`timetracker watch`, ADR 0029)
   src/events.rs              every event name and payload the backend emits
   src/state.rs               AppState
   src/error.rs lock.rs       AppError (+ ErrorKind), poison-tolerant lock helpers

@@ -101,20 +101,22 @@ reports can be saved under a name and sit under Reports in the sidebar.
 | `timetracker delete ID [--final]` | deletes a suggestion (a rule's is dismissed); with `--final` a recording |
 | `timetracker approve ID…` | records suggestions as they are |
 | `timetracker suggestions [RANGE]`, `recordings [RANGE]` | lists them with their ids (`RANGE` as for `report`; suggestions of at most 62 days) |
-| `timetracker projects [--archived]`, `clients [--archived]`, `tags` | lists the names a command takes, with their ids |
+| `timetracker projects [--archived]`, `clients [--archived]`, `tags` | lists the names a command takes, with their ids; `projects --json` also has each project's `color` (an accent name such as `blue`, its client's under a client) and `shade` (0 to 8, darkest first) |
 | `timetracker undo`, `redo` | undoes or redoes the last change to recordings or suggestions, as ⌘Z in the app |
 | `timetracker report [RANGE] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30 [--up]] [--notes]` | prints the hours and notes of today (or `yesterday`, `week`, `last-week`, `month`, `last-month`, a day, or two days `FROM TO`), ready to paste into a timesheet, then `Billable: 6:24 of 8:00 (80 %)`; `--json` has both numbers in `billable`. `--notes` prints only the notes, one per line in time order (`report today --notes --project P`: that project's, as the Reports screen's Copy notes) |
 | `timetracker timer start PROJECT [--note N] [--tag T]`, `timer stop` | starts a timer now (a running one stops; the same project, note and tag continue today's recording) / stops it |
 | `timetracker timer status [--json]` | the running timer: `--json` has `running`, `project`, `client`, `tag`, `note`, `startedAt` (ms), `startedAtIso`, `elapsedMs` and the ids |
 | `timetracker timer update [--project P] [--note N] [--tag T\|--no-tag]` | changes the running timer in place |
 | `timetracker timer pick` | opens the timer picker (the timer shortcut's, ⌘F4 by default) on the focused screen; the main window stays hidden |
+| `timetracker timer recent [--limit N] [--json]` | the menu bar's Recent Timers (default 8, at most 100): the latest distinct project, note and tag of the recordings, newest first, archived projects left out; `--json` is `[{ projectId, project, client, tagId, tag, note, lastUsedAt }]` (`lastUsedAt`: where its latest span starts, ms) |
+| `timetracker watch [--json]` | prints the timer and the tracker, then one line per change until TimeTracker quits, see [Watching for changes](#watching-for-changes) |
 | `timetracker mcp` | serves the MCP server on stdin/stdout, see [MCP](#mcp) |
 | `timetracker dev seed [--years N] [--yes]` | debug builds only: writes N years (default 2) of generated workdays into the running app's database ([docs/testing.md](docs/testing.md#sample-data)) |
 
 Times are `2026-10-21T09:30` (local, or with `Z` or `±hh:mm`), `09:30` (today) or `now`. Every command except
 `show`, `focus` and `mcp` needs TimeTracker running. Exit codes: 0 ok, 1 TimeTracker refused the request (the
-error is printed), 2 bad arguments or "TimeTracker is not running". `--json` prints replies as JSON. The
-older `start`, `stop`, `pause` and `resume` still work.
+error is printed), 2 bad arguments or "TimeTracker is not running" (and `watch` when TimeTracker quits).
+`--json` prints replies as JSON. The older `start`, `stop`, `pause` and `resume` still work.
 
 Closing the window keeps TimeTracker running in the menu bar, and ⌘Q also hides the Dock icon; recording
 goes on. Quit with "Quit TimeTracker" (app menu, menu bar item or palette) or `timetracker quit`.
@@ -157,6 +159,30 @@ timetracker record --project acme --span 09:00-09:30 --note Planning --source pl
 timetracker suggestions --json | jq -r '.[] | select(.by == "planner") | .id' | xargs timetracker approve
 ```
 
+### Watching for changes
+
+`timetracker watch --json` keeps a connection to the app open and prints one JSON line per change, so another
+app (a menu bar companion, a status line) can follow the timer without polling. The first lines are the
+current timer and tracker; then:
+
+| Line | When |
+|---|---|
+| `{"event":"timer","data":{…}}` | the timer started, stopped or changed; `data` as `timer status --json` (no line for the minute ticks) |
+| `{"event":"tracker","data":{…}}` | activity tracking paused, resumed, went away or needs permission; `data` as `tracker status --json` |
+| `{"event":"data","data":{"kind":"recordings","day":"2026-10-21"}}` | something the Day view shows changed: `kind` is `activity`, `recordings`, `projects`, `tags`, `rules` or `settings`; `day` is `null` when any day may have changed |
+
+Without `--json` the lines read `timer: Acme · standup · 0:25`, `tracker: paused`, `data: recordings
+2026-10-21`. Lines of a kind you don't know are to be skipped; more may come. `watch` ends with exit 2 when
+TimeTracker quits (or a client falls more than 64 changes behind), so a client reconnects and reads the
+current state again:
+
+```sh
+while true; do
+  timetracker watch --json | jq -c --unbuffered 'select(.event == "timer") | .data'
+  sleep 5   # TimeTracker quit or is restarting
+done
+```
+
 `--json` on `activity add` reads an array of `{ source, title, start, end, app?, url?, path? }` from stdin,
 with times in UTC milliseconds. Links also take `timetracker://show?day=…`, `timetracker://activity/start?…`
 and `timetracker://activity/stop?source=…`; encode a `+` in a time offset as `%2B`. The protocol behind the
@@ -176,7 +202,7 @@ claude mcp add timetracker -- ~/.local/bin/timetracker mcp
 
 Then ask "what did I record yesterday by project?" or "how many hours of development this month?". The tools:
 `report` (the report text, or JSON with the billable minutes and percent), `recordings`, `projects` (with
-`billable`), `tags`, `day_summary`, `status` and `open_day`
+`billable`), `tags`, `recent_timers` (the menu bar's Recent Timers), `day_summary`, `status` and `open_day`
 (these two need the app running), `clients`, `suggestions`, and `activity` (window titles and URLs), which
 stays off until you enable "Expose activity to the MCP server" in Settings → Data.
 

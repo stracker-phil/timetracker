@@ -12,7 +12,7 @@ use crate::capture::{PermissionStatus, SystemEvent};
 use crate::db::time::{Ms, now_ms};
 use crate::error::AppResult;
 use crate::events::TRACKER_STATUS_EVENT;
-use crate::tray;
+use crate::{tray, watch};
 
 const PERMISSION_POLL: Duration = Duration::from_secs(5);
 const RESTART_DELAY: Duration = Duration::from_secs(5);
@@ -33,7 +33,7 @@ impl Tracker {
     }
 }
 
-/// Runs the tracker for the app's lifetime and passes its statuses to the tray and the page.
+/// Runs the tracker for the app's lifetime and passes its statuses to the tray, the page and the watchers.
 pub fn start(app: &AppHandle, tracker: Arc<Tracker>) {
     forward_statuses(app, &tracker);
     supervise(tracker);
@@ -51,6 +51,7 @@ fn forward_statuses(app: &AppHandle, tracker: &Arc<Tracker>) {
                 Err(RecvError::Closed) => return,
             };
             tray::sync(&app, &status);
+            watch::tracker_changed(&app, &status);
             if let Err(e) = app.emit(TRACKER_STATUS_EVENT, &status) {
                 log::warn!("Couldn't send the tracker status to the page: {e}");
             }

@@ -12,6 +12,10 @@ pub struct ProjectEntry {
     pub name: String,
     pub client_id: Option<String>,
     pub client: Option<String>,
+    /// An accent name (`store::settings::ACCENTS`), the client's for a project under one.
+    pub color: String,
+    /// The lightness step of `color`, 0 to 8, darkest first.
+    pub shade: u8,
     pub billable: bool,
     pub archived: bool,
 }
@@ -47,6 +51,8 @@ pub async fn projects(db: &Db, include_archived: bool) -> AppResult<Vec<ProjectE
             id: project.id,
             name: project.name,
             client_id: project.client_id,
+            color: project.color,
+            shade: project.shade,
             billable: project.billable,
             archived: project.archived_at.is_some(),
         })
@@ -85,7 +91,7 @@ mod tests {
 
     use super::*;
     use crate::db::projects::{Project, ProjectInput};
-    use crate::test_support::{client, project};
+    use crate::test_support::{client, client_with_color, project};
 
     async fn billable_project(db: &Db, name: &str, client_id: &str) -> Project {
         projects::insert(
@@ -94,7 +100,7 @@ mod tests {
                 client_id: Some(client_id.into()),
                 name: name.into(),
                 color: "blue".into(),
-                shade: None,
+                shade: Some(3),
                 billable: true,
             },
         )
@@ -103,9 +109,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn projects_are_listed_by_name_with_their_client_and_billable_flag() {
+    async fn projects_are_listed_by_name_with_their_client_color_and_billable_flag() {
         let db = Db::open_memory().await.unwrap();
-        let acme = client(&db, "Acme").await;
+        let acme = client_with_color(&db, "Acme", "teal").await;
         let portal = billable_project(&db, "Portal", &acme.id).await;
         let admin = project(&db, "admin").await;
 
@@ -117,6 +123,8 @@ mod tests {
                     name: "admin".into(),
                     client_id: None,
                     client: None,
+                    color: "blue".into(),
+                    shade: admin.shade,
                     billable: false,
                     archived: false,
                 },
@@ -125,6 +133,8 @@ mod tests {
                     name: "Portal".into(),
                     client_id: Some(acme.id),
                     client: Some("Acme".into()),
+                    color: "teal".into(),
+                    shade: 3,
                     billable: true,
                     archived: false,
                 },
@@ -236,13 +246,15 @@ mod tests {
                 name: "Portal".into(),
                 client_id: Some("c1".into()),
                 client: Some("Acme".into()),
+                color: "teal".into(),
+                shade: 3,
                 billable: true,
                 archived: false,
             })
             .unwrap(),
             json!({
                 "id": "p1", "name": "Portal", "clientId": "c1", "client": "Acme",
-                "billable": true, "archived": false
+                "color": "teal", "shade": 3, "billable": true, "archived": false
             })
         );
         assert_eq!(

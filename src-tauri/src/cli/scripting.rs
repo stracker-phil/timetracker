@@ -9,6 +9,7 @@ use super::report::range;
 use crate::db::time::Ms;
 use crate::ipc::IpcMessage;
 use crate::scripting::writes::EditRequest;
+use crate::timers;
 use crate::timers::commands::{TimerStartRequest, TimerUpdateRequest};
 
 /// The project, note and tag a change sets; absent ones stay.
@@ -152,6 +153,16 @@ pub enum TimerCommand {
     Status,
     /// Open the timer picker on the focused screen, as the timer shortcut does; the window stays hidden
     Pick,
+    /// List the recent timers, as the tray offers them: project, note and tag, newest first
+    Recent {
+        /// At most this many
+        #[arg(
+            long,
+            default_value_t = timers::RECENT as u32,
+            value_parser = clap::value_parser!(u32).range(1..=timers::MAX_RECENT as i64)
+        )]
+        limit: u32,
+    },
     /// Change the running timer in place: its project, note or tag
     Update(ChangeArgs),
 }
@@ -165,6 +176,7 @@ impl TimerCommand {
             TimerCommand::Stop => IpcMessage::TimerStop,
             TimerCommand::Status => IpcMessage::TimerStatus,
             TimerCommand::Pick => IpcMessage::TimerPicker,
+            TimerCommand::Recent { limit } => IpcMessage::TimerRecent { limit },
             TimerCommand::Update(ChangeArgs {
                 project,
                 note,
@@ -525,6 +537,7 @@ mod tests {
             vec!["projects", "--json"],
             vec!["tags", "--json"],
             vec!["timer", "status", "--json"],
+            vec!["timer", "recent", "--json"],
         ] {
             assert!(remote(&args).1, "{args:?}");
         }
@@ -548,9 +561,25 @@ mod tests {
             (vec!["timer", "stop"], IpcMessage::TimerStop),
             (vec!["timer", "status"], IpcMessage::TimerStatus),
             (vec!["timer", "pick"], IpcMessage::TimerPicker),
+            (
+                vec!["timer", "recent"],
+                IpcMessage::TimerRecent { limit: 8 },
+            ),
+            (
+                vec!["timer", "recent", "--limit", "3"],
+                IpcMessage::TimerRecent { limit: 3 },
+            ),
         ];
         for (args, message) in cases {
             assert_eq!(remote(&args), (message, false, false), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn timer_recent_limit_outside_one_to_a_hundred_is_an_error() {
+        for limit in ["0", "101"] {
+            let message = error_of(&["timer", "recent", "--limit", limit]);
+            assert!(message.contains("--limit"), "{limit}: {message}");
         }
     }
 

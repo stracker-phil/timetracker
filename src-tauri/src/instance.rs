@@ -1,11 +1,15 @@
-//! A new process and the running TimeTracker: handing a launch over, taking the instance lock, and
-//! asking the running app on behalf of a subcommand.
+//! A new process and the running TimeTracker: handing a launch over, taking the instance lock, asking
+//! the running app on behalf of a subcommand, and watching it.
 
 use std::fs::File;
+use std::io::{BufRead, Write};
 use std::path::Path;
 use std::time::Duration;
 
+use serde_json::Value;
+
 use crate::ipc::{self, Forward, IpcError, IpcMessage};
+use crate::watch::WatchEvent;
 use crate::{cli, db, fail};
 
 const LOCK_NAME: &str = "timetracker.lock";
@@ -116,6 +120,69 @@ fn print_result(message: &IpcMessage, result: &serde_json::Value, json: bool) {
         Ok(None) => {}
         Err(e) => fail(&e),
     }
+}
+
+/// Prints the running app's timer and tracker, then one line per change. Returns the exit code: 2 when
+/// the app quits, 0 when stdout closes; `None` when nothing listens.
+pub fn watch(socket: &Path, json: bool) -> Option<i32> {
+    let (reply, lines) = match ipc::open_request(socket, IpcMessage::Watch) {
+        Ok(Some(opened)) => opened,
+        Ok(None) => return None,
+        Err(e) => fail(&format!("Could not reach the running TimeTracker: {e}")),
+    };
+    let current = match reply.into_result() {
+        Ok(current) => current,
+        Err(error) => {
+            print_error(&error, json, &[]);
+            return Some(1);
+        }
+    };
+    for event in current.as_array().into_iter().flatten() {
+        if !print_event(event, json) {
+            return Some(0);
+        }
+    }
+    Some(follow(lines, json))
+}
+
+/// Prints every event line until the app quits (2) or stdout closes (0).
+fn follow(mut lines: impl BufRead, json: bool) -> i32 {
+    let mut line = String::new();
+    loop {
+        line.clear();
+        match lines.read_line(&mut line) {
+            Ok(0) => {
+                eprintln!("TimeTracker quit");
+                return 2;
+            }
+            Ok(_) => {
+                let Ok(event) = serde_json::from_str::<Value>(&line) else {
+                    continue;
+                };
+                if !print_event(&event, json) {
+                    return 0;
+                }
+            }
+            Err(e) => {
+                eprintln!("Lost the connection to TimeTracker: {e}");
+                return 2;
+            }
+        }
+    }
+}
+
+/// False once stdout is closed. An event this build does not know is printed as JSON.
+fn print_event(event: &Value, json: bool) -> bool {
+    let known = if json {
+        None
+    } else {
+        serde_json::from_value::<WatchEvent>(event.clone()).ok()
+    };
+    let text = match known {
+        Some(event) => cli::watch::line(&event, db::time::now_ms(), &chrono::Local),
+        None => event.to_string(),
+    };
+    writeln!(std::io::stdout(), "{text}").is_ok()
 }
 
 /// The `{ ids }` replies of a split batch as one.

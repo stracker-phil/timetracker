@@ -1,4 +1,5 @@
-//! The running timer as flat fields for scripts (`timer status --json`, `status --json`).
+//! The running timer as flat fields for scripts (`timer status --json`, `status --json`), and the recent
+//! timers (`timer recent --json`).
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -7,7 +8,7 @@ use crate::day;
 use crate::db::time::{Ms, to_local_iso};
 use crate::db::{Db, recordings};
 use crate::error::AppResult;
-use crate::timers::open_start;
+use crate::timers::{self, open_start};
 
 /// Every field but `running` is `None` while no timer runs.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
@@ -25,6 +26,46 @@ pub struct TimerState {
     pub started_at: Option<Ms>,
     pub started_at_iso: Option<String>,
     pub elapsed_ms: Option<Ms>,
+}
+
+/// A project, note and tag recently recorded together, as the tray's Recent Timers offer it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentTimerEntry {
+    pub project_id: String,
+    pub project: String,
+    pub client: Option<String>,
+    pub tag_id: Option<String>,
+    pub tag: Option<String>,
+    pub note: String,
+    /// Where its latest span starts.
+    pub last_used_at: Ms,
+}
+
+/// Newest first, `limit` held to `1..=MAX_RECENT`; archived projects left out (`timers::recent`).
+pub async fn recent(db: &Db, limit: u32) -> AppResult<Vec<RecentTimerEntry>> {
+    let names = day::names(db).await?;
+    let limit = (limit as usize).clamp(1, timers::MAX_RECENT);
+    Ok(timers::recent(db, limit)
+        .await?
+        .into_iter()
+        .map(|recent| RecentTimerEntry {
+            client: names
+                .projects
+                .get(&recent.project_id)
+                .and_then(|p| p.client_name.clone()),
+            tag: recent
+                .tag_id
+                .as_ref()
+                .and_then(|id| names.tags.get(id))
+                .map(|t| t.name.clone()),
+            project_id: recent.project_id,
+            project: recent.project_name,
+            tag_id: recent.tag_id,
+            note: recent.note,
+            last_used_at: recent.last_used,
+        })
+        .collect())
 }
 
 pub async fn state(db: &Db, now: Ms) -> AppResult<TimerState> {
@@ -79,6 +120,174 @@ mod tests {
         .await
         .unwrap()
         .id
+    }
+
+    async fn finished(db: &Db, project_id: &str, start: Ms, note: &str, tag_id: Option<&str>) {
+        recordings::insert(
+            db,
+            NewRecording {
+                id: uuid::Uuid::new_v4().to_string(),
+                project_id: project_id.into(),
+                spans: vec![(start, Some(start + 30 * MIN))],
+                note: note.into(),
+                tag_id: tag_id.map(String::from),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn recent_timers_name_their_project_client_and_tag_newest_first() {
+        let db = Db::open_memory().await.unwrap();
+        let acme = client(&db, "Acme").await;
+        let portal = projects::insert(
+            &db,
+            ProjectInput {
+                client_id: Some(acme.id),
+                name: "Portal".into(),
+                color: "blue".into(),
+                shade: None,
+                billable: true,
+            },
+        )
+        .await
+        .unwrap();
+        let admin = project(&db, "admin").await;
+        let dev = tags::insert(&db, "dev").await.unwrap();
+        finished(&db, &admin.id, 1_000 * MIN, "", None).await;
+        finished(&db, &portal.id, 2_000 * MIN, "standup", Some(&dev.id)).await;
+
+        assert_eq!(
+            recent(&db, 8).await.unwrap(),
+            [
+                RecentTimerEntry {
+                    project_id: portal.id,
+                    project: "Portal".into(),
+                    client: Some("Acme".into()),
+                    tag_id: Some(dev.id),
+                    tag: Some("dev".into()),
+                    note: "standup".into(),
+                    last_used_at: 2_000 * MIN,
+                },
+                RecentTimerEntry {
+                    project_id: admin.id,
+                    project: "admin".into(),
+                    client: None,
+                    tag_id: None,
+                    tag: None,
+                    note: String::new(),
+                    last_used_at: 1_000 * MIN,
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn recent_timers_are_at_most_the_limit_newest_first() {
+        let db = Db::open_memory().await.unwrap();
+        let podcast = project(&db, "Podcast").await;
+        for i in 0..5 {
+            finished(
+                &db,
+                &podcast.id,
+                (1_000 + i * 60) * MIN,
+                &format!("n{i}"),
+                None,
+            )
+            .await;
+        }
+
+        let notes: Vec<String> = recent(&db, 3)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|t| t.note)
+            .collect();
+
+        assert_eq!(notes, ["n4", "n3", "n2"]);
+    }
+
+    #[tokio::test]
+    async fn recent_timers_with_a_zero_limit_list_the_newest_one() {
+        let db = Db::open_memory().await.unwrap();
+        let podcast = project(&db, "Podcast").await;
+        finished(&db, &podcast.id, 1_000 * MIN, "older", None).await;
+        finished(&db, &podcast.id, 2_000 * MIN, "newer", None).await;
+
+        let notes: Vec<String> = recent(&db, 0)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|t| t.note)
+            .collect();
+
+        assert_eq!(notes, ["newer"]);
+    }
+
+    #[tokio::test]
+    async fn recent_timers_are_at_most_max_recent_however_large_the_limit() {
+        let db = Db::open_memory().await.unwrap();
+        let podcast = project(&db, "Podcast").await;
+        for i in 0..=timers::MAX_RECENT as Ms {
+            finished(
+                &db,
+                &podcast.id,
+                (1_000 + i * 60) * MIN,
+                &format!("n{i}"),
+                None,
+            )
+            .await;
+        }
+
+        assert_eq!(
+            recent(&db, u32::MAX).await.unwrap().len(),
+            timers::MAX_RECENT
+        );
+    }
+
+    #[tokio::test]
+    async fn recent_timers_leave_out_archived_projects() {
+        let db = Db::open_memory().await.unwrap();
+        let kept = project(&db, "Kept").await;
+        let old = project(&db, "Old").await;
+        finished(&db, &kept.id, 1_000 * MIN, "", None).await;
+        finished(&db, &old.id, 2_000 * MIN, "", None).await;
+        projects::set_archived(&db, &old.id, true).await.unwrap();
+
+        let listed: Vec<String> = recent(&db, 8)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|t| t.project)
+            .collect();
+
+        assert_eq!(listed, ["Kept"]);
+    }
+
+    #[test]
+    fn recent_timers_serialize_as_a_list_with_camel_case_fields() {
+        assert_eq!(
+            serde_json::to_value(vec![RecentTimerEntry {
+                project_id: "p1".into(),
+                project: "Portal".into(),
+                client: Some("Acme".into()),
+                tag_id: Some("t1".into()),
+                tag: Some("dev".into()),
+                note: "standup".into(),
+                last_used_at: 1_000,
+            }])
+            .unwrap(),
+            json!([{
+                "projectId": "p1",
+                "project": "Portal",
+                "client": "Acme",
+                "tagId": "t1",
+                "tag": "dev",
+                "note": "standup",
+                "lastUsedAt": 1_000
+            }])
+        );
     }
 
     #[tokio::test]

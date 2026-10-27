@@ -1,7 +1,8 @@
 //! The `timetracker` command line. Without a subcommand it starts the app (or activates the running
 //! one); every subcommand becomes one `IpcMessage` that the running app answers (`remote::handle`).
 //! A new subcommand adds a `Command` variant, its arm in `message`, a parser test, its arm in
-//! `remote::handle` and, when it prints something, its arm in `reply::render`.
+//! `remote::handle` and, when it prints something, its arm in `reply::render`. `mcp` and `watch` are no
+//! single request: they are outcomes of their own.
 
 mod activity;
 mod batch;
@@ -12,6 +13,7 @@ mod scripting;
 #[cfg(test)]
 mod testing;
 pub mod time;
+pub mod watch;
 mod written;
 
 use std::ffi::OsString;
@@ -39,6 +41,8 @@ const EXAMPLES: &str = "Examples:
   timetracker timer stop               stop the running timer
   timetracker timer start acme --note \"weekly call\" --tag \"external meeting\"
   timetracker timer status --json      the running timer as flat fields
+  timetracker timer recent --json      the recent timers, as the tray offers them
+  timetracker watch --json             one line per change of the timer, the tracker or the data
   timetracker activity add --source planner --title \"Weekly sync\" --start 10:00 --end 10:45
   timetracker activity start --source planner --title Break
   timetracker activity stop --source planner
@@ -181,6 +185,8 @@ enum Command {
     Tracker(TrackerCommand),
     /// Serve an MCP server (reads work while the app is closed; writes make suggestions)
     Mcp,
+    /// Print the timer and the tracker, then one line per change (timer, tracker, data) until TimeTracker quits
+    Watch,
     /// Developer tools (debug builds only)
     #[cfg(debug_assertions)]
     #[command(subcommand)]
@@ -213,6 +219,8 @@ pub enum CliOutcome {
     Exit { message: String },
     /// `timetracker mcp`: serve MCP on stdio instead of starting or asking the app.
     Mcp,
+    /// `timetracker watch`: stream the running app's changes until it quits.
+    Watch { json: bool },
     /// A subcommand for the running app. `starts_app`: with no app running, start it with the message.
     Remote {
         message: IpcMessage,
@@ -268,8 +276,10 @@ where
             log_level: cli.log_level,
         });
     };
-    if matches!(command, Command::Mcp) {
-        return Ok(CliOutcome::Mcp);
+    match command {
+        Command::Mcp => return Ok(CliOutcome::Mcp),
+        Command::Watch => return Ok(CliOutcome::Watch { json: cli.json }),
+        _ => {}
     }
     let starts_app = matches!(command, Command::Show { .. } | Command::Focus);
     let message = message(command, cli.json, now, tz, stdin).map_err(error)?;
@@ -331,7 +341,9 @@ fn message<Tz: TimeZone>(
         Command::Redo => IpcMessage::Redo,
         #[cfg(debug_assertions)]
         Command::Dev(DevCommand::Seed { years, yes }) => IpcMessage::DevSeed { years, yes },
-        Command::Mcp => unreachable!("`parse` serves `mcp` before it builds a message"),
+        Command::Mcp | Command::Watch => {
+            unreachable!("`parse` returns `mcp` and `watch` before it builds a message")
+        }
     })
 }
 
@@ -356,6 +368,15 @@ mod tests {
     #[test]
     fn the_mcp_subcommand_serves_without_starting_the_app() {
         assert_eq!(run(&["mcp"]), Ok(CliOutcome::Mcp));
+    }
+
+    #[test]
+    fn the_watch_subcommand_streams_without_starting_the_app() {
+        assert_eq!(run(&["watch"]), Ok(CliOutcome::Watch { json: false }));
+        assert_eq!(
+            run(&["watch", "--json"]),
+            Ok(CliOutcome::Watch { json: true })
+        );
     }
 
     #[test]
@@ -426,6 +447,7 @@ mod tests {
             "timer",
             "tracker",
             "mcp",
+            "watch",
         ] {
             assert!(listed.iter().any(|l| l == name), "{name}: {listed:?}");
         }
