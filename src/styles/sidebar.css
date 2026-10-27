@@ -10,14 +10,12 @@
 @media (prefers-color-scheme: dark) { [data-sidebar="dark"] .sidebar { background: transparent; } }
 /* The strip under the window buttons, a drag region. */
 .sidebar-titlebar { flex: none; height: var(--toolbar-height); }
-.sidebar-body { flex: 1; overflow: auto; padding: 0 0 var(--space-3); scrollbar-gutter: stable; }
-/* Sidebar entries: a 20px line with --pad and 4px more around it, an 8px inset, a 6px radius (docs/ux.md). On the
-   right the scrollbar's gutter (always kept) stands in for the inset, as far as it is wide. */
+.sidebar-body { flex: 1; overflow: auto; padding: 0 0 var(--space-3); }
+/* Sidebar entries: a 20px line with --pad and 4px more around it, an 8px inset, a 6px radius (docs/ux.md). */
 .si {
   display: flex; align-items: center; gap: var(--space-2); margin: 0 var(--space-2); padding: calc(var(--pad) + 2px) var(--space-2); line-height: 20px;
   border: none; border-radius: var(--radius-sm); background: none; color: var(--sidebar-text); cursor: default; white-space: nowrap; text-align: left;
 }
-.sidebar-body .si { margin-right: max(0px, 8px - var(--scrollbar-size)); }
 .si:hover { background: var(--sidebar-hover); }
 .si.sel { background: var(--sidebar-selected); color: var(--sidebar-strong); font-weight: 500; }
 .si.sel svg { color: var(--accent); }

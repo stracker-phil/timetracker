@@ -87,15 +87,24 @@
 @keyframes pulse { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .recording.running::after, .sheet-card.running::after, .week-card.running::after { animation: none; } }
 
-/* Suggestions: a rule's proposed recording, hatched in its project's color and outlined dashed: not a recording yet. */
+/* Suggestions (a block here, a card in the timesheet): the project's fill on wide diagonal stripes, faded and
+   without an outline: not a recording yet. Only the background fades, never the text. */
+.suggestion, .suggestion-card {
+  background: repeating-linear-gradient(
+    135deg, color-mix(in oklab, var(--block-fill) 70%, transparent) 0 12px, color-mix(in oklab, var(--block-fill) 50%, transparent) 12px 24px
+  ), var(--bg);
+}
+.suggestion:hover, .suggestion-card:hover {
+  background: repeating-linear-gradient(
+    135deg, color-mix(in oklab, var(--block-fill) 90%, transparent) 0 12px, color-mix(in oklab, var(--block-fill) 70%, transparent) 12px 24px
+  ), var(--bg);
+}
 .suggestion {
   position: absolute; left: 4px; right: 4px; box-sizing: border-box; overflow: hidden; margin: 0;
   padding: 3px var(--space-2); display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
   line-height: 1.3; text-align: left; color: var(--block-text); cursor: pointer;
-  background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--block-fill) 70%, transparent) 0 5px, color-mix(in oklab, var(--block-fill) 25%, transparent) 5px 10px), var(--bg);
-  border: 1px dashed var(--block-meta); border-radius: var(--radius-card);
+  border-radius: var(--radius-card);
 }
-.suggestion:hover { background: var(--block-fill); }
 [data-input="keyboard"] .suggestion.focused { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
 .suggestion-project { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .suggestion-by { font-size: var(--data-font-size); color: var(--block-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }

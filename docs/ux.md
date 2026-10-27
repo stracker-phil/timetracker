@@ -49,6 +49,9 @@ Grouped content is an **inset group**: `--fill-quiet`, `--radius` (10px), no bor
 opaque; in the Light scheme in light mode and the Dark scheme in dark mode the sidebar is transparent, so the
 window's `sidebar` material (vibrancy) shows through, and it greys out while the window is inactive.
 
+**Scrollbars** are macOS's own overlay scrollbars, shown only while scrolling: no `::-webkit-scrollbar` rule
+anywhere, since any would make WebKit draw a permanent bar.
+
 ## Shell
 
 One place for views and one place for dates: the sidebar.
@@ -374,7 +377,8 @@ before its first activity (08:00 without any).
   lights up its card. The open editor takes its place among the cards (see [Recordings](#recordings)).
 - **Timeline columns,** left to right: the hour axis (`--timeline-axis-w`, hour labels in `--fs-caption`
   `--o2`, tabular figures; hour hairlines in `--line`, half hours from 3 px per minute), the time column
-  (`--recordings-col-w`, about 90 px: recordings and suggestions, where a drag selects time), the summary
+  (`--recordings-col-w`, about 90 px: recordings and suggestions, where a drag selects time; `--line` at
+  70% every 15 minutes and a fainter one every 5 from 1.2 px per minute), the summary
   lane, then the pinned app lanes (an app's own lane), Activity and the external sources' lanes. Lane heads
   stick to the top with an icon (the app's for an app lane) and the name; a pinned app lane's head shows only
   the icon, and the Activity head shows the day's tracked time. Lanes take shares of the width by kind
@@ -478,7 +482,7 @@ timeline's for every app.
   bottom edge means the span continues on another day. The top and bottom 6px resize the span; the body
   moves it. Activity under recordings (half or more) takes `--activity-fill-dim` (summary) or a regular-weight
   `--o2` label (memories); hover lifts it.
-- **Editor**, inline in the timesheet (Timely's): a card with a 2px accent ring at the new recording's place
+- **Editor**, inline in the timesheet (Timely's): a card with a 2px ring in the picked project's color (none while no project is picked) at the new recording's place
   among the cards (in place of the card it edits), pushing the cards below down and scrolled into view; it is
   never a sheet over the timeline (the Week and Month views, without a timesheet, show it as a sheet). Top to bottom: the
   note as the title field (focused, "What did you work on?"; when an earlier recording has the same note,
@@ -486,18 +490,20 @@ timeline's for every app.
   they match), project (the name, the client muted after it;
   focus opens the list of every project once by client, type to search, "New project…"; a new recording
   starts empty, and while empty up to 5 projects show below it as rows to click: the proposed one first,
-  marked "Suggested", then the recent ones), tag (only once a project is picked), "Logged time" on a tinted
+  marked "Suggested", then the recent ones), tag (only once a project is picked), "Logged" on a tinted
   band across the card (the duration as large `[0] h [20] m`, both numbers editable, underlined, a change
-  moving the last span's end; 15m, 30m and 1h 00m buttons set it, the current one pressed), the spans as
+  moving the last span's end; 15m, 30m and 1h buttons set it, the current one pressed; on the running timer's
+  recording it counts up to now, read-only), the spans as
   `[10:00] – [10:20]` lines behind a clock icon (✕ removes one while there are several; "Add time" adds one
-  after the last), then Save and Cancel at the leading end and a trash icon for Delete at the trailing end.
+  after the last), then Save (on the running timer's recording "Stop and save": it saves and stops the timer) and Cancel at the leading end and a trash icon for Delete at the trailing end.
   Like Timely's, the card is sections split by hairlines, with no labels and no field frames: the note is
   one input styled as a 15px semibold title (focus only adds the field's surface, frame and ring, so nothing
   moves), the pickers are full-width semibold rows that light up on hover and focus, so a long project name
   fits, and the times sit on soft fills. Project colors show as small rounded squares in the editor and the
   picker lists.
-  The editor shows no activity: activity is only a signal for recording, never linked to a recording. The draft's spans show in the time column as accent-filled blocks with their
-  times and a short accent bar on the top and bottom edge (an edge in another day has none): dragging an edge
+  The editor shows no activity: activity is only a signal for recording, never linked to a recording. The draft's spans show in the time column filled like a recording of the picked
+  project (neutral without one) under a strong 2px outline in its color, with their times and a short bar
+  in that color on the top and bottom edge (an edge in another day has none): dragging an edge
   moves that end from mark to mark while the block and the From and To fields follow; on release Rust merges
   spans that now touch or overlap into one. A click on a block can split them again (its span
   leaves the draft). Editing an existing recording draws its spans the same way. A new recording's project is proposed (only offered, never filled in): the project of the latest recording (two weeks back) that
@@ -538,11 +544,11 @@ timeline's for every app.
 - **Suggestions to review**: a rule's match is a suggestion, a largely prefilled recording (the rule's project,
   note and tag) that becomes a recording only once approved. Other apps store suggestions too (`timetracker
   record` without `--final`, Claude over MCP; ADR 0028): they read "Suggested by cli" (or the source the app
-  gave), take their time before the rules do, and approving one records all of its spans as one recording. Over the timesheet's cards a line in `--sel`
-  reads "3 suggestions · Approve all · Dismiss all" while the day has any (both act on the shown ones).
+  gave), take their time before the rules do, and approving one records all of its spans as one recording. Approve all and Dismiss all are commands (palette and menu) only; the timesheet has no line for them, since
+  each suggestion is reviewed on its own.
 - **Ghost cards** in the timesheet, in time order among the recordings' cards (Rust places each before the
-  first card starting after it, `Suggestion.nextCard`): a card outlined dashed in `--block-meta` on a faint
-  `--block-fill` (22% over `--bg-quiet`), the note as title (else the project), project and client, "Suggested
+  first card starting after it, `Suggestion.nextCard`): a card without an outline on wide diagonal stripes
+  of `--block-fill` (70% and 50% over `--bg`, 90% and 70% on hover; only the background fades, never the text), the note as title (else the project), project and client, "Suggested
   by <rule or source>" with a sparkle, the tag and the duration; ✓ (Approve) and ✕ (Dismiss) round buttons top right.
   A click opens the inline editor prefilled with it ("Suggested by <rule or source>. Approve records it.", the primary
   button reads Approve): saving records it as edited and dismisses the rest of its time, one undo step.
@@ -550,7 +556,7 @@ timeline's for every app.
   stays part of the recording around it; imported activity counts on its own (ADR 0027).
 - **Joined**: touching suggestions that would make the same recording (project, note and tag), also from
   different rules, show as one ("Suggested by PhpStorm, Slack: Lumen Labs").
-- **Hatched blocks** in the time column: diagonal stripes of the project's fill, dashed outline, project, rule
+- **Striped blocks** in the time column: the ghost card's stripes, no outline, project, rule
   and duration; a click opens the editor on it like its card. The suggestion being edited gives way to the
   editor's draft spans.
 - **Focus and keys**: ] and [ step through the timesheet, recordings and suggestions alike; Tab reaches a ghost

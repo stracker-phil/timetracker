@@ -552,17 +552,17 @@ describe("RecordingEditor", () => {
   describe("logged time", () => {
     const quick = () => within(screen.getByRole("group", { name: "Set duration" }));
 
-    it("labels the band and offers 15m, 30m and 1h 00m", async () => {
+    it("labels the band and offers 15m, 30m and 1h", async () => {
       renderCreate();
       await editorForm("New recording");
-      expect(screen.getByText("Logged time")).toBeInTheDocument();
-      expect(quick().getAllByRole("button").map((b) => b.textContent)).toEqual(["15m", "30m", "1h 00m"]);
+      expect(screen.getByText("Logged")).toBeInTheDocument();
+      expect(quick().getAllByRole("button").map((b) => b.textContent)).toEqual(["15m", "30m", "1h"]);
     });
 
     it.each([
       ["15m", 15, "09:15", "0", "15"],
       ["30m", 30, "09:30", "0", "30"],
-      ["1h 00m", 60, "10:00", "1", "0"],
+      ["1h", 60, "10:00", "1", "0"],
     ])("sets the length with %s and shows the end Rust moves to", async (label, minutes, end, hours, rest) => {
       renderCreate();
       await editorForm("New recording");
@@ -576,11 +576,11 @@ describe("RecordingEditor", () => {
     it("presses only the button that matches the current length", async () => {
       renderCreate();
       await editorForm("New recording");
-      for (const label of ["15m", "30m", "1h 00m"]) expect(quick().getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "false");
+      for (const label of ["15m", "30m", "1h"]) expect(quick().getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "false");
       await userEvent.click(quick().getByRole("button", { name: "30m" }));
       await waitFor(() => expect(quick().getByRole("button", { name: "30m" })).toHaveAttribute("aria-pressed", "true"));
       expect(quick().getByRole("button", { name: "15m" })).toHaveAttribute("aria-pressed", "false");
-      expect(quick().getByRole("button", { name: "1h 00m" })).toHaveAttribute("aria-pressed", "false");
+      expect(quick().getByRole("button", { name: "1h" })).toHaveAttribute("aria-pressed", "false");
     });
 
     it("is not offered while the timer runs on the recording", async () => {
@@ -588,7 +588,7 @@ describe("RecordingEditor", () => {
       mocked.recordingsList.mockResolvedValue([running]);
       renderEditor({ mode: "edit", id: "r1" });
       await editorForm("Edit recording");
-      expect(screen.getByText("Logged time")).toBeInTheDocument();
+      expect(screen.getByText("Logged")).toBeInTheDocument();
       expect(screen.queryByRole("group", { name: "Set duration" })).not.toBeInTheDocument();
     });
   });
@@ -858,13 +858,45 @@ describe("RecordingEditor", () => {
         expect(field("Hours")).toHaveAttribute("readonly");
       });
 
-      it("saves the fields without spans", async () => {
+      it("offers Stop and save instead of Save", async () => {
+        renderEditor({ mode: "edit", id: "r1" });
+        await editorForm("Edit recording");
+        expect(button("Stop and save")).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+      });
+
+      it("saves the fields without spans, stops the timer and closes the editor", async () => {
         renderEditor({ mode: "edit", id: "r1" });
         await editorForm("Edit recording");
         await userEvent.type(field("Note"), "!");
-        await userEvent.click(button("Save"));
+        await userEvent.click(button("Stop and save"));
         await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { projectId: "p-site", note: "standup!", tagId: "tag-research" }, "cancel"));
+        await waitFor(() => expect(mocked.timerStop).toHaveBeenCalled());
+        await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
       });
+
+      describe("logged time", () => {
+        afterEach(() => vi.useRealTimers());
+
+        it("adds the time since the running span started to the closed spans", async () => {
+          vi.useFakeTimers({ toFake: ["Date"] });
+          vi.setSystemTime(at("12:20"));
+          renderEditor({ mode: "edit", id: "r1" });
+          await editorForm("Edit recording");
+          expect(field("Hours")).toHaveValue("1");
+          expect(field("Minutes")).toHaveValue("50");
+        });
+      });
+    });
+
+    it("keeps Save for a recording without a running span and does not stop the timer", async () => {
+      mocked.recordingsList.mockResolvedValue([standupRow]);
+      renderEditor({ mode: "edit", id: "r1" });
+      await editorForm("Edit recording");
+      await userEvent.click(button("Save"));
+      await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalled());
+      await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
+      expect(mocked.timerStop).not.toHaveBeenCalled();
     });
 
     it("shows nothing and an error when the recording cannot be loaded", async () => {

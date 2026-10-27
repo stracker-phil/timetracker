@@ -14,6 +14,7 @@ import { RecordingsColumn } from "./RecordingsColumn";
 import { HALF_HOURS_FROM_PX, TimeAxis } from "./TimeAxis";
 import { useSelectionPress } from "./useSelectionPress";
 import { useRuleDrag } from "./useRuleDrag";
+import { useNow } from "./useNow";
 import { useTimelineScroll } from "./useTimelineScroll";
 import { useVisibleRange } from "./useVisibleRange";
 import { ZoomControl } from "./ZoomControl";
@@ -22,6 +23,8 @@ const MINUTE_MS = 60_000;
 const SHOW_CARD_MS = 300;
 const HIDE_CARD_MS = 150;
 const NOW_TICK_MS = 30_000;
+/** The time column draws 5-minute lines only while they are at least 6px apart. */
+const FIVE_MINUTES_FROM_PX = 1.2;
 /** Compact density draws the day at this share of the zoom's height. */
 const COMPACT_SCALE = 0.6;
 
@@ -32,16 +35,6 @@ const selectHighlightedBlocks = (s: Store) => (s.editor ? s.draftBlockIds : (s.s
 
 const blockIdAt = (target: EventTarget) => (target instanceof Element ? (target.closest<HTMLElement>("[data-block-id]")?.dataset.blockId ?? null) : null);
 const gearAt = (target: EventTarget) => (target instanceof Element ? target.closest<HTMLElement>("[data-block-gear]") : null);
-
-function useNow(live: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!live) return;
-    const timer = setInterval(() => setNow(Date.now()), NOW_TICK_MS);
-    return () => clearInterval(timer);
-  }, [live]);
-  return now;
-}
 
 /** The hovered block, shown after a delay; the card itself keeps it shown. */
 function useHoveredBlock() {
@@ -78,7 +71,7 @@ export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) 
   const hover = useHoveredBlock();
   const menu = useContextMenu();
   const live = isToday(view.day);
-  const now = useNow(live);
+  const now = useNow(live, NOW_TICK_MS);
   const [origin, end] = view.bounds;
   const y = (ms: number) => ((ms - origin) / MINUTE_MS) * pxPerMinute;
   const element = (id: string | null) => (id === null ? null : (scrollRef.current?.querySelector(`[data-block-id="${id}"]`) ?? null));
@@ -123,12 +116,14 @@ export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) 
     <div className="timeline-frame">
       <div className={view.compact ? "timeline timeline--compact" : "timeline"} ref={scrollRef} onMouseLeave={hover.leave}>
         <LaneHeader lanes={view.lanes} trackedMs={view.totals.trackedMs} />
-        <div className="timeline-body" style={{ height: y(end) }}>
+        <div
+          className={pxPerMinute >= FIVE_MINUTES_FROM_PX ? "timeline-body five-minutes" : "timeline-body"}
+          style={{ height: y(end), "--hour-px": `${60 * pxPerMinute}px` } as CSSProperties}
+        >
           <TimeAxis bounds={view.bounds} pxPerMinute={pxPerMinute} onPointerDown={press} />
           <RecordingsColumn ref={columnRef} recordings={view.recordings} suggestions={view.suggestions} grid={grid} bounds={view.bounds} selection={selection} onPress={press} />
           <div
             className={pxPerMinute >= HALF_HOURS_FROM_PX ? "lanes half-hours" : "lanes"}
-            style={{ "--hour-px": `${60 * pxPerMinute}px` } as CSSProperties}
             onMouseOver={(e) => hover.over(blockIdAt(e.target))}
             onPointerDown={pressLanes}
             onClick={(e) => {

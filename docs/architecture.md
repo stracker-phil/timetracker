@@ -105,7 +105,7 @@ Recording an hour of activity:
    suggestions, finds the id and creates the recording through the recordings service (undoable). Edit opens
    the inline editor prefilled; its Approve sends `suggestion_approve_edited`. ✕ (or ⌫) sends
    `suggestions_dismiss`, which stores the span in `dismissed_suggestions` as an undoable `Op::Dismiss`.
-   Approve all (`suggestions_approve`) and Dismiss all send the shown ids.
+   The Approve all (`suggestions_approve`) and Dismiss all commands (palette and menu) send the shown ids.
 3. `data_changed` reloads the day; the approved time is now recorded and the dismissed time is cut away, so
    the suggestion is gone.
 

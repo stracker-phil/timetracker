@@ -6,6 +6,7 @@ import { drawnParts } from "./drawnParts";
 import { pointerDrag } from "./pointerDrag";
 import { sameSpan, spanWithEdge } from "./spanDrag";
 import { tickPointer, type TickGrid } from "./tickPointer";
+import { useDraftColor } from "./useDraftColor";
 
 interface Props {
   /** The open editor's span, whole (it may reach into another day). */
@@ -24,6 +25,7 @@ interface Props {
  */
 export function DraftBlock({ span, index, grid, bounds }: Props) {
   const dragged = useStore((s) => (s.draftDrag?.index === index ? s.draftDrag.span : null));
+  const color = useDraftColor();
   const shown = dragged ?? span;
   const [part] = drawnParts([shown], bounds);
   if (!part) return null;
@@ -49,8 +51,8 @@ export function DraftBlock({ span, index, grid, bounds }: Props) {
 
   return (
     <div
-      className={dragged ? "recording-draft dragging" : "recording-draft"}
-      style={{ top: grid.y(part.start), height: Math.max(2, grid.y(part.end) - grid.y(part.start)) }}
+      className={["recording-draft", color && "has-project", dragged && "dragging"].filter(Boolean).join(" ")}
+      style={{ top: grid.y(part.start), height: Math.max(2, grid.y(part.end) - grid.y(part.start)), ...(color && { "--rec": color }) }}
       aria-label={`Draft ${formatClock(part.start)}–${formatClock(part.end)}`}
     >
       <span className="recording-draft-time">{formatClock(part.start)}</span>

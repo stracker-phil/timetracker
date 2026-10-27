@@ -1596,7 +1596,6 @@ describe("DayPage", () => {
         renderDay(busyDay());
         await blockEl("Safari: Docs");
         expect(screen.queryByRole("group", { name: /^Suggested:/ })).not.toBeInTheDocument();
-        expect(screen.queryByRole("group", { name: "Suggestions to review" })).not.toBeInTheDocument();
       });
 
       it("approves with ✓, records on the shown day and offers Undo, without opening the editor", async () => {
@@ -1654,20 +1653,6 @@ describe("DayPage", () => {
         expect(mocked.suggestionApprove).not.toHaveBeenCalled();
       });
 
-      it("approves only the suggestions with a project on Approve all", async () => {
-        mocked.suggestionsApprove.mockResolvedValueOnce([recording({ id: "r1" })]);
-        renderDay(withUnassigned(), withProject);
-        await userEvent.click(within(await screen.findByRole("group", { name: "Suggestions to review" })).getByRole("button", { name: "Approve all" }));
-        expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [mailIdea.id]);
-        expect(await screen.findByText("Recorded 1 suggestion")).toBeInTheDocument();
-      });
-
-      it("disables Approve all when no suggestion has a project", async () => {
-        renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [unassigned] }), withProject);
-        const line = within(await screen.findByRole("group", { name: "Suggestions to review" }));
-        expect(line.getByRole("button", { name: "Approve all" })).toBeDisabled();
-        expect(line.getByRole("button", { name: "Dismiss all" })).toBeEnabled();
-      });
     });
 
     describe("the time column", () => {
@@ -1737,33 +1722,13 @@ describe("DayPage", () => {
       });
     });
 
-    describe("the review line", () => {
-      const reviewLine = () => screen.findByRole("group", { name: "Suggestions to review" });
-
-      it("counts the suggestions of the day", async () => {
+    describe("without a review line", () => {
+      it("shows no Suggestions to review group or Approve all button while the day has suggestions", async () => {
         renderDay(withSuggestions(), withProject);
-        expect(within(await reviewLine()).getByText("2 suggestions")).toBeInTheDocument();
-      });
-
-      it("says 1 suggestion for a single one", async () => {
-        renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [mailIdea] }), withProject);
-        expect(within(await reviewLine()).getByText("1 suggestion")).toBeInTheDocument();
-      });
-
-      it("approves every shown suggestion with Approve all", async () => {
-        mocked.suggestionsApprove.mockResolvedValueOnce([recording({ id: "r1" }), recording({ id: "r2" })]);
-        renderDay(withSuggestions(), withProject);
-        await userEvent.click(within(await reviewLine()).getByRole("button", { name: "Approve all" }));
-        expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [standupIdea.id, mailIdea.id]);
-        expect(await screen.findByText("Recorded 2 suggestions")).toBeInTheDocument();
-      });
-
-      it("dismisses every shown suggestion with Dismiss all", async () => {
-        mocked.suggestionsDismiss.mockResolvedValueOnce(2);
-        renderDay(withSuggestions(), withProject);
-        await userEvent.click(within(await reviewLine()).getByRole("button", { name: "Dismiss all" }));
-        expect(mocked.suggestionsDismiss).toHaveBeenCalledWith(DAY, [standupIdea.id, mailIdea.id]);
-        expect(await screen.findByText("Dismissed 2 suggestions")).toBeInTheDocument();
+        await standupCard();
+        expect(screen.queryByRole("group", { name: "Suggestions to review" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Approve all" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Dismiss all" })).not.toBeInTheDocument();
       });
     });
 

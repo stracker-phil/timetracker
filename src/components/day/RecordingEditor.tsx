@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from "react";
+import { useEffect, useRef, type CSSProperties, type KeyboardEvent } from "react";
 import { Sparkles, Trash2 } from "lucide-react";
 import { useStore } from "../../state/store";
 import { NOTE_PLACEHOLDER, NoteInput } from "../NoteInput";
@@ -8,26 +8,34 @@ import { EditorField, LoggedTime, OverlapNotice } from "./EditorParts";
 import { EditorSpans } from "./EditorSpans";
 import { useEditorSave } from "./useEditorSave";
 import { useAutofill } from "./useAutofill";
+import { useDraftColor } from "./useDraftColor";
+import { useNow } from "./useNow";
 import { useProposal } from "./useProposal";
 
 const MINUTE_MS = 60_000;
+/** How often the running timer's logged time is renewed. */
+const RUNNING_TICK_MS = 10_000;
 
 /**
  * The recording editor, inline in the timesheet (a sheet in the Week view, labelled by `id`): note, project, tag,
  * duration and spans; Save (↵ or ⌘↵), Cancel (Escape), Delete (⌘⌫). Rust snaps the
- * times on save. Opened on a suggestion, it is prefilled with it and Save (Approve) approves it as edited.
+ * times on save. Opened on a suggestion, it is prefilled with it and Save (Approve) approves it as edited. On the
+ * running timer's recording the logged time counts up to now and Save is "Stop and save".
  */
 export function RecordingEditor({ id }: { id?: string }) {
   const editor = useStore((s) => s.editor);
   const draft = useStore((s) => s.draft);
   const editing = useStore((s) => s.editing);
   const overlap = useStore((s) => s.editorOverlap);
+  const color = useDraftColor();
   const step = useStore((s) => s.settings?.timeline.snapMinutes ?? 5) * MINUTE_MS;
   const { closeEditor, patchDraft, setDraftTotal } = useStore.getState();
   const { errors, save, remove } = useEditorSave();
   const ref = useRef<HTMLFormElement>(null);
   const proposed = useProposal(draft?.spans ?? null);
   const autofill = useAutofill(draft?.note ?? "");
+  const open = editing?.spans.find((s) => s.end === null) ?? null;
+  const now = useNow(open !== null, RUNNING_TICK_MS);
 
   useEffect(() => {
     ref.current?.scrollIntoView?.({ block: "nearest" });
@@ -43,9 +51,11 @@ export function RecordingEditor({ id }: { id?: string }) {
   }, []);
 
   if (!editor || !draft) return null;
-  const open = editing?.spans.find((s) => s.end === null) ?? null;
   const suggestion = editor.mode === "create" ? editor.suggestion : undefined;
   const showTag = draft.projectId !== null || draft.tagId !== null;
+  const ring = color ? ({ "--editor-ring": color } as CSSProperties) : undefined;
+  const total = open ? draft.totalMs + Math.max(0, now - open.start) : draft.totalMs;
+  const saveLabel = suggestion ? "Approve" : open ? "Stop and save" : "Save";
   const canAutofill = autofill !== null && (autofill.projectId !== draft.projectId || autofill.tagId !== draft.tagId);
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -64,6 +74,7 @@ export function RecordingEditor({ id }: { id?: string }) {
       ref={ref}
       id={id}
       className="recording-editor"
+      style={ring}
       aria-label={editing ? "Edit recording" : suggestion ? "Edit suggestion" : "New recording"}
       onKeyDown={onKeyDown}
       onSubmit={(e) => {
@@ -103,14 +114,14 @@ export function RecordingEditor({ id }: { id?: string }) {
           </EditorField>
         )}
       </div>
-      <LoggedTime total={draft.totalMs} readOnly={open !== null || draft.spans.length === 0} onChange={setDraftTotal} />
+      <LoggedTime total={total} readOnly={open !== null || draft.spans.length === 0} onChange={setDraftTotal} />
       <div className="editor-section">
         <EditorSpans spans={draft.spans} step={step} runningSince={open?.start ?? null} error={errors.end ?? errors.start ?? errors.spans} />
         {overlap && <OverlapNotice overlap={overlap} />}
       </div>
       <div className="editor-actions">
-        <button type="submit" className="btn btn-primary" title={suggestion ? "Approve (↵)" : "Save (↵)"}>
-          {suggestion ? "Approve" : "Save"}
+        <button type="submit" className="btn btn-primary" title={`${saveLabel} (↵)`}>
+          {saveLabel}
         </button>
         <button type="button" className="btn btn-quiet" title="Cancel (Escape)" onClick={closeEditor}>
           Cancel

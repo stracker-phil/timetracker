@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
-import { Check, Plus, X } from "lucide-react";
-import type { DayView, Suggestion } from "../../api";
+import { Plus } from "lucide-react";
+import type { DayView } from "../../api";
 import type { Draft, Editor } from "../../state/slices/editor";
 import { runCommand, useBindingLabel } from "../../commands";
 import { formatDuration } from "../../lib/format";
 import { sheetEntries, type SheetEntry } from "../../lib/sheet";
-import { isApprovable } from "../../state/slices/suggestions";
 import { useStore } from "../../state/store";
 import { RecordingEditor } from "./RecordingEditor";
 import { SuggestionCard } from "./SuggestionCard";
@@ -30,32 +29,8 @@ function editorSlot(entries: SheetEntry[], editor: Editor | null, draft: Draft |
   return { entryId: entries.find((e) => e.start > start)?.id ?? null, replaces: false };
 }
 
-function ReviewLine({ suggestions }: { suggestions: Suggestion[] }) {
-  if (suggestions.length === 0) return null;
-  const ids = suggestions.map((s) => s.id);
-  const count = suggestions.length === 1 ? "1 suggestion" : `${suggestions.length} suggestions`;
-  return (
-    <div className="timesheet-review" role="group" aria-label="Suggestions to review">
-      <span className="timesheet-review-count">{count}</span>
-      <button
-        type="button"
-        className="btn btn-quiet timesheet-review-action"
-        disabled={!suggestions.some(isApprovable)}
-        onClick={() => void useStore.getState().approveSuggestions(ids)}
-      >
-        <Check size="0.923rem" aria-hidden="true" />
-        Approve all
-      </button>
-      <button type="button" className="btn btn-quiet timesheet-review-action" onClick={() => void useStore.getState().dismissSuggestions(ids)}>
-        <X size="0.923rem" aria-hidden="true" />
-        Dismiss all
-      </button>
-    </div>
-  );
-}
-
 /**
- * The left pane of the Day view: the day's recorded total, + for a new recording, the suggestions to review, and one
+ * The left pane of the Day view: the day's recorded total, + for a new recording, and one
  * card per recording and suggestion in time order, with the editor open in the place of what it edits or creates.
  */
 export function Timesheet({ view }: { view: DayView }) {
@@ -95,7 +70,6 @@ export function Timesheet({ view }: { view: DayView }) {
           </button>
         )}
       </header>
-      <ReviewLine suggestions={view.suggestions} />
       <div className="timesheet-cards">
         {items.length === 0 ? <p className="timesheet-empty o3">Nothing recorded yet. Drag over the timeline or click an activity.</p> : items}
       </div>

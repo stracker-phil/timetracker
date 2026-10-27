@@ -23,25 +23,14 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset: 0; }
 
 /* ---------- scrollbars ---------- */
-/* One style for every scroll box (docs/ux.md, Scrollbars): a transparent 8px track with a rounded 6px thumb,
-   the same both ways, no buttons. A styled scrollbar takes its own space in WebKit, whatever macOS's "Show
-   scroll bars" says, so it never covers the last row or column. */
-::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); background: transparent; }
-::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
-::-webkit-scrollbar-button { display: none; }
-::-webkit-scrollbar-thumb {
-  border: 1px solid transparent; border-radius: var(--scrollbar-size); background: var(--scrollbar-thumb) padding-box;
-}
-::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
-::-webkit-scrollbar-thumb:active { background-color: var(--scrollbar-thumb-active); }
+/* None styled: an unstyled scroller keeps macOS's overlay scrollbars, shown only while scrolling (docs/ux.md,
+   Scrollbars); any ::-webkit-scrollbar rule would make WebKit draw a permanent one. */
 /* Every user-scrollable box is its own stacking context: WebKit keeps a nested scroller's scrollbar with its own
    layers only then, so the bar never stays behind while an outer box scrolls. A fixed overlay inside one would be
    stacked inside it too, so overlays render outside them (menus and modals portal to <body>). */
 :is(
   .main, .sidebar-body, .settings-body, .settings-nav, .dialog, .palette-list, .toast-details
 ) { isolation: isolate; }
-/* Boxes with rounded corners keep the thumb clear of them. */
-:is(.dialog, .palette-list, .toast-details)::-webkit-scrollbar-track { margin: var(--space-2) 0; }
 
 /* Inset groups (docs/ux.md, Surfaces): each screen's own rule sets only its padding. */
 :is(.settings-card, .project-rows, .tag-rows, .project-none, .rule-rows, .report-totals, .report-chart, .report-table) {

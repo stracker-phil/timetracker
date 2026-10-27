@@ -32,12 +32,8 @@
 .sheet-card.hovered { box-shadow: 0 0 0 2px var(--block-meta); }
 [data-input="keyboard"] .sheet-card.focused, .sheet-card:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
 
-/* A suggestion: a ghost of the card it would become, dashed and faint until approved. */
-.suggestion-card {
-  background: color-mix(in oklab, var(--block-fill) 22%, var(--bg-quiet)); box-shadow: none;
-  outline: 1.5px dashed var(--block-meta); outline-offset: -1.5px; cursor: pointer;
-}
-.suggestion-card:hover { background: color-mix(in oklab, var(--block-fill) 45%, var(--bg-quiet)); }
+/* A suggestion: the card it would become, on faded diagonal stripes until approved (blocks.css). */
+.suggestion-card { box-shadow: none; cursor: pointer; }
 .suggestion-card .card-title, .suggestion-card .card-subtitle { padding-right: 4.2rem; }
 .suggestion-card-by { overflow: hidden; text-overflow: ellipsis; }
 .suggestion-card-actions { position: absolute; top: var(--space-2); right: var(--space-2); display: flex; gap: var(--space-1); }
@@ -47,12 +43,6 @@
 }
 .suggestion-card-action:hover { background: var(--block-text); color: var(--block-fill); }
 .suggestion-card-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.timesheet-review {
-  flex: none; display: flex; align-items: center; gap: var(--space-1); margin: 0 var(--space-4) var(--space-2); padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
-  border-radius: var(--radius); background: var(--sel); font-size: var(--fs-meta);
-}
-.timesheet-review-count { flex: 1; font-weight: 600; color: var(--accent-text); }
-.timesheet-review-action { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); font-size: var(--fs-meta); }
 
 /* ---------- timeline: hour axis, time column, then the lanes ---------- */
 .timeline-frame { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
@@ -73,13 +63,21 @@
 .lane-head-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lane-head-total { margin-left: auto; color: var(--o3); font-weight: 400; white-space: nowrap; }
 .timeline-body { position: relative; }
-.recordings-col { border-left: 1px solid var(--line); }
+/* The time column: a faint line every 5 minutes (once zoomed in far enough), a stronger one every 15. */
+.recordings-col {
+  border-left: 1px solid var(--line);
+  background:
+    repeating-linear-gradient(to bottom, color-mix(in oklab, var(--line) 70%, transparent) 0 1px, transparent 1px calc(var(--hour-px) / 4)),
+    repeating-linear-gradient(to bottom, var(--five-line, transparent) 0 1px, transparent 1px calc(var(--hour-px) / 12)),
+    var(--bg);
+}
+.five-minutes { --five-line: color-mix(in oklab, var(--line) 40%, transparent); }
 .lanes { z-index: 1; }
 
 .axis-mark { position: absolute; left: 0; right: 0; height: 0; }
 .axis-label { position: absolute; right: var(--space-2); top: -0.6em; font-size: var(--fs-caption); color: var(--o2); }
 
-/* `--hour-px` (set from the zoom) spaces the hour hairlines; `--half-line` draws half hours when zoomed in. */
+/* `--hour-px` (set from the zoom on the timeline body) spaces the hour hairlines; `--half-line` draws half hours when zoomed in. */
 .lanes {
   position: relative; display: flex;
   background-image:
@@ -122,7 +120,7 @@
    buttons at the leading end. */
 .recording-editor {
   flex: none; display: flex; flex-direction: column;
-  background: var(--pop); border-radius: var(--radius); box-shadow: 0 0 0 2px var(--accent), var(--shadow-small); scroll-margin: var(--space-4);
+  background: var(--pop); border-radius: var(--radius); box-shadow: 0 0 0 2px var(--editor-ring, transparent), var(--shadow-small); scroll-margin: var(--space-4);
 }
 .recording-editor-sheet { width: min(26rem, 92vw); padding: 0; }
 .recording-editor-sheet .recording-editor { box-shadow: none; }
@@ -162,11 +160,11 @@
   background: var(--fill-quiet); border-top: 1px solid var(--line);
 }
 .editor-logged-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.editor-logged-label { font-weight: 600; color: var(--o2); }
+.editor-logged-label { font-weight: 600; color: var(--o2); white-space: nowrap; }
 .editor-quick { display: flex; gap: var(--space-1); }
 .editor-quick-btn {
   height: 1.538rem; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: var(--control); box-shadow: var(--control-shadow);
-  color: var(--text); font-size: var(--fs-meta); font-variant-numeric: tabular-nums; cursor: default;
+  color: var(--text); font-size: var(--fs-meta); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default;
 }
 .editor-quick-btn:hover { background: var(--control-pressed); }
 .editor-quick-btn[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); box-shadow: none; }
@@ -198,17 +196,20 @@
 .editor-actions .btn-primary { min-width: 5.385rem; }
 .editor-delete { margin-left: auto; }
 
-/* The open editor's spans in the time column. */
+/* The open editor's spans in the time column: the project's fill under a strong outline in its color (neutral
+   without a project). */
 .recording-draft {
+  --draft-line: var(--rec, var(--o2));
   position: absolute; left: 4px; right: 4px; z-index: 2; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;
-  padding: 3px var(--space-1) 2px; border-radius: var(--radius-card); background: var(--sel); border: 1px solid var(--accent); pointer-events: none;
+  padding: 2px var(--space-1) 1px; border-radius: var(--radius-card); background: var(--block-fill, var(--activity-fill));
+  border: 2px solid var(--draft-line); pointer-events: none;
 }
-.recording-draft-time { font-size: var(--fs-caption); font-weight: 600; color: var(--accent-text); }
+.recording-draft-time { font-size: var(--fs-caption); font-weight: 600; color: var(--block-text, var(--text)); }
 .recording-draft-time + .recording-draft-time { align-self: flex-end; }
 /* Presses on the draft fall through to the column (a drag there adds a span); only its edges are its own. */
 .recording-draft .grip { pointer-events: auto; }
 .recording-draft .grip::after {
-  content: ""; position: absolute; left: 50%; width: 1.231rem; height: 3px; border-radius: 2px; background: var(--accent); transform: translateX(-50%);
+  content: ""; position: absolute; left: 50%; width: 1.231rem; height: 3px; border-radius: 2px; background: var(--draft-line); transform: translateX(-50%);
 }
 .recording-draft .grip.start::after { top: 0; }
 .recording-draft .grip.end::after { bottom: 0; }
