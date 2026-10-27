@@ -176,7 +176,7 @@ src-tauri/
   src/menu/                  native menu: items.rs (MENU_ITEMS), mod.rs (build, forward), sync.rs (enabled and checked items)
   src/help.rs                Help menu targets outside the app (the README)
   src/dev.rs                 debug builds only: window frame, background launch, eval, dev seed
-  src/test_support/          test helpers behind cfg(test) / feature test-util; seed.rs also in debug builds
+  src/test_support/          test helpers behind cfg(test) / feature test-util; seed.rs and showcase/ also in debug builds
   src/db/                    Db (sqlx pool), migrations, time helpers, repositories, backup, relocate.rs (moving the data folder)
   src/capture/               Source trait, Snapshot types, macos.rs (objc2), fake.rs (test-util)
   src/app_icons.rs           installed apps' icons as cached PNGs, served as data URLs

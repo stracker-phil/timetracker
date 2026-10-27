@@ -9,6 +9,7 @@ use crate::error::{AppError, AppResult};
 use crate::events::{DataKind, data_changed};
 use crate::state::AppState;
 use crate::test_support::seed::{SeedStats, has_activity_before, seed_years};
+use crate::test_support::showcase::seed_showcase;
 
 /// `TIMETRACKER_WINDOW_FRAME="x,y,width,height"` (logical points) places the main window.
 pub fn window_frame() -> Option<(f64, f64, f64, f64)> {
@@ -35,17 +36,26 @@ pub fn eval(app: &tauri::AppHandle, js: &str) {
     }
 }
 
-/// `timetracker dev seed`: writes `years` of generated workdays up to yesterday into the open data
-/// store. Refused when activity before today exists, so a real history is never mixed with sample
-/// data by accident; `yes` seeds anyway.
-pub async fn seed(app: &tauri::AppHandle, years: u32, yes: bool) -> AppResult<SeedStats> {
+/// `timetracker dev seed`: writes `years` of generated workdays up to yesterday, or the showcase of the
+/// README screenshots, into the open data store. Refused when activity before today exists, so a real
+/// history is never mixed with sample data by accident; `yes` seeds anyway.
+pub async fn seed(
+    app: &tauri::AppHandle,
+    years: u32,
+    yes: bool,
+    showcase: bool,
+) -> AppResult<SeedStats> {
     let db = app.state::<AppState>().data.db()?;
     if !yes && has_activity_before(&db, Day::today()).await? {
         return Err(AppError::InvalidInput(
             "The database already holds activity before today; pass --yes to seed anyway".into(),
         ));
     }
-    let stats = seed_years(&db, years, SEED).await?;
+    let stats = if showcase {
+        seed_showcase(&db, SEED).await?
+    } else {
+        seed_years(&db, years, SEED).await?
+    };
     for kind in [
         DataKind::Activity,
         DataKind::Recordings,

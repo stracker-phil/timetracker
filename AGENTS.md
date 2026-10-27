@@ -50,7 +50,7 @@ running TimeTracker restarts on it. Debug builds are never installed; call them 
 Try the app: `scripts/dev/launch.sh` starts the debug build next to the terminal without taking focus.
 Its data and settings live in `~/Library/Application Support/com.philippstracker.timetracker.debug/`, apart from
 the release build's, so it runs next to the release app. `timetracker dev seed --years 2` (debug builds) fills
-that folder with sample history.
+that folder with sample history; `--showcase` with the small made-up history of the README screenshots.
 [docs/testing.md](docs/testing.md) covers the suites and the scripts that drive the running app.
 
 ## Adapt

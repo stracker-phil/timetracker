@@ -15,6 +15,6 @@ src-tauri/gen/schemas/
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 docs/screens/*
-!docs/screens/default-light-day.png
-!docs/screens/dark-light-day.png
-!docs/screens/default-light-reports.png
+!docs/screens/day.png
+!docs/screens/day-dark.png
+!docs/screens/reports.png

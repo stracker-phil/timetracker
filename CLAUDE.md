@@ -33,7 +33,7 @@ line number.
 - Rust backend in `src-tauri/` (rustup stable; Homebrew rustup is keg-only: `/opt/homebrew/opt/rustup/bin`)
 - Tauri 2 + React 19 + TypeScript in `src/`, bun as package manager, zustand, lucide-react
 - macOS 27, Apple Silicon only
-- Blueprint: `/Users/philipp/Coding/Personal/databee` (same author, stack and conventions; not the look)
+- Blueprint: DataBee, the author's sibling project in `../databee` (same author, stack and conventions; not the look)
 
 ## Architecture
 - Rust owns all logic; React only renders. Only `api.ts` files call `invoke`/`listen` (`src/api/index.ts`
@@ -61,7 +61,8 @@ Test, lint and format-check commands run through the `ci` agent, never in the ma
 - `scripts/install.sh` (the end of `bun run release`): signs the release build (`scripts/sign-app.sh`), links it
   as the app and the `timetracker` command and restarts a running TimeTracker on it; debug builds are never
   linked. `scripts/create-signing-cert.sh` (once per Mac) makes the certificate that keeps Accessibility grants
-- `timetracker dev seed --years N` (debug builds): sample history in the running app's database
+- `timetracker dev seed --years N` (debug builds): sample history in the running app's database; `--showcase`
+  writes the made-up history `scripts/dev/screenshot-readme.sh` captures for the README
 - `bun run build:app` + `scripts/dev/launch.sh`: debug build, restarted next to the terminal without stealing focus
 - `scripts/dev/js.sh` / `scripts/dev/screenshot.sh`: drive (store: `window.timetracker`) and capture the running window in the background
 

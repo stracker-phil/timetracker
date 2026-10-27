@@ -808,7 +808,14 @@ mod tests {
         });
 
         assert_eq!(
-            render_at_now(&IpcMessage::DevSeed { years: 2, yes: false }, &result),
+            render_at_now(
+                &IpcMessage::DevSeed {
+                    years: 2,
+                    yes: false,
+                    showcase: false
+                },
+                &result
+            ),
             Ok(Some(
                 "seeded 520 workdays: 260000 activity spans, 1560 away spans, 3120 recordings over 5 projects"
                     .into()

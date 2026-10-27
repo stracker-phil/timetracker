@@ -42,7 +42,8 @@ launch and commit at the end of every step.
   with the measured medians when a view gets slower than its limit ([data.md](data.md#seed-fixture-and-performance)).
   Run it optimized with `cargo test --release --test performance -- --ignored --nocapture`.
 - **Seed fixture:** `test_support/seed.rs` (`seed_years`, `seed_days`): a deterministic multi-year data set,
-  also compiled into debug builds for `timetracker dev seed`.
+  also compiled into debug builds for `timetracker dev seed`; `test_support/showcase/` (`seed_showcase`) is the
+  small made-up history of the README screenshots ([Sample data](#sample-data)).
 - **Helpers** are in `src/test_support/` (`fixtures.rs`): `temp_config_dir`, `temp_db` (a migrated SQLite file in a temp
   dir) and the fixtures `activity`, `project` and `recording` ([data.md](data.md#tests)); later the fake capture source,
   compiled with `cfg(test)` or the `test-util` feature ([ADR 0015](adr/0015-test-doubles-behind-test-util.md)).
@@ -86,6 +87,7 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 | `scripts/dev/js.sh '<js>'` | runs JavaScript in the running debug app over the IPC socket. Fire-and-forget: no return value, and top-level `const` declarations collide across calls, so wrap them in an IIFE |
 | `scripts/dev/screenshot.sh out.png` | captures the TimeTracker window, also while it is in the background |
 | `scripts/dev/screenshot-looks.sh <dir> [view]` | captures a view (default `day`) in each scheme of the current macOS mode as `<scheme>-<mode>-<view>.png`, then restores the settings; switch the system appearance and run it again for the other mode ([ux.md](ux.md#scheme-audit)) |
+| `scripts/dev/screenshot-readme.sh [dir]` | captures the README screenshots (`day.png`, `day-dark.png`, `reports.png`, default `docs/screens`): the Day view of the last workday in the Default and the Dark scheme and Reports for last week, then restores the settings, view and zoom. Run it on the showcase ([Sample data](#sample-data)) |
 | `bun run app` | builds and `open`s the app; this takes focus |
 | `bun run release` | builds the release `.app` and `.dmg` (`src-tauri/target/release/bundle/`), signed ad hoc |
 
@@ -121,6 +123,22 @@ own: there is no undo short of restoring a backup.
 ```sh
 timetracker dev seed --years 2
 # seeded 522 workdays: 261000 activity spans, 1566 away spans, 3132 recordings over 5 projects
+```
+
+`--showcase` writes a small, believable history instead (`test_support::showcase`): the 15 workdays before
+today, each a schedule of work sessions for three made-up clients (Northwind, Lumen Labs, Fernweh Travel)
+and an Internal project, with the apps that kind of work uses, lunch and a break away, and a recording with a
+note and a tag per session; the last session of the most recent day stays unrecorded. The README screenshots
+come from it. To keep your own debug data, move the debug config dir aside first and back afterwards:
+
+```sh
+D=~/Library/Application\ Support/com.philippstracker.timetracker.debug
+mv "$D" "$D.keep"                      # with the debug app quit
+scripts/dev/launch.sh                  # finish the welcome sheet, then
+timetracker tracker pause 12h          # (the debug build's CLI) keeps today's own activity out
+timetracker dev seed --showcase
+scripts/dev/screenshot-readme.sh
+# quit the debug app, then: rm -rf "$D" && mv "$D.keep" "$D"
 ```
 
 `launch.sh` sets `TIMETRACKER_WINDOW_FRAME` and `TIMETRACKER_BACKGROUND=1`. Rust reads both in `dev.rs`, a

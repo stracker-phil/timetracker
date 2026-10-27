@@ -10,16 +10,17 @@ it never captures keystrokes, screenshots, audio, the clipboard or page content.
 It runs on macOS on Apple Silicon. Published as source, as-is: no releases, no binaries, no support. To
 build it or port it, point a coding agent at [AGENTS.md](AGENTS.md).
 
-![The Day view in the Default scheme](docs/screens/default-light-day.png)
+![The Day view in the Default scheme](docs/screens/day.png)
 
-![The Day view in the Dark scheme](docs/screens/dark-light-day.png)
+![The Day view in the Dark scheme](docs/screens/day-dark.png)
 
-![The Reports screen](docs/screens/default-light-reports.png)
+![The Reports screen](docs/screens/reports.png)
 
-The Day view in the Default scheme (dark sidebar, light content) and in the Dark scheme, then Reports: a
-recording in the timesheet on the left, the month calendar in the sidebar, the activity lanes on the right.
-Settings → Appearance picks one of three schemes per macOS mode, and `scripts/dev/screenshot-looks.sh`
-captures every look.
+The Day view in the Default scheme (dark sidebar, light content) and in the Dark scheme, then Reports for a
+week: the day's recordings in the timesheet on the left, then the time column, the summary of what was done
+and the raw activity; the last block of the afternoon is not recorded yet. Settings → Appearance picks one of
+three schemes per macOS mode. The screenshots show made-up sample data (`timetracker dev seed --showcase`),
+captured by `scripts/dev/screenshot-readme.sh`.
 
 ## Install
 
@@ -111,7 +112,7 @@ reports can be saved under a name and sit under Reports in the sidebar.
 | `timetracker timer recent [--limit N] [--json]` | the menu bar's Recent Timers (default 8, at most 100): the latest distinct project, note and tag of the recordings, newest first, archived projects left out; `--json` is `[{ projectId, project, client, tagId, tag, note, lastUsedAt }]` (`lastUsedAt`: where its latest span starts, ms) |
 | `timetracker watch [--json]` | prints the timer and the tracker, then one line per change until TimeTracker quits, see [Watching for changes](#watching-for-changes) |
 | `timetracker mcp` | serves the MCP server on stdin/stdout, see [MCP](#mcp) |
-| `timetracker dev seed [--years N] [--yes]` | debug builds only: writes N years (default 2) of generated workdays into the running app's database ([docs/testing.md](docs/testing.md#sample-data)) |
+| `timetracker dev seed [--years N \| --showcase] [--yes]` | debug builds only: writes N years (default 2) of generated workdays, or the small made-up history of the screenshots, into the running app's database ([docs/testing.md](docs/testing.md#sample-data)) |
 
 Times are `2026-10-21T09:30` (local, or with `Z` or `±hh:mm`), `09:30` (today) or `now`. Every command except
 `show`, `focus` and `mcp` needs TimeTracker running. Exit codes: 0 ok, 1 TimeTracker refused the request (the

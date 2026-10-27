@@ -145,6 +145,8 @@ pub enum IpcMessage {
     DevSeed {
         years: u32,
         yes: bool,
+        #[serde(default)]
+        showcase: bool,
     },
 }
 
@@ -598,12 +600,29 @@ mod tests {
         let message = IpcMessage::DevSeed {
             years: 3,
             yes: true,
+            showcase: false,
         };
-        let wire = serde_json::json!({ "type": "devSeed", "years": 3, "yes": true });
+        let wire =
+            serde_json::json!({ "type": "devSeed", "years": 3, "yes": true, "showcase": false });
 
         assert_eq!(message.kind(), "DevSeed");
         assert_eq!(serde_json::to_value(&message).unwrap(), wire);
         assert_eq!(serde_json::from_value::<IpcMessage>(wire).unwrap(), message);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn a_dev_seed_message_without_showcase_is_not_a_showcase() {
+        let wire = serde_json::json!({ "type": "devSeed", "years": 3, "yes": true });
+
+        assert_eq!(
+            serde_json::from_value::<IpcMessage>(wire).unwrap(),
+            IpcMessage::DevSeed {
+                years: 3,
+                yes: true,
+                showcase: false
+            }
+        );
     }
 
     fn report_message() -> IpcMessage {

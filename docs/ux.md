@@ -562,7 +562,7 @@ timeline's for every app.
 - **What rules see**: the summary, so each stretch counts as what was mostly done in it and a short glance
   stays part of the recording around it; imported activity counts on its own (ADR 0027).
 - **Joined**: touching suggestions that would make the same recording (project, note and tag), also from
-  different rules, show as one ("Suggested by PhpStorm, Slack: Lumen Labs").
+  different rules, show as one ("Suggested by Xcode, Slack: Lumen Labs").
 - **Striped blocks** in the time column: the ghost card's stripes, no outline, project, rule
   and duration; a click opens the editor on it like its card. The suggestion being edited gives way to the
   editor's draft spans.
@@ -928,8 +928,8 @@ The three schemes in both modes are checked on Day, Week, Month, Reports, Projec
 (`docs/screens/<scheme>-<mode>-<view>.png`, captured by `scripts/dev/screenshot-looks.sh <dir> [view]`, which
 sets the current macOS mode's scheme to each of the three through `scripts/dev/js.sh` and restores the
 settings; the app follows macOS, so switch the system appearance and run it again for the other mode). Only
-the README's are committed: `default-light-day.png`, `dark-light-day.png` (the Dark scheme with macOS in
-light mode) and `default-light-reports.png`. Each scheme is
+the README's are committed: `day.png`, `day-dark.png` and `reports.png`, captured from the showcase sample
+data by `scripts/dev/screenshot-readme.sh` ([testing.md](testing.md#sample-data)). Each scheme is
 one look in either mode; the mode changes the native window chrome and, where the sidebar's tone matches it,
 lets the sidebar material show through. Fixes live in `src/styles/palettes/` only.
 

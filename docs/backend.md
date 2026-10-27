@@ -744,7 +744,7 @@ Every message is logged by type (`IpcMessage::kind`, never the contents).
 | `activityDelete { from, to }` | `activity::delete_range` | `DeleteResult` |
 | `activityDeleteUndo` | `activity::undo_delete` | `DeleteResult` |
 | `eval { js }` | runs in the window | `null` |
-| `devSeed { years, yes }` | `dev::seed`: refused unless `yes` when activity before today exists, then `test_support::seed::seed_years` (seed 42) and `data_changed` for activity, recordings, projects and tags | `SeedStats` |
+| `devSeed { years, yes, showcase }` | `dev::seed`: refused unless `yes` when activity before today exists, then `test_support::seed::seed_years`, or `test_support::showcase::seed_showcase` when `showcase` (missing: false) (seed 42) and `data_changed` for activity, recordings, projects and tags | `SeedStats` |
 
 `AppState::open` queues `LaunchEvent::Notice` (`LaunchQueue::notice`) when opening the data dropped tags
 (migration 0006, [data.md](data.md#migrations)). Messages that start the app are pushed to `LaunchQueue` in

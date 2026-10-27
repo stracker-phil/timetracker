@@ -206,6 +206,9 @@ enum DevCommand {
         /// Seed even when the database holds activity before today
         #[arg(long)]
         yes: bool,
+        /// Write the made-up history of the README screenshots instead
+        #[arg(long, conflicts_with = "years")]
+        showcase: bool,
     },
 }
 
@@ -341,7 +344,15 @@ fn message<Tz: TimeZone>(
         Command::Undo => IpcMessage::Undo,
         Command::Redo => IpcMessage::Redo,
         #[cfg(debug_assertions)]
-        Command::Dev(DevCommand::Seed { years, yes }) => IpcMessage::DevSeed { years, yes },
+        Command::Dev(DevCommand::Seed {
+            years,
+            yes,
+            showcase,
+        }) => IpcMessage::DevSeed {
+            years,
+            yes,
+            showcase,
+        },
         Command::Mcp | Command::Watch => {
             unreachable!("`parse` returns `mcp` and `watch` before it builds a message")
         }
@@ -729,7 +740,8 @@ mod tests {
             (
                 IpcMessage::DevSeed {
                     years: 2,
-                    yes: false
+                    yes: false,
+                    showcase: false
                 },
                 false,
                 false
@@ -739,12 +751,32 @@ mod tests {
 
     #[cfg(debug_assertions)]
     #[test]
+    fn dev_seed_showcase_asks_for_the_showcase_instead_of_generated_years() {
+        assert_eq!(
+            remote(&["dev", "seed", "--showcase"]).0,
+            IpcMessage::DevSeed {
+                years: 2,
+                yes: false,
+                showcase: true
+            }
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn dev_seed_rejects_showcase_together_with_years() {
+        assert!(run(&["dev", "seed", "--showcase", "--years", "3"]).is_err());
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
     fn dev_seed_takes_years_and_yes() {
         assert_eq!(
             remote(&["dev", "seed", "--years", "5", "--yes"]).0,
             IpcMessage::DevSeed {
                 years: 5,
-                yes: true
+                yes: true,
+                showcase: false
             }
         );
     }

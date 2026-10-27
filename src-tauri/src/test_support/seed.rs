@@ -122,7 +122,7 @@ pub async fn seed_years(db: &Db, years: u32, seed: u64) -> AppResult<SeedStats> 
 /// by name when they exist.
 pub async fn seed_days(db: &Db, first: Day, last: Day, seed: u64) -> AppResult<SeedStats> {
     let project_ids = ensure_projects(db).await?;
-    let tag_ids = ensure_tags(db).await?;
+    let tag_ids = ensure_tags(db, &TAGS).await?;
     let mut rng = Rng(seed);
     let mut stats = SeedStats {
         projects: project_ids.len() as u32,
@@ -144,7 +144,7 @@ pub async fn seed_days(db: &Db, first: Day, last: Day, seed: u64) -> AppResult<S
 }
 
 /// splitmix64: small, fast and deterministic, so the seed needs no `rand`.
-struct Rng(u64);
+pub(super) struct Rng(pub(super) u64);
 
 impl Rng {
     fn next(&mut self) -> u64 {
@@ -156,12 +156,12 @@ impl Rng {
     }
 
     /// `0..n`.
-    fn below(&mut self, n: usize) -> usize {
+    pub(super) fn below(&mut self, n: usize) -> usize {
         (self.next() % n as u64) as usize
     }
 
     /// `lo..hi`.
-    fn between(&mut self, lo: i64, hi: i64) -> i64 {
+    pub(super) fn between(&mut self, lo: i64, hi: i64) -> i64 {
         lo + (self.next() % (hi - lo) as u64) as i64
     }
 }
@@ -265,13 +265,19 @@ fn recordings(
 }
 
 fn eight_o_clock(day: Day) -> Ms {
-    let eight = day
+    local_ms(day, 8 * 60)
+}
+
+/// The local time `minute` minutes after midnight of `day`, in UTC milliseconds.
+pub(super) fn local_ms(day: Day, minute: i64) -> Ms {
+    let time = day
         .date()
-        .and_hms_opt(8, 0, 0)
-        .expect("08:00 is a valid time");
-    match eight.and_local_timezone(Local).earliest() {
+        .and_hms_opt(0, 0, 0)
+        .expect("midnight is a valid time")
+        + chrono::Duration::minutes(minute);
+    match time.and_local_timezone(Local).earliest() {
         Some(t) => t.timestamp_millis(),
-        None => day.bounds().0 + 8 * 60 * MINUTE,
+        None => day.bounds().0 + minute * MINUTE,
     }
 }
 
@@ -304,28 +310,47 @@ async fn write(db: &Db, plan: &DayPlan) -> AppResult<()> {
     insert.build().execute(&mut *tx).await?;
 
     for r in &plan.recordings {
-        let id = uuid::Uuid::new_v4().to_string();
-        sqlx::query(
-            r#"INSERT INTO recordings (id, project_id, note, tag_id, created_at, updated_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?5)"#,
+        insert_recording(
+            &mut tx,
+            &r.project_id,
+            r.note,
+            r.tag_id.as_deref(),
+            (r.start, r.end),
         )
-        .bind(&id)
-        .bind(&r.project_id)
-        .bind(r.note)
-        .bind(&r.tag_id)
-        .bind(r.end)
-        .execute(&mut *tx)
-        .await?;
-        sqlx::query(
-            r#"INSERT INTO recording_spans (id, recording_id, start, "end") VALUES (?1, ?1, ?2, ?3)"#,
-        )
-        .bind(&id)
-        .bind(r.start)
-        .bind(r.end)
-        .execute(&mut *tx)
         .await?;
     }
     tx.commit().await?;
+    Ok(())
+}
+
+/// One recording with one closed span.
+pub(super) async fn insert_recording(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    project_id: &str,
+    note: &str,
+    tag_id: Option<&str>,
+    (start, end): (Ms, Ms),
+) -> AppResult<()> {
+    let id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"INSERT INTO recordings (id, project_id, note, tag_id, created_at, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?5)"#,
+    )
+    .bind(&id)
+    .bind(project_id)
+    .bind(note)
+    .bind(tag_id)
+    .bind(end)
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query(
+        r#"INSERT INTO recording_spans (id, recording_id, start, "end") VALUES (?1, ?1, ?2, ?3)"#,
+    )
+    .bind(&id)
+    .bind(start)
+    .bind(end)
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 
@@ -374,10 +399,11 @@ async fn ensure_client(db: &Db, name: &str) -> AppResult<String> {
     Ok(clients::insert(db, input).await?.id)
 }
 
-async fn ensure_tags(db: &Db) -> AppResult<Vec<String>> {
+/// The ids of the tags `names`, created when missing.
+pub(super) async fn ensure_tags(db: &Db, names: &[&str]) -> AppResult<Vec<String>> {
     let existing = tags::list(db).await?;
-    let mut ids = Vec::with_capacity(TAGS.len());
-    for name in TAGS {
+    let mut ids = Vec::with_capacity(names.len());
+    for &name in names {
         let id = match existing.iter().find(|t| t.name.eq_ignore_ascii_case(name)) {
             Some(tag) => tag.id.clone(),
             None => tags::insert(db, name).await?.id,
