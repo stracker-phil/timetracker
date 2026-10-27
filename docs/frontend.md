@@ -483,8 +483,9 @@ and `--on-accent` to `--on-system-accent`; `applyInitialLook` sets it before set
   strip); `user-select: none` applies globally, inputs and `.selectable` opt back in. The body is
   transparent; `sidebar.css` makes the sidebar transparent where its tone matches `prefers-color-scheme`, so
   the window's `sidebar` effect (vibrancy) shows through.
-- **Groups.** Grouped content is a row group: no box, faint `--line-faint` hairlines above and below (one shared rule in
-  `base.css`) and between its rows: `.settings-card`, `.project-rows` and `.tag-rows`, `.rule-rows`. The Reports
+- **Groups.** Grouped content is a row group: no box, faint `--line-faint` hairlines between its rows. The page lists
+  (`.project-rows` and `.tag-rows`, `.rule-rows`) also have one above and below (one shared rule in `base.css`);
+  `.settings-card` (Settings and popovers) has none, since nothing there needs closing off. The Reports
   sections stand on the page, set apart by whitespace and a faint hairline.
 
 ## Tests

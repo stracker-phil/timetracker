@@ -43,8 +43,9 @@ page, no outlined cards.
 | `--fill-quiet` | full-width band rows (a Reports client row), the editor's logged-time band |
 
 Separators are `--line` hairlines (`--sidebar-line` beside the sidebar). Bars inside content stay on `--bg`.
-Grouped content is a **row group**: no box and no fill, a faint `--line-faint` hairline (`--line` at 50%)
-above and below, rows divided by the same hairline from the text's edge, generous row height, no hover fill
+Grouped content is a **row group**: no box and no fill, rows divided by a faint `--line-faint` hairline
+(`--line` at 50%) from the text's edge, the page lists (Projects, Tags, Rules) also closed off by one above
+and below (never in Settings or a popover, where it would separate nothing), generous row height, no hover fill
 on plain rows; its heading (13px semibold `--text`, or a name with a dot) sits above it. Never rounded boxes
 of grey on grey. In the Default scheme the dark sidebar is
 opaque; in the Light scheme in light mode and the Dark scheme in dark mode the sidebar is transparent, so the
