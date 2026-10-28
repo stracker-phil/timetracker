@@ -122,11 +122,14 @@ fn days_touched(op: &Op, now: Ms) -> Vec<Day> {
     days
 }
 
-/// `current` with `patch` applied: changed spans snapped, the rest validated.
+/// `current` with `patch` applied: changed spans snapped, the rest validated. A running recording's
+/// spans are the timer's to end.
 fn patched(current: &Recording, patch: RecordingPatch, snap_minutes: u32) -> AppResult<Recording> {
-    require_finished(current)?;
     let spans = match &patch.spans {
-        Some(spans) => respanned(&current.spans, &snapped_spans(spans, snap_minutes)?),
+        Some(spans) => {
+            require_finished(current)?;
+            respanned(&current.spans, &snapped_spans(spans, snap_minutes)?)
+        }
         None => current.spans.clone(),
     };
     recordings::check_spans(&spans)?;
@@ -288,12 +291,15 @@ impl Recordings<'_> {
         let mut undo = self.undo.lock().await;
         let current = recordings::get(self.db, id).await?;
         let tag_changed = patch.tag_id.is_some();
+        let spans_changed = patch.spans.is_some();
         let after = patched(&current, patch, self.snap_minutes)?;
         usable_project(self.db, &after.project_id, Some(&current.project_id)).await?;
         if tag_changed {
             check_tag(self.db, after.tag_id.as_deref()).await?;
         }
         let label = update_label(&current, &after);
+        // Same spans clear nothing; a running recording's open span would claim all later time.
+        let overlap = spans_changed.then_some(overlap);
         self.replace(&mut undo, current, after, overlap, label)
             .await
     }
@@ -311,20 +317,24 @@ impl Recordings<'_> {
         Ok(Change { value: (), days })
     }
 
-    /// Writes `after` over `before`, clearing its spans of other recordings per `overlap`.
+    /// Writes `after` over `before`, clearing its spans of other recordings per `overlap`; without one,
+    /// other recordings stay as they are.
     async fn replace(
         &self,
         undo: &mut UndoStack,
         before: Recording,
         after: Recording,
-        overlap: Overlap,
+        overlap: Option<Overlap>,
         label: &str,
     ) -> AppResult<Change<Recording>> {
         let base = Op::Update {
             before,
             after: after.clone(),
         };
-        let op = clearing(self.db, base, &after, overlap, label).await?;
+        let op = match overlap {
+            Some(overlap) => clearing(self.db, base, &after, overlap, label).await?,
+            None => base,
+        };
         self.commit(undo, label.to_string(), op, &after.id).await
     }
 
@@ -922,21 +932,86 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_running_recording_cannot_be_edited_here() {
+    async fn the_running_recordings_note_project_and_tag_can_be_edited_and_it_keeps_running() {
+        let w = World::new().await;
+        let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
+        let change = patch(|p| {
+            p.note = Some("review".into());
+            p.project_id = Some(w.other.id.clone());
+            p.tag_id = Some(Some(w.alpha.id.clone()));
+        });
+
+        w.service()
+            .update(&timer.id, change, Overlap::Cancel)
+            .await
+            .unwrap();
+
+        let rows = w.rows().await;
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].note, "review");
+        assert_eq!(rows[0].project_id, w.other.id);
+        assert_eq!(rows[0].tag_id.as_deref(), Some(w.alpha.id.as_str()));
+        assert_eq!(rows[0].spans, timer.spans);
+    }
+
+    #[tokio::test]
+    async fn the_running_recordings_spans_cannot_be_edited_here() {
         let w = World::new().await;
         let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
 
         let err = w
             .service()
-            .update(
-                &timer.id,
-                patch(|p| p.note = Some("n".into())),
-                Overlap::Cancel,
-            )
+            .update(&timer.id, respan(at(9, 0), at(9, 30)), Overlap::Cancel)
             .await
             .unwrap_err();
 
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(w.rows().await, [timer]);
+    }
+
+    #[tokio::test]
+    async fn stopping_after_editing_the_running_recording_keeps_the_edit() {
+        let w = World::new().await;
+        let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
+        let change = patch(|p| {
+            p.note = Some("review".into());
+            p.project_id = Some(w.other.id.clone());
+        });
+        w.service()
+            .update(&timer.id, change, Overlap::Cancel)
+            .await
+            .unwrap();
+
+        let stopped = w
+            .service()
+            .stop_timer(at(11, 0))
+            .await
+            .unwrap()
+            .value
+            .expect("a recording was running");
+
+        assert_eq!(stopped.id, timer.id);
+        assert_eq!(stopped.note, "review");
+        assert_eq!(stopped.project_id, w.other.id);
+        assert_eq!(times(&stopped), [(at(10, 0), at(11, 0))]);
+        assert_eq!(w.rows().await, [stopped]);
+    }
+
+    #[tokio::test]
+    async fn undo_restores_the_running_recording_after_a_fields_only_edit() {
+        let w = World::new().await;
+        let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
+        w.service()
+            .update(
+                &timer.id,
+                patch(|p| p.note = Some("review".into())),
+                Overlap::Cancel,
+            )
+            .await
+            .unwrap();
+
+        w.service().undo().await.unwrap();
+
         assert_eq!(w.rows().await, [timer]);
     }
 

@@ -350,7 +350,9 @@ clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `co
   later, none overlapping another of the recording (`spans`, checked by `db::recordings::check_spans` for both layers; touching is fine); `note` one line, at most 500
   characters, trimmed; `projectId` not archived (unless the recording already belongs to it); `tagId` (one
   tag or `null`, [ADR 0019](adr/0019-one-tag-per-recording.md)) known.
-  A missing project is `not_found`; a running recording is not edited here ("Stop the timer first").
+  A missing project is `not_found`; on a running recording `update` changes only the
+  note, project and tag (the editor's "Stop and save" saves them, then stops the timer); a patch with `spans` is
+  refused ("Stop the timer first").
 - **Overlap** (`overlaps.rs`, `Overlap::Cancel | Replace`), per span: with `Cancel` a recording whose spans share time with
   another's is refused with `overlap` and those recordings in `details`; with `Replace` each span in the way
   is removed (inside), trimmed (one side out) or cut in two (both sides out; both pieces stay spans of the same

@@ -55,7 +55,7 @@ impl Recordings<'_> {
         let mut spans = current.spans.clone();
         spans.push(RecordingSpan::new(span.start, Some(span.end)));
         let after = with_spans(&current, spans)?;
-        self.replace(&mut undo, current, after, overlap, "Add time")
+        self.replace(&mut undo, current, after, Some(overlap), "Add time")
             .await
     }
 
@@ -86,7 +86,7 @@ impl Recordings<'_> {
         let spans = with_span_set(&current.spans, span_id, span.start, span.end);
         let after = with_spans(&current, spans)?;
         let label = update_label(&current, &after);
-        self.replace(&mut undo, current, after, overlap, label)
+        self.replace(&mut undo, current, after, Some(overlap), label)
             .await
     }
 
