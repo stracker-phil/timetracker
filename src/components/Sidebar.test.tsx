@@ -14,6 +14,7 @@ import { savedReport } from "../test/reportFixtures";
 import { settings } from "../test/settings";
 import { CommandPalette } from "./CommandPalette";
 import { Dialogs } from "./Dialogs";
+import { MenuHost } from "./menu";
 import { Sidebar } from "./Sidebar";
 
 const mocked = vi.mocked(api, true);
@@ -29,6 +30,7 @@ function renderSidebar(patch: Parameters<typeof resetStore>[0] = {}) {
       <Sidebar />
       <CommandPalette />
       <Dialogs />
+      <MenuHost />
     </>,
   );
 }

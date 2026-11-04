@@ -6,7 +6,7 @@ import { api, type ActivityBlock, type AppOverride, type Lane, type Settings } f
 import { resetStore, useStore } from "../../state/store";
 import { appLane, block, lane, sourceLane } from "../../test/dayFixtures";
 import { settings } from "../../test/settings";
-import type { MenuEntry } from "../ContextMenu";
+import type { MenuEntry } from "../menu";
 import { blockMenu } from "./blockMenu";
 
 const mocked = vi.mocked(api, true);
@@ -17,11 +17,11 @@ const withTimeline = (timeline: Partial<Settings["timeline"]>, apps: Settings["a
 
 type Item = Exclude<MenuEntry, "separator">;
 const items = (entries: MenuEntry[]) => entries.filter((e): e is Item => e !== "separator");
-const labels = (entries: MenuEntry[]) => entries.map((e) => (e === "separator" ? "---" : e.label));
-const entry = (entries: MenuEntry[], label: string) => {
-  const found = items(entries).find((e) => e.label === label);
-  if (!found) throw new Error(`No menu entry "${label}"`);
-  return found;
+const labels = (entries: MenuEntry[]) => entries.map((e) => (e === "separator" ? "---" : "caption" in e ? e.caption : e.text));
+const entry = (entries: MenuEntry[], text: string) => {
+  const found = items(entries).find((e) => "text" in e && e.text === text);
+  if (!found || !("text" in found) || !found.run) throw new Error(`No menu entry "${text}"`);
+  return { checked: found.checked, run: found.run };
 };
 
 function menu(s: Settings | null, b: ActivityBlock = block(), l: Lane = lane({ blocks: [b] })) {
@@ -69,7 +69,7 @@ describe("blockMenu", () => {
 
   describe("Make a rule", () => {
     it("opens the rule sheet with the block's app as the condition and no project", () => {
-      entry(menu(settings(), block({ app: "Notes", title: "" })), "Make a rule…").action();
+      entry(menu(settings(), block({ app: "Notes", title: "" })), "Make a rule…").run();
       expect(useStore.getState().dialog).toMatchObject({
         type: "rule",
         draft: { name: "Notes", projectId: "", enabled: true, conditions: [{ field: "app", op: "is", value: "Notes" }] },
@@ -77,7 +77,7 @@ describe("blockMenu", () => {
     });
 
     it("adds the domain of a URL block to the conditions", () => {
-      entry(menu(settings(), block({ app: "Safari", url: "https://www.example.com/docs" })), "Make a rule…").action();
+      entry(menu(settings(), block({ app: "Safari", url: "https://www.example.com/docs" })), "Make a rule…").run();
       expect(useStore.getState().dialog).toMatchObject({
         draft: {
           conditions: [
@@ -99,7 +99,7 @@ describe("blockMenu", () => {
     it("is unchecked in the activity lane and moves the app out", () => {
       const m = menu(settings());
       expect(entry(m, "Own lane").checked).toBe(false);
-      entry(m, "Own lane").action();
+      entry(m, "Own lane").run();
       expect(mocked.setAppSetting).toHaveBeenCalledWith(KEY, { ownLane: true });
     });
 
@@ -107,7 +107,7 @@ describe("blockMenu", () => {
       const b = block();
       const m = menu(settings(), b, appLane("Safari", KEY, [b]));
       expect(entry(m, "Own lane").checked).toBe(true);
-      entry(m, "Own lane").action();
+      entry(m, "Own lane").run();
       expect(mocked.setAppSetting).toHaveBeenCalledWith(KEY, { ownLane: false });
     });
 
@@ -119,7 +119,7 @@ describe("blockMenu", () => {
 
   describe("Hide", () => {
     it("hides the app and offers Undo, which shows it again", async () => {
-      entry(menu(settings()), "Hide Safari").action();
+      entry(menu(settings()), "Hide Safari").run();
       expect(mocked.setAppSetting).toHaveBeenLastCalledWith(KEY, { hidden: true });
       await vi.waitFor(() => expect(useStore.getState().toasts.map((t) => t.message)).toContain("Safari is hidden from the timeline"));
       useStore.getState().toasts.find((t) => t.message === "Safari is hidden from the timeline")?.action?.run();
@@ -128,7 +128,7 @@ describe("blockMenu", () => {
 
     it("shows no hidden toast when saving failed", async () => {
       mocked.setAppSetting.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
-      entry(menu(settings()), "Hide Safari").action();
+      entry(menu(settings()), "Hide Safari").run();
       await vi.waitFor(() => expect(useStore.getState().toasts.length).toBeGreaterThan(0));
       expect(useStore.getState().toasts.map((t) => t.message)).not.toContain("Safari is hidden from the timeline");
     });
@@ -138,9 +138,9 @@ describe("blockMenu", () => {
     it("copies the title and the url", async () => {
       const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
       const m = menu(settings(), block({ title: "Docs", url: "https://example.com/docs" }));
-      entry(m, "Copy title").action();
+      entry(m, "Copy title").run();
       await vi.waitFor(() => expect(writeText).toHaveBeenLastCalledWith("Docs"));
-      entry(m, "Copy URL").action();
+      entry(m, "Copy URL").run();
       await vi.waitFor(() => expect(writeText).toHaveBeenLastCalledWith("https://example.com/docs"));
     });
   });

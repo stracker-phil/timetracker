@@ -36,9 +36,21 @@
 .input::placeholder { color: var(--o3); }
 .input:focus { box-shadow: var(--focus-ring); }
 .input.mono { font-family: var(--font-mono); font-size: var(--data-font-size); }
-/* A popup button: a push button's bezel around WebKit's native chevrons. */
-select.input { appearance: auto; padding: 0 var(--space-1) 0 var(--space-2); background: var(--control); box-shadow: var(--control-shadow); }
-select.input:focus { box-shadow: var(--focus-ring); }
+/* A pop-up button (`PopUpButton`): a push button's bezel around the current choice and a chevron; every choice
+   sits in the same grid cell, hidden, so it is as wide as the widest one. */
+.popup-button {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: var(--space-2); max-width: 100%;
+  height: var(--control-h); padding: 0 var(--space-1) 0 var(--space-2);
+  border: none; border-radius: var(--radius-sm); outline: none;
+  background: var(--control); box-shadow: var(--control-shadow); color: var(--text); font-weight: inherit; text-align: left; cursor: default; white-space: nowrap;
+}
+.popup-button:active:not(:disabled), .popup-button[aria-expanded="true"] { background: var(--control-pressed); }
+.popup-button:disabled { opacity: 0.45; }
+.popup-button:focus-visible { box-shadow: var(--focus-ring); }
+.popup-button__value { display: inline-grid; min-width: 0; }
+.popup-button__value > span { grid-area: 1 / 1; overflow: hidden; text-overflow: ellipsis; }
+.popup-button__sizer { visibility: hidden; }
+.popup-button__chevron { flex: none; color: var(--o2); }
 
 /* The search field: leading icon, the control, an optional key cap (`InsetField` in Field.tsx). */
 .inset-field {

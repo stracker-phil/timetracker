@@ -7,14 +7,17 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api, type DayView } from "../../api";
 import { handleKeydown, installCommands, runCommand } from "../../commands";
 import { today } from "../../lib/day";
+import { installInputModality } from "../../lib/inputModality";
 import { resetStore, useStore } from "../../state/store";
 import { trackerStatus } from "../../test/data";
 import { appLane, at, block, dayApp, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane, timesheetCard, withTimesheet } from "../../test/dayFixtures";
+import { checkedInPopUp } from "../../test/menus";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
 import { storedSuggestion, suggestion } from "../../test/ruleFixtures";
 import { settings } from "../../test/settings";
 import { Dialogs } from "../Dialogs";
+import { MenuHost } from "../menu";
 import { PermissionDialog } from "../PermissionDialog";
 import { StatusBar } from "../StatusBar";
 import { Toasts } from "../Toasts";
@@ -51,6 +54,7 @@ function renderDay(view: DayView, patch: Parameters<typeof resetStore>[0] = {}) 
       <Toasts />
       <PermissionDialog />
       <Dialogs />
+      <MenuHost />
     </>,
   );
 }
@@ -1956,6 +1960,15 @@ describe("DayPage", () => {
     });
 
     describe("the block menu opened with ⌃↵", () => {
+      let uninstallModality: () => void;
+      beforeEach(() => {
+        uninstallModality = installInputModality();
+      });
+      afterEach(() => {
+        uninstallModality();
+        delete document.documentElement.dataset.input;
+      });
+
       const openBlockMenu = async (keys: string) => {
         renderDay(busyDay());
         await blockEl("Safari: Docs");
@@ -2074,7 +2087,7 @@ describe("DayPage", () => {
       expect(await screen.findByRole("dialog", { name: "New rule" })).toBeInTheDocument();
       expect(sheet().getByLabelText("Name")).toHaveValue("Notes → Website");
       expect(sheet().getByRole("region", { name: "Title" })).toBeInTheDocument();
-      expect(sheet().getByLabelText("Title 1 comparison")).toHaveValue("contains");
+      expect(await checkedInPopUp(userEvent, "Title 1 comparison")).toEqual(["contains"]);
       expect(sheet().getByLabelText("Title 1 value")).toHaveValue("Todo");
     });
 

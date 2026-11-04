@@ -54,7 +54,7 @@
 /* The same alert where a view failed to load. */
 :is(.day-page, .day-main) > .settings-alert { margin: var(--space-4); }
 .settings-row-control { flex: none; display: flex; align-items: center; gap: var(--space-2); }
-.settings-row-control select.input { width: 9rem; }
+.settings-row-control .popup-button { width: 9rem; }
 .settings-input { display: flex; align-items: center; gap: var(--space-2); }
 /* A field with the message of its refused value below it. */
 .settings-field { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1); }
@@ -63,8 +63,8 @@
 .range-value { min-width: 4rem; text-align: right; }
 .app-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); font-size: var(--fs-meta); }
 .inline-switch { display: flex; align-items: center; gap: var(--space-2); }
-/* Number fields and number selects share one width, so the minutes of a page line up. */
-.settings-input .input.number { width: 6.5rem; text-align: right; }
+/* Number fields and number pop-up buttons share one width, so the minutes of a page line up. */
+.settings-input :is(.input, .popup-button).number { width: 6.5rem; text-align: right; }
 .settings-search { flex: none; }
 .settings-location { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 .settings-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }

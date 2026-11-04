@@ -339,7 +339,7 @@ export function runMenuCommand(id: string): boolean {
   return true;
 }
 
-/** A context menu takes its own keys, like a dialog. */
+/** An open menu (components/menu) takes its own keys, like a dialog. */
 const inMenu = (target: EventTarget | null) => target instanceof Element && !!target.closest('[role="menu"]');
 
 /** ↵ and Space activate the focused button or link rather than a command. */

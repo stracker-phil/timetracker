@@ -6,8 +6,10 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { resetStore, useStore } from "../../state/store";
+import { checkedInPopUp } from "../../test/menus";
 import { client, projectItem, projectsStore } from "../../test/projectFixtures";
 import { Dialogs } from "../Dialogs";
+import { MenuHost } from "../menu";
 import { Toasts } from "../Toasts";
 import { ProjectsPage } from "./ProjectsPage";
 
@@ -29,6 +31,7 @@ function renderPage(store: Parameters<typeof projectsStore>[0]) {
     <>
       <ProjectsPage />
       <Dialogs />
+      <MenuHost />
       <Toasts />
     </>,
   );
@@ -175,7 +178,7 @@ describe("ProjectsPage", () => {
       renderPage({ projects: [site], clients: [acme] });
       await userEvent.click(within(screen.getByRole("region", { name: "Acme" })).getByRole("button", { name: "New project for Acme" }));
       const dialog = await screen.findByRole("dialog", { name: "New project" });
-      expect(within(dialog).getByLabelText("Client")).toHaveDisplayValue("Acme");
+      expect(await checkedInPopUp(userEvent, "Client")).toEqual(["Acme"]);
       await userEvent.type(within(dialog).getByLabelText("Name"), "Intranet");
       await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
       expect(mocked.projectsSave).toHaveBeenCalledWith(null, expect.objectContaining({ clientId: "c-acme", name: "Intranet" }));
@@ -184,8 +187,8 @@ describe("ProjectsPage", () => {
     it("opens the project sheet without a client from the No client band", async () => {
       renderPage({ projects: [solo], clients: [acme] });
       await userEvent.click(within(screen.getByRole("region", { name: "No client" })).getByRole("button", { name: "New project without a client" }));
-      const dialog = await screen.findByRole("dialog", { name: "New project" });
-      expect(within(dialog).getByLabelText("Client")).toHaveDisplayValue("No client");
+      await screen.findByRole("dialog", { name: "New project" });
+      expect(await checkedInPopUp(userEvent, "Client")).toEqual(["No client"]);
     });
 
     it("offers no plus button on an archived client's band", async () => {

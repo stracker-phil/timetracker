@@ -1,7 +1,7 @@
-import type { MouseEvent } from "react";
+import { useState } from "react";
 import type { PauseUntil, TrackerState } from "../api";
 import { useStore } from "../state/store";
-import { useContextMenu, type MenuAnchor } from "./ContextMenu";
+import { useMenuOpenOn, type MenuEntry } from "./menu";
 
 const PAUSES: { label: string; until: PauseUntil }[] = [
   { label: "For 15 minutes", until: { minutes: 15 } },
@@ -12,12 +12,10 @@ const PAUSES: { label: string; until: PauseUntil }[] = [
 
 const TONES: Partial<Record<TrackerState["kind"], string>> = { running: "running", needsPermission: "attention" };
 
-/** The pause durations as a context menu; render `element`. */
-export function usePauseMenu() {
-  const menu = useContextMenu();
-  const pauseTracker = useStore((s) => s.pauseTracker);
-  const open = (at: MenuAnchor) => menu.open(at, PAUSES.map(({ label, until }) => ({ label, action: () => void pauseTracker(until) })));
-  return { open, element: menu.element };
+/** The pause durations, as a menu's rows. */
+export function pauseMenu(): MenuEntry[] {
+  const { pauseTracker } = useStore.getState();
+  return PAUSES.map(({ label, until }) => ({ text: label, run: () => void pauseTracker(until) }));
 }
 
 /** The tracker's dot and the status text Rust computed (the tray shows the same). */
@@ -40,12 +38,8 @@ export function TrackerStatus() {
   const kind = useStore((s) => s.tracker?.state.kind);
   const resumeTracker = useStore((s) => s.resumeTracker);
   const showPermissionDialog = useStore((s) => s.setPermissionDialogHidden);
-  const pauseMenu = usePauseMenu();
-
-  const openPauseMenu = (e: MouseEvent<HTMLButtonElement>) => {
-    const { left, top } = e.currentTarget.getBoundingClientRect();
-    pauseMenu.open({ x: left, y: top });
-  };
+  const [pauseButton, setPauseButton] = useState<HTMLButtonElement | null>(null);
+  const pauseOpen = useMenuOpenOn(pauseButton);
 
   return (
     <div className="tracker-status">
@@ -61,11 +55,17 @@ export function TrackerStatus() {
         </button>
       )}
       {(kind === "running" || kind === "away") && (
-        <button type="button" className="link-btn" aria-haspopup="menu" onClick={openPauseMenu}>
+        <button
+          ref={setPauseButton}
+          type="button"
+          className="link-btn"
+          aria-haspopup="menu"
+          aria-expanded={pauseOpen}
+          onClick={(e) => useStore.getState().openMenu(pauseMenu(), e.currentTarget, "Pause tracking")}
+        >
           Pause
         </button>
       )}
-      {pauseMenu.element}
     </div>
   );
 }

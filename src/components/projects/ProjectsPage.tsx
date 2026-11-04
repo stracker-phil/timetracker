@@ -6,7 +6,7 @@ import { formatDuration, plural, relativeTime } from "../../lib/format";
 import { groupProjects } from "../../state/slices/projects";
 import { useStore } from "../../state/store";
 import { AccentDot } from "../Accent";
-import { useContextMenu, type MenuEntry } from "../ContextMenu";
+import { openContextMenu, type MenuEntry } from "../menu";
 import { Toolbar } from "../Toolbar";
 
 function Hours({ ms, label }: { ms: number; label: string }) {
@@ -89,19 +89,18 @@ export function ProjectsPage() {
   // The hours change with every recording.
   useEffect(() => void useStore.getState().loadProjects(), [changes]);
   const [showArchived, setShowArchived] = useState(false);
-  const menu = useContextMenu();
   const groups = groupProjects(projects, clients, showArchived);
   const { openDialog, archiveProject } = useStore.getState();
 
   const openMenu = (e: MouseEvent, { project }: ProjectListItem) => {
     const archived = project.archivedAt !== null;
     const items: MenuEntry[] = [
-      { label: "Edit…", action: () => openDialog({ type: "project", id: project.id }) },
-      { label: archived ? "Restore" : "Archive", action: () => void archiveProject(project.id, !archived).catch(() => {}) },
+      { text: "Edit…", run: () => openDialog({ type: "project", id: project.id }) },
+      { text: archived ? "Restore" : "Archive", run: () => void archiveProject(project.id, !archived).catch(() => {}) },
       "separator",
-      { label: "Copy id", action: () => void copyText(project.id, "the project id") },
+      { text: "Copy id", run: () => void copyText(project.id, "the project id") },
     ];
-    menu.open(e, items);
+    openContextMenu(e, items, project.name);
   };
 
   return (
@@ -132,7 +131,6 @@ export function ProjectsPage() {
           </section>
         ))}
       </div>
-      {menu.element}
     </section>
   );
 }

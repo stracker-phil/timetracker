@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { installCommands } from "../../commands";
 import { handleSettingsKeydown } from "../../commands/settingsWindow";
+import { MenuHost } from "../../components/menu";
 import { SettingsWindow } from "../../components/settings/SettingsWindow";
 import { Toasts } from "../../components/Toasts";
 import { disposeAll } from "../../lib/disposeAll";
@@ -43,6 +44,7 @@ export function SettingsApp() {
   return (
     <>
       <SettingsWindow page={page} onPage={setPage} />
+      <MenuHost />
       <Toasts />
     </>
   );

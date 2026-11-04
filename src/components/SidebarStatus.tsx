@@ -1,7 +1,8 @@
 import { Pause, Play, Settings } from "lucide-react";
 import { runCommand, useBindingLabel } from "../commands";
 import { useStore } from "../state/store";
-import { TrackerLine, usePauseMenu } from "./TrackerStatus";
+import { openContextMenu } from "./menu";
+import { TrackerLine, pauseMenu } from "./TrackerStatus";
 
 const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` : label);
 
@@ -9,7 +10,6 @@ const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` :
 function PlayPause() {
   const kind = useStore((s) => s.tracker?.state.kind);
   const { pauseTracker, resumeTracker, setPermissionDialogHidden } = useStore.getState();
-  const pauseMenu = usePauseMenu();
 
   if (kind === "needsPermission") {
     return (
@@ -27,19 +27,16 @@ function PlayPause() {
   }
   if (kind !== "running" && kind !== "away") return null;
   return (
-    <>
-      <button
-        type="button"
-        className="icon-btn sidebar-play"
-        aria-label="Pause tracking"
-        title="Pause tracking; right-click for how long"
-        onClick={() => void pauseTracker("resumed")}
-        onContextMenu={pauseMenu.open}
-      >
-        <Pause size="0.923rem" />
-      </button>
-      {pauseMenu.element}
-    </>
+    <button
+      type="button"
+      className="icon-btn sidebar-play"
+      aria-label="Pause tracking"
+      title="Pause tracking; right-click for how long"
+      onClick={() => void pauseTracker("resumed")}
+      onContextMenu={(e) => openContextMenu(e, pauseMenu(), "Pause tracking")}
+    >
+      <Pause size="0.923rem" />
+    </button>
   );
 }
 

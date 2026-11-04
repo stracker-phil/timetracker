@@ -1,7 +1,10 @@
 import { X } from "lucide-react";
 import type { ConditionInput } from "../../api";
 import { AppIcon } from "../AppIcon";
+import { PopUpButton } from "../menu";
 import { OPS } from "./conditions";
+
+const OP_OPTIONS = OPS.map((o) => ({ value: o.id, label: o.label }));
 
 interface Props {
   /** `App 2`: the field and the row's place in its group. */
@@ -20,13 +23,13 @@ export function ConditionRow({ label, condition, error, onChange, onRemove, appK
   const app = condition.field === "app" ? condition.value.trim() : "";
   return (
     <div className="condition-row" role="group" aria-label={label} aria-invalid={error ? true : undefined}>
-      <select className="input condition-op" aria-label={`${label} comparison`} value={condition.op} onChange={(e) => onChange({ ...condition, op: e.target.value as ConditionInput["op"] })}>
-        {OPS.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      <PopUpButton
+        className="condition-op"
+        aria-label={`${label} comparison`}
+        value={condition.op}
+        options={OP_OPTIONS}
+        onChange={(op) => onChange({ ...condition, op })}
+      />
       <div className="condition-value">
         {app && <AppIcon app={app} bundleId={appKeyOf?.(app) ?? null} />}
         <input

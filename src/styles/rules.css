@@ -46,6 +46,7 @@
 .condition-add { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .condition-row { display: grid; grid-template-columns: 8rem minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; width: 100%; }
 .condition-row[aria-invalid] .condition-value .input { border-color: var(--style-red); }
+.condition-row .popup-button { width: 100%; }
 .condition-value { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .condition-value .input { flex: 1; min-width: 0; }
 .condition-error { grid-column: 1 / -1; }

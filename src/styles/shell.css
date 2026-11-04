@@ -38,7 +38,6 @@
 .toolbar .split-btn > .btn:not(.btn-primary):hover:not(:disabled) { background: var(--fill-strong); }
 .toolbar .split-btn:hover > .split-btn-menu { box-shadow: inset 1px 0 0 var(--line); }
 .toolbar .icon-btn { width: var(--toolbar-control-h); height: var(--toolbar-control-h); color: var(--o2); }
-.toolbar select.input { width: auto; }
 .toolbar .projects-archived, .toolbar .inline-switch { margin: 0 var(--space-2); }
 
 .empty-view { flex: 1; display: grid; place-items: center; color: var(--o3); font-size: var(--fs-title); }

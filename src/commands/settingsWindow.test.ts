@@ -54,6 +54,13 @@ describe("Settings window commands", () => {
     expect(mocked.hideWindow).not.toHaveBeenCalled();
   });
 
+  it("keeps the window open when Escape is pressed with a menu open", async () => {
+    const menu = document.body.appendChild(document.createElement("div"));
+    menu.setAttribute("role", "menu");
+    await press("{Escape}");
+    expect(mocked.hideWindow).not.toHaveBeenCalled();
+  });
+
   it("settings.search focuses the search field on Cmd+F", async () => {
     const search = document.body.appendChild(document.createElement("input"));
     search.setAttribute("aria-label", "Search Settings");

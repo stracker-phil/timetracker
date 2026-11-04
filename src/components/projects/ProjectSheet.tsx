@@ -3,6 +3,7 @@ import { toAppError, type Project, type ProjectInput } from "../../api";
 import { useStore } from "../../state/store";
 import { AccentSwatches, ShadeSwatches } from "../Accent";
 import { FormField } from "../Field";
+import { PopUpButton } from "../menu";
 import { Modal } from "../Modal";
 
 const NEW_CLIENT = "\u0000new";
@@ -34,6 +35,11 @@ export function ProjectSheet({ id, initialName = "", initialClientId, onClose, o
   const ids = { name: useId(), client: useId(), newClient: useId() };
   // Archived clients only show when the project already belongs to one.
   const choices = clients.filter((c) => c.archivedAt === null || c.id === input.clientId);
+  const clientOptions = [
+    { value: "", label: "No client" },
+    ...choices.map((c) => ({ value: c.id, label: c.archivedAt !== null ? `${c.name} (archived)` : c.name })),
+    { value: NEW_CLIENT, label: "New client…" },
+  ];
   const patch = (p: Partial<ProjectInput>) => setInput((current) => ({ ...current, ...p }));
   // A client's color wins; a project without a client, or with a new one, picks its own.
   const client = newClient === null ? clients.find((c) => c.id === input.clientId) : undefined;
@@ -86,25 +92,16 @@ export function ProjectSheet({ id, initialName = "", initialClientId, onClose, o
           <input id={ids.name} className="input" autoFocus value={input.name} onChange={(e) => patch({ name: e.target.value })} />
         </FormField>
         <FormField label="Client" htmlFor={ids.client} error={errors.clientId}>
-          <select
+          <PopUpButton
             id={ids.client}
-            className="input"
             value={newClient !== null ? NEW_CLIENT : (input.clientId ?? "")}
-            onChange={(e) => {
-              if (e.target.value === NEW_CLIENT) return setNewClient("");
+            options={clientOptions}
+            onChange={(value) => {
+              if (value === NEW_CLIENT) return setNewClient("");
               setNewClient(null);
-              patch({ clientId: e.target.value || null });
+              patch({ clientId: value || null });
             }}
-          >
-            <option value="">No client</option>
-            {choices.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.archivedAt !== null ? " (archived)" : ""}
-              </option>
-            ))}
-            <option value={NEW_CLIENT}>New client…</option>
-          </select>
+          />
         </FormField>
         {newClient !== null && (
           <FormField label="New client" htmlFor={ids.newClient} error={errors.clientName}>

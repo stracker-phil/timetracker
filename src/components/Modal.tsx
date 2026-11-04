@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { isRecordingTarget } from "../commands/registry";
+import { useStore } from "../state/store";
 
 interface Props {
   onClose: () => void;
@@ -47,7 +48,8 @@ export function Modal({ onClose, variant = "sheet", className = "", labelledBy, 
     // The app's shortcut handler already ignores keys while an overlay is open, except settings and zoom.
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (isRecordingTarget(e.target)) return;
+      // An open menu (a pop-up button's, in the sheet) takes it first.
+      if (isRecordingTarget(e.target) || useStore.getState().menu !== null) return;
       e.stopPropagation();
       onCloseRef.current();
     };

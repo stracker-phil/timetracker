@@ -7,6 +7,7 @@ import { useApiResult } from "../../lib/useApiResult";
 import type { SettingsPageProps } from "../../registry/settingsPages";
 import { useStore } from "../../state/store";
 import { InsetField } from "../Field";
+import { PopUpButton } from "../menu";
 import { Modal } from "../Modal";
 import { Group, Row, Switch } from "./controls";
 import { NumberField } from "./fields";
@@ -197,19 +198,14 @@ export function TrackerPage({ s, set, commit }: SettingsPageProps) {
       />
       <Row label="For longer than" htmlFor="settings-away-prompt-minutes" nested>
         <div className="settings-input">
-          <select
+          <PopUpButton
             id="settings-away-prompt-minutes"
-            className="input number"
+            className="number"
             disabled={!tracker.awayPromptEnabled}
             value={tracker.awayPromptMinutes}
-            onChange={(e) => set({ tracker: { ...tracker, awayPromptMinutes: Number(e.target.value) } })}
-          >
-            {awayPromptChoices(tracker.awayPromptMinutes).map((minutes) => (
-              <option key={minutes} value={minutes}>
-                {minutes}
-              </option>
-            ))}
-          </select>
+            options={awayPromptChoices(tracker.awayPromptMinutes).map((minutes) => ({ value: minutes, label: String(minutes) }))}
+            onChange={(awayPromptMinutes) => set({ tracker: { ...tracker, awayPromptMinutes } })}
+          />
           <span className="muted">min</span>
         </div>
       </Row>

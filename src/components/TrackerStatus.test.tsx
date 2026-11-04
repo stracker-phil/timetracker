@@ -7,7 +7,15 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import { api } from "../api";
 import { resetStore, useStore } from "../state/store";
 import { trackerStatus } from "../test/data";
-import { TrackerStatus } from "./TrackerStatus";
+import { MenuHost } from "./menu";
+import { TrackerStatus as Subject } from "./TrackerStatus";
+
+const TrackerStatus = () => (
+  <>
+    <Subject />
+    <MenuHost />
+  </>
+);
 
 const mocked = vi.mocked(api, true);
 const paused = trackerStatus({ state: { kind: "paused", until: null }, text: "Paused until resumed" });

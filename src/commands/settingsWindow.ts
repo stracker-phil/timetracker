@@ -13,8 +13,8 @@ export function registerSettingsScope() {
 
 const searchField = () => document.querySelector<HTMLInputElement>('input[aria-label="Search Settings"]');
 
-/** Escape belongs to a focused text field or an open sheet first. */
-const canClose = () => !isTextInput(document.activeElement) && !document.querySelector('[role="dialog"]');
+/** Escape belongs to a focused text field, an open sheet or an open menu first. */
+const canClose = () => !isTextInput(document.activeElement) && !document.querySelector('[role="dialog"], [role="menu"]');
 
 export const SETTINGS_COMMANDS: Command[] = [
   { id: "settings.search", title: "Search Settings", scope: SETTINGS_SCOPE, defaultBinding: "Mod+F", run: () => searchField()?.focus() },

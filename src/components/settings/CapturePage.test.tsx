@@ -7,7 +7,9 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api } from "../../api";
 import { installCommands } from "../../commands";
 import { resetStore } from "../../state/store";
+import { pickFromPopUp } from "../../test/menus";
 import { settings } from "../../test/settings";
+import { MenuHost } from "../menu";
 import { SettingsWindow } from "./SettingsWindow";
 
 const mocked = vi.mocked(api, true);
@@ -24,7 +26,12 @@ function renderPage(page: "capture" | "tracker", capture: Partial<Capture> = {})
   const base = settings();
   resetStore({ settings: { ...base, capture: { ...base.capture, ...capture } } });
   installCommands();
-  return render(<SettingsWindow page={page} onPage={() => {}} />);
+  return render(
+    <>
+      <SettingsWindow page={page} onPage={() => {}} />
+      <MenuHost />
+    </>,
+  );
 }
 
 function lastSaved() {
@@ -200,32 +207,41 @@ describe("Settings Tracker page", () => {
   });
 
   describe("away prompt", () => {
-    const minutesField = () => screen.getByRole("combobox", { name: "For longer than" });
+    const minutesField = () => screen.getByRole("button", { name: "For longer than" });
+    const openMinutes = () => userEvent.click(minutesField());
     const askSwitch = () => screen.getByRole("switch", { name: "Ask what I did after being away" });
 
-    it("shows the prompt on with a threshold of 10 minutes", () => {
+    it("shows the prompt on with a threshold of 10 minutes", async () => {
       renderPage("tracker");
       expect(askSwitch()).toBeChecked();
-      expect(minutesField()).toHaveValue("10");
       expect(minutesField()).toBeEnabled();
+      await openMinutes();
+      expect(screen.getByRole("menuitemradio", { name: "10" })).toHaveAttribute("aria-checked", "true");
     });
 
-    it("offers 5 to 60 minutes", () => {
+    it("offers 5 to 60 minutes", async () => {
       renderPage("tracker");
-      expect(within(minutesField()).getAllByRole("option").map((o) => o.textContent)).toEqual(["5", "10", "15", "20", "30", "45", "60"]);
+      await openMinutes();
+      expect(screen.getAllByRole("menuitemradio").map((o) => o.textContent)).toEqual(["5", "10", "15", "20", "30", "45", "60"]);
     });
 
-    it("keeps a hand-edited threshold selectable", () => {
+    it("keeps a hand-edited threshold selectable", async () => {
       const base = settings();
       resetStore({ settings: { ...base, tracker: { ...base.tracker, awayPromptMinutes: 12 } } });
       installCommands();
-      render(<SettingsWindow page="tracker" onPage={() => {}} />);
-      expect(minutesField()).toHaveValue("12");
+      render(
+        <>
+          <SettingsWindow page="tracker" onPage={() => {}} />
+          <MenuHost />
+        </>,
+      );
+      await openMinutes();
+      expect(screen.getByRole("menuitemradio", { name: "12" })).toHaveAttribute("aria-checked", "true");
     });
 
     it("saves the chosen threshold", async () => {
       renderPage("tracker");
-      await userEvent.selectOptions(minutesField(), "30");
+      await pickFromPopUp(userEvent, "For longer than", "30");
       expect(lastSaved().tracker).toEqual({ ...settings().tracker, awayPromptMinutes: 30 });
     });
 

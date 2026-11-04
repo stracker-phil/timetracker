@@ -8,7 +8,15 @@ import { api } from "../api";
 import { installCommands } from "../commands";
 import { resetStore, useStore } from "../state/store";
 import { trackerStatus } from "../test/data";
-import { SidebarStatus } from "./SidebarStatus";
+import { MenuHost } from "./menu";
+import { SidebarStatus as Subject } from "./SidebarStatus";
+
+const SidebarStatus = () => (
+  <>
+    <Subject />
+    <MenuHost />
+  </>
+);
 
 const mocked = vi.mocked(api, true);
 const paused = trackerStatus({ state: { kind: "paused", until: null }, text: "Paused until resumed" });

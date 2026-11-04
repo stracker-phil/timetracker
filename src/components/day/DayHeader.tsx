@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { CircleCheck, Ellipsis, SlidersHorizontal } from "lucide-react";
 import type { DayTotals } from "../../api";
 import { runCommand, useBindingLabel } from "../../commands";
 import { formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
-import { useContextMenu } from "../ContextMenu";
+import { openMenu, useMenuOpenOn } from "../menu";
 import { Toolbar } from "../Toolbar";
 
 const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` : label);
@@ -33,14 +34,17 @@ function RecordedMark({ recorded }: { recorded: boolean }) {
 export function DayHeader({ label = "", totals }: { label?: string; totals: DayTotals | null }) {
   const optionsKeys = useBindingLabel("day.settings");
   const text = totals ? totalsText(totals) : "";
-  const menu = useContextMenu();
-  const openMenu = (button: HTMLElement) => {
-    const { left, bottom } = button.getBoundingClientRect();
-    menu.open({ x: left, y: bottom + 4 }, [
-      { label: "Delete activity for this day…", action: () => runCommand("activity.deleteDay") },
-      { label: "Delete activity in a range…", action: () => runCommand("activity.deleteRange") },
-    ]);
-  };
+  const [moreButton, setMoreButton] = useState<HTMLButtonElement | null>(null);
+  const moreOpen = useMenuOpenOn(moreButton);
+  const openMore = (button: HTMLElement) =>
+    openMenu(
+      [
+        { text: "Delete activity for this day…", run: () => runCommand("activity.deleteDay") },
+        { text: "Delete activity in a range…", run: () => runCommand("activity.deleteRange") },
+      ],
+      button,
+      "More day actions",
+    );
   return (
     <Toolbar
       title={label}
@@ -68,10 +72,18 @@ export function DayHeader({ label = "", totals }: { label?: string; totals: DayT
       >
         <SlidersHorizontal size="1.154rem" />
       </button>
-      <button type="button" className="icon-btn" aria-label="More day actions" aria-haspopup="menu" title="More" onClick={(e) => openMenu(e.currentTarget)}>
+      <button
+        ref={setMoreButton}
+        type="button"
+        className="icon-btn"
+        aria-label="More day actions"
+        aria-haspopup="menu"
+        aria-expanded={moreOpen}
+        title="More"
+        onClick={(e) => openMore(e.currentTarget)}
+      >
         <Ellipsis size="1.154rem" />
       </button>
-      {menu.element}
     </Toolbar>
   );
 }

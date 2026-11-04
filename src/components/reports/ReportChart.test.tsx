@@ -1,8 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { ReportCharts } from "../../api";
+import { resetStore } from "../../state/store";
+import { pickFromPopUp } from "../../test/menus";
 import { chartSlice } from "../../test/reportFixtures";
+import { MenuHost } from "../menu";
 import { ReportChart } from "./ReportChart";
 
 const charts: ReportCharts = {
@@ -15,9 +18,17 @@ const charts: ReportCharts = {
   byTag: [chartSlice({ key: "t1", label: "support", color: "red", roundedMs: 7_200_000 })],
 };
 
-const renderChart = (initial: "client" | "project" | "tag" = "client") => render(<ReportChart charts={charts} totalMs={7_200_000} initial={initial} />);
+const renderChart = (initial: "client" | "project" | "tag" = "client") =>
+  render(
+    <>
+      <ReportChart charts={charts} totalMs={7_200_000} initial={initial} />
+      <MenuHost />
+    </>,
+  );
 
 describe("ReportChart", () => {
+  beforeEach(() => resetStore());
+
   it("lists each slice of the initial grouping in the legend with its hours", () => {
     renderChart();
     const legend = within(screen.getByRole("list", { name: "By client legend" }));
@@ -41,24 +52,25 @@ describe("ReportChart", () => {
   it.each([
     ["project", "By project legend", ["Portal", "Docs", "Site"], "3 projects"],
     ["tag", "By tag legend", ["support"], "1 tag"],
-  ])("switches to the slices by %s through the Chart by select", async (by, legendName, labels, caption) => {
+  ])("switches to the slices by %s through the Chart by menu", async (by, legendName, labels, caption) => {
     renderChart();
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Chart by" }), by);
+    await pickFromPopUp(userEvent, "Chart by", by[0].toUpperCase() + by.slice(1));
     const legend = within(screen.getByRole("list", { name: legendName }));
     expect(legend.getAllByRole("listitem").map((item) => item.textContent)).toEqual(expect.arrayContaining(labels.map((label) => expect.stringContaining(label))));
     expect(screen.getByText(caption)).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "By client legend" })).not.toBeInTheDocument();
   });
 
-  it("offers Client, Project and Tag in the Chart by select", () => {
+  it("offers Client, Project and Tag in the Chart by menu", async () => {
     renderChart();
-    const options = within(screen.getByRole("combobox", { name: "Chart by" })).getAllByRole("option");
-    expect(options.map((o) => o.textContent)).toEqual(["Client", "Project", "Tag"]);
+    await userEvent.click(screen.getByRole("button", { name: "Chart by" }));
+    expect(screen.getAllByRole("menuitemradio").map((o) => o.textContent)).toEqual(["Client", "Project", "Tag"]);
   });
 
-  it("starts with the initial grouping", () => {
+  it("starts with the initial grouping", async () => {
     renderChart("tag");
-    expect(screen.getByRole("combobox", { name: "Chart by" })).toHaveValue("tag");
+    await userEvent.click(screen.getByRole("button", { name: "Chart by" }));
+    expect(screen.getByRole("menuitemradio", { name: "Tag" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("list", { name: "By tag legend" })).toBeInTheDocument();
   });
 

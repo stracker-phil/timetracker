@@ -1,6 +1,7 @@
 import type { Rounding } from "../../api";
 import { defaultFilter } from "../../state/slices/reports";
 import { useStore } from "../../state/store";
+import { PopUpButton } from "../menu";
 import { Modal } from "../Modal";
 import { Group, Row, Switch } from "../settings/controls";
 import { useAnchoredStyle } from "../useAnchoredStyle";
@@ -24,13 +25,7 @@ export function ReportOptionsPopover() {
     <Modal onClose={close} variant="popover" className="view-options scroller" label="Report options" style={style}>
       <Group>
         <Row label="Rounding" htmlFor="report-rounding">
-          <select id="report-rounding" className="input" value={filter.rounding} onChange={(e) => setReportFilter({ rounding: e.target.value as Rounding })}>
-            {ROUNDINGS.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </select>
+          <PopUpButton id="report-rounding" value={filter.rounding} options={ROUNDINGS} onChange={(rounding) => setReportFilter({ rounding })} />
         </Row>
         <Switch label="Include archived" description="Recordings of archived projects." checked={filter.includeArchived} onChange={(includeArchived) => setReportFilter({ includeArchived })} />
       </Group>

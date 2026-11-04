@@ -28,21 +28,38 @@
 .dialog.welcome .actions { margin-top: var(--space-3); }
 
 /* ---------- menus & toasts ---------- */
-/* The one context menu (ContextMenu.tsx), portaled to <body>; it sets its own type so no area restyles it. */
+/* The one menu (components/menu/, docs/ux.md → Menus): context menus and the menus of buttons and pop-up buttons,
+   portaled to <body>; it sets its own type so no area restyles it. */
+.menu-layer { display: contents; }
 .menu {
-  position: fixed; z-index: 60; min-width: 13.846rem; padding: var(--space-1); border-radius: var(--radius);
-  background: var(--pop); box-shadow: var(--shadow);
+  position: fixed; z-index: 60; min-width: 13.846rem; max-width: 40rem; padding: var(--space-1); border-radius: var(--radius);
+  display: flex; flex-direction: column; outline: none;
+  background: var(--pop); box-shadow: var(--shadow); animation: pop var(--motion-fast) var(--ease-out);
   font-family: var(--font-ui); font-size: var(--fs-body); font-weight: 400; line-height: normal; color: var(--text); white-space: nowrap;
 }
-.menu button { display: flex; width: 100%; align-items: center; gap: var(--space-2); height: var(--control-h); padding: 0 var(--space-2); border: none; border-radius: var(--radius-sm); background: none; text-align: left; }
-.menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--accent); color: var(--on-accent); outline: none; }
-.menu button:disabled { color: var(--o3); }
-.menu button.with-detail { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0.154rem; height: auto; min-height: var(--control-h); padding: var(--space-1) var(--space-2); }
-.menu button.checkable { padding-left: var(--space-1); gap: var(--space-1); }
-.menu-check { flex: none; }
-.menu-detail { max-width: 36rem; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-meta); color: var(--o3); }
-.menu button:hover:not(:disabled) .menu-detail, .menu button:focus-visible .menu-detail { color: inherit; opacity: 0.8; }
-.menu hr { border: none; border-top: 1px solid var(--line); margin: var(--space-1) var(--space-2); }
+.menu__group { display: flex; flex-direction: column; }
+.menu__caption { padding: var(--space-1) var(--space-2) 0.154rem; font-size: var(--fs-meta); font-weight: 600; color: var(--o3); }
+.menu__item {
+  display: flex; width: 100%; align-items: center; gap: var(--space-2); min-height: var(--control-h); padding: 0 var(--space-2);
+  border: none; border-radius: var(--radius-sm); background: none; color: inherit; text-align: left; outline: none;
+}
+/* The highlighted row, by the mouse or the keys, is filled with the accent as in a macOS menu. */
+.menu__item[data-active] { background: var(--accent); color: var(--on-accent); }
+.menu__item[aria-disabled="true"] { color: var(--o3); }
+.menu__item--danger { color: var(--style-red); }
+.menu__item--detail { padding-top: var(--space-1); padding-bottom: var(--space-1); }
+/* The check column shows only in a menu with a choice, so the texts of a menu line up. */
+.menu__check { flex: none; display: none; }
+.menu--checks .menu__item { padding-left: var(--space-1); gap: var(--space-1); }
+.menu--checks .menu__check { display: block; }
+.menu__icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 1.231rem; color: var(--o2); }
+.menu__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.154rem; }
+.menu__label { overflow: hidden; text-overflow: ellipsis; }
+.menu__detail { max-width: 36rem; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-meta); color: var(--o3); }
+.menu__hint { margin-left: var(--space-3); font-size: var(--fs-meta); color: var(--o3); }
+.menu__submenu { flex: none; color: var(--o2); }
+.menu__item[data-active] :is(.menu__icon, .menu__detail, .menu__hint, .menu__submenu) { color: inherit; opacity: 0.85; }
+.menu__separator { flex: none; height: 1px; margin: var(--space-1) var(--space-2); background: var(--line); }
 .toasts { position: fixed; right: 1.231rem; bottom: 2.769rem; z-index: 70; display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-end; }
 .toast {
   display: flex; align-items: flex-start; gap: var(--space-2); max-width: 32.308rem; padding: var(--space-2) var(--space-3) var(--space-2) var(--space-3);

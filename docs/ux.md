@@ -258,7 +258,7 @@ groups and popovers a 10px radius; sheets 20px padding and a 12px radius.
 
 ## Controls
 
-AppKit sizes and looks ([ADR 0024](adr/0024-native-macos-look.md)), in `styles/controls.css`:
+AppKit sizes and looks ([ADR 0024](adr/0024-native-macos-look.md); pop-up buttons and menus [ADR 0037](adr/0037-menus-are-drawn-in-the-page.md)), in `styles/controls.css`:
 
 | Kind | Class | Look |
 |---|---|---|
@@ -267,7 +267,7 @@ AppKit sizes and looks ([ADR 0024](adr/0024-native-macos-look.md)), in `styles/c
 | Destructive | `.btn-danger` | a push button with `--style-red` text (500) |
 | Borderless | `.btn-quiet`, `.icon-btn` | no bezel until hovered (`--fill`), pressed `--fill-strong`; icons in `--o2`. `.icon-btn` is a 22px square |
 | Toolbar button | `.btn` or `.icon-btn` inside `.toolbar` | borderless, 28px high, icon and label, hover bezel |
-| Popup button | `select.input` | WebKit's native chevrons inside the push button bezel |
+| Pop-up button | `PopUpButton` (`.popup-button`) | the push button bezel around the current choice and a chevron, as wide as its widest choice; its choices open as an in-page [menu](#menus) under it ([ADR 0037](adr/0037-menus-are-drawn-in-the-page.md)) |
 | Text field | `.input` | 22px, `--field` with a 1px inset `--field-line` frame, 6px radius; focus swaps the frame for `--focus-ring` |
 | Search field | `InsetField` (`.inset-field`) | a `--fill` capsule with a leading icon and an optional key cap; on focus the field surface, frame and ring |
 | Segmented control | `SegmentedControl` (`.segmented`) | a 22px `--fill` track with 2px padding; segments in `--text`; the pressed one raised on `--raised` with `--shadow-small`, its label `--text-strong` |
@@ -356,8 +356,8 @@ one ringed. A tag is plain text, never a pill; a recording has at most one
 Inputs look like AppKit's (see Controls), never like rows. A text field is a 22px frame on `--field` with a
 1px inset `--field-line` and the accent focus ring; a search field (`InsetField`, `components/Field.tsx`) a
 `--fill` capsule with a leading icon, the placeholder in `--o3` and an optional key cap that follows the
-user's bindings. A select is a popup button. The segmented control serves the Day mode switch and Settings
-choices; the report's Period is a popup button.
+user's bindings. A choice of several is a pop-up button (`PopUpButton`), never a native `<select>`. The segmented
+control serves the Day mode switch and Settings choices; the report's Period is a pop-up button.
 
 ### Focus rings
 
@@ -376,9 +376,8 @@ drop; no border). Menus, toasts and popovers take `--radius` (10px), sheets and 
 Sheets and the palette sit over `--scrim`; popovers (the date picker, View options) sit over
 nothing. Overlays take `Esc` first. Palette results use the row anatomy with a 6px radius; the active one is
 filled with the accent and `--on-accent` text, as in Spotlight, and command shortcuts show as key caps.
-Context menus use the UI font, 22px items with a 5px radius; the hovered or focused item is `--accent` with
-`--on-accent` text, disabled items `--o3`, separators an inset 1px `--line`. The native WebKit context menu is
-suppressed outside text fields (`lib/nativeMenu.ts`).
+Every context menu and every pop-up button's menu is the one in-page menu (see [Menus](#menus)); the native
+WebKit context menu is suppressed outside text fields (`lib/nativeMenu.ts`).
 
 Pickers (project, tag) are a combobox: a text field's frame (`--field`, hairline, the accent focus ring) with
 the value's icon (the project's color dot, a hollow dot without one; the tag icon), the value, and a chevron
@@ -388,6 +387,41 @@ list below it on `--pop`, using the palette's row anatomy and small `--o3` secti
 starts on the current value, scrolled into view and marked with a check; while nothing is typed the field
 shows the value as its placeholder. The last option creates what was typed (`New project "x"…`, `New tag
 "x"`). The tag picker picks one tag; its first option is "No tag".
+
+## Menus
+
+Every context menu, every button that opens a menu (Pause, ⋯ More day actions, Copy as text's chevron) and
+every pop-up button is one menu drawn in the page ([ADR 0037](adr/0037-menus-are-drawn-in-the-page.md),
+inherited from Taskboard's ADR 0034); only the app's menu bar and the tray are native. `openMenu(entries, at,
+label)` or, for a right-click, `openContextMenu(e, entries, label)` from `components/menu` asks the store
+(`state/slices/menu.ts`); `MenuHost`, mounted once per window that has menus (the main window and Settings), draws
+it, portaled to `<body>`.
+
+- **Look**: `--pop` with `--shadow`, `--radius`, 4px padding, popping in (`pop` over `--motion-fast`); the UI
+  font. Rows are `--control-h` high with `--radius-sm`: an optional icon, the text, an optional second line
+  (`detail`, `--fs-meta` in `--o3`), an optional hint or key (`--o3`) and › for a submenu. A menu with a choice
+  keeps a leading check column, the current choice checked. The highlighted row is `--accent` with
+  `--on-accent` text, as in a macOS menu; a disabled row `--o3` (its `title` says why), a destructive one
+  (Delete) `--style-red`. A caption (`--fs-meta`, 600, `--o3`) starts a group, an inset `--line` separates groups.
+- **Placement** (`components/menu/placement.ts`): a right-click's menu opens at the mouse, a button's under the
+  button, a submenu beside its row; the keyboard's block menu inside the focused block's top left corner. Each
+  flips to the other side when the window has no room, then shifts inside it, 4px from the edges.
+- **Closing**: Escape, a press outside, a scroll, the window losing focus or a resize close it, and so does
+  choosing a row. The focus goes back to where it was (the button that opened it), unless the row moved it on
+  (a sheet, a field). A second press on a menu's button closes it. Escape closes only the menu, never the sheet
+  or Settings window under it.
+- **Keys**: ↑ ↓ (wrapping), Home and End move through the enabled rows, ↩ or Space runs one, typing a letter
+  jumps to the next row starting with it; → opens a submenu (hovering does too), ← closes it. A menu opened
+  from a button or a key starts on its first row. Command keys stay off while a menu has the focus, like a
+  dialog's.
+- **Roles**: `menu` named by its label and `menuitem`; a choice is `menuitemradio` (`menuitemcheckbox` for an
+  on/off one, Own lane) with `aria-checked`; a caption's rows are a `group` named by it; disabled rows are
+  `aria-disabled`. A button that opens a menu has `aria-haspopup="menu"` and `aria-expanded`.
+- **Pop-up buttons** (`components/menu/PopUpButton.tsx`): `{ value, options, onChange, aria-label?, id?,
+  disabled? }`. The button shows the current choice and a chevron; every choice sits invisibly in the same
+  place, so the button is as wide as its widest choice and never changes width when another is picked. A
+  click, Space, ↩, ↓ or ↑ opens the choices under it as `menuitemradio` rows, the current one checked; a
+  `<label htmlFor>` naming the button keeps its accessible name (Rounding, Client, For longer than).
 
 ## Palette
 
@@ -744,7 +778,7 @@ The Reports screen follows Timely's day report, without money. The toolbar has t
 Report options (a sliders button: a popover with Rounding and an Include archived switch), Copy as text as a
 split button (the main part copies with the current grouping; its chevron opens a menu that picks it: By
 project, tag, day, week or month, the current one checked) and Save report…; below, one slim filter bar: the
-Period as a popup button (Today to Last month, Custom revealing dates), then compact clients, projects and
+Period as a pop-up button (Today to Last month, Custom revealing dates), then compact clients, projects and
 tags fields. The
 P and N step the period, O goes to the one holding today, and the sidebar's calendar highlights it when it is one day, week or month. The sections stand on the page without boxes, set apart by whitespace and a
 faint hairline; headings are `--fs-title` semibold:
@@ -809,7 +843,7 @@ command is in the palette too (⌘K, `>` lists the commands of the active scopes
 Rules of the keys (`handleKeydown`):
 
 - Bare keys never fire in text fields; there only ⌘ and ⌃ combinations and Escape do.
-- While a dialog, the palette, the recording editor or a context menu is open, only Settings, `?`, the
+- While a dialog, the palette, the recording editor or a menu is open, only Settings, `?`, the
   palette, zoom, Close window, Hide to Menu Bar and Quit run; every other key belongs to the overlay. Escape closes the
   recording editor wherever the focus is.
 - ↵ and Space on a focused button or link activate it. J, K, H, L, V, ⇧J, ⇧K, ] and [ give the keys back to

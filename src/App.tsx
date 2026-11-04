@@ -4,6 +4,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { DayPage } from "./components/day/DayPage";
 import { Dialogs } from "./components/Dialogs";
 import { EmptyView } from "./components/EmptyView";
+import { MenuHost } from "./components/menu";
 import { Welcome } from "./components/onboarding/Welcome";
 import { PermissionDialog } from "./components/PermissionDialog";
 import { ProjectsPage } from "./components/projects/ProjectsPage";
@@ -128,6 +129,7 @@ export default function App() {
       <PermissionDialog />
       <Welcome />
       <CommandPalette />
+      <MenuHost />
       <Toasts />
     </>
   );

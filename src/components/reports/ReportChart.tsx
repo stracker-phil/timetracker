@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ChartSlice, ReportCharts } from "../../api";
 import { formatDuration, plural } from "../../lib/format";
 import { accentColor, AccentDot } from "../Accent";
+import { PopUpButton } from "../menu";
 
 type ChartBy = "client" | "project" | "tag";
 
@@ -10,6 +11,7 @@ const CHART_BYS: { by: ChartBy; label: string; slices: keyof ReportCharts; one: 
   { by: "project", label: "Project", slices: "byProject", one: "project", many: "projects" },
   { by: "tag", label: "Tag", slices: "byTag", one: "tag", many: "tags" },
 ];
+const BY_OPTIONS = CHART_BYS.map((c) => ({ value: c.by, label: c.label }));
 
 const SIZE = 220;
 const CENTER = SIZE / 2;
@@ -75,13 +77,7 @@ export function ReportChart({ charts, totalMs, initial }: { charts: ReportCharts
     <section className="report-chart" aria-label={name}>
       <header className="report-chart-head">
         <span>By</span>
-        <select className="input" aria-label="Chart by" value={by} onChange={(e) => setBy(e.target.value as ChartBy)}>
-          {CHART_BYS.map((c) => (
-            <option key={c.by} value={c.by}>
-              {c.label}
-            </option>
-          ))}
-        </select>
+        <PopUpButton aria-label="Chart by" value={by} options={BY_OPTIONS} onChange={setBy} />
       </header>
       <div className="report-chart-body">
         <Donut slices={slices} totalMs={totalMs} caption={plural(slices.length, chart.one, chart.many)} name={name} />

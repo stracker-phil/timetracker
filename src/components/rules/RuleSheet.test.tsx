@@ -9,8 +9,10 @@ import { api, type RuleInput } from "../../api";
 import { resetStore } from "../../state/store";
 import { at } from "../../test/dayFixtures";
 import { projectItem, projectsStore } from "../../test/projectFixtures";
+import { checkedInPopUp, pickFromPopUp } from "../../test/menus";
 import { previewHit, rule, rulePreview } from "../../test/ruleFixtures";
 import { Dialogs } from "../Dialogs";
+import { MenuHost } from "../menu";
 import { Toasts } from "../Toasts";
 import { RuleSheet } from "./RuleSheet";
 
@@ -40,6 +42,7 @@ function renderSheet(props: Partial<ComponentProps<typeof RuleSheet>> = {}) {
     <>
       <RuleSheet onClose={onClose} {...props} />
       <Dialogs />
+      <MenuHost />
       <Toasts />
     </>,
   );
@@ -80,8 +83,8 @@ describe("RuleSheet", () => {
     it("adds a field, with the comparison the user picks", async () => {
       renderSheet({ draft: { ...draft, conditions: [draft.conditions[0]] } });
       await userEvent.click(within(screen.getByRole("group", { name: "Add a field" })).getByRole("button", { name: "Domain" }));
-      expect(screen.getByLabelText("Domain 1 comparison")).toHaveValue("is");
-      await userEvent.selectOptions(screen.getByLabelText("Domain 1 comparison"), "begins with");
+      expect(await checkedInPopUp(userEvent, "Domain 1 comparison")).toEqual(["is"]);
+      await pickFromPopUp(userEvent, "Domain 1 comparison", "begins with");
       await userEvent.type(screen.getByLabelText("Domain 1 value"), "example");
       await save();
       expect(mocked.ruleSave).toHaveBeenCalledWith(null, expect.objectContaining({ conditions: [draft.conditions[0], { field: "domain", op: "begins_with", value: "example" }] }));
@@ -154,12 +157,12 @@ describe("RuleSheet", () => {
       expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
     });
 
-    it("starts from a draft", () => {
+    it("starts from a draft", async () => {
       renderSheet({ draft });
       expect(screen.getByLabelText("Name")).toHaveValue("Safari → Website");
       expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("Website");
       expect(screen.getByLabelText("App 1 value")).toHaveValue("Safari");
-      expect(screen.getByLabelText("Title 1 comparison")).toHaveValue("contains");
+      expect(await checkedInPopUp(userEvent, "Title 1 comparison")).toEqual(["contains"]);
     });
   });
 

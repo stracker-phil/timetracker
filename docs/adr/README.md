@@ -33,7 +33,7 @@ stands in TimeTracker. The numbers in this table are TimeTracker's.
 | [0021](0021-appearance-modes-and-schemes.md) | Appearance is a mode and one of three schemes, built from four palettes | Accepted (2026-10-22), implemented, superseded in part by 0022 and 0024 |
 | [0022](0022-a-scheme-per-system-mode.md) | Appearance follows macOS, with one scheme per mode | Accepted (2026-10-22), implemented |
 | [0023](0023-week-and-month-are-lists.md) | The Week and Month list recordings per day; a Week drag moves a recording's day | Accepted (2026-10-22), implemented |
-| [0024](0024-native-macos-look.md) | The app looks native: system font, inset groups, a unified toolbar, AppKit control metrics | Accepted (2026-10-22), implemented, amended by 0034 |
+| [0024](0024-native-macos-look.md) | The app looks native: system font, inset groups, a unified toolbar, AppKit control metrics | Accepted (2026-10-22), implemented, amended by 0034 and 0037 |
 | [0025](0025-rust-labels-dates-and-durations.md) | Rust labels dates in the region's order; one duration format | Accepted (2026-10-22), implemented |
 | [0026](0026-timeline-pointer-input-snaps-to-ticks.md) | Timeline pointer input snaps to Rust-provided ticks | Accepted (2026-10-22), implemented |
 | [0027](0027-rules-match-the-summary.md) | Rules match the summary, not every activity | Accepted (2026-10-23), implemented |
@@ -46,3 +46,4 @@ stands in TimeTracker. The numbers in this table are TimeTracker's.
 | [0034](0034-settings-is-a-window-of-its-own.md) | Settings is a window of its own | Accepted (2026-11-04), implemented |
 | [0035](0035-appearance-keeps-schemes-and-an-accent.md) | Appearance keeps a scheme per mode and an accent | Accepted (2026-11-04) |
 | [0036](0036-the-status-bar-stays.md) | The status bar stays | Accepted (2026-11-04) |
+| [0037](0037-menus-are-drawn-in-the-page.md) | Menus are drawn in the page | Accepted (2026-11-04), implemented |

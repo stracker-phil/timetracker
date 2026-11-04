@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import type { DayView } from "../../api";
 import { findBlock } from "../../lib/blockFocus";
 import { isToday } from "../../lib/day";
 import { formatClock } from "../../lib/format";
 import { useStore, type Store } from "../../state/store";
-import { useContextMenu } from "../ContextMenu";
+import { openContextMenu, openMenu, type MenuAt } from "../menu";
 import { blockMenu } from "./blockMenu";
 import { drawnParts, selectionBand } from "./drawnParts";
 import { HoverCard } from "./HoverCard";
@@ -69,7 +69,6 @@ export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) 
   const scrollRef = useRef<HTMLDivElement>(null);
   const range = useVisibleRange(scrollRef);
   const hover = useHoveredBlock();
-  const menu = useContextMenu();
   const live = isToday(view.day);
   const now = useNow(live, NOW_TICK_MS);
   const [origin, end] = view.bounds;
@@ -96,16 +95,21 @@ export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) 
   const draftBands = drawnParts(draft?.spans ?? [], view.bounds);
   const ownBand = selectionBand(selection, draftBands);
 
-  const openMenu = (anchor: { x: number; y: number } | MouseEvent, id: string) => {
+  const menuOf = (id: string | null) => {
     const found = findBlock(view, id);
-    if (found) menu.open(anchor, blockMenu(found.block, view.lanes[found.lane], useStore.getState().settings));
+    return found ? blockMenu(found.block, view.lanes[found.lane], useStore.getState().settings) : null;
+  };
+  const openBlockMenu = (id: string, at: MenuAt) => {
+    const entries = menuOf(id);
+    if (entries) openMenu(entries, at, "Block");
   };
 
+  // From the keyboard the menu opens on the focused block, inside its top left corner.
   useEffect(() => {
     const el = element(focusedBlock);
     if (menuRequest === 0 || !el || focusedBlock === null) return;
     const rect = el.getBoundingClientRect();
-    openMenu({ x: rect.left + 8, y: rect.top + 8 }, focusedBlock);
+    openBlockMenu(focusedBlock, { x: rect.left + 8, y: rect.top + 8 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuRequest]);
 
@@ -129,13 +133,11 @@ export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) 
             onClick={(e) => {
               const gear = gearAt(e.target);
               const id = blockIdAt(e.target);
-              if (!gear || !id) return;
-              const rect = gear.getBoundingClientRect();
-              openMenu({ x: rect.left, y: rect.bottom }, id);
+              if (gear && id) openBlockMenu(id, gear);
             }}
             onContextMenu={(e) => {
-              const id = blockIdAt(e.target);
-              if (id) openMenu(e, id);
+              const entries = menuOf(blockIdAt(e.target));
+              if (entries) openContextMenu(e, entries, "Block");
             }}
           >
             {view.lanes.map((lane) => (
@@ -158,7 +160,6 @@ export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) 
       </div>
       <ZoomControl />
       {card && <HoverCard block={card.block} anchor={element(card.block.id)} onPointerEnter={hover.keep} onPointerLeave={hover.leave} />}
-      {menu.element}
       {ruleDrag.strip}
     </div>
   );

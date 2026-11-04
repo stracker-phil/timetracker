@@ -8,6 +8,8 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api } from "../../api";
 import { resetStore } from "../../state/store";
 import { client, project, projectItem, projectsStore } from "../../test/projectFixtures";
+import { pickFromPopUp } from "../../test/menus";
+import { MenuHost } from "../menu";
 import { Toasts } from "../Toasts";
 import { ProjectSheet } from "./ProjectSheet";
 
@@ -22,10 +24,19 @@ function renderSheet(props: Partial<ComponentProps<typeof ProjectSheet>> = {}, s
   render(
     <>
       <ProjectSheet onClose={onClose} {...props} />
+      <MenuHost />
       <Toasts />
     </>,
   );
   return { onClose };
+}
+
+/** The checked choice of the Client menu, which it then closes again. */
+async function chosenClient() {
+  await userEvent.click(screen.getByRole("button", { name: "Client" }));
+  const checked = screen.getAllByRole("menuitemradio").filter((row) => row.getAttribute("aria-checked") === "true");
+  await userEvent.keyboard("{Escape}");
+  return checked.map((row) => row.textContent);
 }
 
 describe("ProjectSheet", () => {
@@ -63,7 +74,7 @@ describe("ProjectSheet", () => {
     it("saves the chosen client", async () => {
       renderSheet();
       await userEvent.type(screen.getByLabelText("Name"), "Website");
-      await userEvent.selectOptions(screen.getByLabelText("Client"), "Acme");
+      await pickFromPopUp(userEvent, "Client", "Acme");
       await save();
       expect(mocked.projectsSave).toHaveBeenCalledWith(null, expect.objectContaining({ clientId: "c-acme", name: "Website", shade: null }));
     });
@@ -92,7 +103,7 @@ describe("ProjectSheet", () => {
 
     it("replaces the Accent group by a shade field of the client's color when a client is chosen", async () => {
       renderSheet();
-      await userEvent.selectOptions(screen.getByLabelText("Client"), "Acme");
+      await pickFromPopUp(userEvent, "Client", "Acme");
       expect(screen.queryByRole("group", { name: "Accent" })).not.toBeInTheDocument();
       expect(screen.getByText("Shade of Acme's color")).toBeInTheDocument();
       expect(screen.getByRole("group", { name: "Shade" })).toBeInTheDocument();
@@ -106,15 +117,15 @@ describe("ProjectSheet", () => {
 
     it("preselects the client given by initialClientId and saves with it", async () => {
       renderSheet({ initialClientId: "c-acme" });
-      expect(screen.getByLabelText("Client")).toHaveDisplayValue("Acme");
+      expect(await chosenClient()).toEqual(["Acme"]);
       await userEvent.type(screen.getByLabelText("Name"), "Website");
       await save();
       expect(mocked.projectsSave).toHaveBeenCalledWith(null, expect.objectContaining({ clientId: "c-acme" }));
     });
 
-    it("starts without a client when no initialClientId is given", () => {
+    it("starts without a client when no initialClientId is given", async () => {
       renderSheet();
-      expect(screen.getByLabelText("Client")).toHaveDisplayValue("No client");
+      expect(await chosenClient()).toEqual(["No client"]);
     });
 
     it("rings the chosen color", async () => {
@@ -187,7 +198,7 @@ describe("ProjectSheet", () => {
 
   describe("new client", () => {
     async function chooseNewClient() {
-      await userEvent.selectOptions(screen.getByLabelText("Client"), "New client…");
+      await pickFromPopUp(userEvent, "Client", "New client…");
     }
 
     it("shows a New client field only after choosing New client…", async () => {
@@ -247,11 +258,11 @@ describe("ProjectSheet", () => {
   describe("editing", () => {
     const existing = projectItem({ project: { id: "p1", name: "Website", clientId: "c-acme", color: "purple", shade: 4 }, client: acme });
 
-    it("prefills every field", () => {
+    it("prefills every field", async () => {
       renderSheet({ id: "p1" }, { projects: [existing], clients: [acme] });
       expect(screen.getByRole("heading", { name: "Edit project" })).toBeInTheDocument();
       expect(screen.getByLabelText("Name")).toHaveValue("Website");
-      expect(screen.getByLabelText("Client")).toHaveDisplayValue("Acme");
+      expect(await chosenClient()).toEqual(["Acme"]);
       expect(screen.getByRole("button", { name: "Shade 5" })).toHaveAttribute("aria-pressed", "true");
       expect(screen.getByRole("button", { name: "Shade 1" })).toHaveAttribute("aria-pressed", "false");
     });
@@ -302,12 +313,13 @@ describe("ProjectSheet", () => {
       expect(mocked.projectsArchive).toHaveBeenCalledWith("p2", false);
     });
 
-    it("lists an archived client only when the project already belongs to it", () => {
+    it("lists an archived client only when the project already belongs to it", async () => {
       const old = client({ id: "c-old", name: "Old", archivedAt: 5 });
       const other = client({ id: "c-gone", name: "Gone", archivedAt: 5 });
       const inOld = projectItem({ project: { id: "p3", clientId: "c-old" }, client: old });
       renderSheet({ id: "p3" }, { projects: [inOld], clients: [acme, old, other] });
-      const options = within(screen.getByLabelText("Client")).getAllByRole("option").map((o) => o.textContent);
+      await userEvent.click(screen.getByRole("button", { name: "Client" }));
+      const options = screen.getAllByRole("menuitemradio").map((o) => o.textContent);
       expect(options).toEqual(["No client", "Acme", "Old (archived)", "New client…"]);
     });
   });

@@ -4,7 +4,7 @@ import type { SavedReport } from "../api";
 import { useBindingLabel } from "../commands";
 import { today } from "../lib/day";
 import { useStore } from "../state/store";
-import { useContextMenu, type MenuEntry } from "./ContextMenu";
+import { openContextMenu, type MenuEntry } from "./menu";
 import { KeyCap } from "./Field";
 import { MiniCalendar } from "./MiniCalendar";
 import { confirmDeleteReport, renameReport } from "./reports/actions";
@@ -50,14 +50,13 @@ function HoursEntry() {
 }
 
 const savedReportMenu = (report: SavedReport): MenuEntry[] => [
-  { label: "Rename…", action: () => renameReport(report) },
-  { label: "Delete", action: () => confirmDeleteReport(report) },
+  { text: "Rename…", run: () => renameReport(report) },
+  { text: "Delete", danger: true, run: () => confirmDeleteReport(report) },
 ];
 
 /** The saved reports under Reports; a click shows one, right-click renames or deletes it. */
 function SavedReports() {
   const saved = useStore((s) => s.savedReports);
-  const menu = useContextMenu();
   if (saved.length === 0) return null;
   return (
     <div className="sidebar-saved" role="group" aria-label="Saved reports">
@@ -67,13 +66,12 @@ function SavedReports() {
           type="button"
           className="si si-sub"
           onClick={() => useStore.getState().openSavedReport(report)}
-          onContextMenu={(e) => menu.open(e, savedReportMenu(report))}
+          onContextMenu={(e) => openContextMenu(e, savedReportMenu(report), report.name)}
         >
           <FileText size="0.923rem" aria-hidden="true" />
           <span className="label">{report.name}</span>
         </button>
       ))}
-      {menu.element}
     </div>
   );
 }

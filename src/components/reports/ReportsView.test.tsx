@@ -11,8 +11,10 @@ import { resetStore, useStore } from "../../state/store";
 import { DAY } from "../../test/dayFixtures";
 import { projectItem, projectsStore, tag } from "../../test/projectFixtures";
 import { reportClient, reportResult, savedReport } from "../../test/reportFixtures";
+import { pickFromPopUp } from "../../test/menus";
 import { settings } from "../../test/settings";
 import { Dialogs } from "../Dialogs";
+import { MenuHost } from "../menu";
 import { Toasts } from "../Toasts";
 import { ReportsView } from "./ReportsView";
 
@@ -27,6 +29,7 @@ async function renderView(patch: Parameters<typeof resetStore>[0] = {}) {
     <>
       <ReportsView />
       <Dialogs />
+      <MenuHost />
       <Toasts />
     </>,
   );
@@ -84,11 +87,16 @@ describe("ReportsView", () => {
   describe("filters", () => {
     it("runs today's report grouped and rounded as the settings say until the filter is changed", async () => {
       resetStore({ settings: settings({ reports: { rounding: "nearest15", defaultGroup: "week" } }), view: "reports" });
-      render(<ReportsView />);
+      render(
+        <>
+          <ReportsView />
+          <MenuHost />
+        </>,
+      );
       await screen.findByLabelText("Totals");
       expect(lastFilter()).toEqual({ ...defaultFilter(null), range: { kind: "today" }, groupBy: "week", rounding: "nearest15" });
       await userEvent.click(screen.getByRole("button", { name: "Group copied text by" }));
-      expect(screen.getByRole("menuitemcheckbox", { name: "By week" })).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("menuitemradio", { name: "By week" })).toHaveAttribute("aria-checked", "true");
     });
 
     it.each<[string, Range["kind"]]>([
@@ -97,27 +105,27 @@ describe("ReportsView", () => {
       ["Yesterday", "yesterday"],
     ])("runs the report again with the period %s", async (label, kind) => {
       await renderView();
-      const period = screen.getByRole("combobox", { name: "Period" });
-      await userEvent.selectOptions(period, label);
+      await pickFromPopUp(userEvent, "Period", label);
       await vi.waitFor(() => expect(lastFilter().range).toEqual({ kind }));
-      expect(period).toHaveValue(kind);
+      await userEvent.click(screen.getByRole("button", { name: "Period" }));
+      expect(screen.getByRole("menuitemradio", { name: label })).toHaveAttribute("aria-checked", "true");
     });
 
     it("no longer offers the rounding or archived projects in the filter bar", async () => {
       await renderView();
-      expect(screen.queryByRole("combobox", { name: "Rounding" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Rounding" })).not.toBeInTheDocument();
       expect(screen.queryByRole("switch", { name: "Include archived" })).not.toBeInTheDocument();
     });
 
     it("runs the report again with the grouping chosen for the copied text, without copying", async () => {
       await renderView();
       await userEvent.click(screen.getByRole("button", { name: "Group copied text by" }));
-      await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "By tag" }));
+      await userEvent.click(screen.getByRole("menuitemradio", { name: "By tag" }));
       await vi.waitFor(() => expect(lastFilter().groupBy).toBe("tag"));
       expect(mocked.reportText).not.toHaveBeenCalled();
       await userEvent.click(screen.getByRole("button", { name: "Group copied text by" }));
-      expect(screen.getByRole("menuitemcheckbox", { name: "By tag" })).toHaveAttribute("aria-checked", "true");
-      expect(screen.getByRole("menuitemcheckbox", { name: "By project" })).toHaveAttribute("aria-checked", "false");
+      expect(screen.getByRole("menuitemradio", { name: "By tag" })).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("menuitemradio", { name: "By project" })).toHaveAttribute("aria-checked", "false");
     });
 
     it.each<[string, Rounding]>([
@@ -128,7 +136,8 @@ describe("ReportsView", () => {
       await renderView({ reportFilter: { ...defaultFilter(settings()), rounding: value === "none" ? "up5" : "none" } });
       await userEvent.click(screen.getByRole("button", { name: "Report options" }));
       const options = within(await screen.findByRole("dialog", { name: "Report options" }));
-      await userEvent.selectOptions(options.getByRole("combobox", { name: "Rounding" }), label);
+      await userEvent.click(options.getByRole("button", { name: "Rounding" }));
+      await userEvent.click(await screen.findByRole("menuitemradio", { name: label }));
       await vi.waitFor(() => expect(lastFilter().rounding).toBe(value));
     });
 
@@ -144,14 +153,15 @@ describe("ReportsView", () => {
       await renderView({ reportFilter: { ...defaultFilter(settings()), rounding: "up30", includeArchived: true } });
       await userEvent.click(screen.getByRole("button", { name: "Report options" }));
       const options = within(await screen.findByRole("dialog", { name: "Report options" }));
-      expect(options.getByRole("combobox", { name: "Rounding" })).toHaveValue("up30");
       expect(options.getByRole("switch", { name: "Include archived" })).toBeChecked();
+      await userEvent.click(options.getByRole("button", { name: "Rounding" }));
+      expect(await screen.findByRole("menuitemradio", { name: "Up to 30 min" })).toHaveAttribute("aria-checked", "true");
     });
 
     it("starts a custom range from the days shown", async () => {
       mocked.reportRun.mockResolvedValue(reportResult({ from: "2026-03-09", to: "2026-03-15" }));
       await renderView();
-      await userEvent.selectOptions(screen.getByRole("combobox", { name: "Period" }), "Custom");
+      await pickFromPopUp(userEvent, "Period", "Custom");
       expect(await screen.findByLabelText("From")).toHaveValue("2026-03-09");
       expect(screen.getByLabelText("To")).toHaveValue("2026-03-15");
       await vi.waitFor(() => expect(lastFilter().range).toEqual({ kind: "custom", from: "2026-03-09", to: "2026-03-15" }));
@@ -193,8 +203,8 @@ describe("ReportsView", () => {
       const chevron = group.getByRole("button", { name: "Group copied text by" });
       expect(chevron).toHaveAttribute("aria-haspopup", "menu");
       await userEvent.click(chevron);
-      expect(screen.getAllByRole("menuitemcheckbox").map((i) => i.textContent)).toEqual(["By project", "By tag", "By day", "By week", "By month"]);
-      expect(screen.getByRole("menuitemcheckbox", { name: "By project" })).toHaveAttribute("aria-checked", "true");
+      expect(screen.getAllByRole("menuitemradio").map((i) => i.textContent)).toEqual(["By project", "By tag", "By day", "By week", "By month"]);
+      expect(screen.getByRole("menuitemradio", { name: "By project" })).toHaveAttribute("aria-checked", "true");
     });
 
     it("copies the text grouped as currently chosen", async () => {
@@ -294,9 +304,11 @@ describe("ReportsView", () => {
       const saved = savedReport({ filter: { ...defaultFilter(null), range: { kind: "lastWeek" }, groupBy: "tag" } });
       act(() => useStore.getState().openSavedReport(saved));
       await vi.waitFor(() => expect(lastFilter()).toEqual(saved.filter));
-      expect(screen.getByRole("combobox", { name: "Period" })).toHaveValue("lastWeek");
+      await userEvent.click(screen.getByRole("button", { name: "Period" }));
+      expect(screen.getByRole("menuitemradio", { name: "Last week" })).toHaveAttribute("aria-checked", "true");
+      await userEvent.keyboard("{Escape}");
       await userEvent.click(screen.getByRole("button", { name: "Group copied text by" }));
-      expect(screen.getByRole("menuitemcheckbox", { name: "By tag" })).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("menuitemradio", { name: "By tag" })).toHaveAttribute("aria-checked", "true");
     });
   });
 });

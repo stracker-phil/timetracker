@@ -3,18 +3,19 @@ import type { Range, ReportFilter } from "../../api";
 import { today } from "../../lib/day";
 import { projectLabel } from "../../state/slices/projects";
 import { useStore } from "../../state/store";
+import { PopUpButton } from "../menu";
 import { MultiSelect } from "./MultiSelect";
 
 type RangeKind = Range["kind"];
 
-const PRESETS: { kind: RangeKind; label: string }[] = [
-  { kind: "today", label: "Today" },
-  { kind: "yesterday", label: "Yesterday" },
-  { kind: "thisWeek", label: "This week" },
-  { kind: "lastWeek", label: "Last week" },
-  { kind: "thisMonth", label: "This month" },
-  { kind: "lastMonth", label: "Last month" },
-  { kind: "custom", label: "Custom" },
+const PRESETS: { value: RangeKind; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "yesterday", label: "Yesterday" },
+  { value: "thisWeek", label: "This week" },
+  { value: "lastWeek", label: "Last week" },
+  { value: "thisMonth", label: "This month" },
+  { value: "lastMonth", label: "Last month" },
+  { value: "custom", label: "Custom" },
 ];
 
 interface Props {
@@ -33,13 +34,7 @@ function RangePicker({ range, shown, onChange }: { range: Range; shown: Props["s
   const setBound = (bound: "from" | "to", day: string) => range.kind === "custom" && day && onChange({ ...range, [bound]: day });
   return (
     <div className="report-range">
-      <select className="input" aria-label="Period" value={range.kind} onChange={(e) => pick(e.target.value as RangeKind)}>
-        {PRESETS.map((p) => (
-          <option key={p.kind} value={p.kind}>
-            {p.label}
-          </option>
-        ))}
-      </select>
+      <PopUpButton aria-label="Period" value={range.kind} options={PRESETS} onChange={pick} />
       {range.kind === "custom" && (
         <>
           <input className="input" type="date" aria-label="From" value={range.from} max={range.to} onChange={(e) => setBound("from", e.target.value)} />

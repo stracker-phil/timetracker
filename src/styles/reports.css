@@ -5,7 +5,7 @@
 .report-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--margin); border-bottom: 1px solid var(--line); }
 .report-range { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .report-range .input { width: auto; }
-.report-range select.input { min-width: 8.5rem; }
+.report-range .popup-button { min-width: 8.5rem; }
 .report-pickers { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .report-pickers .multi-select { width: 12rem; }
 .multi-select-chosen { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
@@ -28,7 +28,7 @@
 .report-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: var(--space-6) var(--space-8); padding-bottom: var(--space-6); border-bottom: 1px solid var(--line-faint); }
 .report-chart { display: flex; flex-direction: column; gap: var(--space-3); }
 .report-chart-head { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-title); font-weight: 600; color: var(--text-strong); }
-.report-chart-head select.input { width: auto; font-weight: 600; }
+.report-chart-head .popup-button { font-weight: 600; }
 .report-chart-body { display: flex; align-items: center; gap: var(--space-6); }
 .donut { flex: none; width: 12rem; height: 12rem; }
 .donut circle { fill: none; stroke-width: 20; }

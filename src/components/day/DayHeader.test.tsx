@@ -11,6 +11,7 @@ import { resetStore } from "../../state/store";
 import { DAY, dayView } from "../../test/dayFixtures";
 import { settings } from "../../test/settings";
 import { Dialogs } from "../Dialogs";
+import { MenuHost } from "../menu";
 import { DayHeader } from "./DayHeader";
 
 const mocked = vi.mocked(api, true);
@@ -22,6 +23,7 @@ function renderHeader(patch: Parameters<typeof resetStore>[0] = { dayView: dayVi
     <>
       <DayHeader totals={null} />
       <Dialogs />
+      <MenuHost />
     </>,
   );
 }
