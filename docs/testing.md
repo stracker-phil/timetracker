@@ -83,13 +83,12 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 | Script | Does |
 |---|---|
 | `bun run build:app` | builds the debug `.app` bundle (`src-tauri/target/debug/bundle/macos/TimeTracker (Debug).app`, named apart by `tauri.debug.conf.json`) |
-| `scripts/dev/launch.sh [cli args]` | quits a running debug app (`scripts/stop-app.sh`; the release app keeps running) and starts the debug build next to the terminal window, without focus. The log goes to `$TMPDIR/timetracker-dev.log`. The terminal app is set by `TIMETRACKER_DEV_TERMINAL` (default `Terminal`) |
+| `scripts/dev/launch.sh [cli args]` | refuses a bundle older than the code it should run (a failed build leaves the last one behind). Otherwise quits a running debug app (`scripts/stop-app.sh`; the release app keeps running) and starts the debug build next to the terminal window, without focus. The log goes to `$TMPDIR/timetracker-dev.log`. The terminal app is set by `TIMETRACKER_DEV_TERMINAL` (default `Terminal`) |
 | `scripts/dev/js.sh '<js>'` | runs JavaScript in the running debug app over the IPC socket. Fire-and-forget: no return value, and top-level `const` declarations collide across calls, so wrap them in an IIFE |
 | `scripts/dev/screenshot.sh out.png [--overlay]` | captures the debug app's window, also in the background or on another Space; `--overlay` captures the open timer picker or away prompt. Never the release app; fails when no debug window exists |
 | `scripts/dev/screenshot-looks.sh <dir> [view]` | captures a view (default `day`) in each scheme of the current macOS mode as `<scheme>-<mode>-<view>.png`, then restores the settings; switch the system appearance and run it again for the other mode ([ux.md](ux.md#scheme-audit)) |
 | `scripts/dev/screenshot-readme.sh [dir]` | captures the README screenshots (`day.png`, `day-dark.png`, `reports.png`, default `docs/screens`): the Day view of the last workday in the Default and the Dark scheme and Reports for last week, then restores the settings, view and zoom. Run it on the showcase ([Sample data](#sample-data)) |
-| `bun run app` | builds and `open`s the app; this takes focus |
-| `bun run release` | builds the release `.app` and `.dmg` (`src-tauri/target/release/bundle/`), then re-signed by `scripts/install.sh` |
+| `bun run release` | builds the release `.app` and `.dmg` (`src-tauri/target/release/bundle/`), then re-signed and linked by `scripts/install.sh`; a `~/.local/bin/timetracker` that isn't its link stays unless `--replace-cli` |
 
 The store is available as `window.timetracker` in the debug bundle: `bun run build:app` sets
 `VITE_DEV_HOOKS=1` at build time, and `main.tsx` exposes the store only then. A release build has no

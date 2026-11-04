@@ -32,7 +32,8 @@ bun run release          # builds and installs the app (Spotlight, Launchpad) an
 ```
 
 `bun run release` ends with `scripts/install.sh`: `~/Applications/TimeTracker.app` links to the release build,
-`~/.local/bin/timetracker` links through that app, and a running TimeTracker restarts on the new build, so one
+`~/.local/bin/timetracker` links through that app (unless another command of that name is there;
+`scripts/install.sh --replace-cli` replaces it), and a running TimeTracker restarts on the new build, so one
 version runs on the machine. Updates are a new build. Debug builds (`bun run build:app`) are never installed;
 `scripts/dev/launch.sh` runs one by its path.
 

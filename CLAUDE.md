@@ -61,7 +61,7 @@ Test, lint and format-check commands run through the `ci` agent, never in the ma
 - `bun run lint`: IPC types drift check (`src/api/types.gen.ts`), tsc, ESLint and clippy on production code (warnings are errors)
 - `bun run release`: release `.app` and `.dmg` in `src-tauri/target/release/bundle/`, then signed (Apple Development certificate first, hardened runtime) and installed
 - `scripts/install.sh` (the end of `bun run release`): signs the release build (`scripts/sign-app.sh`), links it
-  as the app and the `timetracker` command and restarts a running TimeTracker on it; debug builds are never
+  as the app and the `timetracker` command (`--replace-cli` replaces a foreign one) and restarts a running TimeTracker on it; debug builds are never
   linked. `scripts/create-signing-cert.sh` (once per Mac) makes the fallback certificate for a Mac without an Apple Development one
 - `timetracker dev seed --years N` (debug builds): sample history in the running app's database; `--showcase`
   writes the made-up history `scripts/dev/screenshot-readme.sh` captures for the README

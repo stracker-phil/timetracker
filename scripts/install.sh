@@ -3,12 +3,16 @@
 # it and the `timetracker` command links through that app. A running release TimeTracker restarts on it, its
 # window shown or hidden as before; a running debug build is left alone.
 # `bun run release` ends here; debug builds are never installed (scripts/dev/launch.sh runs them by path).
+# A ~/.local/bin/timetracker that isn't this script's link stays unless `scripts/install.sh --replace-cli`.
 set -e
+REPLACE_CLI=
+[[ "$1" == --replace-cli ]] && REPLACE_CLI=1
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 APP="$ROOT/src-tauri/target/release/bundle/macos/TimeTracker.app"
 [[ -d "$APP" ]] || { echo "Not found: $APP (run 'bun run release')"; exit 1; }
 LINK="$HOME/Applications/TimeTracker.app"
 BIN="$LINK/Contents/MacOS/timetracker"
+CLI="$HOME/.local/bin/timetracker"
 
 running() { pgrep -f 'TimeTracker\.app/Contents/MacOS/timetracker( --hidden)?$' >/dev/null; }
 # Re-signing a running app's files can get it killed, so it quits first; a hidden window stays hidden.
@@ -23,8 +27,13 @@ fi
 
 mkdir -p "$HOME/Applications" "$HOME/.local/bin"
 ln -sfn "$APP" "$LINK"
-ln -sf "$BIN" "$HOME/.local/bin/timetracker"
-echo "Installed the release build as ~/Applications/TimeTracker.app and ~/.local/bin/timetracker"
+echo "Installed the release build as ~/Applications/TimeTracker.app"
+if [[ ! -e "$CLI" && ! -L "$CLI" ]] || [[ "$(readlink "$CLI")" == "$BIN" ]] || [[ -n "$REPLACE_CLI" ]]; then
+  ln -sfn "$BIN" "$CLI"
+  echo "Linked ~/.local/bin/timetracker"
+else
+  echo "Left ~/.local/bin/timetracker alone (not this script's link); replace it with: scripts/install.sh --replace-cli"
+fi
 
 [[ -n "$WAS_RUNNING" ]] || exit 0
 # Launch Services can refuse right after the old app quit (error -600), so try a few times.

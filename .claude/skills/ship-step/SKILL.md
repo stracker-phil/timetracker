@@ -11,7 +11,7 @@ description: Finish a development step in TimeTracker - clean up and review the 
    "Integration". Fix failures (test fixes go back to the `write-*-unit-test` agent) and run `ci` again until
    green.
 4. `bun run build:app`, then `scripts/dev/launch.sh [CLI args]`. This restarts the app on the user's terminal
-   screen without taking focus; never use `bun run app` or `open` (they steal focus on the user's other screen).
+   screen without taking focus; never use `open` (it steals focus on the user's other screen).
    The debug app is never installed: call its CLI by path
    (`src-tauri/target/debug/bundle/macos/TimeTracker (Debug).app/Contents/MacOS/timetracker`), not `timetracker`.
    Drive the UI with `scripts/dev/js.sh '<js>'` (fire-and-forget; wrap code in an IIFE, the store is
