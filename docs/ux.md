@@ -38,7 +38,7 @@ page, no outlined cards.
 | `--sidebar-bg` | the sidebar, full height, under the window buttons; the window's sidebar material instead where the scheme's sidebar tone matches the macOS mode |
 | `--bg` | content: the window background under the toolbar and the view |
 | `--bg-quiet` | a pane beside the active one (the timesheet), weekend columns |
-| `--chrome` | the status bar, the Settings page list |
+| `--chrome` | the status bar (the Settings page list has `--settings-chrome`) |
 | `--pop` | overlays: palette, popovers, context menus, dialogs, toasts |
 | `--fill-quiet` | full-width band rows (a Reports client row), the editor's logged-time band |
 
@@ -664,14 +664,22 @@ timeline's for every app.
 
 ## Settings
 
-- A panel in the System Settings layout: the page list on `--chrome` (28px rows; the current page filled
-  with the accent and `--on-accent` text, as a focused macOS sidebar) and the page on `--bg`: the title in
+- A window of its own in the System Settings layout ([ADR 0034](adr/0034-settings-is-a-window-of-its-own.md)),
+  opened by ⌘,, the app menu, the tray, the palette's `Settings: <page>` and the sidebar's gear. The page list on
+  `--settings-chrome` starts with a drag strip under the window buttons and a Search field (⌘F); typing narrows
+  the list to the pages whose name, group or a section (its heading or row labels: "accent" finds Appearance)
+  matches, the section shown beside the page; ↵ opens the first hit, scrolled to that section, and "No
+  Results" stands alone when nothing matches. The list dims while the window is inactive. The page's title sits
+  in the strip beside the list; only the page below it scrolls. Escape (outside a text field or sheet) and ⌘W
+  close the window. The page list has 28px rows; the current page filled
+  with the accent and `--on-accent` text, as a focused macOS sidebar) and the page on `--settings-bg`: the title in
   `--fs-title` bold, the intro in `--o2`, then groups. A group heading is 13px semibold `--text` over its
   row group; each row (at least 36px) has the label and its description (`--fs-meta`, `--o2`) on the left
   and the control on the right, hairlines between rows. A row that depends on a switch sits indented under
   it; number fields and number popups share one width. Counts and durations use tabular
   figures; paths, bundle ids and commands are mono and selectable. A failure reads in red on a light red
-  tint.
+  tint; a value Rust refuses (or a number outside its range) keeps the typed text and shows the reason in red
+  under the field.
 - Pages, in order: General, Appearance, Shortcuts (App); Capture, Tracker, Timeline (Tracking); Data
   (System). Tracker holds Away after and the away prompt switch with its "For longer than" minutes; how often
   the tracker looks is fixed (2 s). Data → Location is a stacked row: Reveal in Finder and Move…, the path
@@ -771,13 +779,16 @@ Scopes are the registry's (`src/commands/scopes.ts`): `global`; `dated` under it
 and Reports; and one scope per view (`day`, `week`, `month`, `reports` under `dated`; `projects`, `tags`, `rules`
 under `global`), active while that view shows. `suggestion` (under `dated`, beside `day`) is active while the
 Day view has a focused suggestion and no selection or focused recording, so its ↵ and ⌫ never clash with the
-recording commands'.
+recording commands'. `settings` (under `global`) is active only in the Settings window, which runs no
+other scope's keys.
 
 | Command | Label | Default key | Scope |
 |---|---|---|---|
 | `settings.toggle` | Settings… | ⌘, | global |
 | `app.launchAtLogin` | Launch at login (a check item) | menu | global |
 | `welcome.show` | Show welcome again | menu | global |
+| `settings.search` | Search Settings | ⌘F | settings |
+| `settings.close` | Close Settings | Escape | settings |
 | `shortcuts.show` | Keyboard shortcuts | ? | global |
 | `palette.toggle` | Command palette | ⌘K | global |
 | `sidebar.toggle` | Toggle sidebar | ⌘⌃S | global |

@@ -76,12 +76,20 @@ app runs; a later launch or the tray shows it.
 
 The main window is declared in `tauri.conf.json`: label `main`, 1200 × 800 (minimum 900 × 560), invisible
 until setup shows it, overlay title bar with hidden title, traffic lights at 20/28 (centered in the 52px toolbar), transparent background with
-the `sidebar` vibrancy effect. The away prompt (`away_prompt/window.rs`) and the timer picker
-(`timers/picker.rs`) are built in Rust with `WebviewWindowBuilder`.
+the `sidebar` vibrancy effect. The away prompt (`away_prompt/window.rs`), the timer picker
+(`timers/picker.rs`) and Settings (`window/settings.rs`) are built in Rust with `WebviewWindowBuilder`.
+
+Settings ([ADR 0034](adr/0034-settings-is-a-window-of-its-own.md)): label `settings`,
+`src/windows/settings/index.html`, 880 × 720 (minimum 760 × 560), not maximizable, overlay title bar with
+hidden title, built hidden on first use. `window::settings::open(app, page)` (the `open_settings` command,
+the menu's `settings.toggle`, the tray's Settings…, `IpcMessage::Settings`) shows it and brings it forward;
+the page or section id goes in as `?page=` the first time and as `open_settings` after. Closing it hides it
+(`window::close_requested`), so it reopens on its page. `show_welcome` shows the main window and runs its
+`welcome.show` there (`window::run_in_main`).
 
 | Event | Result |
 |---|---|
-| close button / ⌘W (`window.hide`, `hide_window`) | the window hides; the app, the tray and the Dock icon stay |
+| close button / ⌘W (`window.hide`: `window::close_focused`; `hide_window` hides the calling window) | the window in front hides (main or Settings); the app, the tray and the Dock icon stay |
 | last window closed (`ExitRequested { code: None }`) | prevented |
 | ⌘Q (`app.background`, `hide_to_menu_bar`) | `window::hide_to_menu_bar`: the window and the Dock icon hide (`set_dock_visibility`); the tray, the tracker and the timer keep running |
 | tray "Open TimeTracker", a second `timetracker` launch, Dock icon click (`RunEvent::Reopen`) | `window::show_main`: the Dock icon returns, show, unminimize, focus |
@@ -577,6 +585,9 @@ through the CLI and MCP, share the list and the review.
 | `WINDOW_OPENED_EVENT` | `window_opened` | none; `window::show_main_in_background` showed the hidden window (the page opens on today) |
 | `TIMER_STATUS_EVENT` | `timer_status` | `TimerStatus` at start, on every change and every minute while a timer runs |
 | `AWAY_PROMPT_CHANGED_EVENT` | `away_prompt_changed` | `AwayPrompt`, only to the `away` window, when a new span replaces the open prompt's |
+| `SETTINGS_CHANGED_EVENT` | `settings_changed` | the saved `Settings`, to every window after every save (`commands::settings_saved`) |
+| `KEYBINDINGS_CHANGED_EVENT` | `keybindings_changed` | the saved `Keybindings`, to every window (`set_keybindings`) |
+| `OPEN_SETTINGS_EVENT` | `open_settings` | a page or section id, to the `settings` window |
 
 `DataKind` is `activity | recordings | projects | tags | rules | settings`; `day` is a `Day` (`YYYY-MM-DD`)
 or `null` when every day may have changed. `events::data_changed(app, kind, day)` emits it; external
@@ -806,6 +817,7 @@ may arrive before the listener.
 | `timetracker://activity?source=planner&title=Lunch&start=2026-10-21T12:00&end=2026-10-21T12:45[&app=&url=&path=]` | `activityAdd` with one item |
 | `timetracker://activity/start?source=…&title=…[&start=…]` | `activityStart` |
 | `timetracker://activity/stop?source=…[&end=…]` | `activityStop` |
+| `timetracker://command/app:settings[:<page or section>]` | `settings { page }`: opens Settings (`window::settings::open`) |
 
 Query values are percent-decoded and `+` reads as a space, so an offset like `+05:30` must be written
 `%2B05:30`.
@@ -885,6 +897,7 @@ menu bar), tooltip `TimeTracker`, menu on left click:
 | Stop Timer (Acme, 1h 23m) | `timer.stop` | `timers::commands::stop` (disabled without a timer) |
 | Recent Timers ▸ `Project · note` | `timer.recent.<n>` | starts that combination |
 | Open TimeTracker | `open` | `window::show_main` |
+| Settings… | `settings` | `window::settings::open` |
 | Quit TimeTracker | `quit` | `app.exit(0)` |
 
 `tracker::start` passes every tracker status to `tray::sync(app, &status)`. The icon

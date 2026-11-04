@@ -212,13 +212,12 @@ describe("app.launchAtLogin", () => {
 describe("welcome.show", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resetStore({ dialog: { type: "settings" }, uiState: { ...EMPTY_UI_STATE, onboardingDone: true } });
+    resetStore({ uiState: { ...EMPTY_UI_STATE, onboardingDone: true } });
     installCommands();
   });
 
-  it("closes the dialog and brings the welcome back", () => {
+  it("brings the welcome back", () => {
     expect(runCommand("welcome.show")).toBe(true);
-    expect(state().dialog).toBeNull();
     expect(state().uiState.onboardingDone).toBe(false);
   });
 });
@@ -333,7 +332,7 @@ describe("runMenuCommand", () => {
     ["the Projects view", { view: "projects" }],
     ["the Reports view", { view: "reports" }],
     ["a Day view with a focused recording", { view: "day", focusedRecording: "r1", dayView: dayView(), day: DAY }],
-    ["an open dialog", { view: "day", dialog: { type: "settings" } }],
+    ["an open dialog", { view: "day", dialog: { type: "shortcuts", scopes: ["global"] } }],
     ["an open recording editor", { view: "day", editor: { mode: "create", start: at("09:00"), end: at("10:00") } }],
   ])("runs exactly the items the menu enables in %s", (_, patch) => {
     resetStore(patch);

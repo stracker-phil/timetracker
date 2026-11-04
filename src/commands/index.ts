@@ -9,6 +9,7 @@ import { fail } from "../state/requests";
 import { TIMELINE_ZOOM, useStore, type View } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, isTextInput, registerCommands, resolveKeydown, setOverrides, type Command } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
+import { registerSettingsScope, SETTINGS_COMMANDS } from "./settingsWindow";
 import { registerSuggestionScope, SUGGESTION_COMMANDS } from "./suggestions";
 
 /** The views with a period, which P, N and O step. */
@@ -26,6 +27,7 @@ export function registerCoreScopes() {
     registerScope({ id, parent, label, isActive: () => useStore.getState().view === id });
   }
   registerSuggestionScope();
+  registerSettingsScope();
 }
 
 function saveTextSize(textSize: TextSize) {
@@ -214,12 +216,6 @@ function promptNewTag() {
   openDialog({ type: "prompt", title: "New tag", label: "Name", initial: "", confirmLabel: "Add", onSubmit: (name) => void saveTag(null, name).catch(() => {}) });
 }
 
-function toggleSettings() {
-  const s = useStore.getState();
-  if (s.dialog?.type === "settings") s.closeDialog();
-  else s.openDialog({ type: "settings" });
-}
-
 /** A tracker that exists and is not paused. */
 function isTracking() {
   const kind = useStore.getState().tracker?.state.kind;
@@ -227,7 +223,7 @@ function isTracking() {
 }
 
 const APP_COMMANDS: Command[] = [
-  { id: "settings.toggle", title: "Settings…", scope: "global", defaultBinding: "Mod+,", menu: true, run: toggleSettings },
+  { id: "settings.toggle", title: "Settings…", scope: "global", defaultBinding: "Mod+,", menu: true, run: () => void api.openSettings().catch((e) => fail(e, "Couldn't open Settings")) },
   { id: "app.launchAtLogin", title: "Launch at login", scope: "global", menu: true, menuOnly: true, when: () => useStore.getState().settings !== null, checked: () => !!useStore.getState().settings?.launchAtLogin, run: toggleLaunchAtLogin },
   { id: "welcome.show", title: "Show welcome again", scope: "global", menu: true, menuOnly: true, run: showWelcomeAgain },
   { id: "shortcuts.show", title: "Keyboard shortcuts", scope: "global", defaultBinding: "Shift+?", menu: true, run: toggleShortcuts },
@@ -275,6 +271,7 @@ const APP_COMMANDS: Command[] = [
   { id: "timer.start", title: "Start timer…", scope: "global", defaultBinding: "Mod+T", menu: true, run: () => void api.timerPickerOpen() },
   { id: "timer.stop", title: "Stop timer", scope: "global", defaultBinding: "Mod+Shift+.", menu: true, when: timerRuns, run: () => void useStore.getState().stopTimer() },
   ...SUGGESTION_COMMANDS,
+  ...SETTINGS_COMMANDS,
   { id: "timer.toggle", title: "Start or stop timer", scope: "global", run: () => (timerRuns() ? void useStore.getState().stopTimer() : void api.timerPickerOpen()) },
   { id: "edit.undo", title: "Undo", scope: "global", defaultBinding: "Mod+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(false) },
   { id: "edit.redo", title: "Redo", scope: "global", defaultBinding: "Mod+Shift+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(true) },

@@ -14,6 +14,7 @@ import { dayView } from "./test/dayFixtures";
 import { projectItem, tag } from "./test/projectFixtures";
 import { savedReport } from "./test/reportFixtures";
 import { rule } from "./test/ruleFixtures";
+import { settings } from "./test/settings";
 import { runningStatus } from "./test/timerFixtures";
 
 const mocked = vi.mocked(api, true);
@@ -416,12 +417,10 @@ describe("App", () => {
   });
 
   describe("settings", () => {
-    it("opens with ⌘, and closes with it again", async () => {
+    it("opens its own window with ⌘,", async () => {
       await renderApp();
       await userEvent.keyboard("{Meta>},{/Meta}");
-      const dialog = await screen.findByRole("dialog");
-      expect(within(dialog).getByRole("heading", { name: "General" })).toBeInTheDocument();
-      await userEvent.keyboard("{Meta>},{/Meta}");
+      expect(mocked.openSettings).toHaveBeenCalled();
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
@@ -430,21 +429,19 @@ describe("App", () => {
       await userEvent.keyboard("{Meta>}k{/Meta}");
       await userEvent.type(await screen.findByLabelText("Search"), "settings");
       await userEvent.click(screen.getByRole("option", { name: /^Settings…/ }));
-      expect(await screen.findByRole("heading", { name: "General" })).toBeInTheDocument();
+      await vi.waitFor(() => expect(mocked.openSettings).toHaveBeenCalled());
     });
 
     it("opens from the gear in the sidebar", async () => {
       await renderApp();
       await userEvent.click(sidebar().getByRole("button", { name: "Settings" }));
-      expect(await screen.findByRole("heading", { name: "General" })).toBeInTheDocument();
+      expect(mocked.openSettings).toHaveBeenCalled();
     });
 
-    it("closes with Escape", async () => {
+    it("follows a settings change saved in the Settings window", async () => {
       await renderApp();
-      await userEvent.keyboard("{Meta>},{/Meta}");
-      await screen.findByRole("dialog");
-      await userEvent.keyboard("{Escape}");
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      act(() => mocked.onSettingsChanged.mock.calls[0][0](settings({ accent: "teal" })));
+      await vi.waitFor(() => expect(document.documentElement.dataset.accent).toBe("teal"));
     });
   });
 

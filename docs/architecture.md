@@ -134,11 +134,13 @@ Recording an hour of activity:
   [ADR 0017](adr/0017-cli-asks-the-running-app.md)). Every subcommand is a message the running app answers;
   other apps (a planner) add activity this way or through `timetracker://` links, each in its own lane
   ([ADR 0009](adr/0009-external-activity-with-a-source.md), [data: external activity](data.md#external-activity)).
-- **Window.** Closing the window hides it; the app keeps running and keeps its Dock icon. Quit only from the
+- **Windows.** The main window, Settings (`window/settings.rs`,
+  [ADR 0034](adr/0034-settings-is-a-window-of-its-own.md)), the timer picker and the away prompt each run
+  their own page and store; `settings_changed` keeps them in step. Closing the main window hides it; the app keeps running and keeps its Dock icon. Quit only from the
   tray menu, ⌘Q, or `timetracker quit` ([backend: window lifecycle](backend.md#window-lifecycle),
   [ADR 0007](adr/0007-tracker-in-process-menu-bar-app.md)).
 - **Tray.** A template-image menu bar item with the tracker status line, Pause Tracking (or Resume Tracking),
-  Start Timer… (or Stop Timer), Recent Timers, Open TimeTracker and Quit TimeTracker
+  Start Timer… (or Stop Timer), Recent Timers, Open TimeTracker, Settings… and Quit TimeTracker
   ([backend: tray](backend.md#tray)).
 - **Launch at login** through `tauri-plugin-autostart` (a LaunchAgent) with `--hidden`, so the app starts
   without showing the window.

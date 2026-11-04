@@ -217,6 +217,9 @@ pub fn forward(app: &AppHandle, id: &str) {
     match id {
         "app.quit" => return app.exit(0),
         "app.background" => return crate::window::hide_to_menu_bar(app),
+        // Settings is a window of its own, and ⌘W closes whichever window is in front.
+        "settings.toggle" => return crate::window::settings::open(app, None),
+        "window.hide" => return crate::window::close_focused(app),
         _ => {}
     }
     // macOS toggled the checkmark on click; the page's next report decides it.

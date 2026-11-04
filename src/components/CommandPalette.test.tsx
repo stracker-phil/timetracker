@@ -168,7 +168,7 @@ describe("CommandPalette", () => {
 
     it("opens Settings on the chosen page", async () => {
       await choose("zebra");
-      expect(useStore.getState().dialog).toMatchObject({ type: "settings", page: "zebra" });
+      expect(mocked.openSettings).toHaveBeenCalledWith("zebra");
       expect(useStore.getState().paletteOpen).toBe(false);
     });
 

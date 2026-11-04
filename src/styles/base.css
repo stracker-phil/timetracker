@@ -29,7 +29,7 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
    layers only then, so the bar never stays behind while an outer box scrolls. A fixed overlay inside one would be
    stacked inside it too, so overlays render outside them (menus and modals portal to <body>). */
 :is(
-  .main, .sidebar-body, .settings-body, .settings-nav, .dialog, .palette-list, .toast-details
+  .main, .sidebar-body, .settings-body, .settings-nav-list, .dialog, .palette-list, .toast-details
 ) { isolation: isolate; }
 
 /* Inset groups (docs/ux.md, Surfaces): each screen's own rule sets only its padding. */

@@ -30,8 +30,12 @@ export const api = {
   takeLaunchEvents: () => invoke<LaunchEvent[]>("take_launch_events"),
   /** Answers a `remote` event; a non-null `error` fails the request. */
   remoteReply: (id: string, result: unknown, error: string | null) => invoke<void>("remote_reply", { id, result, error }),
-  /** Hides the window; the app keeps running in the menu bar. */
+  /** Hides the calling window (the main window or Settings); the app keeps running in the menu bar. */
   hideWindow: () => invoke<void>("hide_window"),
+  /** Opens or focuses the Settings window at a page or section id (`registry/settingsPages.ts`); `null` keeps its page. */
+  openSettings: (page: string | null = null) => invoke<void>("open_settings", { page }),
+  /** Shows the main window with its welcome sheet (Settings → General). */
+  showWelcome: () => invoke<void>("show_welcome"),
   /** Hides the window and the Dock icon; the app keeps running in the menu bar. */
   hideToMenuBar: () => invoke<void>("hide_to_menu_bar"),
   quitApp: () => invoke<void>("quit_app"),
@@ -225,6 +229,11 @@ export const api = {
   /** The away window: a new away span replaced the open prompt's. */
   onAwayPromptChanged: (handler: (prompt: AwayPrompt) => void): Promise<UnlistenFn> => listen<AwayPrompt>("away_prompt_changed", (e) => handler(e.payload)),
   onTimerStatus: (handler: (status: TimerStatus) => void): Promise<UnlistenFn> => listen<TimerStatus>("timer_status", (e) => handler(e.payload)),
+  /** Every window: the settings as Rust saved them, after any change (app overrides, autostart and the timer shortcut too). */
+  onSettingsChanged: (handler: (settings: Settings) => void): Promise<UnlistenFn> => listen<Settings>("settings_changed", (e) => handler(e.payload)),
+  onKeybindingsChanged: (handler: (bindings: Keybindings) => void): Promise<UnlistenFn> => listen<Keybindings>("keybindings_changed", (e) => handler(e.payload)),
+  /** The Settings window: show this page or section id. */
+  onOpenSettings: (handler: (page: string) => void): Promise<UnlistenFn> => listen<string>("open_settings", (e) => handler(e.payload)),
 };
 
 /** Every `ErrorKind` Rust sends; the `Record` makes the compiler check the list is complete. */

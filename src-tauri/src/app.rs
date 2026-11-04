@@ -54,10 +54,9 @@ pub fn start(
         .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event
-                && window.label() == "main"
+                && window::close_requested(window.app_handle(), window.label())
             {
                 api.prevent_close();
-                let _ = window.hide();
             }
         })
         .setup(move |app| {

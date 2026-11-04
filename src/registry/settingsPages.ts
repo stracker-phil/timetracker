@@ -1,11 +1,23 @@
-/** Settings pages by id. Core and modules register their own; the dialog reads them here. */
+/** Settings pages by id. Core and modules register their own; the Settings window reads them here. */
 import { useSyncExternalStore, type ComponentType, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import type { Settings } from "../api";
 
 export interface SettingsPageProps {
   s: Settings;
+  /** Saves `{ ...current, ...patch }` quietly; a failure is toasted. */
   set: (patch: Partial<Settings>) => void;
+  /** `set` for a field (`fields.tsx`): resolves Rust's message when it refused the value (`invalid_input`),
+   *  for the field to show instead of a toast; else null. */
+  commit: (patch: Partial<Settings>) => Promise<string | null>;
+}
+
+/** A group of a page (`Group anchor`): `open_settings` with its id opens the page scrolled to it. */
+export interface SettingsSection {
+  id: string;
+  title: string;
+  /** The group's row labels and other words the search finds it by. */
+  keywords?: string[];
 }
 
 interface SettingsPage {
@@ -18,6 +30,7 @@ interface SettingsPage {
   Body: ComponentType<SettingsPageProps>;
   /** Position inside its group; pages without one follow, by label. */
   order?: number;
+  sections?: SettingsSection[];
 }
 
 /** Nav order of the known groups; any other group follows them, by name. */
@@ -53,18 +66,43 @@ export function settingsPages(): SettingsPage[] {
   return [...pages.values()].sort(compare);
 }
 
-/** The named page, or the first when the name is absent or unknown. */
-export function resolveSettingsPage(id: string | undefined): SettingsPage | undefined {
+const hasSection = (page: SettingsPage, id: string | undefined) => page.sections?.some((section) => section.id === id) ?? false;
+
+/** The named page, the page holding the named section (`section`: its id), or the first when the name is absent
+ *  or unknown; undefined while no page is registered. */
+export function resolveSettingsPage(idOrSection: string | undefined): { page: SettingsPage; section?: string } | undefined {
   const all = settingsPages();
-  return all.find((p) => p.id === id) ?? all[0];
+  const named = all.find((p) => p.id === idOrSection);
+  if (named) return { page: named };
+  const holder = all.find((p) => hasSection(p, idOrSection));
+  if (holder) return { page: holder, section: idOrSection };
+  return all.length > 0 ? { page: all[0] } : undefined;
 }
 
-export function settingsGroups(): { group: string; pages: SettingsPage[] }[] {
-  const groups: { group: string; pages: SettingsPage[] }[] = [];
-  for (const page of settingsPages()) {
+/** A page in the nav; `section` when the search found the page by one of its sections. */
+export interface SettingsNavEntry {
+  page: SettingsPage;
+  section?: SettingsSection;
+}
+
+/** Pages whose label or group, or a section's title or keywords, contain `query` (any case); all for "". */
+function searchSettingsPages(query: string): SettingsNavEntry[] {
+  const needle = query.trim().toLowerCase();
+  const has = (text: string) => text.toLowerCase().includes(needle);
+  return settingsPages().flatMap((page) => {
+    if (has(page.label) || has(page.group)) return [{ page }];
+    const section = page.sections?.find((candidate) => has(candidate.title) || candidate.keywords?.some(has));
+    return section ? [{ page, section }] : [];
+  });
+}
+
+/** The nav groups in nav order, narrowed to `query` when one is given. */
+export function settingsGroups(query = ""): { group: string; pages: SettingsNavEntry[] }[] {
+  const groups: { group: string; pages: SettingsNavEntry[] }[] = [];
+  for (const hit of searchSettingsPages(query)) {
     const last = groups.at(-1);
-    if (last?.group === page.group) last.pages.push(page);
-    else groups.push({ group: page.group, pages: [page] });
+    if (last?.group === hit.page.group) last.pages.push(hit);
+    else groups.push({ group: hit.page.group, pages: [hit] });
   }
   return groups;
 }
@@ -74,7 +112,7 @@ function subscribe(listener: () => void) {
   return () => void listeners.delete(listener);
 }
 
-/** Re-renders the caller when a page is registered, so a module may register after the dialog opened. */
+/** Re-renders the caller when a page is registered, so a module may register after the window opened. */
 export function useSettingsPagesVersion(): number {
   return useSyncExternalStore(subscribe, () => version);
 }

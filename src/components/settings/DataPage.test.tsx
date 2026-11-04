@@ -10,17 +10,17 @@ import { resetStore } from "../../state/store";
 import { dataInfo } from "../../test/data";
 import { settings } from "../../test/settings";
 import { Toasts } from "../Toasts";
-import { SettingsDialog } from "./SettingsDialog";
+import { SettingsWindow } from "./SettingsWindow";
 
 const mocked = vi.mocked(api, true);
 
 async function renderDataPage(patch: Parameters<typeof dataInfo>[0] = {}, settingsPatch: Parameters<typeof settings>[0] = {}) {
   mocked.dataInfo.mockResolvedValue(dataInfo(patch));
-  resetStore({ settings: settings(settingsPatch), dialog: { type: "settings", page: "data" } });
+  resetStore({ settings: settings(settingsPatch) });
   installCommands();
   render(
     <>
-      <SettingsDialog />
+      <SettingsWindow page="data" onPage={() => {}} />
       <Toasts />
     </>,
   );
@@ -29,15 +29,6 @@ async function renderDataPage(patch: Parameters<typeof dataInfo>[0] = {}, settin
 
 describe("Settings Data page", () => {
   beforeEach(() => vi.clearAllMocks());
-
-  it("is reachable from the navigation", async () => {
-    mocked.dataInfo.mockResolvedValue(dataInfo());
-    resetStore({ settings: settings(), dialog: { type: "settings" } });
-    installCommands();
-    render(<SettingsDialog />);
-    await userEvent.click(within(screen.getByRole("navigation", { name: "Settings pages" })).getByRole("button", { name: "Data" }));
-    expect(await screen.findByRole("button", { name: /Export backup/ })).toBeInTheDocument();
-  });
 
   describe("when the store is available", () => {
     beforeEach(() =>
@@ -211,7 +202,7 @@ describe("Settings Data page", () => {
       await userEvent.click(moveButton());
       await userEvent.click(within(await sheet()).getByRole("button", { name: "Move" }));
       expect(await screen.findByText(/Moving the data folder failed/)).toBeInTheDocument();
-      expect(within(screen.getByRole("dialog")).queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.queryByText("Disk full")).not.toBeInTheDocument();
     });
 
     it("clears an earlier refusal after a successful move", async () => {
@@ -223,7 +214,7 @@ describe("Settings Data page", () => {
       mocked.dataMove.mockResolvedValue(dataInfo({ dir: "/x" }));
       await userEvent.click(moveButton());
       await userEvent.click(within(await sheet()).getByRole("button", { name: "Move" }));
-      await waitFor(() => expect(within(screen.getByRole("dialog")).queryByRole("alert")).not.toBeInTheDocument());
+      await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     });
   });
 

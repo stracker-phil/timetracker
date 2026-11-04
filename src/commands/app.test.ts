@@ -40,9 +40,21 @@ describe("app commands", () => {
     });
 
     it("still runs on Cmd+Q while a dialog is open", async () => {
-      resetStore({ dialog: { type: "settings" } });
+      resetStore({ dialog: { type: "shortcuts", scopes: ["global"] } });
       await press("{Meta>}q{/Meta}");
       expect(mocked.hideToMenuBar).toHaveBeenCalled();
+    });
+  });
+
+  describe("settings.toggle", () => {
+    it("opens the Settings window", () => {
+      expect(runCommand("settings.toggle")).toBe(true);
+      expect(mocked.openSettings).toHaveBeenCalledWith();
+    });
+
+    it("opens it on Cmd+Comma", async () => {
+      await press("{Meta>},{/Meta}");
+      expect(mocked.openSettings).toHaveBeenCalled();
     });
   });
 

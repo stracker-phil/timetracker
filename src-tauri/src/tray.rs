@@ -20,6 +20,7 @@ const TRAY_ID: &str = "main";
 const STATUS_ID: &str = "status";
 const RESUME_ID: &str = "resume";
 const OPEN_ID: &str = "open";
+const SETTINGS_ID: &str = "settings";
 const QUIT_ID: &str = "quit";
 const TIMER_START_ID: &str = "timer.start";
 const TIMER_STOP_ID: &str = "timer.stop";
@@ -204,6 +205,7 @@ fn build_menu(
             pause_or_resume.as_ref(),
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, OPEN_ID, "Open TimeTracker", true, None::<&str>)?,
+            &MenuItem::with_id(app, SETTINGS_ID, "Settings…", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, QUIT_ID, "Quit TimeTracker", true, None::<&str>)?,
         ],
@@ -260,6 +262,7 @@ fn pause_or_resume_item(
 fn on_menu_event(app: &AppHandle, id: &str) {
     match id {
         OPEN_ID => window::show_main(app),
+        SETTINGS_ID => window::settings::open(app, None),
         QUIT_ID => app.exit(0),
         RESUME_ID => resume(app),
         TIMER_START_ID => picker::open(app, picker::Place::UnderTray),

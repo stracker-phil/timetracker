@@ -97,6 +97,10 @@ fn parse_link<Tz: TimeZone>(url: &str, now: Ms, tz: &Tz) -> Result<IpcMessage, S
         ("activity", "/start") => Ok(IpcMessage::ActivityStart {
             input: input(instant("start")?.unwrap_or(now))?,
         }),
+        ("command", "/app:settings") => Ok(IpcMessage::Settings { page: None }),
+        ("command", command) if command.starts_with("/app:settings:") => Ok(IpcMessage::Settings {
+            page: Some(command["/app:settings:".len()..].to_owned()),
+        }),
         ("activity", "/stop") => Ok(IpcMessage::ActivityStop {
             source: required("source")?,
             end: instant("end")?,
@@ -168,6 +172,32 @@ mod tests {
                 "{url}"
             );
         }
+    }
+
+    #[test]
+    fn settings_command_links_open_the_settings_window_at_a_page() {
+        let scheme = crate::LINK_SCHEME;
+        for (path, page) in [
+            ("app:settings", None),
+            ("app:settings/", None),
+            ("app:settings:capture", Some("capture")),
+            ("app:settings:capture/", Some("capture")),
+        ] {
+            let url = format!("{scheme}://command/{path}");
+            assert_eq!(
+                link(&url),
+                IpcMessage::Settings {
+                    page: page.map(Into::into)
+                },
+                "{url}"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_command_links_fail_as_no_such_link() {
+        let url = format!("{}://command/app:other", crate::LINK_SCHEME);
+        assert_eq!(link(&url), failure("TimeTracker has no such link"));
     }
 
     #[test]

@@ -10,6 +10,7 @@ import { at } from "../../test/dayFixtures";
 import { awayPrompt } from "../../test/awayFixtures";
 import { projectItem } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
+import { settings } from "../../test/settings";
 import { AwayPrompt } from "./AwayPrompt";
 
 const mocked = vi.mocked(api, true);
@@ -344,6 +345,21 @@ describe("AwayPrompt", () => {
       mocked.awayPromptCurrent.mockResolvedValue(newer);
       act(() => void window.dispatchEvent(new Event("focus")));
       expect(await screen.findByRole("heading", { name: "You were away 20m" })).toBeInTheDocument();
+    });
+
+    it("does not reload the settings when the window gains focus", async () => {
+      await renderPrompt();
+      mocked.getSettings.mockClear();
+      mocked.awayPromptCurrent.mockResolvedValue(newer);
+      act(() => void window.dispatchEvent(new Event("focus")));
+      await screen.findByRole("heading", { name: "You were away 20m" });
+      expect(mocked.getSettings).not.toHaveBeenCalled();
+    });
+
+    it("applies the accent saved in the Settings window", async () => {
+      await renderPrompt();
+      act(() => mocked.onSettingsChanged.mock.calls[0][0](settings({ accent: "teal" })));
+      await vi.waitFor(() => expect(document.documentElement.dataset.accent).toBe("teal"));
     });
   });
 });

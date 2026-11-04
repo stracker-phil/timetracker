@@ -25,10 +25,11 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
       bindings, then `drainLaunches()` pulls the queued launch events (`take_launch_events`): `error` shows an error toast,
       `notice` an info toast (a migration that dropped tags), `showDay` calls `goToDay`.
    2. It subscribes to `launch` (drain again), `window_opened` (→ `windowOpened`), `command` (menu and tray → `runMenuCommand`), `remote`
-      (→ `answerRemote`, which always replies with `remoteReply`), `data_changed` (→ `dataChanged`) and
-      `tracker_status` (→ `setTracker`); `loadTracker()` fetches the current status once.
-   3. It adds a capture-phase `keydown` → `handleKeydown`, `error` / `unhandledrejection` → error toast, and
-      `beforeunload` → `flushUiState`.
+      (→ `answerRemote`, which always replies with `remoteReply`), `data_changed` (→ `dataChanged`),
+      `tracker_status` (→ `setTracker`), `settings_changed` (→ `settingsChanged`) and `keybindings_changed`
+      (→ `keybindingsChanged`, both in `lib/useFollowSettings.ts`), so a change made in Settings shows at once; `loadTracker()` fetches the current status once.
+   3. It adds a capture-phase `keydown` → `handleKeydown`, and `beforeunload` → `flushUiState`; `useErrorToasts()`
+      (`lib/useErrorToasts.ts`, also in Settings) shows `error` / `unhandledrejection` as an error toast.
 8. `applyAppearance(settings, systemDark)` runs whenever settings or the OS appearance change.
 
 ```
@@ -37,7 +38,7 @@ App
    ├─ Sidebar        MiniCalendar, Hours, Reports, then Projects, Tags, Rules; SidebarStatus at the bottom
    ├─ main           the active view's page, its own Toolbar first (EmptyView for an unknown one)
    └─ StatusBar      left: sidebar toggle, TrackerStatus (sidebar hidden only), the selection; right: running timer, billable ratio, today's totals
-Dialogs (settings, shortcuts, confirm) · PermissionDialog · Welcome · CommandPalette · Toasts
+Dialogs (shortcuts, confirm, sheets) · PermissionDialog · Welcome · CommandPalette · Toasts
 ```
 
 ## Store
@@ -48,8 +49,8 @@ error's message, returning the `AppError`.
 
 | Slice | Holds |
 |---|---|
-| `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings`, `saveTimeline(patch)` (timeline settings, saved quietly), `saveKeybindings`, `setLaunchAtLogin(enabled)` (resolves whether it is on now, `null` on a toasted failure) |
-| `ui` | `toasts` (an optional `action`, e.g. Undo, with an optional `ttlMs`; an action toast stays 10 s by default), `dialog` (`settings { page? }`, `shortcuts`, `confirm`, `project { id?, clientId? }`, `client { id? }`, `rule { id?, draft? }`, `deleteActivity { day, bounds, range }`, `timelineSettings`, `datePicker`), `paletteOpen`, `paletteSeed` |
+| `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings(settings, { quiet?, returnError? })` (with `returnError` an `invalid_input` refusal is not toasted but resolved, for the field to show), `saveTimeline(patch)` (timeline settings, saved quietly), `saveKeybindings`, `setLaunchAtLogin(enabled)` (resolves whether it is on now, `null` on a toasted failure) |
+| `ui` | `toasts` (an optional `action`, e.g. Undo, with an optional `ttlMs`; an action toast stays 10 s by default), `dialog` (`shortcuts`, `confirm`, `project { id?, clientId? }`, `client { id? }`, `rule { id?, draft? }`, `deleteActivity { day, bounds, range }`, `timelineSettings`, `datePicker`), `paletteOpen`, `paletteSeed` |
 | `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`, `tags`, `rules`), `setView(view, then?)` (another view first clears the selection and leaves the editor through `leaveEditor`; `then` runs once the view shows, never after Keep editing), `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `showHours` (Hours: `goToDay` today; the sidebar), `goToday` (keeps the view), `showDate(day)` (keeps the view; the date picker), `step(±1)` (a day, a week or a month by the view, through `stepThroughRust` in `lib/dayStepper.ts`: `calendarStep`, queued so quick presses add up, a failure toasts; the date picker and ⌥← ⌥→ use it too); in Reports the three move the report's period instead (`shiftReportRange`); `openings` and `windowOpened` (Hours again, and the Day view scrolls to now; the `window_opened` event) |
 | `day` | `dayView` (the shown day's `DayView`; the previous one stays while the next day loads), `dayError`, `loadDay` (drops answers for a day no longer shown), `focusedBlock`/`focusBlock`, `detailsBlock`/`toggleDetails` (the card opened by keyboard), `blockMenuRequest`/`requestBlockMenu`, `setAppSetting(appKey, patch)` (stores the returned settings; the Day view reloads on the `data_changed` it causes) |
 | `reports` | `reportFilter` (`null` follows `settings.reports` through `defaultFilter`), `setReportFilter(patch)`, `shiftReportRange(anchor, by)` (`api.reportRangeShift`: the period `by` steps of its unit away, from the period holding `anchor` when given, so `by = 0` is that period; failures toast), `savedReports`/`loadSavedReports` (boot), `saveReport(name)` (the shown filter), `renameSavedReport`, `deleteSavedReport`, `openSavedReport` (its filter, and the Reports view) |
@@ -120,7 +121,7 @@ out. The core commands are `APP_COMMANDS` (`commands/index.ts`); their default b
   rows, `PaletteFooter`). Dates come from Rust (`useDateJumps.ts`: `api.calendarJumps`, `calendar::jump`, each with its `label`), so the page parses and labels no
   dates; a date opens the Day, Week or Month view at it (`setView`, `showDate`). A project opens Reports filtered
   to it for the report's period (`setReportFilter`), ⌘↵ starts a timer on it (`startTimer`); a client opens
-  Reports filtered to it; a saved report `openSavedReport`; a settings page `openDialog({ type: "settings", page })`.
+  Reports filtered to it; a saved report `openSavedReport`; a settings page `api.openSettings(page.id)`.
   Commands are those of the active scopes whose `when` holds, with their key caps; without `>` the `view.*`
   commands are left to the views.
 - **Day, Week, Month and Reports** (scope `dated`, the parent of the four views' scopes). `nav.prev` (P),
@@ -169,7 +170,8 @@ out. The core commands are `APP_COMMANDS` (`commands/index.ts`); their default b
 - **Window.** `window.hide` calls `api.hideWindow`; `app.background` (⌘Q) calls `api.hideToMenuBar`; both it and `app.quit`
   are handled by Rust when they come from the menu.
 - **App and help.** `app.launchAtLogin` switches the LaunchAgent (`setLaunchAtLogin`, checked by
-  `settings.launchAtLogin`); `welcome.show` shows the welcome sheet again; `data.exportBackup` and
+  `settings.launchAtLogin`); `settings.toggle` (⌘,) calls `api.openSettings()`, which opens or focuses the Settings window;
+  `welcome.show` shows the welcome sheet again; `data.exportBackup` and
   `data.reveal` run the Settings → Data actions (`components/settings/actions.ts`); `help.readme` calls
   `api.openReadme`.
 
@@ -302,8 +304,9 @@ bound shortcut, global or in-app, has an X ("Remove shortcut for …") that save
 
 Secondary windows are pages of their own in `src/windows/<name>/` (`index.html`, `main.tsx`), each a
 `build.rollupOptions.input` entry in `vite.config.ts`; they import `src/styles/index.ts` and use the same
-store and `api`. `windows/timer/TimerPicker.tsx` reloads settings, projects, the timer and the recent timers
-whenever the window gains focus (it is hidden, not closed, between uses), and reports its errors to the log.
+store and `api`. `windows/timer/TimerPicker.tsx` loads the settings once and follows `settings_changed`
+(`useFollowSettings`, which also applies the look), reloads projects, the timer and the recent timers whenever
+the window gains focus (it is hidden, not closed, between uses), and reports its errors to the log.
 Its `TimerForm` ("Start Timer") and the away window use the editor's field order with `FormField` labels:
 Note (`NoteInput`, autofocus, `NOTE_PLACEHOLDER` "What did you work on?"), Project, Tag. While a timer runs the
 form is filled with it ("Timer running", elapsed time, the note selected on focus) and Save calls `updateTimer`;
@@ -311,8 +314,8 @@ it is keyed by the recording, its `updatedAt` and the window's openings, so the 
 
 ### Away window
 
-`windows/away/AwayPrompt.tsx`, the `away` window's page. It loads settings, projects and
-`awayPromptCurrent` on mount and on focus, and refills from `away_prompt_changed` (the form is keyed by the
+`windows/away/AwayPrompt.tsx`, the `away` window's page. It follows the settings like the timer picker
+(`useFollowSettings`), loads projects and `awayPromptCurrent` on mount and on focus, and refills from `away_prompt_changed` (the form is keyed by the
 span, so a refresh of the same span keeps what was typed). The header shows `awayMs` and `endedAt`; From and
 To go through `recordingDraftSpans`, which rolls an end at or before the start to the next day and gives the
 length. Record sends the drafted spans with `awayPromptAnswer`; an `overlap`
@@ -430,12 +433,34 @@ list closed, Enter and Esc go to the form (save, cancel).
 
 ### Settings pages
 
-`components/settings/SettingsDialog.tsx` renders the pages registered in `registry/settingsPages.ts`;
-`pages.tsx` registers the core ones (`registerCoreSettingsPages`), `controls.tsx` holds the shared rows:
+Settings is a window of its own ([ADR 0034](adr/0034-settings-is-a-window-of-its-own.md)):
+`windows/settings/` (`main.tsx` runs `installModules`, the look, menu guard and input modality like the main
+window; `SettingsApp.tsx` is its page). `SettingsApp` opens at `?page=` and shows the page or section of each
+`open_settings` event (`api.onOpenSettings`); `useFollowSettings(installCommands)` loads the settings and
+shortcuts, follows `settings_changed` and `keybindings_changed` and applies the look; it marks the page as the
+Settings window (`lib/settingsWindow.ts`), keeps `window-blurred` on `<html>` while the window is inactive
+(`lib/windowFocus.ts`, the page list dims) and shows errors as toasts. The main window's `handleKeydown` is
+not installed there: `handleSettingsKeydown` (`commands/settingsWindow.ts`) runs only the `settings` scope,
+active only in this window: `settings.search` (⌘F, focuses the search field) and `settings.close` (Escape,
+`api.hideWindow`, unless a text field has focus or a `[role=dialog]` is open). ⌘, ⌘W and the Settings menu
+items are Rust's.
+
+`components/settings/SettingsWindow.tsx` renders the pages registered in `registry/settingsPages.ts`: the
+page list (a drag strip, the "Search Settings" field, the groups; `settingsGroups(query)` matches page labels,
+group names and each section's title and `keywords`, shows the section a page was found by beside it, "No
+Results" when nothing matches, ↵ opens the first hit) and the page (its title in the drag strip; only the body
+scrolls). A page registers `sections` (`id`, `title`, `keywords`: its row labels); `resolveSettingsPage(id)`
+takes a page or a section id and returns `{ page, section }`, and `controls.tsx`'s `Group section` (through `SectionTarget`) scrolls the
+section's group to the top. A page's `Body` gets `{ s, set, commit }`: `set(patch)` saves `{ ...current,
+...patch }` quietly, `commit(patch)` does too but resolves an `invalid_input` message, which `fields.tsx`'s
+`TextField` / `NumberField` (a `BufferedInput` that commits on blur or ↵) show in red under the field
+(`FieldError`), as for a number outside its range. `pages.tsx` registers the core pages
+(`registerCoreSettingsPages`; Appearance and Data are in `AppearancePage.tsx` and `DataPage.tsx`),
+`controls.tsx` holds the shared rows:
 
 | Page | Holds |
 |---|---|
-| App → General (order 0) | `LaunchAtLoginSwitch` (`LaunchAtLoginSwitch.tsx`, also on the welcome sheet): checked from `autostartStatus()` (the LaunchAgent, not the stored setting), changed through `setLaunchAtLogin` (`settings` slice: `api.autostartSet`, then the store's `settings.launchAtLogin` is updated so a later save keeps it); "Show welcome again" closes Settings and calls `showWelcome` |
+| App → General (order 0) | `LaunchAtLoginSwitch` (`LaunchAtLoginSwitch.tsx`, also on the welcome sheet): checked from `autostartStatus()` (the LaunchAgent, not the stored setting), changed through `setLaunchAtLogin` (`settings` slice: `api.autostartSet`, then the store's `settings.launchAtLogin` is updated so a later save keeps it); "Show welcome again" (`showWelcomeAgain`) calls `api.showWelcome()` in the Settings window, which shows the main window with its welcome sheet (`welcome.show` there calls `showWelcome`) |
 | App → Appearance | "Light mode scheme" and "Dark mode scheme", stacked rows with three tiles each (`SchemePicker`, a miniature window per scheme through `schemeLook`, pressed for that mode's `lightScheme` or `darkScheme`), accent row (`AccentSwatches withSystem`: System first, then the nine hues), Dates (`calendarTitle`: short, full; `dayTitle`: long, short; segmented controls), Text size (`textSize`: small, medium, large; a segmented control over `TEXT_SIZES`) |
 | App → Shortcuts | `ShortcutsPage`: every command with its binding except `menuOnly` ones; record, reset or unbind |
 | Tracking → Capture | `CapturePage` (`CapturePage.tsx`): address and document switches, excluded apps (an "Add app…" picker listing `appsSeen(30)`), excluded websites (a field; Enter adds) |

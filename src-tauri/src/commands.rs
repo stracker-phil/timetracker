@@ -105,6 +105,7 @@ fn settings_saved(app: &AppHandle, previous: &Settings, saved: &Settings) {
         tracker.set_settings(saved.tracker.clone());
         tracker.set_capture(saved.capture.clone());
     }
+    events::announce(app, events::SETTINGS_CHANGED_EVENT, saved);
     log::info!("Settings updated");
 }
 
@@ -121,6 +122,7 @@ pub async fn set_keybindings(
 ) -> AppResult<Keybindings> {
     let saved = state.keybindings.update(bindings).await?;
     menu::rebuild(&app);
+    events::announce(&app, events::KEYBINDINGS_CHANGED_EVENT, &saved);
     Ok(saved)
 }
 
@@ -223,9 +225,22 @@ pub fn take_launch_events(state: State<'_, AppState>) -> Vec<LaunchEvent> {
     state.launches.take_events()
 }
 
+/// Hides the calling window: the main window, or Settings.
 #[tauri::command]
-pub fn hide_window(app: AppHandle) {
-    window::hide_main(&app);
+pub fn hide_window(app: AppHandle, caller: tauri::WebviewWindow) {
+    window::close_requested(&app, caller.label());
+}
+
+/// `page` names a page or a section; without one Settings shows the page it showed last.
+#[tauri::command]
+pub fn open_settings(app: AppHandle, page: Option<String>) {
+    window::settings::open(&app, page.as_deref());
+}
+
+/// Shows the main window's welcome sheet.
+#[tauri::command]
+pub fn show_welcome(app: AppHandle) {
+    window::run_in_main(&app, "welcome.show");
 }
 
 #[tauri::command]

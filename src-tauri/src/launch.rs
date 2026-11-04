@@ -144,6 +144,10 @@ mod tests {
     fn messages_for_the_cli_only_produce_no_event() {
         let messages = [
             IpcMessage::Hide,
+            IpcMessage::Settings { page: None },
+            IpcMessage::Settings {
+                page: Some("capture".into()),
+            },
             IpcMessage::Quit,
             IpcMessage::Status,
             IpcMessage::Resume,

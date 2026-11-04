@@ -8,6 +8,7 @@ import { api } from "../../api";
 import { resetStore, useStore } from "../../state/store";
 import { projectItem } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
+import { settings } from "../../test/settings";
 import { recentTimer, runningStatus } from "../../test/timerFixtures";
 import { TimerPicker } from "./TimerPicker";
 
@@ -208,6 +209,22 @@ describe("TimerPicker", () => {
       mocked.timerStatus.mockResolvedValue(runningStatus({ projectName: "Docs" }));
       act(() => void window.dispatchEvent(new Event("focus")));
       expect(await screen.findByRole("button", { name: "Stop" })).toBeInTheDocument();
+    });
+
+    it("does not reload the settings when it gains focus", async () => {
+      renderPicker();
+      await screen.findByRole("heading", { name: "Start Timer" });
+      mocked.getSettings.mockClear();
+      act(() => void window.dispatchEvent(new Event("focus")));
+      await screen.findByRole("heading", { name: "Start Timer" });
+      expect(mocked.getSettings).not.toHaveBeenCalled();
+    });
+
+    it("applies the accent saved in the Settings window", async () => {
+      renderPicker();
+      await screen.findByRole("heading", { name: "Start Timer" });
+      act(() => mocked.onSettingsChanged.mock.calls[0][0](settings({ accent: "teal" })));
+      await vi.waitFor(() => expect(document.documentElement.dataset.accent).toBe("teal"));
     });
 
     it("follows timer status events", async () => {

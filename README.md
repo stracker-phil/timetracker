@@ -192,7 +192,7 @@ done
 
 `--json` on `activity add` reads an array of `{ source, title, start, end, app?, url?, path? }` from stdin,
 with times in UTC milliseconds. Links also take `timetracker://show?day=…`, `timetracker://activity/start?…`
-and `timetracker://activity/stop?source=…`; encode a `+` in a time offset as `%2B`. The protocol behind the
+and `timetracker://activity/stop?source=…`, and `timetracker://command/app:settings:capture` opens Settings at a page; encode a `+` in a time offset as `%2B`. The protocol behind the
 CLI is in [docs/backend.md](docs/backend.md#cli-and-single-instance-handoff).
 
 ## MCP

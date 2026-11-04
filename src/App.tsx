@@ -18,7 +18,10 @@ import { Toasts } from "./components/Toasts";
 import { handleKeydown, installCommands, runMenuCommand } from "./commands";
 import { installMenuSync } from "./commands/menu";
 import { answerRemote } from "./commands/remote";
+import { disposeAll } from "./lib/disposeAll";
 import { applyAppearance, useSystemDark } from "./lib/theme";
+import { useErrorToasts } from "./lib/useErrorToasts";
+import { keybindingsChanged, settingsChanged } from "./lib/useFollowSettings";
 import { flushUiState, useStore, type View } from "./state/store";
 import "./styles";
 
@@ -43,7 +46,7 @@ function useBackendEvents() {
     void loadProjects();
     void useStore.getState().loadSavedReports();
     void useStore.getState().loadTimer();
-    const unlisten = [
+    const subscriptions = [
       api.onTimerStatus(useStore.getState().setTimerStatus),
       api.onLaunch(() => void drainLaunches()),
       api.onWindowOpened(windowOpened),
@@ -51,19 +54,15 @@ function useBackendEvents() {
       api.onRemote((e) => void answerRemote(e)),
       api.onDataChanged(dataChanged),
       api.onTrackerStatus(setTracker),
+      api.onSettingsChanged(settingsChanged),
+      api.onKeybindingsChanged(keybindingsChanged),
     ];
 
-    const onError = (e: ErrorEvent) => toast("error", `Unexpected error: ${e.message}`);
-    const onRejection = (e: PromiseRejectionEvent) => toast("error", `Unexpected error: ${toAppError(e.reason).message}`);
     window.addEventListener("keydown", handleKeydown, true);
-    window.addEventListener("error", onError);
-    window.addEventListener("unhandledrejection", onRejection);
     window.addEventListener("beforeunload", flushUiState);
     return () => {
-      unlisten.forEach((p) => void p.then((fn) => fn()).catch(() => {}));
+      disposeAll(subscriptions);
       window.removeEventListener("keydown", handleKeydown, true);
-      window.removeEventListener("error", onError);
-      window.removeEventListener("unhandledrejection", onRejection);
       window.removeEventListener("beforeunload", flushUiState);
     };
   }, []);
@@ -112,6 +111,7 @@ export default function App() {
   const settings = useStore((s) => s.settings);
   const systemDark = useSystemDark();
   useBackendEvents();
+  useErrorToasts();
   useMenuSync();
 
   useEffect(() => {

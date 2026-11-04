@@ -8,7 +8,8 @@ import type { SettingsPageProps } from "../../registry/settingsPages";
 import { useStore } from "../../state/store";
 import { InsetField } from "../Field";
 import { Modal } from "../Modal";
-import { Group, NumberField, Row, Switch } from "./controls";
+import { Group, Row, Switch } from "./controls";
+import { NumberField } from "./fields";
 
 /** Look-back window, in days, for the app picker. */
 const RECENT_DAYS = 30;
@@ -61,7 +62,7 @@ function ExcludedApps({ capture, setCapture }: { capture: CaptureSettings; setCa
   const remove = (id: string) => setCapture({ excludedApps: capture.excludedApps.filter((a) => a !== id) });
 
   return (
-    <Group title="Excluded apps">
+    <Group title="Excluded apps" section="excluded-apps">
       {capture.excludedApps.map((id) => (
         <Row key={id} label={nameOf(id)} description={<span className="mono">{id}</span>}>
           <RemoveButton label={`Remove ${nameOf(id)}`} onClick={() => remove(id)} />
@@ -100,7 +101,7 @@ function ExcludedSites({ capture, setCapture }: { capture: CaptureSettings; setC
     setCapture({ excludedDomains: [...capture.excludedDomains, domain] });
   };
   return (
-    <Group title="Excluded websites">
+    <Group title="Excluded websites" section="excluded-websites">
       {capture.excludedDomains.map((domain) => (
         <Row key={domain} label={domain}>
           <RemoveButton label={`Remove ${domain}`} onClick={() => remove(domain)} />
@@ -128,7 +129,7 @@ function ExternalSources() {
   const dataVersion = useStore((s) => s.dataVersion);
   const { data: sources } = useApiResult(`activity-sources:${dataVersion}`, () => api.activitySources(), { keepData: true });
   return (
-    <Group title="External sources">
+    <Group title="External sources" section="external-sources">
       {sources?.map((name) => (
         <Row key={name} label={name} />
       ))}
@@ -148,7 +149,7 @@ export function CapturePage({ s, set }: SettingsPageProps) {
   const setCapture = (patch: Partial<CaptureSettings>) => set({ capture: { ...capture, ...patch } });
   return (
     <>
-      <Group title="Recorded">
+      <Group title="Recorded" section="recorded">
         <Switch
           label="Capture page addresses in browsers"
           description="macOS asks once per browser whether TimeTracker may read its address bar. Firefox cannot be read; only its window titles are recorded."
@@ -175,10 +176,10 @@ const AWAY_PROMPT_MINUTES = [5, 10, 15, 20, 30, 45, 60];
 const awayPromptChoices = (current: number) =>
   AWAY_PROMPT_MINUTES.includes(current) ? AWAY_PROMPT_MINUTES : [...AWAY_PROMPT_MINUTES, current].sort((a, b) => a - b);
 
-export function TrackerPage({ s, set }: SettingsPageProps) {
+export function TrackerPage({ s, set, commit }: SettingsPageProps) {
   const tracker = s.tracker;
   return (
-    <Group>
+    <Group section="away">
       <NumberField
         label="Away after"
         description="Minutes without keyboard or mouse input before the time counts as away."
@@ -186,7 +187,7 @@ export function TrackerPage({ s, set }: SettingsPageProps) {
         value={tracker.idleMinutes}
         min={SETTINGS_LIMITS.idleMinutes.min}
         max={SETTINGS_LIMITS.idleMinutes.max}
-        onCommit={(idleMinutes) => set({ tracker: { ...tracker, idleMinutes } })}
+        onCommit={(idleMinutes) => commit({ tracker: { ...tracker, idleMinutes } })}
       />
       <Switch
         label="Ask what I did after being away"

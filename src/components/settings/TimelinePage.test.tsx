@@ -8,7 +8,7 @@ import { api, type AppOverride, type KnownApp, type Settings } from "../../api";
 import { installCommands } from "../../commands";
 import { resetStore } from "../../state/store";
 import { settings } from "../../test/settings";
-import { SettingsDialog } from "./SettingsDialog";
+import { SettingsWindow } from "./SettingsWindow";
 
 const mocked = vi.mocked(api, true);
 const override = (patch: Partial<AppOverride> = {}): AppOverride => ({ hidden: false, ownLane: false, ...patch });
@@ -17,9 +17,9 @@ const knownApp = (patch: Partial<KnownApp> = {}): KnownApp => ({ appKey: "com.ap
 const SAFARI = "com.apple.Safari";
 
 function renderPage(patch: Partial<Settings> = {}) {
-  resetStore({ settings: settings(patch), dialog: { type: "settings", page: "timeline" } });
+  resetStore({ settings: settings(patch) });
   installCommands();
-  return render(<SettingsDialog />);
+  return render(<SettingsWindow page="timeline" onPage={() => {}} />);
 }
 
 const timelineWith = (patch: Partial<Settings["timeline"]>) => ({ ...settings().timeline, ...patch });

@@ -7,7 +7,8 @@ import { ProjectPicker } from "../../components/pickers/ProjectPicker";
 import { TagPicker } from "../../components/pickers/TagPicker";
 import { formatClock, formatDuration, MINUTE_MS } from "../../lib/format";
 import { spansText } from "../../lib/recordings";
-import { applyAppearance, systemIsDark } from "../../lib/theme";
+import { disposeAll } from "../../lib/disposeAll";
+import { useFollowSettings } from "../../lib/useFollowSettings";
 import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
 
@@ -16,28 +17,23 @@ const REASONS: Record<AwayReason, string> = { idle: "idle", sleep: "asleep", loc
 const skip = () => void api.awayPromptSkip();
 
 /** The open prompt (undefined while loading), reloaded whenever the window gains focus and when a newer away
- *  span replaces it. */
+ *  span replaces it. The settings load once and follow `settings_changed`. */
 function usePrompt(): [Prompt | null | undefined, () => void] {
   const [prompt, setPrompt] = useState<Prompt | null | undefined>(undefined);
   const reload = () => void api.awayPromptCurrent().then(setPrompt, () => setPrompt(null));
+  useFollowSettings();
   useEffect(() => {
     const s = useStore.getState();
-    const loadAppearance = () =>
-      void s.loadSettings().then(() => {
-        const settings = useStore.getState().settings;
-        if (settings) applyAppearance(settings, systemIsDark());
-      });
     const refresh = () => {
-      loadAppearance();
       void s.loadProjects();
       reload();
     };
     refresh();
-    const unlisten = api.onAwayPromptChanged(setPrompt);
+    const subscription = api.onAwayPromptChanged(setPrompt);
     window.addEventListener("focus", refresh);
     return () => {
       window.removeEventListener("focus", refresh);
-      void unlisten.then((fn) => fn()).catch(() => {});
+      disposeAll([subscription]);
     };
   }, []);
   return [prompt, reload];

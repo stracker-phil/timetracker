@@ -8,7 +8,7 @@ import { api } from "../../api";
 import { installCommands } from "../../commands";
 import { resetStore } from "../../state/store";
 import { settings } from "../../test/settings";
-import { SettingsDialog } from "./SettingsDialog";
+import { SettingsWindow } from "./SettingsWindow";
 
 const mocked = vi.mocked(api, true);
 
@@ -22,9 +22,9 @@ type Capture = ReturnType<typeof settings>["capture"];
 
 function renderPage(page: "capture" | "tracker", capture: Partial<Capture> = {}) {
   const base = settings();
-  resetStore({ settings: { ...base, capture: { ...base.capture, ...capture } }, dialog: { type: "settings", page } });
+  resetStore({ settings: { ...base, capture: { ...base.capture, ...capture } } });
   installCommands();
-  return render(<SettingsDialog />);
+  return render(<SettingsWindow page={page} onPage={() => {}} />);
 }
 
 function lastSaved() {
@@ -217,9 +217,9 @@ describe("Settings Tracker page", () => {
 
     it("keeps a hand-edited threshold selectable", () => {
       const base = settings();
-      resetStore({ settings: { ...base, tracker: { ...base.tracker, awayPromptMinutes: 12 } }, dialog: { type: "settings", page: "tracker" } });
+      resetStore({ settings: { ...base, tracker: { ...base.tracker, awayPromptMinutes: 12 } } });
       installCommands();
-      render(<SettingsDialog />);
+      render(<SettingsWindow page="tracker" onPage={() => {}} />);
       expect(minutesField()).toHaveValue("12");
     });
 
@@ -237,17 +237,13 @@ describe("Settings Tracker page", () => {
     });
   });
 
-  it.each([
-    ["Away after", "500"],
-    ["Away after", "0"],
-  ])("rejects %s = %s as out of range and restores the value", async (label, typed) => {
+  it.each(["500", "0"])("rejects Away after = %s as out of range, keeps the text and explains the range", async (typed) => {
     renderPage("tracker");
-    const field = screen.getByLabelText(label);
-    const before = (field as HTMLInputElement).value;
+    const field = screen.getByLabelText("Away after");
     await userEvent.clear(field);
     await userEvent.type(field, `${typed}{Enter}`);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Enter a whole number from 1 to 120.");
+    expect(field).toHaveValue(Number(typed));
     expect(mocked.updateSettings).not.toHaveBeenCalled();
-    await userEvent.tab();
-    expect(field).toHaveValue(Number(before));
   });
 });

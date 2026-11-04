@@ -59,6 +59,10 @@ pub enum IpcMessage {
         focus: bool,
     },
     Hide,
+    /// Opens the Settings window at a page or section id, else where it was.
+    Settings {
+        page: Option<String>,
+    },
     Quit,
     Status,
     Pause {
@@ -158,6 +162,7 @@ impl IpcMessage {
             IpcMessage::Error { .. } => "Error",
             IpcMessage::Show { .. } => "Show",
             IpcMessage::Hide => "Hide",
+            IpcMessage::Settings { .. } => "Settings",
             IpcMessage::Quit => "Quit",
             IpcMessage::Status => "Status",
             IpcMessage::Pause { .. } => "Pause",
@@ -467,6 +472,10 @@ mod tests {
                 focus: false,
             },
             IpcMessage::Hide,
+            IpcMessage::Settings { page: None },
+            IpcMessage::Settings {
+                page: Some("capture".into()),
+            },
             IpcMessage::Quit,
             IpcMessage::Status,
             IpcMessage::Pause {
@@ -587,6 +596,23 @@ mod tests {
         assert_eq!(IpcMessage::TimerStop.kind(), "TimerStop");
         assert_eq!(IpcMessage::TimerPicker.kind(), "TimerPicker");
         assert_eq!(IpcMessage::TimerRecent { limit: 5 }.kind(), "TimerRecent");
+    }
+
+    #[test]
+    fn settings_messages_are_of_the_kind_settings_and_serialize_with_the_page() {
+        assert_eq!(IpcMessage::Settings { page: None }.kind(), "Settings");
+        assert_eq!(
+            serde_json::to_value(IpcMessage::Settings { page: None }).unwrap(),
+            serde_json::json!({ "type": "settings", "page": null })
+        );
+        let message = IpcMessage::Settings {
+            page: Some("capture".into()),
+        };
+        assert_eq!(message.kind(), "Settings");
+        assert_eq!(
+            serde_json::to_value(&message).unwrap(),
+            serde_json::json!({ "type": "settings", "page": "capture" })
+        );
     }
 
     #[test]

@@ -86,6 +86,6 @@ describe("SidebarStatus", () => {
     resetStore({ tracker: trackerStatus() });
     render(<SidebarStatus />);
     await userEvent.click(screen.getByRole("button", { name: "Settings" }));
-    expect(useStore.getState().dialog).toEqual({ type: "settings" });
+    expect(mocked.openSettings).toHaveBeenCalled();
   });
 });

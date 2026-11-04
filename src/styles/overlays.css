@@ -4,8 +4,8 @@
    (docs/ux.md, Overlays). */
 .overlay { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 50; animation: fade .12s ease-out; }
 .overlay:has(> .dialog.popover) { background: none; }
-/* Modal's `variant`: a padded .sheet for forms and messages, a .panel surface laid out by its content (palette,
-   settings), a .popover placed under the control that opened it, or bare. */
+/* Modal's `variant`: a padded .sheet for forms and messages, a .panel surface laid out by its content (the
+   palette), a .popover placed under the control that opened it, or bare. */
 .dialog { animation: pop .14s ease-out; }
 .dialog:is(.sheet, .panel, .popover) { background: var(--pop); box-shadow: var(--shadow); }
 .dialog:is(.sheet, .panel) { border-radius: var(--radius-lg); }

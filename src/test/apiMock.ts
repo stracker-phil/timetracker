@@ -52,6 +52,8 @@ export function createApiMock(): typeof realApi {
     autostartStatus: vi.fn().mockResolvedValue(false),
     openLogFolder: vi.fn().mockResolvedValue(undefined),
     openReadme: vi.fn().mockResolvedValue(undefined),
+    openSettings: vi.fn().mockResolvedValue(undefined),
+    showWelcome: vi.fn().mockResolvedValue(undefined),
     menuSync: vi.fn().mockResolvedValue(undefined),
     openUrl: vi.fn().mockResolvedValue(undefined),
     logError: vi.fn().mockResolvedValue(undefined),
@@ -180,6 +182,9 @@ export function createApiMock(): typeof realApi {
     onTrackerStatus: vi.fn(noUnlisten),
     onTimerStatus: vi.fn(noUnlisten),
     onDataChanged: vi.fn(noUnlisten),
+    onSettingsChanged: vi.fn(noUnlisten),
+    onKeybindingsChanged: vi.fn(noUnlisten),
+    onOpenSettings: vi.fn(noUnlisten),
     onAwayPromptChanged: vi.fn(noUnlisten),
   };
 }

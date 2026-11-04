@@ -7,8 +7,9 @@ export interface SettingsSlice {
   settings: Settings | null;
   keybindings: Keybindings;
   loadSettings: () => Promise<void>;
-  /** `quiet` skips the toast, for settings that apply as they change. */
-  saveSettings: (settings: Settings, opts?: { quiet?: boolean }) => Promise<void>;
+  /** `quiet` skips the toast, for settings that apply as they change. With `returnError`, a value Rust refuses
+   *  (`invalid_input`) is not toasted: its message resolves, for the field to show. Resolves null otherwise. */
+  saveSettings: (settings: Settings, opts?: { quiet?: boolean; returnError?: boolean }) => Promise<string | null>;
   /** Changes timeline settings and saves them quietly; the Day view reloads. */
   saveTimeline: (patch: Partial<TimelineSettings>) => Promise<void>;
   saveKeybindings: (bindings: Keybindings) => Promise<void>;
@@ -39,8 +40,11 @@ export const settingsSlice: Slice<SettingsSlice> = {
         set({ settings: await api.updateSettings(settings) });
         if (!opts?.quiet) get().toast("success", "Settings saved");
       } catch (e) {
-        fail(e, "Could not save settings");
+        const error = toAppError(e);
+        if (opts?.returnError && error.kind === "invalid_input") return error.message;
+        fail(error, "Could not save settings");
       }
+      return null;
     },
 
     async saveTimerShortcut(binding) {

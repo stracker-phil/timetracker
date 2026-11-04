@@ -179,6 +179,10 @@ pub async fn handle(app: AppHandle, message: IpcMessage) -> HandlerResult {
             window::hide_main(&app);
             Ok(serde_json::Value::Null)
         }
+        IpcMessage::Settings { page } => {
+            window::settings::open(&app, page.as_deref());
+            Ok(serde_json::Value::Null)
+        }
         IpcMessage::Quit => {
             quit_after_reply(app);
             Ok(serde_json::Value::Null)

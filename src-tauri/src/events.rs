@@ -23,6 +23,19 @@ pub const AWAY_PROMPT_CHANGED_EVENT: &str = "away_prompt_changed";
 pub const WINDOW_OPENED_EVENT: &str = "window_opened";
 /// Payload: a `TimerStatus`; at start, on every change and every minute while a timer runs.
 pub const TIMER_STATUS_EVENT: &str = "timer_status";
+/// Payload: the saved `Settings`, to every window after every save.
+pub const SETTINGS_CHANGED_EVENT: &str = "settings_changed";
+/// Payload: the saved `Keybindings`, to every window.
+pub const KEYBINDINGS_CHANGED_EVENT: &str = "keybindings_changed";
+/// To the Settings window. Payload: the id of the page or section to show.
+pub const OPEN_SETTINGS_EVENT: &str = "open_settings";
+
+/// Tells every window, so Settings, the timer picker and the away prompt show the saved values.
+pub fn announce<T: Serialize + Clone>(app: &AppHandle, event: &str, payload: &T) {
+    if let Err(e) = app.emit(event, payload.clone()) {
+        log::warn!("Couldn't announce {event}: {e}");
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]

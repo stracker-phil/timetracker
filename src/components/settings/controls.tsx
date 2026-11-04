@@ -1,10 +1,20 @@
 /** Shared controls for settings pages: grouped cards and rows that apply their change right away. */
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useRef, type ReactNode } from "react";
 import { SegmentedControl, type SegmentedControlProps } from "../SegmentedControl";
 
-export function Group({ title, children }: { title?: string; children: ReactNode }) {
+/** The section the window was opened at (`open_settings`); its group scrolls to the top. */
+export const SectionTarget = createContext<string | undefined>(undefined);
+
+/** A row group with its heading. `section`: the id this group is registered under in the page's `sections`; the
+ *  window scrolls to it. */
+export function Group({ title, section, children }: { title?: string; section?: string; children: ReactNode }) {
+  const target = useContext(SectionTarget);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (section && section === target) ref.current?.scrollIntoView?.({ block: "start" });
+  }, [section, target]);
   return (
-    <section className="settings-group">
+    <section ref={ref} className="settings-group" aria-label={title}>
       {title && <h3>{title}</h3>}
       <div className="settings-card">{children}</div>
     </section>
@@ -64,87 +74,5 @@ export function Segmented<T extends string>({ label, description, ...buttons }: 
     <Row label={label} description={description}>
       <SegmentedControl label={label} {...buttons} />
     </Row>
-  );
-}
-
-/** Text input that commits on blur or Enter, so half-typed values never reach the backend.
- *  Number spinner steps (input without typing) also commit, debounced, so they preview right away. */
-export function TextField({ label, description, value, onCommit, type = "text", min, max, suffix, placeholder }: {
-  label: string;
-  description?: ReactNode;
-  value: string;
-  onCommit: (v: string) => void;
-  type?: "text" | "number";
-  min?: number;
-  max?: number;
-  suffix?: string;
-  placeholder?: string;
-}) {
-  const id = useId();
-  const [text, setText] = useState(value);
-  const stepTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => setText(value), [value]);
-  useEffect(() => () => clearTimeout(stepTimer.current), []);
-
-  const inRange = (draft: string) => {
-    if (type !== "number") return true;
-    const n = Number(draft);
-    return draft.trim() !== "" && n >= (min ?? -Infinity) && n <= (max ?? Infinity);
-  };
-  const commit = (draft: string) => {
-    clearTimeout(stepTimer.current);
-    if (draft === value) return;
-    if (inRange(draft)) onCommit(draft);
-    else setText(value);
-  };
-
-  return (
-    <Row label={label} description={description} htmlFor={id}>
-      <div className="settings-input">
-        <input
-          id={id}
-          className={`input${type === "number" ? " number" : ""}`}
-          type={type}
-          min={min}
-          max={max}
-          placeholder={placeholder}
-          value={text}
-          onChange={(e) => {
-            const next = e.target.value;
-            setText(next);
-            // Typing reports an inputType; spinner clicks and arrow-key steps do not.
-            const typed = !!(e.nativeEvent as InputEvent).inputType;
-            if (type !== "number" || typed || !inRange(next)) return;
-            clearTimeout(stepTimer.current);
-            stepTimer.current = setTimeout(() => commit(next), 300);
-          }}
-          onBlur={() => commit(text)}
-          onKeyDown={(e) => e.key === "Enter" && commit(text)}
-        />
-        {suffix && <span className="muted">{suffix}</span>}
-      </div>
-    </Row>
-  );
-}
-
-export function NumberField({ value, onCommit, ...rest }: {
-  label: string;
-  description?: ReactNode;
-  value: number;
-  onCommit: (v: number) => void;
-  min: number;
-  max: number;
-  suffix?: string;
-}) {
-  return (
-    <TextField
-      {...rest}
-      type="number"
-      value={String(value)}
-      onCommit={(t) => {
-        const n = Number(t);
-        if (t.trim() !== "" && Number.isFinite(n)) onCommit(n);
-      }}
-    />
   );
 }

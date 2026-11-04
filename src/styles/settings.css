@@ -1,26 +1,43 @@
-/* ---------- settings window: sidebar of pages, grouped cards of label/control rows ---------- */
-.dialog.settings-window { display: flex; width: min(54rem, calc(100vw - 2.462rem)); height: min(46rem, calc(100vh - 4.615rem)); }
+/* ---------- the Settings window (ADR 0034): the page list on the left, the page of row groups on the right ---------- */
+.settings-window { display: flex; height: 100%; color: var(--text); background: var(--settings-bg); }
+/* The strip under the window buttons; it drags the window. */
+.settings-titlebar { flex: none; height: 2.769rem; }
+
+/* The title strip and the search stay put; only the list below them scrolls, so its overlay scrollbar never
+   reaches the window buttons. */
 .settings-nav {
-  flex: none; width: 13.5rem; padding: var(--space-4) var(--space-2); overflow: auto;
-  background: var(--chrome); box-shadow: inset -1px 0 0 var(--line);
+  flex: none; width: 13.5rem; min-height: 0; padding: 0 var(--space-2);
+  display: flex; flex-direction: column; gap: var(--space-3);
+  background: var(--settings-chrome); box-shadow: inset -1px 0 0 var(--settings-line);
+}
+:root.window-blurred .settings-nav { opacity: 0.6; }
+.settings-nav-search { flex: none; background: var(--settings-fill); box-shadow: none; }
+.settings-nav-search:focus { background: var(--field); box-shadow: var(--focus-ring); }
+.settings-nav-list {
+  flex: 1; min-height: 0; overflow: auto; margin: 0 calc(-1 * var(--space-2)); padding: 0 var(--space-2) var(--space-4);
   display: flex; flex-direction: column; gap: var(--space-3);
 }
 .settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
-.settings-nav-heading { padding: 0 var(--space-2) 2px; font-size: var(--fs-meta); font-weight: 600; color: var(--o3); }
+.settings-nav-heading { padding: 0 var(--space-2) 2px; font-size: var(--fs-meta); font-weight: 600; color: var(--settings-text-tertiary); }
+.settings-nav-empty { margin: 0; padding: 0 var(--space-2); color: var(--settings-text-tertiary); }
 .settings-nav button {
   display: flex; align-items: center; gap: var(--space-2); height: 2.154rem; padding: 0 var(--space-2);
   border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text); text-align: left;
 }
-.settings-nav button svg { color: var(--o2); flex: none; }
+.settings-nav button svg { color: var(--settings-text-secondary); flex: none; }
+.settings-nav button:active:not([aria-current="page"]) { background: var(--settings-fill); }
 .settings-nav button[aria-current="page"] { background: var(--accent); color: var(--on-accent); }
-.settings-nav button[aria-current="page"] svg { color: inherit; }
-/* The title bar stays put; only the page below it scrolls. */
-.settings-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
-.settings-pane > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); height: 3.538rem; padding: 0 var(--space-3) 0 var(--margin); }
-.settings-body { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 0 var(--margin) var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
+.settings-nav button[aria-current="page"] :is(svg, .settings-nav-section) { color: inherit; }
+/* The section a search found the page by. */
+.settings-nav-section { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-meta); color: var(--settings-text-secondary); }
+
+/* The page title sits in the strip beside the window buttons; only the page below it scrolls. */
+.settings-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--settings-bg); }
+.settings-pane > header { flex: none; display: flex; align-items: center; height: 2.769rem; padding: 0 var(--space-3) 0 var(--margin); }
+.settings-body { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: var(--space-2) var(--margin) var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
 .settings-pane h2 { margin: 0; font-size: var(--fs-title); font-weight: 700; color: var(--text-strong); }
-.settings-intro { margin: 0; color: var(--o2); line-height: 1.4; }
-.settings-group { display: flex; flex-direction: column; gap: var(--space-2); }
+.settings-intro { margin: 0; color: var(--settings-text-secondary); line-height: 1.4; }
+.settings-group { display: flex; flex-direction: column; gap: var(--space-2); scroll-margin-top: var(--space-2); }
 .settings-group h3 { margin: 0 0 0 var(--space-3); font-size: var(--fs-body); font-weight: 600; color: var(--text); }
 /* A row group in Settings and popovers: faint hairlines only between its rows, from the text's edge. */
 .settings-card { padding: 0 var(--space-3); }
@@ -39,6 +56,9 @@
 .settings-row-control { flex: none; display: flex; align-items: center; gap: var(--space-2); }
 .settings-row-control select.input { width: 9rem; }
 .settings-input { display: flex; align-items: center; gap: var(--space-2); }
+/* A field with the message of its refused value below it. */
+.settings-field { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1); }
+.settings-field-error { max-width: 18rem; font-size: var(--fs-meta); line-height: 1.35; color: var(--style-red); text-align: right; }
 .settings-input .input { width: 12rem; }
 .range-value { min-width: 4rem; text-align: right; }
 .app-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); font-size: var(--fs-meta); }

@@ -141,7 +141,7 @@ describe("menuState", () => {
     const ALLOWED = ["settings.toggle", "shortcuts.show", "palette.toggle", "zoom.in", "zoom.out", "zoom.reset", "window.hide", "app.background", "app.quit", "edit.undo", "edit.redo"];
 
     it.each<[string, Parameters<typeof resetStore>[0]]>([
-      ["a dialog", { dialog: { type: "settings" } }],
+      ["a dialog", { dialog: { type: "shortcuts", scopes: ["global"] } }],
       ["the palette", { paletteOpen: true }],
       ["the recording editor", { editor: { mode: "create", start: at("09:00"), end: at("10:00") } }],
     ])("enables only the items that still run over %s", (_, patch) => {

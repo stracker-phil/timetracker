@@ -42,6 +42,14 @@
   --activity-fill-hover: #353535;
   --activity-fill-dim: #252525;
 
+  /* the Settings window: the page beside its page list, the search field's fill, secondary and tertiary text */
+  --settings-bg: #1e1e1e;
+  --settings-chrome: #2a2a2a;
+  --settings-fill: rgba(255, 255, 255, 0.08);
+  --settings-line: rgba(255, 255, 255, 0.12);
+  --settings-text-secondary: rgba(230, 230, 230, 0.68);
+  --settings-text-tertiary: rgba(230, 230, 230, 0.52);
+
   /* recording blocks: OKLCH lightness and chroma cap of the fill and its text (theme.css derives them) */
   --block-fill-l: 0.36;
   --block-fill-spread: 0.08;

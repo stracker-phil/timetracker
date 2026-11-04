@@ -1,21 +1,54 @@
 pub mod navigation;
+pub mod settings;
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
-use crate::events::WINDOW_OPENED_EVENT;
+use crate::events::{COMMAND_EVENT, WINDOW_OPENED_EVENT};
 
 const MAIN: &str = "main";
 
 /// Skipped with `TIMETRACKER_BACKGROUND=1` in debug builds so scripts/dev never steal focus.
 pub fn bring_to_front(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(MAIN) {
+        focus(&window);
+    }
+}
+
+fn focus(window: &WebviewWindow) {
     #[cfg(debug_assertions)]
     if crate::dev::background() {
         return;
     }
     // Failing only means the window is gone; there is nothing left to bring forward.
-    if let Some(window) = app.get_webview_window(MAIN) {
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
+}
+
+/// Hides the main window or Settings instead of closing it; false for other windows, which close normally.
+pub fn close_requested(app: &AppHandle, label: &str) -> bool {
+    if !matches!(label, MAIN | settings::LABEL) {
+        return false;
+    }
+    hide(app, label);
+    true
+}
+
+/// ⌘W: hides the window in front, the main window or Settings.
+pub fn close_focused(app: &AppHandle) {
+    let focused = app
+        .webview_windows()
+        .into_values()
+        .find(|window| window.is_focused().unwrap_or(false));
+    if let Some(window) = focused {
+        close_requested(app, window.label());
+    }
+}
+
+fn hide(app: &AppHandle, label: &str) {
+    if let Some(window) = app.get_webview_window(label)
+        && let Err(e) = window.hide()
+    {
+        log::warn!("Couldn't hide the {label} window: {e}");
     }
 }
 
@@ -56,8 +89,14 @@ fn set_dock_icon(app: &AppHandle, shown: bool) {
     }
 }
 
-pub fn hide_main(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window(MAIN) {
-        let _ = window.hide();
+/// Shows the main window and runs one of its page commands there (`COMMAND_EVENT`).
+pub fn run_in_main(app: &AppHandle, command: &str) {
+    show_main(app);
+    if let Err(e) = app.emit_to(MAIN, COMMAND_EVENT, command) {
+        log::warn!("Couldn't run {command} in the main window: {e}");
     }
+}
+
+pub fn hide_main(app: &AppHandle) {
+    hide(app, MAIN);
 }

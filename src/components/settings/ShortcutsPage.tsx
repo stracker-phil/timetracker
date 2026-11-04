@@ -53,7 +53,7 @@ function GlobalShortcut() {
   const change = async (next: string | null) => setError(await useStore.getState().saveTimerShortcut(next));
   const title = "Start timer (system-wide)";
   return (
-    <Group title="Global shortcut">
+    <Group title="Global shortcut" section="global-shortcut">
       <Row label={title} description={error ? <span role="alert">{error}</span> : "Opens the timer picker from any app."}>
         <div className="shortcut-control">
           {binding && <RemoveShortcut title={title} onRemove={() => void change(null)} />}
@@ -91,7 +91,7 @@ export function ShortcutsPage() {
         </div>
       )}
       <GlobalShortcut />
-      <Group title="In TimeTracker">
+      <Group title="In TimeTracker" section="command-shortcuts">
         {list.length === 0 && <div className="settings-row muted">No matching commands.</div>}
         {list.map((c) => {
           const overridden = Object.hasOwn(bindings, c.id);

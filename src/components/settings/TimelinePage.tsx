@@ -38,10 +38,10 @@ export function TimelinePage({ s }: SettingsPageProps) {
   const { data: apps, error } = useApiResult("apps", api.appsList);
   return (
     <>
-      <Group>
+      <Group section="lanes">
         <TimelineControls timeline={s.timeline} />
       </Group>
-      <Group title="Apps">
+      <Group title="Apps" section="apps">
         {error && <Row label="Could not list the apps" description={error.message} />}
         {apps?.length === 0 && <Row label="No apps tracked yet" />}
         {apps?.map((app) => <AppRow key={app.appKey} app={app} override={s.apps[app.appKey]} />)}

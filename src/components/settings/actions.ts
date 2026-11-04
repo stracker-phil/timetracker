@@ -1,5 +1,6 @@
 import { api } from "../../api";
 import { formatDay } from "../../lib/format";
+import { isSettingsWindow } from "../../lib/settingsWindow";
 import { fail } from "../../state/requests";
 import { useStore } from "../../state/store";
 
@@ -30,8 +31,8 @@ export async function revealDataFolder() {
   await revealFolder((await api.dataInfo()).file);
 }
 
+/** The welcome sheet belongs to the main window: Settings asks Rust to show it there. */
 export function showWelcomeAgain() {
-  const { closeDialog, showWelcome } = useStore.getState();
-  closeDialog();
-  showWelcome();
+  if (isSettingsWindow()) void api.showWelcome().catch((e) => fail(e, "Couldn't show the welcome sheet"));
+  else useStore.getState().showWelcome();
 }

@@ -7,7 +7,8 @@ import { NOTE_PLACEHOLDER, NoteInput } from "../../components/NoteInput";
 import { ProjectPicker } from "../../components/pickers/ProjectPicker";
 import { TagPicker } from "../../components/pickers/TagPicker";
 import { formatDuration } from "../../lib/format";
-import { applyAppearance, systemIsDark } from "../../lib/theme";
+import { disposeAll } from "../../lib/disposeAll";
+import { useFollowSettings } from "../../lib/useFollowSettings";
 import { useStore } from "../../state/store";
 
 type Start = (projectId: string, note: string, tagId: string | null) => void;
@@ -15,30 +16,27 @@ type Start = (projectId: string, note: string, tagId: string | null) => void;
 const close = () => void api.timerPickerClose();
 
 /** The window's data, reloaded whenever it gains focus (it is hidden, not closed, between uses) and when the
- *  timer changes; returns the recent timers. */
+ *  timer changes; the settings load once and follow `settings_changed`. Returns the recent timers. */
 function useRecentTimers(): RecentTimer[] {
   const [recent, setRecent] = useState<RecentTimer[]>([]);
+  useFollowSettings();
   useEffect(() => {
     const s = useStore.getState();
     const loadRecent = () => void api.timersRecent().then(setRecent, () => setRecent([]));
     const refresh = () => {
-      void s.loadSettings().then(() => {
-        const settings = useStore.getState().settings;
-        if (settings) applyAppearance(settings, systemIsDark());
-      });
       void s.loadProjects();
       void s.loadTimer();
       loadRecent();
     };
     refresh();
-    const unlisten = api.onTimerStatus((status) => {
+    const subscription = api.onTimerStatus((status) => {
       s.setTimerStatus(status);
       loadRecent();
     });
     window.addEventListener("focus", refresh);
     return () => {
       window.removeEventListener("focus", refresh);
-      void unlisten.then((fn) => fn()).catch(() => {});
+      disposeAll([subscription]);
     };
   }, []);
   return recent;

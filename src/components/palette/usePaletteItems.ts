@@ -1,6 +1,7 @@
-import { type Client, type DateJump, type Keybindings, type PeriodUnit, type Project, type ProjectListItem, type SavedReport } from "../../api";
+import { api, type Client, type DateJump, type Keybindings, type PeriodUnit, type Project, type ProjectListItem, type SavedReport } from "../../api";
 import { activeScopes, allCommands, bindingFor, bindingLabel } from "../../commands";
 import { settingsPages, useSettingsPagesVersion } from "../../registry/settingsPages";
+import { fail } from "../../state/requests";
 import { projectLabel } from "../../state/slices/projects";
 import { useStore, type View } from "../../state/store";
 import { VIEWS } from "../views";
@@ -82,7 +83,7 @@ function settingsItems(prefix: Prefix, needle: string): Item[] {
       section: "Settings",
       title,
       rank: score([title, page.label], needle),
-      go: closeThen(() => useStore.getState().openDialog({ type: "settings", page: page.id })),
+      go: closeThen(() => void api.openSettings(page.id).catch((e) => fail(e, "Couldn't open Settings"))),
     };
   });
 }

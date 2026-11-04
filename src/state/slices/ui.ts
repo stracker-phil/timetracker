@@ -19,8 +19,6 @@ export interface ToastAction {
 }
 
 export type Dialog =
-  /** `page`: the Settings page shown (ids from `settingsPages()` in `registry/settingsPages.ts`); the first one when absent. */
-  | { type: "settings"; page?: string }
   | { type: "confirm"; title: string; message: string; confirmLabel: string; cancelLabel?: string; onConfirm: () => void }
   /** The shortcut overview of the scopes that were active when it opened. */
   | { type: "shortcuts"; scopes: string[] }
