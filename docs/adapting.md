@@ -124,5 +124,19 @@ section of [backend.md](backend.md#tray).
 - **Typed errors** cross the boundary as `{kind, message, code}`.
 - **No network.** No HTTP client, no update check, CSP allows IPC only; no navigation away from the app's pages.
 - **Activity is raw.** It is never edited; recordings are a separate layer with undoable operations.
+- **Small feature modules**; split files over ~400 lines.
+- **No color literal outside the palettes**; the native look of [ux.md](ux.md); controls stay put
+  ([`.claude/rules/stable-controls.md`](../.claude/rules/stable-controls.md)).
+- **Debug is a separate app on demo data**; nothing in the repo carries real data
+  ([`.claude/rules/demo-data.md`](../.claude/rules/demo-data.md)).
 - **Tests with every change**, through public interfaces ([`.claude/rules/testing.md`](../.claude/rules/testing.md)).
+- **Docs by file and symbol**, never by line number; an ADR for every decision, never edited once accepted.
 - **One commit per step or unit**, each revertible, never pushed ([`.claude/rules/commits.md`](../.claude/rules/commits.md)).
+
+## Network hosts
+
+None. TimeTracker talks to no host: there is no network crate (`lib.rs` tests `no_network_crate_is_compiled_for_macos`
+and `cargo_manifest_names_no_network_crate`), the CSP allows IPC only, and the navigation guard keeps every
+webview on the app's pages ([ADR 0013](adr/0013-no-network.md),
+[ADR 0033](adr/0033-hardened-runtime-strict-csp-and-no-navigation.md)). A host would need an ADR that
+supersedes 0013 and a table here: host, why, where.

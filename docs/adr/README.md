@@ -44,3 +44,5 @@ stands in TimeTracker. The numbers in this table are TimeTracker's.
 | [0032](0032-builds-are-signed-with-an-apple-development-certificate.md) | Builds are signed with an Apple Development certificate | Accepted (2026-11-04), implemented |
 | [0033](0033-hardened-runtime-strict-csp-and-no-navigation.md) | Hardened runtime with Apple Events, strict CSP and no navigation | Accepted (2026-11-04), implemented |
 | [0034](0034-settings-is-a-window-of-its-own.md) | Settings is a window of its own | Accepted (2026-11-04), implemented |
+| [0035](0035-appearance-keeps-schemes-and-an-accent.md) | Appearance keeps a scheme per mode and an accent | Accepted (2026-11-04) |
+| [0036](0036-the-status-bar-stays.md) | The status bar stays | Accepted (2026-11-04) |

@@ -2,7 +2,7 @@
 description: Rust tests and fixtures are written by the write-rust-unit-test agent
 paths:
   - "src-tauri/tests/**"
-  - "src-tauri/src/test_support.rs"
+  - "src-tauri/src/test_support/**"
 ---
 
 Don't edit these files inline. Spawn the `write-rust-unit-test` agent with the code under test and the

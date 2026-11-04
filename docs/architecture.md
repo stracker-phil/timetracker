@@ -45,6 +45,17 @@ These rules hold everywhere in the code. Keep them when you change things.
 8. **No color literal outside `src/styles/palettes/`** ([ADR 0016](adr/0016-color-schemes.md),
    [ADR 0021](adr/0021-appearance-modes-and-schemes.md), [ADR 0022](adr/0022-a-scheme-per-system-mode.md)). Palettes are complete token sets; a Vitest scan
    enforces it.
+9. **One write path into the data.** Every change to recordings, projects, tags and rules goes through its
+   repository's write functions in Rust, which validate, save, record the inverse for undo and announce
+   `data_changed`. No other code writes the data, and the page never keeps its own copy as the truth.
+10. **Small feature modules.** By feature (`recordings/`, `reports/`, `rules/`), pure cores, a trait only
+    where a second implementation exists today (`Source`, `IconSource`); files under ~400 lines.
+11. **Debug is a separate app on demo data** ([ADR 0031](adr/0031-the-debug-build-runs-on-demo-data.md)):
+    its own identifier, scheme and data folder, made-up capture and the showcase. Nothing in the repo
+    carries real data ([`demo-data.md`](../.claude/rules/demo-data.md)).
+12. **The webview stays on the app's pages** ([ADR 0033](adr/0033-hardened-runtime-strict-csp-and-no-navigation.md)):
+    a strict CSP, a navigation guard on every window and the hardened runtime, because the page shows
+    window titles and addresses it doesn't control.
 
 Time is UTC milliseconds (`i64`) in storage and IPC; a day is a local calendar day `YYYY-MM-DD`, resolved
 to bounds in Rust ([ADR 0011](adr/0011-utc-milliseconds-local-days.md)).

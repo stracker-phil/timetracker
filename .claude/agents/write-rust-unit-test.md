@@ -31,7 +31,7 @@ Read `.claude/rules/testing.md`, `docs/testing.md` and the docs page of the laye
   the existing module; never a separate test file for unit tests.
 - **Pure first.** Most logic has a pure core: settings sanitizing, CLI parsing, timeline layout, overlap
   checks, snapping, report math, rule matching. Test that core directly, without a database.
-- **Needs a real database**: tests on a temp SQLite file (`test_support::temp_db`, from step 02), either
+- **Needs a real database**: tests on a temp SQLite file (`test_support::temp_db`), either
   inline in the module or as integration tests in `src-tauri/tests/` (`#[ignore]` when slow). Never touch the
   user's data folder.
 

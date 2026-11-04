@@ -4,14 +4,16 @@ Local-first automatic time tracker for macOS: one person, one computer, no netwo
 the background; the user turns it into recordings for projects on a Day view timeline; reports are text
 built for copying. See README.md for the product and CLI.
 
-The app should feel like a calendar (Fantastical, Timely), not a code editor. DataBee is the blueprint for
-architecture, stack and process only, never for the look: no editor color schemes, monospace text, dense
-outlines or grey-on-grey panels; prefer proportional type, filled colored blocks, cards, generous spacing and
-a dark sidebar.
+The app looks native: it reads as a macOS app beside Calendar and System Settings, with the system font,
+inset groups, a unified toolbar and AppKit control metrics (ADR 0024, `docs/ux.md`). No editor color schemes,
+monospace text outside machine text, outlined cards or badges. Taskboard (`../taskboard`) and Daybook
+(`../daybook`), the author's sibling apps, are the references for the look, the process and newer decisions
+(`docs/README.md` → Sibling apps).
 
 ## Rules
 
-- Every session or step ends in a commit, so it can be reverted.
+- Every session or step ends in a commit, so it can be reverted. Commit each finished part of a step as soon as
+  it is green, not only at the end.
 - Never push. Only commit locally.
 - Write unit tests for every change and run them (through the `ci` agent) before every commit; tests and
   lint must be green.
@@ -20,6 +22,9 @@ a dark sidebar.
   (`.claude/rules/demo-data.md`). The debug build runs on its own data folder, made-up capture and the showcase.
 - Refactor continuously: when a file grows large (over ~400 lines of production code) or complex, simplify it
   and split it into focused modules in the same step, without asking.
+- Keep modules small, isolated and replaceable: by feature, pure cores, a trait only where a second
+  implementation exists today (`Source`, `IconSource`). No speculative abstractions.
+- UI changes keep controls stable (`.claude/rules/stable-controls.md`).
 - The implementation plan lives in `docs/plan/` (gitignored): `README.md` plus one file per step. Work one
   step per session, in its order; when a step is done, set its status from PENDING to DONE in
   `docs/plan/README.md` (the only change a step makes there).
@@ -35,7 +40,8 @@ line number.
 - Rust backend in `src-tauri/` (rustup stable; Homebrew rustup is keg-only: `/opt/homebrew/opt/rustup/bin`)
 - Tauri 2 + React 19 + TypeScript in `src/`, bun as package manager, zustand, lucide-react
 - macOS 27, Apple Silicon only
-- Blueprint: DataBee, the author's sibling project in `../databee` (same author, stack and conventions; not the look)
+- Sibling apps (read-only): Taskboard `../taskboard`, Daybook `../daybook`, DataBee `../databee` (same author,
+  stack and conventions; `docs/README.md` → Sibling apps)
 
 ## Architecture
 - Rust owns all logic; React only renders. Only `api.ts` files call `invoke`/`listen` (`src/api/index.ts`

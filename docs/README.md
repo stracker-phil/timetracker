@@ -17,6 +17,22 @@ use it, see the [project README](../README.md).
 
 Suggested reading order: architecture, then the layer you are changing, then adapting.
 
+## Sibling apps
+
+TimeTracker is one of four apps by the same owner, with the same stack and process. When this repo has no
+answer yet, look there (read-only, never write to them):
+
+| App | Path | Take from it |
+|---|---|---|
+| Taskboard | `../taskboard` | the newest decisions: the debug build on demo data, signing and the hardened runtime, the Settings window, motion, stable controls, the command bus, in-page menus, TanStack Query reads |
+| Daybook | `../daybook` | the look (`docs/ux.md`, `src/styles/`), the Settings window's layout, scrollbars, dev scripts |
+| DataBee | `../databee` | optional features as inline modules, ports with fakes, the read-only MCP server |
+
+TimeTracker is ahead in SQLite through sqlx (migrations, undo as ops), the seeds and the showcase, the CLI
+over the socket with `watch`, and the performance tests; keep those when porting.
+
+Demo data only: nothing in the repo carries the owner's real data ([`demo-data.md`](../.claude/rules/demo-data.md)).
+
 The rules in [`.claude/rules/`](../.claude/rules/) are binding for changes:
 - [`demo-data.md`](../.claude/rules/demo-data.md): nothing in the repo carries real data; the debug build
   runs on the showcase ([ADR 0031](adr/0031-the-debug-build-runs-on-demo-data.md))

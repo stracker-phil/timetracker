@@ -56,7 +56,7 @@ If the caller names a file without a mode, default to `CHANGES in`.
 - A write to recordings that is not an operation with an inverse (ADR 0010), or a write that modifies activity.
 - Components subscribing to the whole store (`useStore()` with no selector) or deriving arrays without
   `useShallow`.
-- A color literal outside `src/styles/schemes/`.
+- A color literal outside `src/styles/palettes/`.
 
 ### 4. Over-engineering (bias toward the simpler shape)
 Flag speculative structure without a present payoff:

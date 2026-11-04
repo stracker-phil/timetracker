@@ -15,7 +15,9 @@ description: Finish a development step in TimeTracker - clean up and review the 
    The debug app is never installed: call its CLI by path
    (`src-tauri/target/debug/bundle/macos/TimeTracker (Debug).app/Contents/MacOS/timetracker`), not `timetracker`.
    Drive the UI with `scripts/dev/js.sh '<js>'` (fire-and-forget; wrap code in an IIFE, the store is
-   `window.timetracker`) and check it with `scripts/dev/screenshot.sh <png>`. Never use AppleScript clicks or
+   `window.timetracker`) and check it with `scripts/dev/screenshot.sh <png>` (`--overlay` for the timer and
+   away panels). For UI changes, run `scripts/dev/e2e.sh`: it fails when the main area, the toolbar, the first
+   block or a clicked control moved (`.claude/rules/stable-controls.md`). Never use AppleScript clicks or
    keystrokes; they need focus.
 5. Update the affected `docs/` page if behavior, commands, files or extension points changed; add an ADR for
    each new decision. Check that no real data slipped into code, docs, tests or screenshots
