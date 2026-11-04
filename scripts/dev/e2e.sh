@@ -43,14 +43,21 @@ sleep 1.5
       if (before[name] !== after[name]) drift.push(step + ': ' + name + ' ' + before[name] + ' -> ' + after[name]);
     }
   };
+  // Like a pointer: presses whatever is at the control's centre, so an overlay that opened over it takes the press.
+  const press = (control) => {
+    const r = control.getBoundingClientRect();
+    const at = { clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, bubbles: true, button: 0 };
+    const target = document.elementFromPoint(at.clientX, at.clientY) ?? control;
+    for (const type of ['mousedown', 'mouseup', 'click']) target.dispatchEvent(new MouseEvent(type, at));
+  };
   const clickTwice = async (name, find) => {
     const control = find();
     if (!control) return drift.push(name + ': not found');
     const before = parts(control);
-    control.click();
+    press(control);
     await wait(700);
     compare(name + ' once', before, parts(control));
-    control.click();
+    press(control);
     await wait(700);
     compare(name + ' twice', before, parts(control));
   };
