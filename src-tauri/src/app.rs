@@ -42,6 +42,7 @@ pub fn start(
         .plugin(log_plugin())
         .plugin(init_logging(log_level))
         .plugin(tauri_plugin_opener::init())
+        .plugin(window::navigation::guard())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

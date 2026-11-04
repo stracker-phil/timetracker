@@ -172,7 +172,7 @@ src-tauri/
   src/error.rs lock.rs       AppError (+ ErrorKind), poison-tolerant lock helpers
   src/store/                 JsonFile, JsonStore, settings/, keybindings.rs, ui_state.rs
   src/commands.rs            settings, keybindings, ui state, misc; feature commands sit in their module
-  src/tray.rs window.rs deep_link.rs   tray, window helpers, timetracker:// links
+  src/tray.rs window/ deep_link.rs   tray, window helpers, timetracker:// links
   src/menu/                  native menu: items.rs (MENU_ITEMS), mod.rs (build, forward), sync.rs (enabled and checked items)
   src/help.rs                Help menu targets outside the app (the README)
   src/dev.rs                 debug builds only: window frame, background launch, eval, dev seed

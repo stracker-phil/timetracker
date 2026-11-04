@@ -89,7 +89,7 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 | `scripts/dev/screenshot-looks.sh <dir> [view]` | captures a view (default `day`) in each scheme of the current macOS mode as `<scheme>-<mode>-<view>.png`, then restores the settings; switch the system appearance and run it again for the other mode ([ux.md](ux.md#scheme-audit)) |
 | `scripts/dev/screenshot-readme.sh [dir]` | captures the README screenshots (`day.png`, `day-dark.png`, `reports.png`, default `docs/screens`): the Day view of the last workday in the Default and the Dark scheme and Reports for last week, then restores the settings, view and zoom. Run it on the showcase ([Sample data](#sample-data)) |
 | `bun run app` | builds and `open`s the app; this takes focus |
-| `bun run release` | builds the release `.app` and `.dmg` (`src-tauri/target/release/bundle/`), signed ad hoc |
+| `bun run release` | builds the release `.app` and `.dmg` (`src-tauri/target/release/bundle/`), then re-signed by `scripts/install.sh` |
 
 The store is available as `window.timetracker` in the debug bundle: `bun run build:app` sets
 `VITE_DEV_HOOKS=1` at build time, and `main.tsx` exposes the store only then. A release build has no
@@ -105,9 +105,11 @@ scripts/dev/js.sh 'timetracker.getState().setView("week")'
 The tracker needs Accessibility for window titles. macOS keys the grant to the app's designated requirement:
 with a certificate that is the identifier and the certificate, so the grant survives rebuilds; ad hoc it is
 the build's hash, so every rebuild asks again (remove the old entry in System Settings → Privacy & Security →
-Accessibility and grant the new one). `scripts/create-signing-cert.sh` creates the self-signed "TimeTracker
-Local Signing" certificate once per Mac; `scripts/sign-app.sh` signs with `TIMETRACKER_SIGN_IDENTITY`, else
-that certificate, else ad hoc. `launch.sh` signs the debug bundle (`com.philippstracker.timetracker.debug`)
+Accessibility and grant the new one). `scripts/sign-app.sh` signs with `TIMETRACKER_SIGN_IDENTITY`, else a valid
+Apple Development certificate (by hash), else the self-signed "TimeTracker Local Signing" certificate of
+`scripts/create-signing-cert.sh`, else ad hoc, always with the hardened runtime and `src-tauri/entitlements.plist`
+([ADR 0032](adr/0032-builds-are-signed-with-an-apple-development-certificate.md)). Switching certificates
+changes the signature once, so Accessibility and each browser's Automation grant are given again. `launch.sh` signs the debug bundle (`com.philippstracker.timetracker.debug`)
 before starting it, `scripts/install.sh` the release bundle (`com.philippstracker.timetracker`). The two are
 separate entries in Privacy & Security, each granted once. Each has its own config dir (settings, data, socket,
 lock), so the debug build runs next to the release app.

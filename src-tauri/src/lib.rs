@@ -173,6 +173,45 @@ mod tests {
         }
     }
 
+    fn directives(csp: &serde_json::Value) -> std::collections::HashMap<String, String> {
+        csp.as_str()
+            .expect("csp is a string")
+            .split(';')
+            .filter_map(|directive| {
+                let directive = directive.trim();
+                let (name, value) = directive.split_once(' ').unwrap_or((directive, ""));
+                (!name.is_empty()).then(|| (name.to_string(), value.trim().to_string()))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn both_content_security_policies_lock_down_frames_objects_forms_and_ipc() {
+        let (config, _) = configs();
+        let security = &config["app"]["security"];
+        let release = directives(&security["csp"]);
+        let dev = directives(&security["devCsp"]);
+
+        for (label, csp) in [("release", &release), ("dev", &dev)] {
+            for name in ["frame-src", "object-src", "base-uri", "form-action"] {
+                assert_eq!(
+                    csp.get(name).map(String::as_str),
+                    Some("'none'"),
+                    "{label} {name}"
+                );
+            }
+            assert_eq!(csp["img-src"], "'self' data:", "{label}");
+        }
+        assert_eq!(release["connect-src"], "ipc: http://ipc.localhost");
+        assert!(
+            dev["connect-src"].starts_with("ipc: http://ipc.localhost"),
+            "{}",
+            dev["connect-src"]
+        );
+        assert_eq!(release["script-src"], "'self'");
+        assert_eq!(release["style-src-elem"], "'self'");
+    }
+
     #[test]
     fn identifier_matches_the_tauri_config() {
         let (release, debug) = configs();

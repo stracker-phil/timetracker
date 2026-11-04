@@ -41,3 +41,5 @@ stands in TimeTracker. The numbers in this table are TimeTracker's.
 | [0029](0029-other-apps-may-subscribe-over-the-socket.md) | Other apps may subscribe to changes over the socket | Accepted (2026-10-27), implemented |
 | [0030](0030-suggestions-may-have-no-project.md) | A stored suggestion may have no project | Accepted (2026-10-27), implemented |
 | [0031](0031-the-debug-build-runs-on-demo-data.md) | The debug build runs on demo data | Accepted (2026-11-04), implemented |
+| [0032](0032-builds-are-signed-with-an-apple-development-certificate.md) | Builds are signed with an Apple Development certificate | Accepted (2026-11-04), implemented |
+| [0033](0033-hardened-runtime-strict-csp-and-no-navigation.md) | Hardened runtime with Apple Events, strict CSP and no navigation | Accepted (2026-11-04), implemented |

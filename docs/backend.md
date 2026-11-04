@@ -88,7 +88,7 @@ the `sidebar` vibrancy effect. The away prompt (`away_prompt/window.rs`) and the
 | `timetracker --hidden` (launch at login) | first instance: the window is never shown; running instance: nothing |
 | "Quit TimeTracker" (`app.quit`, no default key) in the app menu, the palette and the tray, `quit_app` | `app.exit(0)` |
 
-`window.rs` never sets the window theme, so its native appearance follows macOS (the page draws every surface
+`window/mod.rs` never sets the window theme, so its native appearance follows macOS (the page draws every surface
 opaquely). It also has `bring_to_front`, which does nothing with `TIMETRACKER_BACKGROUND=1` in debug builds.
 
 ## AppState
@@ -1070,11 +1070,16 @@ graph. The library builds as `rlib`. The release profile uses LTO, `codegen-unit
 
 `app.security.csp` in `tauri.conf.json`:
 
-- `default-src 'self'`: scripts, fonts and frames come from the bundle only;
+- `default-src 'self'`, `script-src 'self'`: scripts and fonts come from the bundle only;
 - `img-src 'self' data:`: no view loads a remote image, even if a window title contains a URL; app icons
   arrive as `data:` URLs;
-- `style-src 'self' 'unsafe-inline'`: React `style` attributes;
-- `connect-src ipc: http://ipc.localhost`: Tauri IPC only.
+- `style-src 'self' 'unsafe-inline'`: React `style` attributes; `style-src-elem 'self'`: no inline `<style>`;
+- `connect-src ipc: http://ipc.localhost`: Tauri IPC only;
+- `frame-src`, `object-src`, `base-uri`, `form-action`: `'none'`.
 
 `app.security.devCsp` applies under `tauri dev` and adds inline scripts and Vite's HMR websocket on
 `localhost:1420`/`1421`.
+
+Every webview also runs `window/navigation.rs` `guard` (registered in `app.rs`): a navigation to anything
+but the bundled pages (`tauri://localhost`, `http(s)://tauri.localhost`) or, in debug builds, the dev server
+(`localhost:1420`) is blocked and logged ([ADR 0033](adr/0033-hardened-runtime-strict-csp-and-no-navigation.md)).

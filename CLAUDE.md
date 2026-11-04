@@ -46,7 +46,7 @@ line number.
   `events.rs` (every event name and payload), `state.rs` (`AppState`), `store/` (JSON files), `db/` (SQLite,
   repositories, backup, `relocate.rs`), `capture/` (`Source`, `macos.rs`), `tracker/`, `activity/` (external
   activity, deletion), `day/`, `calendar/` (week, month), `projects/`, `recordings/`, `timers/`, `rules/`,
-  `reports/`, `away_prompt/`, `mcp/`, `app_icons.rs`, `autostart.rs`, `commands.rs`, `menu/` (menu bar, item list, enabled state), `help.rs`, `tray.rs`, `window.rs`,
+  `reports/`, `away_prompt/`, `mcp/`, `app_icons.rs`, `autostart.rs`, `commands.rs`, `menu/` (menu bar, item list, enabled state), `help.rs`, `tray.rs`, `window/` (helpers, navigation guard),
   `error.rs`, `lock.rs`, `dev.rs` (debug builds), `test_support/` (fixtures, seed; tests and debug builds).
 - Errors cross the boundary as `{ kind, message, code }` (`error.rs`). IPC types are generated with ts-rs.
 - Timestamps are UTC milliseconds; days are local `YYYY-MM-DD`, computed in Rust.
@@ -59,10 +59,10 @@ Test, lint and format-check commands run through the `ci` agent, never in the ma
 - `bun run test:db`: `#[ignore]` integration tests on temp SQLite files (no Docker), including
   `src-tauri/tests/performance.rs` (two seeded years, median limits per view)
 - `bun run lint`: IPC types drift check (`src/api/types.gen.ts`), tsc, ESLint and clippy on production code (warnings are errors)
-- `bun run release`: release `.app` and `.dmg` in `src-tauri/target/release/bundle/`, signed ad hoc, then installed
+- `bun run release`: release `.app` and `.dmg` in `src-tauri/target/release/bundle/`, then signed (Apple Development certificate first, hardened runtime) and installed
 - `scripts/install.sh` (the end of `bun run release`): signs the release build (`scripts/sign-app.sh`), links it
   as the app and the `timetracker` command and restarts a running TimeTracker on it; debug builds are never
-  linked. `scripts/create-signing-cert.sh` (once per Mac) makes the certificate that keeps Accessibility grants
+  linked. `scripts/create-signing-cert.sh` (once per Mac) makes the fallback certificate for a Mac without an Apple Development one
 - `timetracker dev seed --years N` (debug builds): sample history in the running app's database; `--showcase`
   writes the made-up history `scripts/dev/screenshot-readme.sh` captures for the README
 - `bun run build:app` + `scripts/dev/launch.sh`: debug build, restarted next to the terminal without stealing focus

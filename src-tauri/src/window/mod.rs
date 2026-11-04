@@ -1,3 +1,5 @@
+pub mod navigation;
+
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::events::WINDOW_OPENED_EVENT;

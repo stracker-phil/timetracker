@@ -33,6 +33,8 @@ or build-specific place gets a row here.
 | Env vars | `TIMETRACKER_SIGN_IDENTITY`, `TIMETRACKER_CLI` | also `TIMETRACKER_WINDOW_FRAME`, `TIMETRACKER_BACKGROUND`, `TIMETRACKER_REAL_CAPTURE`, `TIMETRACKER_DEV_TERMINAL` | `scripts/sign-app.sh`; `dev.rs`, `window.rs`; `scripts/dev/launch.sh`, `scripts/dev/seed-day.sh` |
 | Store on `window` | none | `window.timetracker` (`VITE_DEV_HOOKS=1`) | `src/main.tsx`, `src/vite-env.d.ts`, the dev scripts |
 | Icons | clock glyph | the same | `design/icon.svg`, rasterized to `design/icon-1024.png` (`rsvg-convert -w 1024 -h 1024`); `src-tauri/icons/` regenerated with `bun tauri icon design/icon-1024.png` (only the desktop files are kept); tray template images in `src-tauri/icons/tray/` |
+| Signing certificate | `TIMETRACKER_SIGN_IDENTITY`, else an `Apple Development` certificate, else `TimeTracker Local Signing`, else ad hoc | the same | `scripts/sign-app.sh`, `scripts/create-signing-cert.sh` ([ADR 0032](adr/0032-builds-are-signed-with-an-apple-development-certificate.md)) |
+| Entitlements | `com.apple.security.automation.apple-events` under the hardened runtime | the same | `src-tauri/entitlements.plist`, `scripts/sign-app.sh` ([ADR 0033](adr/0033-hardened-runtime-strict-csp-and-no-navigation.md)) |
 | Author, license | Philipp Stracker, MIT | | `Cargo.toml`, `package.json`, `LICENSE` |
 
 ## Platform-specific code
@@ -51,12 +53,12 @@ or build-specific place gets a row here.
 | **Config dir** hard-coded to `~/Library/Application Support/<id>` | `lib.rs` `config_dir()`, `scripts/dev/js.sh` | `dirs::config_dir()`; it must resolve before Tauri starts, because the CLI and socket run first | `dirs::config_dir()` (`%APPDATA%\<id>`) |
 | **Unix socket** for the single-instance handoff, CLI, `watch` and MCP `status`/`open_day` | `ipc/`, `watch.rs`, `mcp/ui.rs` | Works as is; mind the ~108-byte path limit | A named pipe (`tokio::net::windows::named_pipe`) with the same line protocol |
 | **File permissions** (0600 files, 0700 dirs) | `ipc/server.rs`, `store/json_file.rs`, `store/json_store.rs`, `db/mod.rs`, `db/relocate.rs` | Works | Gate with `#[cfg(unix)]` |
-| **Window chrome**: overlay title bar, `trafficLightPosition`, `transparent`, `windowEffects: ["sidebar"]`, `macOSPrivateApi` | `tauri.conf.json`; Cargo feature `macos-private-api`; `window.rs` | Ignored; the page is opaque already | `windowEffects: ["mica"]`, or an opaque background |
+| **Window chrome**: overlay title bar, `trafficLightPosition`, `transparent`, `windowEffects: ["sidebar"]`, `macOSPrivateApi` | `tauri.conf.json`; Cargo feature `macos-private-api`; `window/` | Ignored; the page is opaque already | `windowEffects: ["mica"]`, or an opaque background |
 | **Traffic-light space** and drag regions | `--traffic-lights` and `--toolbar-height` in `theme.css`; `data-tauri-drag-region` in `Toolbar.tsx` and `Sidebar.tsx` (`.sidebar-titlebar`) | Remove the inset and the strip | Same |
 | **System accent**: WebKit's `AccentColor` follows the macOS accent color; the sidebar turns transparent for the window's vibrancy where its tone matches the mode | `theme.css` (`[data-accent="system"]`), `sidebar.css` | `AccentColor` is the platform's accent or a default blue; drop the transparent sidebar rules | Same |
 | **Menu**: app menu with Services, Hide, Show All | `menu/mod.rs` | Move Settings and Quit into a File menu | Same |
 | **Fonts**: the system font (`-apple-system`, SF Pro) and `ui-monospace` (SF Mono), with `system-ui` and `Menlo` fallbacks | `theme.css` (`--font-ui`, `--font-mono`) | Falls back to the platform's UI font; bundle a font if it must match | Same |
-| **Bundle targets**: `app` and `dmg`, signed ad hoc (`bundle.macOS.signingIdentity: "-"`), `icon.icns` | `tauri.conf.json` `bundle`; `package.json` `release`, `build:app`, `app` | `deb`, `appimage` | `nsis`, `msi` (`icon.ico` is already generated) |
+| **Bundle targets**: `app` and `dmg` (Tauri signs ad hoc, `bundle.macOS.signingIdentity: "-"`; `scripts/sign-app.sh` re-signs with an Apple Development certificate and the hardened runtime, `src-tauri/entitlements.plist`), `icon.icns` | `tauri.conf.json` `bundle`; `package.json` `release`, `build:app`, `app` | `deb`, `appimage` | `nsis`, `msi` (`icon.ico` is already generated) |
 | **Install and dev scripts** (zsh, `ln` into `~/Applications` and `~/.local/bin`, `codesign`, Swift, CoreGraphics, `screencapture`) | `scripts/install.sh`, `scripts/stop-app.sh`, `scripts/sign-app.sh`, `scripts/create-signing-cert.sh`, `scripts/dev/` | Link into `~/.local/bin` and a `.desktop` file; rewrite the dev scripts or use `bun tauri dev` | PowerShell |
 | **Tests**: the setup pretends to be a Mac | `src/test-setup.ts` | Make the platform a parameter | Same |
 
@@ -120,7 +122,7 @@ section of [backend.md](backend.md#tray).
 - **Rust owns the logic.** The frontend renders and forwards intent.
 - **IPC only in `api.ts` files.**
 - **Typed errors** cross the boundary as `{kind, message, code}`.
-- **No network.** No HTTP client, no update check, CSP allows IPC only.
+- **No network.** No HTTP client, no update check, CSP allows IPC only; no navigation away from the app's pages.
 - **Activity is raw.** It is never edited; recordings are a separate layer with undoable operations.
 - **Tests with every change**, through public interfaces ([`.claude/rules/testing.md`](../.claude/rules/testing.md)).
 - **One commit per step or unit**, each revertible, never pushed ([`.claude/rules/commits.md`](../.claude/rules/commits.md)).

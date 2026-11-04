@@ -14,6 +14,11 @@ support. As shipped it builds and runs on **macOS on Apple Silicon** only; every
   commits). Follow them in this repo; in a fork, keep what serves you.
 - IPC types in `src/api/types.gen.ts` are generated from Rust with ts-rs (`bun run types`); never edit them.
 - No network: the app has no HTTP client and its CSP allows IPC only ([ADR 0013](docs/adr/0013-no-network.md)).
+- Builds are signed by `scripts/sign-app.sh`: an Apple Development certificate if the Mac has one (else a
+  self-signed fallback, else ad hoc), with the hardened runtime and `src-tauri/entitlements.plist`
+  ([ADR 0032](docs/adr/0032-builds-are-signed-with-an-apple-development-certificate.md),
+  [ADR 0033](docs/adr/0033-hardened-runtime-strict-csp-and-no-navigation.md)). The debug build runs on demo data
+  ([ADR 0031](docs/adr/0031-the-debug-build-runs-on-demo-data.md)).
 
 ## Prerequisites (macOS)
 

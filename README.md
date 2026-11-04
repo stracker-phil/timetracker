@@ -42,10 +42,11 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 
 - **Launch at login** (Settings → General, or the welcome sheet) installs a LaunchAgent that starts
   `timetracker --hidden`: no window, only the menu bar icon.
-- **The Accessibility grant belongs to the app's code signature.** Run `scripts/create-signing-cert.sh` once:
-  it adds a self-signed "TimeTracker Local Signing" certificate to the login keychain, and every build is
-  signed with it (`scripts/sign-app.sh`), so a grant survives rebuilds. Without it builds are signed ad hoc,
-  and every rebuild is a new app to macOS that asks again. The debug app is a separate entry in Privacy &
+- **The Accessibility grant belongs to the app's code signature.** `scripts/sign-app.sh` signs every build
+  with your Apple Development certificate (Xcode → Settings → Accounts → Manage Certificates; a free Apple ID
+  is enough), so a grant survives rebuilds. Without one, run `scripts/create-signing-cert.sh` once for a
+  self-signed fallback; without either, builds are signed ad hoc and every rebuild is a new app to macOS that
+  asks again. The debug app is a separate entry in Privacy &
   Security, "TimeTracker (Debug)", with its own grant.
 
 ## The Day view
