@@ -1,8 +1,10 @@
 import { api, type MenuState } from "../api";
 import { useStore } from "../state/store";
-import { activeScopes, allCommands, canRunFromMenu } from "./index";
+import { canRunFromMenu } from "./pageCommands";
+import { allCommands } from "./registry";
+import { activeScopes } from "./scopes";
 
-/** The native menu's items that can run now and the checked ones, as `menu/items.rs` lists them. */
+/** This window's menu page commands (`page:<id>` in `menu/items.rs`) that can run now and the checked ones. */
 export function menuState(): MenuState {
   const scopes = activeScopes();
   const items = allCommands().filter((c) => c.menu);

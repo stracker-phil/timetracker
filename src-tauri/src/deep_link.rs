@@ -1,6 +1,7 @@
 //! `timetracker://` links from other apps. macOS hands a link to the running app, or starts it first.
-//! `show` links are queued like a launch, so they wait until the page listens; activity links are
-//! written at once. A link that fails shows as an error in the window.
+//! `show` links and links to the page's commands are queued like a launch, so they wait until the page
+//! listens; activity links are written and app commands run at once. A link that fails shows as an error
+//! in the window.
 
 use chrono::TimeZone;
 use tauri::AppHandle;
@@ -8,10 +9,32 @@ use tauri_plugin_deep_link::DeepLinkExt;
 use url::Url;
 
 use crate::activity::ActivityInput;
+use crate::bus::PAGE_PREFIX;
 use crate::cli::time;
 use crate::db::time::{Ms, now_ms};
 use crate::ipc::IpcMessage;
 use crate::{LINK_SCHEME, launch, remote};
+
+/// The commands a `command/<id>` link may run: what helps another app hand over to TimeTracker, never
+/// quitting, deleting or changing data.
+const LINK_COMMANDS: &[&str] = &[
+    "app:show",
+    "app:settings",
+    "timer:start",
+    "timer:stop",
+    "tracker:resume",
+    "page:nav.today",
+];
+/// Families a link may run with any argument.
+const LINK_FAMILIES: &[&str] = &["app:settings:", "tracker:pause:", "page:view."];
+
+/// Whether a `command/<id>` link may run `id`.
+pub fn link_command(id: &str) -> bool {
+    LINK_COMMANDS.contains(&id)
+        || LINK_FAMILIES
+            .iter()
+            .any(|prefix| id.len() > prefix.len() && id.starts_with(prefix))
+}
 
 pub fn listen(handle: &AppHandle) {
     let app = handle.clone();
@@ -37,6 +60,9 @@ fn open(app: &AppHandle, url: &str) {
     match link_message(url, now_ms(), &chrono::Local) {
         message @ (IpcMessage::Show { .. } | IpcMessage::Error { .. }) => {
             launch::queue(app, message)
+        }
+        IpcMessage::Run { id } if id.starts_with(PAGE_PREFIX) => {
+            launch::queue(app, IpcMessage::Run { id })
         }
         message => {
             let app = app.clone();
@@ -97,10 +123,11 @@ fn parse_link<Tz: TimeZone>(url: &str, now: Ms, tz: &Tz) -> Result<IpcMessage, S
         ("activity", "/start") => Ok(IpcMessage::ActivityStart {
             input: input(instant("start")?.unwrap_or(now))?,
         }),
-        ("command", "/app:settings") => Ok(IpcMessage::Settings { page: None }),
-        ("command", command) if command.starts_with("/app:settings:") => Ok(IpcMessage::Settings {
-            page: Some(command["/app:settings:".len()..].to_owned()),
-        }),
+        ("command", command) if command.strip_prefix('/').is_some_and(link_command) => {
+            Ok(IpcMessage::Run {
+                id: command[1..].to_owned(),
+            })
+        }
         ("activity", "/stop") => Ok(IpcMessage::ActivityStop {
             source: required("source")?,
             end: instant("end")?,
@@ -175,29 +202,50 @@ mod tests {
     }
 
     #[test]
-    fn settings_command_links_open_the_settings_window_at_a_page() {
+    fn allowed_command_links_run_the_command_with_or_without_a_trailing_slash() {
         let scheme = crate::LINK_SCHEME;
-        for (path, page) in [
-            ("app:settings", None),
-            ("app:settings/", None),
-            ("app:settings:capture", Some("capture")),
-            ("app:settings:capture/", Some("capture")),
+        for id in [
+            "app:show",
+            "app:settings",
+            "app:settings:capture",
+            "timer:start",
+            "timer:stop",
+            "tracker:resume",
+            "tracker:pause:60",
+            "tracker:pause:tomorrow",
+            "page:nav.today",
+            "page:view.week",
         ] {
-            let url = format!("{scheme}://command/{path}");
-            assert_eq!(
-                link(&url),
-                IpcMessage::Settings {
-                    page: page.map(Into::into)
-                },
-                "{url}"
-            );
+            for suffix in ["", "/"] {
+                let url = format!("{scheme}://command/{id}{suffix}");
+                assert_eq!(link(&url), IpcMessage::Run { id: id.into() }, "{url}");
+            }
         }
     }
 
     #[test]
-    fn unknown_command_links_fail_as_no_such_link() {
-        let url = format!("{}://command/app:other", crate::LINK_SCHEME);
-        assert_eq!(link(&url), failure("TimeTracker has no such link"));
+    fn command_links_outside_the_allowlist_fail_as_no_such_link() {
+        let scheme = crate::LINK_SCHEME;
+        for path in [
+            "app:quit",
+            "app:other",
+            "page:edit.undo",
+            "tracker:pause:",
+            "app:settings:",
+            "page:view.",
+            "command",
+            "",
+            "/",
+        ] {
+            let url = format!("{scheme}://command/{path}");
+            assert_eq!(link(&url), failure("TimeTracker has no such link"), "{url}");
+        }
+        let bare = format!("{scheme}://command");
+        assert_eq!(
+            link(&bare),
+            failure("TimeTracker has no such link"),
+            "{bare}"
+        );
     }
 
     #[test]

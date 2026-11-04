@@ -9,6 +9,7 @@ pub mod picker;
 pub mod screen;
 pub mod shortcut;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -23,7 +24,7 @@ use crate::error::AppResult;
 use crate::events::TIMER_STATUS_EVENT;
 use crate::recordings::timer::TimerInput;
 use crate::state::AppState;
-use crate::{tray, watch};
+use crate::{menu, tray, watch};
 
 /// How many recent timers the tray and the picker offer.
 pub const RECENT: usize = 8;
@@ -126,7 +127,27 @@ pub async fn recent(db: &Db, limit: usize) -> AppResult<Vec<RecentTimer>> {
     Ok(recent)
 }
 
-/// Tells the page, the tray and the watchers where the timer stands; returns whether a timer runs.
+/// Whether a timer ran at the last `publish`, for the enabled checks of the timer's commands.
+#[derive(Default)]
+pub struct Running(AtomicBool);
+
+pub fn runs(app: &AppHandle) -> bool {
+    app.try_state::<Running>()
+        .is_some_and(|running| running.0.load(Ordering::SeqCst))
+}
+
+/// The menu greys Stop Timer while none runs.
+fn set_running(app: &AppHandle, runs: bool) {
+    let Some(running) = app.try_state::<Running>() else {
+        return;
+    };
+    if running.0.swap(runs, Ordering::SeqCst) != runs {
+        menu::refresh(app);
+    }
+}
+
+/// Tells the page, the tray, the menu and the watchers where the timer stands; returns whether a timer
+/// runs.
 pub async fn publish(app: &AppHandle) -> bool {
     let Ok(db) = app.state::<AppState>().data.db() else {
         return false;
@@ -142,6 +163,7 @@ pub async fn publish(app: &AppHandle) -> bool {
         log::warn!("Couldn't notify the page of the timer: {e}");
     }
     tray::set_timer(app, status.running.as_ref(), recent);
+    set_running(app, status.running.is_some());
     watch::timer_changed(app).await;
     status.running.is_some()
 }

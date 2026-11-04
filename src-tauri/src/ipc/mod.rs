@@ -59,10 +59,12 @@ pub enum IpcMessage {
         focus: bool,
     },
     Hide,
-    /// Opens the Settings window at a page or section id, else where it was.
-    Settings {
-        page: Option<String>,
+    /// Runs a bus command (`app:settings`, `timer:stop`) or, as `page:<id>`, one of the window's own.
+    Run {
+        id: String,
     },
+    /// Lists the commands `Run` takes.
+    Commands,
     Quit,
     Status,
     Pause {
@@ -162,7 +164,8 @@ impl IpcMessage {
             IpcMessage::Error { .. } => "Error",
             IpcMessage::Show { .. } => "Show",
             IpcMessage::Hide => "Hide",
-            IpcMessage::Settings { .. } => "Settings",
+            IpcMessage::Run { .. } => "Run",
+            IpcMessage::Commands => "Commands",
             IpcMessage::Quit => "Quit",
             IpcMessage::Status => "Status",
             IpcMessage::Pause { .. } => "Pause",
@@ -472,10 +475,13 @@ mod tests {
                 focus: false,
             },
             IpcMessage::Hide,
-            IpcMessage::Settings { page: None },
-            IpcMessage::Settings {
-                page: Some("capture".into()),
+            IpcMessage::Run {
+                id: "app:settings:capture".into(),
             },
+            IpcMessage::Run {
+                id: "page:view.week".into(),
+            },
+            IpcMessage::Commands,
             IpcMessage::Quit,
             IpcMessage::Status,
             IpcMessage::Pause {
@@ -599,19 +605,24 @@ mod tests {
     }
 
     #[test]
-    fn settings_messages_are_of_the_kind_settings_and_serialize_with_the_page() {
-        assert_eq!(IpcMessage::Settings { page: None }.kind(), "Settings");
-        assert_eq!(
-            serde_json::to_value(IpcMessage::Settings { page: None }).unwrap(),
-            serde_json::json!({ "type": "settings", "page": null })
-        );
-        let message = IpcMessage::Settings {
-            page: Some("capture".into()),
+    fn run_and_commands_messages_have_their_kinds_and_wire_shapes() {
+        let run = IpcMessage::Run {
+            id: "timer:stop".into(),
         };
-        assert_eq!(message.kind(), "Settings");
+        let run_wire = serde_json::json!({ "type": "run", "id": "timer:stop" });
+        assert_eq!(run.kind(), "Run");
+        assert_eq!(serde_json::to_value(&run).unwrap(), run_wire);
+        assert_eq!(serde_json::from_value::<IpcMessage>(run_wire).unwrap(), run);
+
+        let commands_wire = serde_json::json!({ "type": "commands" });
+        assert_eq!(IpcMessage::Commands.kind(), "Commands");
         assert_eq!(
-            serde_json::to_value(&message).unwrap(),
-            serde_json::json!({ "type": "settings", "page": "capture" })
+            serde_json::to_value(IpcMessage::Commands).unwrap(),
+            commands_wire
+        );
+        assert_eq!(
+            serde_json::from_value::<IpcMessage>(commands_wire).unwrap(),
+            IpcMessage::Commands
         );
     }
 

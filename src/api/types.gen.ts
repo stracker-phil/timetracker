@@ -385,7 +385,7 @@ export type LaneKind = "summary" | "activity" | "app" | "source";
  * Something the page acts on once it listens: from the launch that started the app, a later launch,
  * or a deep link.
  */
-export type LaunchEvent = { "type": "error", message: string, } | { "type": "notice", message: string, } | { "type": "activate" } | { "type": "showDay", day: Day, };
+export type LaunchEvent = { "type": "error", message: string, } | { "type": "notice", message: string, } | { "type": "activate" } | { "type": "showDay", day: Day, } | { "type": "command", id: string, };
 
 /**
  * What `timetracker mcp` may read besides recordings, projects, tags and reports.
@@ -396,8 +396,22 @@ export type McpSettings = {
  */
 exposeActivity: boolean, };
 
+export type MenuCommand = { 
 /**
- * What the page reports: the items whose commands can run now and the checked ones.
+ * The menu's title, the palette's section.
+ */
+menu: string, label: string, command: string, 
+/**
+ * The binding the item shows, as `⌘⇧C`; `None` when unbound.
+ */
+keys: string | null, 
+/**
+ * A choice that is on, such as the shown view.
+ */
+checked: boolean, };
+
+/**
+ * What a page reports: its page commands (ids without `page:`) that can run now and the checked ones.
  */
 export type MenuState = { enabled: Array<string>, checked: Array<string>, };
 
@@ -616,7 +630,7 @@ end: number | null, };
 
 export type RemoteEvent = { id: string, request: RemoteRequest, };
 
-export type RemoteRequest = { "type": "showDay", day: Day, };
+export type RemoteRequest = { "type": "showDay", day: Day, } | { "type": "runCommand", id: string, };
 
 export type ReportCharts = { byClient: Array<ChartSlice>, byProject: Array<ChartSlice>, byTag: Array<ChartSlice>, };
 

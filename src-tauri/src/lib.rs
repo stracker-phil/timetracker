@@ -3,6 +3,7 @@ mod app;
 pub mod app_icons;
 pub mod autostart;
 pub mod away_prompt;
+pub mod bus;
 pub mod calendar;
 pub mod capture;
 pub mod cli;

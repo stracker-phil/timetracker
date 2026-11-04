@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { PauseUntil, TrackerState } from "../api";
 import { useStore } from "../state/store";
 import { useMenuOpenOn, type MenuEntry } from "./menu";
+import { usePaletteMenu } from "./palette/menus";
 
 const PAUSES: { label: string; until: PauseUntil }[] = [
   { label: "For 15 minutes", until: { minutes: 15 } },
@@ -18,11 +19,13 @@ export function pauseMenu(): MenuEntry[] {
   return PAUSES.map(({ label, until }) => ({ text: label, run: () => void pauseTracker(until) }));
 }
 
-/** The tracker's dot and the status text Rust computed (the tray shows the same). */
+/** The tracker's dot and the status text Rust computed (the tray shows the same); while tracking, the palette lists
+ *  the pause lengths. */
 export function TrackerLine() {
   const tracker = useStore((s) => s.tracker);
   const kind = tracker?.state.kind;
   const text = tracker?.text ?? "Tracking off";
+  usePaletteMenu("tracker.pause", kind === "running" || kind === "away" ? { section: "Tracking", title: "Pause tracking", entries: pauseMenu } : null);
   return (
     <>
       <span className={`tracker-dot ${(kind && TONES[kind]) ?? ""}`} aria-hidden="true" />

@@ -147,7 +147,8 @@ tracker without writing, so the next tick opens a new row ([backend.md](backend.
 `pause(until, now)` takes `PauseUntil`: `{ minutes: n }`, `tomorrow` (the next local midnight) or `resumed`.
 It closes the activity and any away span, and opens a `paused` span. Pausing again only moves `until`.
 `resume(now)` closes the paused span and runs a step at once. Pauses come from the tray, the sidebar, the
-palette (`tracker.pause`, `tracker.resume`) and the CLI (`timetracker pause`, `timetracker resume`).
+menu and the palette (the bus commands `tracker:pause:<15|60|tomorrow|resumed>` and `tracker:resume`) and the
+CLI (`timetracker tracker pause`, `timetracker tracker resume`, `timetracker run tracker:pause:60`).
 
 ### Startup and the loop
 

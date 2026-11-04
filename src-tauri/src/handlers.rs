@@ -3,8 +3,8 @@
 use tauri::ipc::Invoke;
 
 use crate::{
-    activity, app_icons, autostart, away_prompt, calendar, commands, day, db, help, menu, projects,
-    recordings, remote, reports, rules, timers, tracker,
+    activity, app_icons, autostart, away_prompt, bus, calendar, commands, day, db, help, menu,
+    projects, recordings, remote, reports, rules, timers, tracker,
 };
 
 pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
@@ -33,6 +33,8 @@ pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         commands::reveal_path,
         help::open_readme,
         menu::sync::menu_sync,
+        menu::palette::menu_commands,
+        bus::app::run_command,
         db::commands::data_info,
         db::commands::data_move,
         db::commands::backup_export,

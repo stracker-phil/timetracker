@@ -1,6 +1,6 @@
-//! User shortcut overrides (`keybindings.json`): `{ "commandId": "Mod+Shift+X" | null }`.
-//! The webview resolves most shortcuts; the native menu reads the same file for its
-//! accelerators so the two never disagree.
+//! User shortcut overrides (`keybindings.json`): `{ "commandId": "Mod+Shift+X" | null }`, keyed by a page
+//! command's id (`nav.prev`) or a bus command's (`app:settings`). The webview resolves most shortcuts; the
+//! native menu reads the same file for its accelerators so the two never disagree.
 
 use super::json_store::JsonStore;
 use crate::error::AppResult;
@@ -48,10 +48,42 @@ impl KeybindingsStore {
 
 const MODIFIERS: &[&str] = &["Mod", "Ctrl", "Alt", "Shift"];
 
-/// Drops overrides whose command id or binding the webview could never match. Ids are not
-/// checked against the registry: the frontend owns most commands and Rust does not know them.
+/// The ids of commands that moved to the bus (ADR 0038): an override stored under the old id applies to
+/// the new one.
+pub const RENAMED: &[(&str, &str)] = &[
+    ("settings.toggle", "app:settings"),
+    ("timer.start", "timer:start"),
+    ("timer.stop", "timer:stop"),
+    ("timer.toggle", "timer:toggle"),
+    ("app.quit", "app:quit"),
+    ("app.background", "app:background"),
+    ("window.hide", "window:close"),
+    ("app.launchAtLogin", "app:launchAtLogin"),
+    ("logs.open", "app:logs"),
+    ("data.reveal", "app:dataFolder"),
+    ("help.readme", "app:readme"),
+    ("tracker.pause", "tracker:pause:resumed"),
+    ("tracker.resume", "tracker:resume"),
+];
+
+/// Moves overrides under a renamed id to the new id; one stored under the new id already wins.
+fn migrate(bindings: Keybindings) -> Keybindings {
+    let (old, mut current): (Keybindings, Keybindings) = bindings
+        .into_iter()
+        .partition(|(id, _)| RENAMED.iter().any(|(from, _)| from == id));
+    for (id, binding) in old {
+        if let Some((_, to)) = RENAMED.iter().find(|(from, _)| *from == id) {
+            current.entry((*to).to_string()).or_insert(binding);
+        }
+    }
+    current
+}
+
+/// Moves renamed ids (`migrate`) and drops overrides whose command id or binding the webview could never
+/// match. Ids are not checked against the registry: the frontend owns most commands and Rust does not
+/// know them.
 pub fn sanitize(bindings: Keybindings) -> Keybindings {
-    bindings
+    migrate(bindings)
         .into_iter()
         .filter(|(id, binding)| {
             let valid = is_command_id(id) && binding.as_deref().is_none_or(|b| split(b).is_some());
@@ -63,8 +95,12 @@ pub fn sanitize(bindings: Keybindings) -> Keybindings {
         .collect()
 }
 
+/// A page command's dotted id or a bus command's id with colons.
 fn is_command_id(id: &str) -> bool {
-    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
+    !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == ':')
 }
 
 /// `Mod+Shift+K` into its modifiers and key. A trailing `++` (or a bare `+`) is the `+` key.
@@ -170,26 +206,25 @@ mod tests {
     fn menu_binding_without_override_is_the_default() {
         let dir = temp_config_dir();
         let store = KeybindingsStore::open(dir.path());
-        assert_eq!(
-            store.menu_binding("settings.toggle").as_deref(),
-            Some("Mod+,")
-        );
+        for (id, expected) in [("app:settings", "Mod+,"), ("window:close", "Mod+W")] {
+            assert_eq!(store.menu_binding(id).as_deref(), Some(expected), "{id}");
+        }
     }
 
     #[tokio::test]
     async fn override_persists_across_reopen() {
         let dir = temp_config_dir();
         KeybindingsStore::open(dir.path())
-            .update(overrides(&[("settings.toggle", Some("Mod+Shift+P"))]))
+            .update(overrides(&[("app:settings", Some("Mod+Shift+P"))]))
             .await
             .unwrap();
         let reopened = KeybindingsStore::open(dir.path());
         assert_eq!(
-            reopened.menu_binding("settings.toggle").as_deref(),
+            reopened.menu_binding("app:settings").as_deref(),
             Some("Mod+Shift+P")
         );
         assert_eq!(
-            reopened.menu_binding("window.hide").as_deref(),
+            reopened.menu_binding("window:close").as_deref(),
             Some("Mod+W")
         );
     }
@@ -199,12 +234,12 @@ mod tests {
         let dir = temp_config_dir();
         let store = KeybindingsStore::open(dir.path());
         store
-            .update(overrides(&[("window.hide", None)]))
+            .update(overrides(&[("window:close", None)]))
             .await
             .unwrap();
-        assert_eq!(store.menu_binding("window.hide"), None);
+        assert_eq!(store.menu_binding("window:close"), None);
         assert_eq!(
-            KeybindingsStore::open(dir.path()).menu_binding("window.hide"),
+            KeybindingsStore::open(dir.path()).menu_binding("window:close"),
             None
         );
     }
@@ -244,7 +279,7 @@ mod tests {
     fn command_without_default_has_no_menu_binding() {
         let dir = temp_config_dir();
         let store = KeybindingsStore::open(dir.path());
-        assert_eq!(store.menu_binding("logs.open"), None);
+        assert_eq!(store.menu_binding("app:logs"), None);
     }
 
     #[test]
@@ -329,18 +364,98 @@ mod tests {
             ("c.bad", Some("Mod+K+J")),
             ("bad id!", Some("Mod+K")),
             ("", Some("Mod+K")),
-            ("settings.toggle", Some("Mod+Shift+P")),
-            ("window.hide", None),
+            ("app:settings", Some("Mod+Shift+P")),
+            ("window:close", None),
             ("zoom.in", Some("Mod++")),
         ]));
         assert_eq!(
             cleaned,
             overrides(&[
-                ("settings.toggle", Some("Mod+Shift+P")),
-                ("window.hide", None),
+                ("app:settings", Some("Mod+Shift+P")),
+                ("window:close", None),
                 ("zoom.in", Some("Mod++")),
             ])
         );
+    }
+
+    #[test]
+    fn colon_ids_are_accepted_and_other_characters_are_dropped() {
+        let cleaned = sanitize(overrides(&[
+            ("tracker:pause:resumed", Some("Mod+Shift+R")),
+            ("app:launchAtLogin", Some("Mod+L")),
+            ("app/settings", Some("Mod+K")),
+            ("app settings", Some("Mod+K")),
+            ("app-settings", Some("Mod+K")),
+        ]));
+        assert_eq!(
+            cleaned,
+            overrides(&[
+                ("tracker:pause:resumed", Some("Mod+Shift+R")),
+                ("app:launchAtLogin", Some("Mod+L")),
+            ])
+        );
+    }
+
+    #[test]
+    fn every_renamed_id_migrates_on_read() {
+        for &(old, new) in RENAMED {
+            let dir = temp_config_dir();
+            std::fs::write(
+                dir.path().join("keybindings.json"),
+                format!(r#"{{"{old}": "Mod+Shift+9"}}"#),
+            )
+            .unwrap();
+
+            let store = KeybindingsStore::open(dir.path());
+
+            assert_eq!(
+                store.get(),
+                overrides(&[(new, Some("Mod+Shift+9"))]),
+                "{old}"
+            );
+            assert_eq!(
+                store.menu_binding(new).as_deref(),
+                Some("Mod+Shift+9"),
+                "{old}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn every_renamed_id_migrates_on_update() {
+        for &(old, new) in RENAMED {
+            let dir = temp_config_dir();
+            let store = KeybindingsStore::open(dir.path());
+
+            let saved = store.update(overrides(&[(old, None)])).await.unwrap();
+
+            assert_eq!(saved, overrides(&[(new, None)]), "{old}");
+            assert_eq!(
+                KeybindingsStore::open(dir.path()).get(),
+                overrides(&[(new, None)]),
+                "{old}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_override_under_the_new_id_wins_over_the_old_one() {
+        for &(old, new) in RENAMED {
+            let cleaned = sanitize(overrides(&[
+                (old, Some("Mod+Shift+1")),
+                (new, Some("Mod+Shift+2")),
+            ]));
+            assert_eq!(cleaned, overrides(&[(new, Some("Mod+Shift+2"))]), "{old}");
+        }
+    }
+
+    #[test]
+    fn an_unbound_override_under_the_new_id_wins_over_the_old_one() {
+        let cleaned = sanitize(overrides(&[
+            ("settings.toggle", Some("Mod+Shift+1")),
+            ("app:settings", None),
+        ]));
+        assert_eq!(cleaned, overrides(&[("app:settings", None)]));
     }
 
     #[tokio::test]
@@ -349,12 +464,12 @@ mod tests {
         let store = KeybindingsStore::open(dir.path());
         let saved = store
             .update(overrides(&[
-                ("settings.toggle", Some("Mod+Shift+P")),
-                ("window.hide", Some("Hyper+K")),
+                ("app:settings", Some("Mod+Shift+P")),
+                ("window:close", Some("Hyper+K")),
             ]))
             .await
             .unwrap();
-        let expected = overrides(&[("settings.toggle", Some("Mod+Shift+P"))]);
+        let expected = overrides(&[("app:settings", Some("Mod+Shift+P"))]);
         assert_eq!(saved, expected);
         assert_eq!(KeybindingsStore::open(dir.path()).get(), expected);
     }
@@ -364,14 +479,11 @@ mod tests {
         let dir = temp_config_dir();
         std::fs::write(
             dir.path().join("keybindings.json"),
-            r#"{"settings.toggle": "Mod+", "window.hide": "Mod+Q"}"#,
+            r#"{"app:settings": "Mod+", "window:close": "Mod+Q"}"#,
         )
         .unwrap();
         let store = KeybindingsStore::open(dir.path());
-        assert_eq!(store.get(), overrides(&[("window.hide", Some("Mod+Q"))]));
-        assert_eq!(
-            store.menu_binding("settings.toggle").as_deref(),
-            Some("Mod+,")
-        );
+        assert_eq!(store.get(), overrides(&[("window:close", Some("Mod+Q"))]));
+        assert_eq!(store.menu_binding("app:settings").as_deref(), Some("Mod+,"));
     }
 }

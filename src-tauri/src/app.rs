@@ -13,8 +13,8 @@ use crate::ipc::IpcMessage;
 use crate::state::AppState;
 use crate::tracker::Tracker;
 use crate::{
-    app_icons, away_prompt, capture, commands, db, deep_link, ipc, menu, remote, timers, tracker,
-    tray, watch, window,
+    app_icons, away_prompt, bus, capture, commands, db, deep_link, ipc, menu, remote, timers,
+    tracker, tray, watch, window,
 };
 
 const MAX_LOG_BYTES: u128 = 5 * 1024 * 1024;
@@ -38,6 +38,8 @@ pub fn start(
         .manage(remote::Bridge::default())
         .manage(watch::Watchers::default())
         .manage(menu::MenuSync::default())
+        .manage(bus::Commands::registered())
+        .manage(timers::Running::default())
         .manage(away_prompt::AwayPromptState::default())
         .plugin(log_plugin())
         .plugin(init_logging(log_level))
@@ -51,18 +53,26 @@ pub fn start(
             MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
         ))
-        .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event
-                && window::close_requested(window.app_handle(), window.label())
+        // Every menu's clicks come here, the menu bar's and the tray's.
+        .on_menu_event(|app, event| menu::clicked(app, event.id().as_ref()))
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. }
+                if window::close_requested(window.app_handle(), window.label()) =>
             {
                 api.prevent_close();
             }
+            WindowEvent::Focused(focused) => {
+                menu::sync::focus_changed(window.app_handle(), window.label(), *focused);
+            }
+            WindowEvent::Destroyed => {
+                menu::sync::window_destroyed(window.app_handle(), window.label())
+            }
+            _ => {}
         })
         .setup(move |app| {
             log::info!("TimeTracker {} started", env!("CARGO_PKG_VERSION"));
             let state = app.state::<AppState>();
-            app.set_menu(menu::build(app, &state.keybindings)?)?;
+            app.set_menu(menu::build(app.handle(), &state.keybindings)?)?;
             state.launches.push(initial);
             commands::apply_settings(app.handle(), None, &state.settings.get());
             tray::install(app.handle())?;

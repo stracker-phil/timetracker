@@ -10,8 +10,10 @@ export interface Command {
   /** Enabled-state check; disabled commands neither fire nor show in the palette. */
   when?: () => boolean;
   run: () => void | Promise<void>;
-  /** Native menu item in `MENU_ITEMS` (`menu/items.rs`); rebinding rebuilds the menu. */
+  /** A page command with a menu item `page:<id>` in `MENUS` (`menu/items.rs`); rebinding rebuilds the menu. */
   menu?: true;
+  /** A bus command that Rust runs (`busCommands.ts`); the registry holds it for its key. */
+  bus?: true;
   /** The checkmark of a menu checkbox item. */
   checked?: () => boolean;
   /** A menu item that is not meant to have a shortcut; Settings → Shortcuts leaves it out. */

@@ -4,7 +4,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api } from "../api";
 import { installCommands, runCommand } from "./index";
-import { resetStore, useStore } from "../state/store";
+import { resetStore } from "../state/store";
 import { trackerStatus } from "../test/data";
 
 const mocked = vi.mocked(api, true);
@@ -17,16 +17,15 @@ describe("tracker commands", () => {
     installCommands();
   });
 
-  describe("tracker.pause", () => {
-    it("pauses until resumed while tracking", async () => {
-      expect(runCommand("tracker.pause")).toBe(true);
-      await vi.waitFor(() => expect(useStore.getState().tracker?.state.kind).toBe("paused"));
-      expect(mocked.trackerPause).toHaveBeenCalledWith("resumed");
+  describe("tracker:pause:resumed", () => {
+    it("asks the bus to pause until resumed while tracking", () => {
+      expect(runCommand("tracker:pause:resumed")).toBe(true);
+      expect(mocked.runCommand).toHaveBeenCalledWith("tracker:pause:resumed");
     });
 
     it("also runs while the tracker waits for the permission", () => {
       resetStore({ tracker: trackerStatus({ state: { kind: "needsPermission" } }) });
-      expect(runCommand("tracker.pause")).toBe(true);
+      expect(runCommand("tracker:pause:resumed")).toBe(true);
     });
 
     it.each([
@@ -34,17 +33,16 @@ describe("tracker commands", () => {
       ["off", null],
     ])("does not run while the tracker is %s", (_, tracker) => {
       resetStore({ tracker });
-      expect(runCommand("tracker.pause")).toBe(false);
-      expect(mocked.trackerPause).not.toHaveBeenCalled();
+      expect(runCommand("tracker:pause:resumed")).toBe(false);
+      expect(mocked.runCommand).not.toHaveBeenCalled();
     });
   });
 
-  describe("tracker.resume", () => {
-    it("resumes while paused", async () => {
+  describe("tracker:resume", () => {
+    it("asks the bus to resume while paused", () => {
       resetStore({ tracker: paused });
-      expect(runCommand("tracker.resume")).toBe(true);
-      await vi.waitFor(() => expect(useStore.getState().tracker?.state.kind).toBe("running"));
-      expect(mocked.trackerResume).toHaveBeenCalled();
+      expect(runCommand("tracker:resume")).toBe(true);
+      expect(mocked.runCommand).toHaveBeenCalledWith("tracker:resume");
     });
 
     it.each([
@@ -52,8 +50,8 @@ describe("tracker commands", () => {
       ["off", null],
     ])("does not run while the tracker is %s", (_, tracker) => {
       resetStore({ tracker });
-      expect(runCommand("tracker.resume")).toBe(false);
-      expect(mocked.trackerResume).not.toHaveBeenCalled();
+      expect(runCommand("tracker:resume")).toBe(false);
+      expect(mocked.runCommand).not.toHaveBeenCalled();
     });
   });
 });

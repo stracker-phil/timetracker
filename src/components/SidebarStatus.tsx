@@ -42,14 +42,14 @@ function PlayPause() {
 
 /** The bottom of the sidebar: the tracker's status with play / pause, and the Settings gear. */
 export function SidebarStatus() {
-  const settingsKeys = useBindingLabel("settings.toggle");
+  const settingsKeys = useBindingLabel("app:settings");
   return (
     <div className="sidebar-foot">
       <div className="sidebar-status">
         <TrackerLine />
         <PlayPause />
       </div>
-      <button type="button" className="icon-btn" aria-label="Settings" title={withKeys("Settings", settingsKeys)} onClick={() => runCommand("settings.toggle")}>
+      <button type="button" className="icon-btn" aria-label="Settings" title={withKeys("Settings", settingsKeys)} onClick={() => runCommand("app:settings")}>
         <Settings size="1.077rem" />
       </button>
     </div>

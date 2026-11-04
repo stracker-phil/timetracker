@@ -12,7 +12,7 @@ use crate::capture::{PermissionStatus, SystemEvent};
 use crate::db::time::{Ms, now_ms};
 use crate::error::AppResult;
 use crate::events::TRACKER_STATUS_EVENT;
-use crate::{tray, watch};
+use crate::{menu, tray, watch};
 
 const PERMISSION_POLL: Duration = Duration::from_secs(5);
 const RESTART_DELAY: Duration = Duration::from_secs(5);
@@ -43,6 +43,7 @@ fn forward_statuses(app: &AppHandle, tracker: &Arc<Tracker>) {
     let mut statuses = tracker.subscribe();
     let (app, tracker) = (app.clone(), Arc::clone(tracker));
     tauri::async_runtime::spawn(async move {
+        let mut was_paused = false;
         loop {
             let status = match statuses.recv().await {
                 Ok(status) => status,
@@ -51,6 +52,12 @@ fn forward_statuses(app: &AppHandle, tracker: &Arc<Tracker>) {
                 Err(RecvError::Closed) => return,
             };
             tray::sync(&app, &status);
+            // Pause Tracking and Resume Tracking swap their enabled state.
+            let paused = matches!(status.state, super::TrackerState::Paused { .. });
+            if paused != was_paused {
+                was_paused = paused;
+                menu::refresh(&app);
+            }
             watch::tracker_changed(&app, &status);
             if let Err(e) = app.emit(TRACKER_STATUS_EVENT, &status) {
                 log::warn!("Couldn't send the tracker status to the page: {e}");

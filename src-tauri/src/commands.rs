@@ -106,6 +106,8 @@ fn settings_saved(app: &AppHandle, previous: &Settings, saved: &Settings) {
         tracker.set_capture(saved.capture.clone());
     }
     events::announce(app, events::SETTINGS_CHANGED_EVENT, saved);
+    // Launch at Login is checked by the saved settings.
+    menu::refresh(app);
     log::info!("Settings updated");
 }
 

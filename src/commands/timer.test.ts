@@ -5,7 +5,6 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import { api } from "../api";
 import { installCommands, runCommand } from "./index";
 import { resetStore } from "../state/store";
-import { recording } from "../test/recordingFixtures";
 import { runningStatus } from "../test/timerFixtures";
 
 const mocked = vi.mocked(api, true);
@@ -17,40 +16,40 @@ describe("timer commands", () => {
     installCommands();
   });
 
-  describe("timer.start", () => {
-    it("opens the timer picker", () => {
-      expect(runCommand("timer.start")).toBe(true);
-      expect(mocked.timerPickerOpen).toHaveBeenCalled();
+  describe("timer:start", () => {
+    it("asks the bus to open the timer picker", () => {
+      expect(runCommand("timer:start")).toBe(true);
+      expect(mocked.runCommand).toHaveBeenCalledWith("timer:start");
     });
   });
 
-  describe("timer.stop", () => {
+  describe("timer:stop", () => {
     it("does not run without a running timer", () => {
       resetStore({ timer: { running: null } });
-      expect(runCommand("timer.stop")).toBe(false);
-      expect(mocked.timerStop).not.toHaveBeenCalled();
+      expect(runCommand("timer:stop")).toBe(false);
+      expect(mocked.runCommand).not.toHaveBeenCalled();
     });
 
-    it("stops the running timer", () => {
+    it("does not run before the timer status arrived", () => {
+      resetStore({ timer: null });
+      expect(runCommand("timer:stop")).toBe(false);
+    });
+
+    it("asks the bus to stop the running timer", () => {
       resetStore({ timer: runningStatus() });
-      mocked.timerStop.mockResolvedValueOnce(recording());
-      expect(runCommand("timer.stop")).toBe(true);
-      expect(mocked.timerStop).toHaveBeenCalled();
+      expect(runCommand("timer:stop")).toBe(true);
+      expect(mocked.runCommand).toHaveBeenCalledWith("timer:stop");
     });
   });
 
-  describe("timer.toggle", () => {
-    it("opens the picker while no timer runs", () => {
-      expect(runCommand("timer.toggle")).toBe(true);
-      expect(mocked.timerPickerOpen).toHaveBeenCalled();
-      expect(mocked.timerStop).not.toHaveBeenCalled();
-    });
-
-    it("stops the timer while one runs", () => {
-      resetStore({ timer: runningStatus() });
-      expect(runCommand("timer.toggle")).toBe(true);
-      expect(mocked.timerStop).toHaveBeenCalled();
-      expect(mocked.timerPickerOpen).not.toHaveBeenCalled();
+  describe("timer:toggle", () => {
+    it.each([
+      ["no timer runs", { running: null }],
+      ["a timer runs", runningStatus()],
+    ])("asks the bus to toggle while %s", (_, timer) => {
+      resetStore({ timer });
+      expect(runCommand("timer:toggle")).toBe(true);
+      expect(mocked.runCommand).toHaveBeenCalledWith("timer:toggle");
     });
   });
 });

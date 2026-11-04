@@ -90,10 +90,16 @@ describe("SidebarStatus", () => {
     expect(useStore.getState().permissionDialogHidden).toBe(false);
   });
 
-  it("opens Settings with the gear", async () => {
+  it("opens Settings with the gear by asking the bus", async () => {
     resetStore({ tracker: trackerStatus() });
     render(<SidebarStatus />);
     await userEvent.click(screen.getByRole("button", { name: "Settings" }));
-    expect(mocked.openSettings).toHaveBeenCalled();
+    expect(mocked.runCommand).toHaveBeenCalledWith("app:settings");
+  });
+
+  it("names the Settings key in the gear's tooltip", () => {
+    resetStore({ tracker: trackerStatus() });
+    render(<SidebarStatus />);
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveAttribute("title", "Settings (⌘,)");
   });
 });

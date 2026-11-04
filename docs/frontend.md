@@ -23,8 +23,9 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
    `useBackendEvents()` once:
    1. `loadUiState()` loads the window layout; the page starts on today. `loadSettings()` loads settings and keybindings; `installCommands()` runs again to apply the user's
       bindings, then `drainLaunches()` pulls the queued launch events (`take_launch_events`): `error` shows an error toast,
-      `notice` an info toast (a migration that dropped tags), `showDay` calls `goToDay`.
-   2. It subscribes to `launch` (drain again), `window_opened` (→ `windowOpened`), `command` (menu and tray → `runMenuCommand`), `remote`
+      `notice` an info toast (a migration that dropped tags), `showDay` calls `goToDay`, `command` (a
+      `command/page:<id>` link) runs the page command when it can (`runMenuCommand`).
+   2. It subscribes to `launch` (drain again), `window_opened` (→ `windowOpened`), `page_command` (the menus' `page:<id>` items → `listenPageCommands`, `runMenuCommand`), `remote`
       (→ `answerRemote`, which always replies with `remoteReply`), `data_changed` (→ `dataChanged`),
       `tracker_status` (→ `setTracker`), `settings_changed` (→ `settingsChanged`) and `keybindings_changed`
       (→ `keybindingsChanged`, both in `lib/useFollowSettings.ts`), so a change made in Settings shows at once; `loadTracker()` fetches the current status once.
@@ -80,7 +81,7 @@ Rust sends dates as text (`DayView.label`, `WeekView.label`, `ReportResult.title
 Only `api.ts` files import `@tauri-apps/api` or `@tauri-apps/plugin-*`: the core's is `src/api/index.ts`, an
 optional module's is `src/<module>/api.ts` ([ADR 0002](adr/0002-ipc-in-api-files.md)); `test/boundary.test.ts`
 enforces it. `src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers for the commands in
-[backend.md](backend.md#tauri-commands) plus the subscriptions `onLaunch`, `onCommand`, `onRemote`,
+[backend.md](backend.md#tauri-commands) plus the subscriptions `onLaunch`, `onPageCommand`, `onRemote`,
 `onTrackerStatus` and `onDataChanged`, and `toAppError`, which normalizes rejections to `AppError`.
 
 The IPC types are generated from Rust with ts-rs ([ADR 0004](adr/0004-generated-ipc-types.md)) into
@@ -91,11 +92,13 @@ The IPC types are generated from Rust with ts-rs ([ADR 0004](adr/0004-generated-
 
 ## Commands
 
-Every user action that has a shortcut or appears in the palette is a `Command` (`commands/registry.ts`):
-`{ id, title, scope, defaultBinding?, when?, run, menu?, checked?, menuOnly? }`; `menuOnly` marks a menu
-item that is not meant to take a key (Launch at login, Show welcome again), which Settings → Shortcuts leaves
-out. The core commands are `APP_COMMANDS` (`commands/index.ts`); their default bindings are in
-[ux.md](ux.md#keys).
+App-level actions are Rust's bus commands (`app:settings`, `timer:start`; [ADR
+0038](adr/0038-app-commands-live-in-a-rust-bus.md), [backend.md](backend.md#command-bus)); everything that
+depends on the view, the selection or the focus is a page command with a dotted id, a `Command`
+(`commands/registry.ts`): `{ id, title, scope, defaultBinding?, when?, run, menu?, bus?, checked?, menuOnly? }`;
+`menuOnly` marks a menu item that is not meant to take a key (Launch at login, Show welcome again), which
+Settings → Shortcuts leaves out. The core commands are `APP_COMMANDS` (`commands/index.ts`); their default
+bindings are in [ux.md](ux.md#keys).
 
 - **Bindings** are strings like `Mod+Shift+K` (`Mod` is ⌘), normalized to `Mod, Ctrl, Alt, Shift` and shown
   as `⌘⇧K`. User overrides come from `keybindings.json`.
@@ -107,24 +110,38 @@ out. The core commands are `APP_COMMANDS` (`commands/index.ts`); their default b
   (`activatesControl`); the timeline's focus commands blur such a button first (`releaseControlFocus`), so
   the keys return to the timeline. Auto-repeat is swallowed unless the command is in `REPEATABLE` (zoom,
   nudging).
-- **Menu.** Native menu and tray items emit `command`; `runMenuCommand` runs the id when `canRunFromMenu`
-  says so (an active scope, `when` not false, not held back by an overlay). A command with `menu: true` has
-  the same id and default as its `MENU_ITEMS` entry in `src-tauri/src/menu/items.rs`; `checked` gives a
-  check item its mark. `installMenuSync` (`commands/menu.ts`, started in `App`) reports `menuState()`, the
-  menu commands that can run now and the checked ones, through `api.menuSync` on every store change and
-  every focus change (the text-field Undo follows the keyboard focus); `syncMenu` sends
-  only a changed state, so Rust greys out and checks the items.
+- **Bus commands.** `commands/busCommands.ts` (`BUS_COMMANDS`) keeps a `bus: true` entry for each bus command
+  that takes a key (`app:settings` ⌘,, `window:close` ⌘W, `app:background` ⌘Q, `timer:start` ⌘T, `timer:stop`,
+  `timer:toggle`, `tracker:pause:resumed`, `tracker:resume`, `app:quit`, `app:logs`, `app:dataFolder`,
+  `app:readme`, `app:launchAtLogin`): its `run` is `api.runCommand(id)`, so Settings → Shortcuts rebinds it
+  and its key works while the window has the focus (elsewhere the menu's accelerator runs it). Its default is
+  its `MENUS` item's. Overrides stored under the old dotted ids move in Rust (`keybindings::RENAMED`).
+- **Menu.** The menus' `page:<id>` items emit `page_command` with `id` to the focused window
+  (`commands/pageCommands.ts`: `listenPageCommands`); `runMenuCommand` runs it when `canRunFromMenu` says so
+  (an active scope, `when` not false, not held back by an overlay). A command with `menu: true` has the same
+  default as its `page:<id>` item in `MENUS` (`src-tauri/src/menu/items.rs`); `checked` gives a check item its
+  mark. `installMenuSync` (`commands/menu.ts`, started in `App`) reports `menuState()`, the menu page commands
+  that can run now and the checked ones, through `api.menuSync` on every store change and every focus change
+  (the text-field Undo follows the keyboard focus); `syncMenu` sends only a changed state, so Rust greys out
+  and checks the items while this window is in front. `timetracker run page:<id>` asks through `remote`
+  (`RunCommand`, `commands/remote.ts`), which fails for an unknown id or one that can't run.
 - **Palette.** `CommandPalette` (the sheet, ↑ ↓ ↵ ⌘↵) with `components/palette/`: `parse.ts` (`parsePrefix`:
   `>` commands, `p:` projects, `c:` clients, `@` dates; `score`: 5 equal, 4 prefix, 3 a word start, 2 inside a
   word; `fuzzyScore` adds 1 for the characters in order, for project and client names), `usePaletteItems.ts`
   (one provider per kind: views, dates, settings pages, projects, clients, saved reports, commands; each section's
   matches best first, the sections by their best match, ties in that order) and `PaletteList.tsx` (section labels,
-  rows, `PaletteFooter`). Dates come from Rust (`useDateJumps.ts`: `api.calendarJumps`, `calendar::jump`, each with its `label`), so the page parses and labels no
+  rows, `PaletteFooter`). The palette runs the menus ([ADR 0039](adr/0039-the-palette-runs-the-menus.md)):
+  `api.menuCommands()` (once per opening) lists every menu item under its menu's title with its keys; an app
+  item runs through `api.runCommand`, a `page:` item runs its page command (the palette's field blurred
+  first) and is listed only when it could run as the palette opened (`notePaletteRunnable`,
+  `paletteCanRun`: the open palette holds page commands back). `palette/menus.ts` (`usePaletteMenu`) lets a
+  menu on screen offer its rows too, noted as the palette opens (`notePaletteMenus`): the tracker line's
+  Pause menu (`Tracking`, "Pause tracking: For 1 hour"). Dates come from Rust (`useDateJumps.ts`: `api.calendarJumps`, `calendar::jump`, each with its `label`), so the page parses and labels no
   dates; a date opens the Day, Week or Month view at it (`setView`, `showDate`). A project opens Reports filtered
   to it for the report's period (`setReportFilter`), ⌘↵ starts a timer on it (`startTimer`); a client opens
   Reports filtered to it; a saved report `openSavedReport`; a settings page `api.openSettings(page.id)`.
-  Commands are those of the active scopes whose `when` holds, with their key caps; without `>` the `view.*`
-  commands are left to the views.
+  Commands are the menus' items, one section per menu; without `>` the View menu's views are left to Go to.
+  Page commands outside the menus (H, L, Space, ⌥↑ …) are keys only.
 - **Day, Week, Month and Reports** (scope `dated`, the parent of the four views' scopes). `nav.prev` (P),
   `nav.next` (N) step by the view's unit (in Reports the report's period); `nav.today` (O). The registry
   holds one binding per command, so ⌘← ⌘→ are gone.
@@ -162,19 +179,16 @@ out. The core commands are `APP_COMMANDS` (`commands/index.ts`); their default b
 - **Hours.** The sidebar's Hours runs `showHours`; there is no `view.hours` command, menu item or palette entry,
   since `nav.today` (O) and the palette's `Today` date word do the same.
 - **Reports.** `reports.copyText` (⌘⇧C), `reports.copyNotes` (⌥⌘C: every note of the report, `result.notes`),
-  `reports.save`; `reports.rename`/`reports.delete` act on the saved
+  `reports.save` (File → Save Report…); `reports.rename`/`reports.delete` (File) act on the saved
   report opened from the sidebar (`openedReport`, cleared when the filter changes).
 - **Rules.** `rules.new` (⌘N); `rules.moveUp`/`moveDown` (⌥↑ ⌥↓) move the rule whose row has the focus
   (`moveRule` in the rules slice).
-- **Tracker.** `tracker.pause` (until resumed; while tracking) and `tracker.resume` (while paused), no default
-  bindings.
-- **Window.** `window.hide` calls `api.hideWindow`; `app.background` (⌘Q) calls `api.hideToMenuBar`; both it and `app.quit`
-  are handled by Rust when they come from the menu.
-- **App and help.** `app.launchAtLogin` switches the LaunchAgent (`setLaunchAtLogin`, checked by
-  `settings.launchAtLogin`); `settings.toggle` (⌘,) calls `api.openSettings()`, which opens or focuses the Settings window;
-  `welcome.show` shows the welcome sheet again; `data.exportBackup` and
-  `data.reveal` run the Settings → Data actions (`components/settings/actions.ts`); `help.readme` calls
-  `api.openReadme`.
+- **Tracker.** The bus commands `tracker:pause:resumed` (File → Pause Tracking, while tracking) and
+  `tracker:resume` (while paused), no default bindings; the palette also lists the tracker line's pause lengths.
+- **Window and app.** `window:close`, `app:background` (⌘Q), `app:quit`, `app:settings` (⌘,),
+  `app:launchAtLogin`, `app:logs`, `app:dataFolder` and `app:readme` are bus commands. `welcome.show` shows the
+  welcome sheet again and `data.exportBackup` runs the Settings → Data action (`components/settings/actions.ts`);
+  both stay page commands.
 
 ## Components
 
@@ -245,7 +259,7 @@ Tracker components:
 
 - `SidebarStatus` (bottom of the sidebar): `TrackerDot`, the status text, and a play / pause button (Pause
   pauses until resumed, a right-click offers the `PAUSES` durations; Play resumes; Allow… without
-  permission), then the Settings gear (`settings.toggle`).
+  permission), then the Settings gear (`app:settings`).
 - `TrackerStatus` (status bar, left, while the sidebar is hidden): a dot (accent while running, `--o3` while away or paused, `--style-red`
   without permission), the status text Rust computed (the tray shows the same), and Pause (a menu under it, `openMenu`:
   15 minutes, 1 hour, until tomorrow, until resumed) while running or away, Resume while paused, and
@@ -307,7 +321,8 @@ lane with blocks) for J/K/H/L. The status bar shows the selection as `09:00–10
 The `timer` slice holds `timer` (`TimerStatus` from `timer_status` events and `loadTimer` at boot),
 `startTimer` (an `overlap` reads "A recording already covers now"), `updateTimer` (the running timer's
 project, note and tag) and `stopTimer` (a toast with Undo).
-Commands `timer.start` (⌘T: `timerPickerOpen`), `timer.stop` (⌘⇧. while one runs), `timer.toggle`. The status
+The bus commands `timer:start` (⌘T), `timer:stop` (⌘⇧. while one runs) and `timer:toggle` run in Rust; the page
+keeps their keys (`busCommands.ts`). The status
 bar shows the running timer. Settings → Shortcuts has a Global shortcut group above the in-app commands: the
 recorder saves `timerShortcut` through `saveTimerShortcut`, which shows Rust's refusal under the row. Every
 bound shortcut, global or in-app, has an X ("Remove shortcut for …") that saves it as `null`.

@@ -438,7 +438,10 @@ anywhere) and grouped in sections, the best section first:
 - **Projects:** ↵ opens Reports filtered to the project for the report's period; ⌘↵ starts a timer on it.
 - **Clients:** ↵ opens Reports filtered to the client.
 - **Saved reports:** ↵ opens one.
-- **Commands:** the commands of the active scopes, with their keys.
+- **Commands:** the menu bar's items, each under its menu's title (File, Edit, Day …) with its key: those
+  that can run when the palette opens, as the menus would grey the rest, and the rows of menus on screen
+  (Tracking: "Pause tracking: For 1 hour"). The palette runs the menus, so a command reaches it by getting a
+  menu item.
 
 Prefixes limit the list: `>` commands, `p:` projects, `c:` clients, `@` dates. ↑ ↓ move, ↵ opens, ⌘↵ runs
 the row's second action where it has one (the footer names it), Esc closes. Section labels are small `--o3`
@@ -836,9 +839,10 @@ under the Location row instead of a toast.
 
 ## Keys
 
-Every action is a command (`APP_COMMANDS` in `src/commands/index.ts`) with a rebindable key (Settings →
-Shortcuts, `keybindings.json`) or, without a default key, an item in the [menu bar](#menu-bar); every
-command is in the palette too (⌘K, `>` lists the commands of the active scopes; see [Palette](#palette)). `?` lists the bound commands of the scopes active when it opens, most specific first, in a sheet that opens at its top: only the list scrolls, Close stays below it.
+Every action is a command with a rebindable key (Settings → Shortcuts, `keybindings.json`) or, without a
+default key, an item in the [menu bar](#menu-bar): an app command Rust runs (`app:settings`, `timer:start`;
+colon ids) or a page command of the view (`APP_COMMANDS` in `src/commands/index.ts`; dotted ids). Every menu
+item is in the palette too (⌘K, `>` lists them; see [Palette](#palette)). `?` lists the bound commands of the scopes active when it opens, most specific first, in a sheet that opens at its top: only the list scrolls, Close stays below it.
 
 Rules of the keys (`handleKeydown`):
 
@@ -864,8 +868,8 @@ other scope's keys.
 
 | Command | Label | Default key | Scope |
 |---|---|---|---|
-| `settings.toggle` | Settings… | ⌘, | global |
-| `app.launchAtLogin` | Launch at login (a check item) | menu | global |
+| `app:settings` | Settings… | ⌘, | global |
+| `app:launchAtLogin` | Launch at login (a check item) | menu | global |
 | `welcome.show` | Show welcome again | menu | global |
 | `settings.search` | Search Settings | ⌘F | settings |
 | `settings.close` | Close Settings | Escape | settings |
@@ -874,20 +878,20 @@ other scope's keys.
 | `sidebar.toggle` | Toggle sidebar | ⌘⌃S | global |
 | `view.day` … `view.rules` | Show Day, Week, Month (each keeps the shown date), Reports, Projects, Tags, Rules | ⌘1 … ⌘7 | global |
 | `zoom.in` / `zoom.out` / `zoom.reset` | Zoom in / out / Reset zoom (the timeline in the Day view, the text elsewhere) | ⌘= / ⌘- / ⌘0 | global |
-| `window.hide` | Close window | ⌘W | global |
-| `tracker.pause` | Pause tracking (until resumed) | palette | global |
-| `tracker.resume` | Resume tracking | palette | global |
-| `timer.start` | Start timer… | ⌘T (⌃⌥⌘T from any app) | global |
-| `timer.stop` | Stop timer | ⌘⇧. | global |
-| `timer.toggle` | Start or stop timer | palette | global |
+| `window:close` | Close window | ⌘W | global |
+| `tracker:pause:resumed` | Pause tracking (until resumed; the palette and the tray also offer 15 minutes, 1 hour and until tomorrow) | menu | global |
+| `tracker:resume` | Resume tracking | menu | global |
+| `timer:start` | Start timer… | ⌘T (⌃⌥⌘T from any app) | global |
+| `timer:stop` | Stop timer | ⌘⇧. | global |
+| `timer:toggle` | Start or stop timer | – | global |
 | `edit.undo` / `edit.redo` | Undo / Redo: the text field's typing, else the last recording change (not while an overlay is open) | ⌘Z / ⌘⇧Z | global |
-| `logs.open` | Open log folder | menu | global |
-| `data.reveal` | Show data folder (the database file in Finder) | menu | global |
+| `app:logs` | Open log folder | menu | global |
+| `app:dataFolder` | Show data folder (the database file in Finder) | menu | global |
 | `data.exportBackup` | Export backup… | menu | global |
-| `help.readme` | Open README | menu | global |
+| `app:readme` | Open README | menu | global |
 | `recording.new` | New recording… (the Day view's selection, else the half hour up to now on today; the Week and Month stay) | menu | global |
-| `app.background` | Hide to Menu Bar (the window and the Dock icon hide; recording goes on) | ⌘Q | global |
-| `app.quit` | Quit TimeTracker | menu | global |
+| `app:background` | Hide to Menu Bar (the window and the Dock icon hide; recording goes on) | ⌘Q | global |
+| `app:quit` | Quit TimeTracker | menu | global |
 | `nav.prev` / `nav.next` | Previous / Next day, week, month or report period | P / N | dated |
 | `nav.today` | Go to today (this week, this month, the report's period that holds today) | O | dated |
 | `nav.goToDate` | Go to date… (the date picker) | menu | dated |
@@ -912,8 +916,8 @@ other scope's keys.
 | `recording.copyToPrevDay` / `recording.copyToNextDay` | Copy recording to the previous / next day | ⌥⇧← / ⌥⇧→ | day |
 | `reports.copyText` | Copy report as text | ⌘⇧C | reports |
 | `reports.copyNotes` | Copy report notes (every note of the report, one per line) | ⌥⌘C | reports |
-| `reports.save` | Save report… | palette | reports |
-| `reports.rename` / `reports.delete` | Rename / Delete saved report… (the one opened from the sidebar, until the filter changes) | palette | reports |
+| `reports.save` | Save report… | menu | reports |
+| `reports.rename` / `reports.delete` | Rename / Delete saved report… (the one opened from the sidebar, until the filter changes) | menu | reports |
 | `projects.new` | New project… | ⌘N | projects |
 | `clients.new` | New client… | menu | projects |
 | `tags.new` | New tag… (a name prompt) | ⌘N | tags |
@@ -976,7 +980,8 @@ From any view, with the documented default keys only (the pointer ways in bracke
 ## Menu bar
 
 Every view and nearly every command has a menu item, with its key shown (`src-tauri/src/menu/`, synced as
-in [backend.md](backend.md#native-menu)). An item whose command cannot run now is greyed out: outside its
+in [backend.md](backend.md#native-menu)). The page's items follow the window in front: with Settings in
+front they act on the main window. An item whose command cannot run now is greyed out: outside its
 view's scope, when its `when` is false (no selection, no focused recording, no running timer, no focused
 suggestion), and while a dialog, the palette or the editor is open (except Settings, Keyboard Shortcuts,
 Command Palette, zoom, Close Window, Undo, Redo, Hide to Menu Bar and Quit). Rebinding a key in Settings → Shortcuts updates
@@ -988,30 +993,28 @@ from every text field. The page's key handler runs them, with the rules above.
 
 | Menu | Items (command; key) |
 |---|---|
-| TimeTracker | About; Settings… (`settings.toggle`; ⌘,); Launch at Login (`app.launchAtLogin`, a check item); Show Welcome Again (`welcome.show`); Services; Hide, Hide Others, Show All; Hide to Menu Bar (`app.background`; ⌘Q), Quit TimeTracker (`app.quit`) |
-| File | New Recording… (`recording.new`); Start Timer… (`timer.start`; ⌘T), Stop Timer (`timer.stop`; ⌘⇧.); New Project… (`projects.new`; ⌘N), New Client… (`clients.new`), New Tag… (`tags.new`; ⌘N), New Rule… (`rules.new`; ⌘N); Export Backup… (`data.exportBackup`); Close Window (`window.hide`; ⌘W) |
+| TimeTracker | About; Settings… (`app:settings`; ⌘,); Launch at Login (`app:launchAtLogin`, a check item); Show Welcome Again (`welcome.show`); Services; Hide, Hide Others, Show All; Hide to Menu Bar (`app:background`; ⌘Q), Quit TimeTracker (`app:quit`) |
+| File | New Recording… (`recording.new`); Start Timer… (`timer:start`; ⌘T), Stop Timer (`timer:stop`; ⌘⇧.); Pause Tracking (`tracker:pause:resumed`, while tracking), Resume Tracking (`tracker:resume`, while paused); New Project… (`projects.new`; ⌘N), New Client… (`clients.new`), New Tag… (`tags.new`; ⌘N), New Rule… (`rules.new`; ⌘N); Save Report…, Rename Saved Report…, Delete Saved Report… (`reports.save`, `reports.rename`, `reports.delete`; in Reports, the last two for a saved report opened from the sidebar); Export Backup… (`data.exportBackup`); Close Window (`window:close`; ⌘W) |
 | Edit | Undo (`edit.undo`; ⌘Z), Redo (`edit.redo`; ⌘⇧Z); Cut, Copy, Paste, Select All (native); Delete Recording (`recording.delete`; ⌫); Copy Report as Text (`reports.copyText`; ⌘⇧C), Copy Report Notes (`reports.copyNotes`; ⌥⌘C) |
 | View | Day, Week, Month, Reports, Projects, Tags, Rules (`view.day` … `view.rules`; ⌘1 … ⌘7, the active view checked); Toggle Sidebar (`sidebar.toggle`; ⌘⌃S); Zoom In, Zoom Out, Reset Zoom (`zoom.*`; ⌘= ⌘- ⌘0); View Options… (`day.settings`); Enter Full Screen (native) |
 | Go | Previous (`nav.prev`; P), Next (`nav.next`; N), Today (`nav.today`; O), Go to Date… (`nav.goToDate`); Next Activity (`day.nextBlock`; J), Previous Activity (`day.prevBlock`; K); Next Recording (`recording.next`; ], recordings and suggestions), Previous Recording (`recording.prev`; [) |
 | Day | Record Selection (`recording.create`; ↵, the key of `recording.open`), Edit Recording… (`recording.edit`); Move Recording to Previous / Next Day (⌥← / ⌥→), Copy Recording to Previous / Next Day (⌥⇧← / ⌥⇧→); Approve Suggestion (↵), Edit Suggestion… (E), Dismiss Suggestion (⌫), Approve All Suggestions of Rule, Approve All Suggestions, Dismiss All Suggestions (`suggestion.*`); Delete Activity for This Day…, Delete Activity in a Range… (`activity.*`) |
 | Window | Minimize, Zoom, Bring All to Front (native) |
-| Help | Keyboard Shortcuts (`shortcuts.show`; ⇧?), Command Palette… (`palette.toggle`; ⌘K); Open Log Folder (`logs.open`), Show Data Folder (`data.reveal`), README (`help.readme`) |
+| Help | Keyboard Shortcuts (`shortcuts.show`; ⇧?), Command Palette… (`palette.toggle`; ⌘K); Open Log Folder (`app:logs`), Show Data Folder (`app:dataFolder`), README (`app:readme`) |
 
 New Project, New Tag and New Rule share ⌘N: only one of them is enabled at a time (Projects, Tags or Rules). Record Selection
 and Approve Suggestion share ↵, Delete Recording and Dismiss Suggestion share ⌫: a focused suggestion clears the
 selection and the recording focus, so only one of each pair is enabled.
 
-Commands left out of the menu, with keys and the palette only:
+Commands left out of the menu, with keys only (the palette lists the menus):
 
 | Commands | Why |
 |---|---|
 | `day.prevLane` / `day.nextLane`, `day.details`, `day.blockMenu`, `day.selectBlock`, `day.extendNext` / `day.extendPrev`, `day.clearFocus` | step-by-step keyboard work on the focused activity; the Go menu has the activity steps J and K |
 | `recording.open` | the Day menu has its two halves, Record Selection and Edit Recording… |
 | `recording.nudgeEarlier` / `nudgeLater` / `extend` / `shrink` | one snap step per press, held to repeat; a menu click per 5 minutes helps no one |
-| `reports.save`, `reports.rename`, `reports.delete` | saved reports live in the sidebar, whose right-click menu renames and deletes them |
 | `rules.moveUp` / `rules.moveDown` | act on the focused rule row, next to its drag grip |
-| `tracker.pause`, `tracker.resume` | the sidebar's play / pause button and the menu bar item (tray) have Pause Tracking with its durations and Resume |
-| `timer.toggle` | File has Start Timer… and Stop Timer |
+| `timer:toggle` | File has Start Timer… and Stop Timer; it is for a key of one's own |
 
 ## Scheme audit
 

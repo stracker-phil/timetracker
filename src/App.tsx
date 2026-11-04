@@ -16,7 +16,7 @@ import { WeekView } from "./components/calendar/WeekView";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { Toasts } from "./components/Toasts";
-import { handleKeydown, installCommands, runMenuCommand } from "./commands";
+import { handleKeydown, installCommands, listenPageCommands, runMenuCommand } from "./commands";
 import { installMenuSync } from "./commands/menu";
 import { answerRemote } from "./commands/remote";
 import { disposeAll } from "./lib/disposeAll";
@@ -32,6 +32,7 @@ function handleLaunchEvents(events: LaunchEvent[]) {
     if (event.type === "error") toast("error", event.message);
     if (event.type === "notice") toast("info", event.message);
     if (event.type === "showDay") goToDay(event.day);
+    if (event.type === "command") runMenuCommand(event.id);
   }
 }
 
@@ -51,7 +52,7 @@ function useBackendEvents() {
       api.onTimerStatus(useStore.getState().setTimerStatus),
       api.onLaunch(() => void drainLaunches()),
       api.onWindowOpened(windowOpened),
-      api.onCommand(runMenuCommand),
+      listenPageCommands(),
       api.onRemote((e) => void answerRemote(e)),
       api.onDataChanged(dataChanged),
       api.onTrackerStatus(setTracker),

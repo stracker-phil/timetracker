@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api } from "../api";
-import { installCommands } from "../commands";
+import { installCommands, runCommand } from "../commands";
+import { menuCommands } from "../test/menuFixtures";
 import { today } from "../lib/day";
 import { trackerStatus } from "../test/data";
 import { defaultFilter } from "../state/slices/reports";
@@ -37,10 +38,16 @@ function renderSidebar(patch: Parameters<typeof resetStore>[0] = {}) {
 
 const saved = () => screen.getByRole("group", { name: "Saved reports" });
 
-const openPalette = () => act(() => useStore.getState().setPaletteOpen(true, ">saved report"));
+/** Opens the palette the way ⌘K does and waits until Rust's menu list reached it. */
+async function openPalette() {
+  act(() => void runCommand("palette.toggle"));
+  await userEvent.type(await screen.findByLabelText("Search"), ">saved report");
+  await vi.waitFor(() => expect(mocked.menuCommands).toHaveBeenCalled());
+  await act(async () => {});
+}
 const savedReportCommand = (name: RegExp) => screen.queryByRole("option", { name });
-const RENAME = /Rename saved report…/;
-const DELETE = /Delete saved report…/;
+const RENAME = /Rename Saved Report…/;
+const DELETE = /Delete Saved Report…/;
 
 describe("Sidebar rows", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -121,7 +128,10 @@ describe("Sidebar rows", () => {
 });
 
 describe("Sidebar saved reports", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocked.menuCommands.mockResolvedValue(menuCommands());
+  });
 
   it("lists the saved reports under Reports", () => {
     renderSidebar();
@@ -141,9 +151,9 @@ describe("Sidebar saved reports", () => {
   });
 
   describe("palette commands for the opened report", () => {
-    it("offers no rename or delete before a saved report is opened", () => {
+    it("offers no rename or delete before a saved report is opened", async () => {
       renderSidebar({ view: "reports" });
-      openPalette();
+      await openPalette();
       expect(savedReportCommand(RENAME)).not.toBeInTheDocument();
       expect(savedReportCommand(DELETE)).not.toBeInTheDocument();
     });
@@ -151,7 +161,7 @@ describe("Sidebar saved reports", () => {
     it("offers rename and delete after a saved report is opened from the sidebar", async () => {
       renderSidebar({ view: "day" });
       await userEvent.click(within(saved()).getByRole("button", { name: "Weekly" }));
-      openPalette();
+      await openPalette();
       expect(savedReportCommand(RENAME)).toBeInTheDocument();
       expect(savedReportCommand(DELETE)).toBeInTheDocument();
     });
@@ -160,7 +170,7 @@ describe("Sidebar saved reports", () => {
       renderSidebar({ view: "day" });
       await userEvent.click(within(saved()).getByRole("button", { name: "Weekly" }));
       act(() => useStore.getState().setReportFilter({ groupBy: "project" }));
-      openPalette();
+      await openPalette();
       expect(savedReportCommand(RENAME)).not.toBeInTheDocument();
       expect(savedReportCommand(DELETE)).not.toBeInTheDocument();
     });
@@ -169,7 +179,7 @@ describe("Sidebar saved reports", () => {
       mocked.savedReportRename.mockResolvedValue(savedReport({ id: "s1", name: "Last week" }));
       renderSidebar({ view: "day" });
       await userEvent.click(within(saved()).getByRole("button", { name: "Weekly" }));
-      openPalette();
+      await openPalette();
       await userEvent.click(screen.getByRole("option", { name: RENAME }));
       const input = await screen.findByRole("textbox", { name: "Name" });
       expect(input).toHaveValue("Weekly");
@@ -181,7 +191,7 @@ describe("Sidebar saved reports", () => {
     it("deletes the opened report after confirming", async () => {
       renderSidebar({ view: "day" });
       await userEvent.click(within(saved()).getByRole("button", { name: "Weekly" }));
-      openPalette();
+      await openPalette();
       await userEvent.click(screen.getByRole("option", { name: DELETE }));
       expect(await screen.findByText(/Delete the saved report "Weekly"/)).toBeInTheDocument();
       expect(mocked.savedReportDelete).not.toHaveBeenCalled();

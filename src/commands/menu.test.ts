@@ -9,7 +9,7 @@ import { resetStore, useStore, type View } from "../state/store";
 import { at, DAY, dayView } from "../test/dayFixtures";
 import { storedSuggestion, suggestion } from "../test/ruleFixtures";
 import { settings } from "../test/settings";
-import { runningStatus } from "../test/timerFixtures";
+import { BUS_COMMANDS } from "./busCommands";
 import { allCommands, getCommand, installCommands } from "./index";
 import { installMenuSync, menuState, syncMenu } from "./menu";
 
@@ -20,30 +20,46 @@ const checked = () => menuState().checked;
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-describe("the native menu list", () => {
+describe("the menus in menu/items.rs", () => {
+  const PAGE = "page:";
   const source = readFileSync("src-tauri/src/menu/items.rs", "utf8");
-  const list = source.slice(source.indexOf("pub const MENU_ITEMS"), source.indexOf("];", source.indexOf("pub const MENU_ITEMS")));
-  const rustItems = [...list.matchAll(/\b(item|check)\(\s*"([^"]+)",\s*"[^"]+",\s*"([^"]*)",?\s*\)/g)].map(([, kind, id, binding]) => ({ kind, id, binding }));
+  const menus = source.slice(source.indexOf("pub const APP_MENU"), source.indexOf("pub const SHARED_ACCELERATORS"));
+  const rustItems = [...menus.matchAll(/\b(item|check)\(\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]*)",?\s*\)/g)].map(([, kind, label, command, binding]) => ({ kind, label, command, binding }));
+  const pageItems = rustItems.filter((i) => i.command.startsWith(PAGE)).map((i) => ({ ...i, id: i.command.slice(PAGE.length) }));
+  const appItems = rustItems.filter((i) => !i.command.startsWith(PAGE));
 
   beforeEach(() => installCommands());
 
-  it("lists the same command ids as the commands marked as menu items", () => {
+  it("reads the menu items out of the Rust source", () => {
+    expect(rustItems.length).toBeGreaterThan(50);
+    expect(rustItems.map((i) => i.command)).toEqual(expect.arrayContaining(["app:settings", "page:view.day", "page:recording.create"]));
+  });
+
+  it("lists the page: items of exactly the commands marked as menu items", () => {
     const marked = allCommands()
       .filter((c) => c.menu)
       .map((c) => c.id);
-    expect(rustItems.map((i) => i.id).sort()).toEqual(marked.sort());
+    expect(pageItems.map((i) => i.id).sort()).toEqual(marked.sort());
   });
 
-  it("makes exactly the commands with a checkmark checkbox items", () => {
+  it("makes exactly the page commands with a checkmark checkbox items", () => {
     const checkboxes = allCommands()
       .filter((c) => c.menu && c.checked)
       .map((c) => c.id);
-    expect(rustItems.filter((i) => i.kind === "check").map((i) => i.id).sort()).toEqual(checkboxes.sort());
+    expect(pageItems.filter((i) => i.kind === "check").map((i) => i.id).sort()).toEqual(checkboxes.sort());
   });
 
-  it("shows the default binding of each command, Record Selection borrowing the one of recording.open", () => {
+  it("shows the default binding of each page command, Record Selection borrowing the one of recording.open", () => {
     const shown = (id: string) => getCommand(id === "recording.create" ? "recording.open" : id)?.defaultBinding ?? "";
-    const mismatches = rustItems.filter((i) => i.binding !== shown(i.id)).map((i) => [i.id, i.binding, shown(i.id)]);
+    const mismatches = pageItems.filter((i) => i.binding !== shown(i.id)).map((i) => [i.id, i.binding, shown(i.id)]);
+    expect(mismatches).toEqual([]);
+  });
+
+  it("lists app items only for bus commands, with the bus command's default binding", () => {
+    const bus = new Map(BUS_COMMANDS.map((c) => [c.id, c.defaultBinding ?? ""]));
+    const unknown = appItems.filter((i) => !bus.has(i.command)).map((i) => i.command);
+    const mismatches = appItems.filter((i) => bus.has(i.command) && bus.get(i.command) !== i.binding).map((i) => [i.command, i.binding, bus.get(i.command)]);
+    expect(unknown).toEqual([]);
     expect(mismatches).toEqual([]);
   });
 });
@@ -79,15 +95,10 @@ describe("menuState", () => {
 
   });
 
-  describe("timer.stop", () => {
-    it("is enabled while a timer runs", () => {
-      resetStore({ timer: runningStatus() });
-      expect(enabled()).toContain("timer.stop");
-    });
-
-    it("is disabled without a running timer", () => {
-      resetStore({ timer: { running: null } });
-      expect(enabled()).not.toContain("timer.stop");
+  describe("bus commands", () => {
+    it("reports none of them, which Rust enables itself", () => {
+      resetStore({ view: "day", settings: settings() });
+      expect(enabled().filter((id) => id.includes(":"))).toEqual([]);
     });
   });
 
@@ -95,20 +106,6 @@ describe("menuState", () => {
     it.each(VIEWS.map((v) => v.id))("checks only view.%s while that view shows", (view) => {
       resetStore({ view });
       expect(checked().filter((id) => id.startsWith("view."))).toEqual([`view.${view}`]);
-    });
-
-    it.each([
-      [true, true],
-      [false, false],
-    ])("checks app.launchAtLogin when the setting is %s: %s", (launchAtLogin, isChecked) => {
-      resetStore({ settings: settings({ launchAtLogin }) });
-      expect(checked().includes("app.launchAtLogin")).toBe(isChecked);
-    });
-
-    it("disables app.launchAtLogin until the settings are loaded", () => {
-      expect(enabled()).not.toContain("app.launchAtLogin");
-      resetStore({ settings: settings() });
-      expect(enabled()).toContain("app.launchAtLogin");
     });
   });
 
@@ -138,17 +135,17 @@ describe("menuState", () => {
   });
 
   describe("while an overlay is open", () => {
-    const ALLOWED = ["settings.toggle", "shortcuts.show", "palette.toggle", "zoom.in", "zoom.out", "zoom.reset", "window.hide", "app.background", "app.quit", "edit.undo", "edit.redo"];
+    const ALLOWED = ["shortcuts.show", "palette.toggle", "zoom.in", "zoom.out", "zoom.reset", "edit.undo", "edit.redo"];
 
     it.each<[string, Parameters<typeof resetStore>[0]]>([
       ["a dialog", { dialog: { type: "shortcuts", scopes: ["global"] } }],
       ["the palette", { paletteOpen: true }],
       ["the recording editor", { editor: { mode: "create", start: at("09:00"), end: at("10:00") } }],
     ])("enables only the items that still run over %s", (_, patch) => {
-      resetStore({ view: "day", settings: settings(), timer: runningStatus(), ...patch });
+      resetStore({ view: "day", settings: settings(), ...patch });
       const rest = enabled().filter((id) => !ALLOWED.includes(id));
       expect(rest).toEqual([]);
-      expect(enabled()).toEqual(expect.arrayContaining(["settings.toggle", "app.quit", "zoom.in"]));
+      expect(enabled()).toEqual(expect.arrayContaining(["zoom.in", "zoom.out", "zoom.reset"]));
     });
   });
 

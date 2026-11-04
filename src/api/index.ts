@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, RecordingAutofill, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuState, MiniMonth, PauseUntil, Period, PeriodTotals, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, RecordingAutofill, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuCommand, MenuState, MiniMonth, PauseUntil, Period, PeriodTotals, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -22,8 +22,12 @@ export const api = {
   openLogFolder: () => invoke<void>("open_log_folder"),
   /** Opens the bundled README (in debug builds the repository's) in the default Markdown app. */
   openReadme: () => invoke<void>("open_readme"),
-  /** Reports which native menu items can run now and which are checked. */
+  /** Reports which of this window's page commands can run now and which are checked; the menu shows them. */
   menuSync: (state: MenuState) => invoke<void>("menu_sync", { state }),
+  /** Runs a bus command (`app:settings`, `timer:stop`); rejects when it is unknown, can't run now or fails. */
+  runCommand: (id: string) => invoke<void>("run_command", { id }),
+  /** Every item of the menus in menu order, as the palette lists them; app items only while they can run. */
+  menuCommands: () => invoke<MenuCommand[]>("menu_commands"),
   /** http(s) links only; Rust refuses anything else. */
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   logError: (message: string) => invoke<void>("log_frontend_error", { message }),
@@ -218,8 +222,8 @@ export const api = {
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   /** The hidden main window was shown again (the Dock icon came back). */
   onWindowOpened: (handler: () => void): Promise<UnlistenFn> => listen("window_opened", handler),
-  /** Native menu and tray items emit the id of the command they run. */
-  onCommand: (handler: (id: string) => void): Promise<UnlistenFn> => listen<string>("command", (e) => handler(e.payload)),
+  /** A menu item's `page:<id>`: run the page command `id` when it can run. */
+  onPageCommand: (handler: (id: string) => void): Promise<UnlistenFn> => listen<string>("page_command", (e) => handler(e.payload)),
   /** Requests from other processes; answer each with `remoteReply`. */
   onRemote: (handler: (event: RemoteEvent) => void): Promise<UnlistenFn> => listen<RemoteEvent>("remote", (e) => handler(e.payload)),
   /** The tracker's state changed, or its heartbeat (at least every 10 s while it runs). */

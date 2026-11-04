@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api } from "../api";
-import { resetStore } from "../state/store";
+import { resetStore, useStore } from "../state/store";
 import { handleKeydown, installCommands, runCommand } from "./index";
 import { bindingFor } from "./registry";
 
@@ -26,47 +26,60 @@ describe("app commands", () => {
     installCommands();
   });
 
-  describe("app.background", () => {
-    it("hides to the menu bar", () => {
-      expect(runCommand("app.background")).toBe(true);
-      expect(mocked.hideToMenuBar).toHaveBeenCalled();
-      expect(mocked.quitApp).not.toHaveBeenCalled();
+  describe("app:background", () => {
+    it("asks the bus to hide to the menu bar", () => {
+      expect(runCommand("app:background")).toBe(true);
+      expect(mocked.runCommand).toHaveBeenCalledWith("app:background");
+      expect(mocked.runCommand).not.toHaveBeenCalledWith("app:quit");
     });
 
     it("runs on Cmd+Q instead of quitting", async () => {
       await press("{Meta>}q{/Meta}");
-      expect(mocked.hideToMenuBar).toHaveBeenCalled();
-      expect(mocked.quitApp).not.toHaveBeenCalled();
+      expect(mocked.runCommand).toHaveBeenCalledWith("app:background");
+      expect(mocked.runCommand).not.toHaveBeenCalledWith("app:quit");
     });
 
     it("still runs on Cmd+Q while a dialog is open", async () => {
       resetStore({ dialog: { type: "shortcuts", scopes: ["global"] } });
       await press("{Meta>}q{/Meta}");
-      expect(mocked.hideToMenuBar).toHaveBeenCalled();
+      expect(mocked.runCommand).toHaveBeenCalledWith("app:background");
     });
   });
 
-  describe("settings.toggle", () => {
-    it("opens the Settings window", () => {
-      expect(runCommand("settings.toggle")).toBe(true);
-      expect(mocked.openSettings).toHaveBeenCalledWith();
+  describe("app:settings", () => {
+    it("asks the bus to open the Settings window", () => {
+      expect(runCommand("app:settings")).toBe(true);
+      expect(mocked.runCommand).toHaveBeenCalledWith("app:settings");
     });
 
     it("opens it on Cmd+Comma", async () => {
       await press("{Meta>},{/Meta}");
-      expect(mocked.openSettings).toHaveBeenCalled();
+      expect(mocked.runCommand).toHaveBeenCalledWith("app:settings");
+    });
+
+    it("shows an error toast when the bus refuses", async () => {
+      mocked.runCommand.mockRejectedValueOnce({ kind: "io", message: "No window", code: null });
+      runCommand("app:settings");
+      await vi.waitFor(() => expect(useStore.getState().toasts.map((t) => t.message)).toEqual(["Couldn't run Settings…: No window"]));
     });
   });
 
-  describe("app.quit", () => {
-    it("quits the app", () => {
-      expect(runCommand("app.quit")).toBe(true);
-      expect(mocked.quitApp).toHaveBeenCalled();
+  describe("window:close", () => {
+    it("closes the window on Cmd+W", async () => {
+      await press("{Meta>}w{/Meta}");
+      expect(mocked.runCommand).toHaveBeenCalledWith("window:close");
+    });
+  });
+
+  describe("app:quit", () => {
+    it("asks the bus to quit", () => {
+      expect(runCommand("app:quit")).toBe(true);
+      expect(mocked.runCommand).toHaveBeenCalledWith("app:quit");
     });
 
     it("has no key binding", () => {
-      expect(bindingFor("app.quit")).toBeNull();
-      expect(bindingFor("app.background")).toBe("Mod+Q");
+      expect(bindingFor("app:quit")).toBeNull();
+      expect(bindingFor("app:background")).toBe("Mod+Q");
     });
   });
 });

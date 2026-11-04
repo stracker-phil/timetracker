@@ -1,20 +1,23 @@
-import { api, DEFAULT_TEXT_SIZE, TEXT_SIZES, type TextSize } from "../api";
-import { exportBackup, revealDataFolder, showWelcomeAgain } from "../components/settings/actions";
+import { DEFAULT_TEXT_SIZE, TEXT_SIZES, type TextSize } from "../api";
+import { notePaletteMenus } from "../components/palette/menus";
+import { exportBackup, showWelcomeAgain } from "../components/settings/actions";
 import { copyReport, copyReportNotes, promptDeleteSavedReport, promptRenameSavedReport, promptSaveReport } from "../components/reports/actions";
 import { VIEWS } from "../components/views";
 import { stepBlock, stepLane } from "../lib/blockFocus";
 import { stepThroughRust } from "../lib/dayStepper";
 import { sheetEntries } from "../lib/sheet";
-import { fail } from "../state/requests";
 import { TIMELINE_ZOOM, useStore, type View } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, isTextInput, registerCommands, resolveKeydown, setOverrides, type Command } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
+import { BUS_COMMANDS } from "./busCommands";
+import { blockedByOverlay, MODAL_ALLOWED, notePaletteRunnable, overlayOpen } from "./pageCommands";
 import { registerSettingsScope, SETTINGS_COMMANDS } from "./settingsWindow";
 import { registerSuggestionScope, SUGGESTION_COMMANDS } from "./suggestions";
 
 /** The views with a period, which P, N and O step. */
 const DATED_VIEWS: View[] = ["day", "week", "month", "reports"];
 
+export * from "./pageCommands";
 export * from "./registry";
 export * from "./scopes";
 
@@ -48,8 +51,6 @@ const onDayView = () => useStore.getState().view === "day";
 const zoomIn = () => (onDayView() ? useStore.getState().stepTimelineZoom(1) : zoomText(1));
 const zoomOut = () => (onDayView() ? useStore.getState().stepTimelineZoom(-1) : zoomText(-1));
 const resetZoom = () => (onDayView() ? useStore.getState().setTimelineZoom(TIMELINE_ZOOM.default) : resetText());
-
-const timerRuns = () => !!useStore.getState().timer?.running;
 
 /** The shown day's view, once loaded: its bounds come from Rust. */
 const shownDayView = () => {
@@ -176,11 +177,6 @@ function moveFocusedRule(by: 1 | -1) {
     .then(() => el instanceof HTMLElement && el.isConnected && document.activeElement !== el && el.focus());
 }
 
-function overlayOpen(): boolean {
-  const s = useStore.getState();
-  return s.dialog !== null || s.paletteOpen || s.editor !== null;
-}
-
 /** ⌘Z in a text field undoes its typing (the menu's Undo replaces the native one); elsewhere the last recording change. */
 function undoOrRedo(redo: boolean) {
   if (isTextInput(document.activeElement)) {
@@ -196,6 +192,10 @@ const undoRedoAvailable = () => (isTextInput(document.activeElement) && !useStor
 
 function togglePalette() {
   const s = useStore.getState();
+  if (!s.paletteOpen) {
+    notePaletteRunnable();
+    notePaletteMenus();
+  }
   s.setPaletteOpen(!s.paletteOpen);
 }
 
@@ -206,25 +206,12 @@ function toggleShortcuts() {
   if (!s.dialog) s.openDialog({ type: "shortcuts", scopes: activeScopes() });
 }
 
-function toggleLaunchAtLogin() {
-  const s = useStore.getState();
-  if (s.settings) void s.setLaunchAtLogin(!s.settings.launchAtLogin);
-}
-
 function promptNewTag() {
   const { openDialog, saveTag } = useStore.getState();
   openDialog({ type: "prompt", title: "New tag", label: "Name", initial: "", confirmLabel: "Add", onSubmit: (name) => void saveTag(null, name).catch(() => {}) });
 }
 
-/** A tracker that exists and is not paused. */
-function isTracking() {
-  const kind = useStore.getState().tracker?.state.kind;
-  return kind !== undefined && kind !== "paused";
-}
-
 const APP_COMMANDS: Command[] = [
-  { id: "settings.toggle", title: "Settings…", scope: "global", defaultBinding: "Mod+,", menu: true, run: () => void api.openSettings().catch((e) => fail(e, "Couldn't open Settings")) },
-  { id: "app.launchAtLogin", title: "Launch at login", scope: "global", menu: true, menuOnly: true, when: () => useStore.getState().settings !== null, checked: () => !!useStore.getState().settings?.launchAtLogin, run: toggleLaunchAtLogin },
   { id: "welcome.show", title: "Show welcome again", scope: "global", menu: true, menuOnly: true, run: showWelcomeAgain },
   { id: "shortcuts.show", title: "Keyboard shortcuts", scope: "global", defaultBinding: "Shift+?", menu: true, run: toggleShortcuts },
   { id: "palette.toggle", title: "Command palette", scope: "global", defaultBinding: "Mod+K", menu: true, run: togglePalette },
@@ -233,9 +220,6 @@ const APP_COMMANDS: Command[] = [
   { id: "zoom.in", title: "Zoom in", scope: "global", defaultBinding: "Mod+=", menu: true, run: zoomIn },
   { id: "zoom.out", title: "Zoom out", scope: "global", defaultBinding: "Mod+-", menu: true, run: zoomOut },
   { id: "zoom.reset", title: "Reset zoom", scope: "global", defaultBinding: "Mod+0", menu: true, run: resetZoom },
-  { id: "window.hide", title: "Close window", scope: "global", defaultBinding: "Mod+W", menu: true, run: () => void api.hideWindow() },
-  { id: "tracker.pause", title: "Pause tracking", scope: "global", when: () => isTracking(), run: () => void useStore.getState().pauseTracker("resumed") },
-  { id: "tracker.resume", title: "Resume tracking", scope: "global", when: () => useStore.getState().tracker?.state.kind === "paused", run: () => void useStore.getState().resumeTracker() },
   { id: "nav.prev", title: "Previous day, week, month or period", scope: "dated", defaultBinding: "P", menu: true, run: () => useStore.getState().step(-1) },
   { id: "nav.next", title: "Next day, week, month or period", scope: "dated", defaultBinding: "N", menu: true, run: () => useStore.getState().step(1) },
   { id: "nav.today", title: "Go to today", scope: "dated", defaultBinding: "O", menu: true, run: () => useStore.getState().goToday() },
@@ -268,30 +252,23 @@ const APP_COMMANDS: Command[] = [
   { id: "recording.moveToNextDay", title: "Move recording to the next day", scope: "day", defaultBinding: "Alt+ArrowRight", menu: true, when: hasFocusedRecording, run: () => recordingToDay(1, false) },
   { id: "recording.copyToPrevDay", title: "Copy recording to the previous day", scope: "day", defaultBinding: "Alt+Shift+ArrowLeft", menu: true, when: hasFocusedRecording, run: () => recordingToDay(-1, true) },
   { id: "recording.copyToNextDay", title: "Copy recording to the next day", scope: "day", defaultBinding: "Alt+Shift+ArrowRight", menu: true, when: hasFocusedRecording, run: () => recordingToDay(1, true) },
-  { id: "timer.start", title: "Start timer…", scope: "global", defaultBinding: "Mod+T", menu: true, run: () => void api.timerPickerOpen() },
-  { id: "timer.stop", title: "Stop timer", scope: "global", defaultBinding: "Mod+Shift+.", menu: true, when: timerRuns, run: () => void useStore.getState().stopTimer() },
   ...SUGGESTION_COMMANDS,
   ...SETTINGS_COMMANDS,
-  { id: "timer.toggle", title: "Start or stop timer", scope: "global", run: () => (timerRuns() ? void useStore.getState().stopTimer() : void api.timerPickerOpen()) },
+  ...BUS_COMMANDS,
   { id: "edit.undo", title: "Undo", scope: "global", defaultBinding: "Mod+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(false) },
   { id: "edit.redo", title: "Redo", scope: "global", defaultBinding: "Mod+Shift+Z", menu: true, when: undoRedoAvailable, run: () => undoOrRedo(true) },
   { id: "reports.copyText", title: "Copy report as text", scope: "reports", defaultBinding: "Mod+Shift+C", menu: true, run: () => void copyReport() },
   { id: "reports.copyNotes", title: "Copy report notes", scope: "reports", defaultBinding: "Mod+Alt+C", menu: true, run: () => void copyReportNotes() },
-  { id: "reports.save", title: "Save report…", scope: "reports", run: promptSaveReport },
-  { id: "reports.rename", title: "Rename saved report…", scope: "reports", when: () => useStore.getState().openedReport !== null, run: promptRenameSavedReport },
-  { id: "reports.delete", title: "Delete saved report…", scope: "reports", when: () => useStore.getState().openedReport !== null, run: promptDeleteSavedReport },
+  { id: "reports.save", title: "Save report…", scope: "reports", menu: true, run: promptSaveReport },
+  { id: "reports.rename", title: "Rename saved report…", scope: "reports", menu: true, when: () => useStore.getState().openedReport !== null, run: promptRenameSavedReport },
+  { id: "reports.delete", title: "Delete saved report…", scope: "reports", menu: true, when: () => useStore.getState().openedReport !== null, run: promptDeleteSavedReport },
   { id: "projects.new", title: "New project…", scope: "projects", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "project" }) },
   { id: "clients.new", title: "New client…", scope: "projects", menu: true, run: () => useStore.getState().openDialog({ type: "client" }) },
   { id: "tags.new", title: "New tag…", scope: "tags", defaultBinding: "Mod+N", menu: true, run: promptNewTag },
   { id: "rules.new", title: "New rule…", scope: "rules", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "rule" }) },
   { id: "rules.moveUp", title: "Move rule up", scope: "rules", defaultBinding: "Alt+ArrowUp", when: () => focusedRule() !== null, run: () => moveFocusedRule(-1) },
   { id: "rules.moveDown", title: "Move rule down", scope: "rules", defaultBinding: "Alt+ArrowDown", when: () => focusedRule() !== null, run: () => moveFocusedRule(1) },
-  { id: "logs.open", title: "Open log folder", scope: "global", menu: true, run: () => void api.openLogFolder() },
-  { id: "data.reveal", title: "Show data folder", scope: "global", menu: true, run: revealDataFolder },
   { id: "data.exportBackup", title: "Export backup…", scope: "global", menu: true, run: exportBackup },
-  { id: "help.readme", title: "Open README", scope: "global", menu: true, run: () => void api.openReadme().catch((e) => fail(e, "Couldn't open the README")) },
-  { id: "app.background", title: "Hide to Menu Bar", scope: "global", defaultBinding: "Mod+Q", menu: true, run: () => void api.hideToMenuBar() },
-  { id: "app.quit", title: "Quit TimeTracker", scope: "global", menu: true, run: () => void api.quitApp() },
 ];
 
 /**
@@ -318,26 +295,8 @@ export function runCommand(id: string): boolean {
   return true;
 }
 
-/** While a dialog or the palette is open, only these run; other keys belong to the overlay. */
-const MODAL_ALLOWED = new Set(["settings.toggle", "shortcuts.show", "palette.toggle", "zoom.in", "zoom.out", "zoom.reset", "window.hide", "app.background", "app.quit", "edit.undo", "edit.redo"]);
-
 /** Commands that keep firing while their key is held. */
 const REPEATABLE = new Set(["zoom.in", "zoom.out", "recording.nudgeEarlier", "recording.nudgeLater", "recording.extend", "recording.shrink"]);
-
-const blockedByOverlay = (id: string) => overlayOpen() && !MODAL_ALLOWED.has(id);
-
-/** Whether a native menu item runs its command now: in an active scope, enabled, not held back by an overlay. */
-export function canRunFromMenu(c: Command, scopes: string[] = activeScopes()): boolean {
-  return scopes.includes(c.scope) && c.when?.() !== false && !blockedByOverlay(c.id);
-}
-
-/** Runs a native menu or tray item's command in an active scope. */
-export function runMenuCommand(id: string): boolean {
-  const target = getCommand(id);
-  if (!target || !canRunFromMenu(target)) return false;
-  void target.run();
-  return true;
-}
 
 /** An open menu (components/menu) takes its own keys, like a dialog. */
 const inMenu = (target: EventTarget | null) => target instanceof Element && !!target.closest('[role="menu"]');

@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use ts_rs::TS;
 
 use crate::activity;
+use crate::bus::{self, PAGE_PREFIX};
 use crate::db::Db;
 use crate::db::time::{Day, now_ms};
 use crate::error::{AppError, ErrorKind};
@@ -37,6 +38,8 @@ const QUIT_DELAY: Duration = Duration::from_millis(200);
 pub enum RemoteRequest {
     /// Navigate to the day's Day view.
     ShowDay { day: Day },
+    /// Run one of the page's own commands (`timetracker run page:<id>`); fails when it can't run now.
+    RunCommand { id: String },
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
@@ -163,6 +166,26 @@ async fn show(app: &AppHandle, day: Option<Day>, focus: bool) -> HandlerResult {
         .await
 }
 
+/// A bus command, or a page command the window runs and answers for.
+async fn run(app: &AppHandle, id: &str) -> HandlerResult {
+    if let Some(page) = id.strip_prefix(PAGE_PREFIX) {
+        window::show_main(app);
+        return app
+            .state::<Bridge>()
+            .ask(app, RemoteRequest::RunCommand { id: page.into() })
+            .await;
+    }
+    let commands = app.state::<bus::Commands>();
+    if commands.info(id).is_some_and(|info| info.quits) {
+        // Refused like any command when it doesn't exist or can't run; else it runs after the reply.
+        drop(commands.start(app.clone(), id)?);
+        quit_after_reply(app.clone());
+    } else {
+        commands.run_or_err(app.clone(), id).await?;
+    }
+    Ok(serde_json::Value::Null)
+}
+
 fn quit_after_reply(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(QUIT_DELAY).await;
@@ -179,9 +202,10 @@ pub async fn handle(app: AppHandle, message: IpcMessage) -> HandlerResult {
             window::hide_main(&app);
             Ok(serde_json::Value::Null)
         }
-        IpcMessage::Settings { page } => {
-            window::settings::open(&app, page.as_deref());
-            Ok(serde_json::Value::Null)
+        IpcMessage::Run { id } => run(&app, &id).await,
+        IpcMessage::Commands => {
+            let commands = app.state::<bus::Commands>();
+            json(crate::menu::palette::command_list(&commands, &app))
         }
         IpcMessage::Quit => {
             quit_after_reply(app);

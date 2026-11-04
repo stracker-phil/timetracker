@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
-use super::{RECENT, RecentTimer, TimerStatus, picker, publish, recent, status};
+use super::{RECENT, RecentTimer, TimerStatus, picker, publish, recent, runs, status};
+use crate::bus::{Command, CommandBus};
 use crate::db::recordings::{self, Recording};
 use crate::db::time::now_ms;
 use crate::db::{projects, tags};
@@ -20,6 +21,39 @@ pub async fn stop(app: &AppHandle) -> AppResult<Option<Recording>> {
     let stopped = changing(app, async |s| s.stop_timer(now_ms()).await).await?;
     publish(app).await;
     Ok(stopped)
+}
+
+/// Start Timer… opens the picker; Stop Timer works while a timer runs.
+pub fn register(bus: &mut CommandBus<AppHandle>) {
+    bus.add(
+        Command::new("timer:start", "Start Timer…")
+            .help("Open the timer picker on the screen you work on")
+            .run_now(|app: &AppHandle| picker::open(app, picker::Place::OnFocusedScreen)),
+    );
+    bus.add(
+        Command::new("timer:startUnderTray", "Start Timer…")
+            .help("Open the timer picker under the menu bar icon")
+            .hidden()
+            .run_now(|app: &AppHandle| picker::open(app, picker::Place::UnderTray)),
+    );
+    bus.add(
+        Command::new("timer:stop", "Stop Timer")
+            .help("Stop the running timer")
+            .enabled_when(runs)
+            .run(|app| async move { stop(&app).await.map(drop) }),
+    );
+    bus.add(
+        Command::new("timer:toggle", "Start or Stop Timer")
+            .help("Stop the running timer, else open the timer picker")
+            .run(|app| async move {
+                if runs(&app) {
+                    stop(&app).await.map(drop)
+                } else {
+                    picker::open(&app, picker::Place::OnFocusedScreen);
+                    Ok(())
+                }
+            }),
+    );
 }
 
 pub async fn update(app: &AppHandle, input: TimerInput) -> AppResult<Option<Recording>> {

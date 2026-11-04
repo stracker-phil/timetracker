@@ -53,6 +53,9 @@ const EXAMPLES: &str = "Examples:
   timetracker approve <id>             record a suggestion as it is
   timetracker timer update --note \"ID-123: Payment bug\"
   timetracker projects --json          the projects with their clients and ids
+  timetracker commands                 every command `run` takes, with its menu item
+  timetracker run app:settings:capture open Settings at Capture
+  timetracker run page:view.week       show the Week view
   timetracker report last-week --by tag --round 15
   claude mcp add timetracker -- ~/.local/bin/timetracker mcp";
 
@@ -184,6 +187,13 @@ enum Command {
     /// Pause, resume or show activity tracking
     #[command(subcommand)]
     Tracker(TrackerCommand),
+    /// Run a command by id, as its menu item does (see `timetracker commands`)
+    Run {
+        /// An app command (`app:settings`, `timer:stop`, `tracker:pause:60`) or `page:<id>`
+        id: String,
+    },
+    /// List the commands `run` takes: the app's and the menus' items for the window's own
+    Commands,
     /// Serve an MCP server (reads work while the app is closed; writes make suggestions)
     Mcp,
     /// Print the timer and the tracker, then one line per change (timer, tracker, data) until TimeTracker quits
@@ -343,6 +353,8 @@ fn message<Tz: TimeZone>(
         Command::Tags => IpcMessage::Tags,
         Command::Undo => IpcMessage::Undo,
         Command::Redo => IpcMessage::Redo,
+        Command::Run { id } => IpcMessage::Run { id },
+        Command::Commands => IpcMessage::Commands,
         #[cfg(debug_assertions)]
         Command::Dev(DevCommand::Seed {
             years,
@@ -730,6 +742,43 @@ mod tests {
     #[test]
     fn stop_becomes_a_timer_stop_message() {
         assert_eq!(remote(&["stop"]), (IpcMessage::TimerStop, false, false));
+    }
+
+    #[test]
+    fn run_sends_the_command_id_as_given() {
+        for id in [
+            "app:settings",
+            "app:settings:capture",
+            "tracker:pause:60",
+            "page:view.week",
+        ] {
+            assert_eq!(
+                remote(&["run", id]),
+                (IpcMessage::Run { id: id.into() }, false, false),
+                "{id}"
+            );
+        }
+    }
+
+    #[test]
+    fn commands_becomes_a_commands_message() {
+        assert_eq!(remote(&["commands"]), (IpcMessage::Commands, false, false));
+    }
+
+    #[test]
+    fn run_and_commands_are_listed_in_the_help() {
+        let listed = listed_commands();
+        for name in ["run", "commands"] {
+            assert!(listed.iter().any(|l| l == name), "{name}: {listed:?}");
+        }
+    }
+
+    #[test]
+    fn run_without_an_id_is_reported_in_the_terminal() {
+        let err = run(&["run"]).unwrap_err();
+
+        assert!(!err.in_app);
+        assert!(err.message.contains("<ID>"), "{}", err.message);
     }
 
     #[cfg(debug_assertions)]

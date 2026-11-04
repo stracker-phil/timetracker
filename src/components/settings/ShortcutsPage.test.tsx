@@ -97,6 +97,35 @@ describe("Settings Shortcuts page", () => {
     expect(screen.queryByText(title)).not.toBeInTheDocument();
   });
 
+  describe("commands Rust runs", () => {
+    it("lists a bus command with its default binding", async () => {
+      renderPage();
+      await searchFor("Hide to Menu Bar");
+      expect(commandField()).toHaveTextContent("⌘Q");
+    });
+
+    it("finds a bus command by its id", async () => {
+      renderPage();
+      await searchFor("app:quit");
+      expect(screen.getByText("Quit TimeTracker")).toBeInTheDocument();
+      expect(commandField()).toHaveTextContent("unbound");
+    });
+
+    it("saves a rebinding under the bus command's id", async () => {
+      renderPage();
+      await searchFor("Hide to Menu Bar");
+      await userEvent.click(commandField());
+      await userEvent.keyboard("{Meta>}{Shift>}h{/Shift}{/Meta}");
+      expect(mocked.setKeybindings).toHaveBeenLastCalledWith({ "app:background": "Mod+Shift+H" });
+      await vi.waitFor(() => expect(commandField()).toHaveTextContent("⌘⇧H"));
+    });
+
+    it("warns when a bus command takes the binding of a page command", () => {
+      renderPage({ keybindings: { "app:settings": "Mod+K" } });
+      expect(screen.getByRole("alert")).toHaveTextContent("⌘K is used by both “Command palette” and “Settings…”.");
+    });
+  });
+
   it("says so when no command matches the search", async () => {
     renderPage();
     await searchFor("nothing like this");

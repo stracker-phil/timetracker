@@ -25,13 +25,16 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
    database, see [data.md](data.md#the-data-folder); a `dataDir` that is gone falls back to the default folder
    with a launch error toast). The log level is the CLI `--log-level`, else Info, so logging never starts at
    `Trace`.
-5. **`app::start`** (`app.rs`) builds Tauri with `.manage(state)` first, then `remote::Bridge`:
+5. **`app::start`** (`app.rs`) builds Tauri with `.manage(state)` first, then `remote::Bridge`, `menu::MenuSync`,
+   the command bus (`bus::Commands::registered()`, [Command bus](#command-bus)) and `timers::Running`:
    - plugins: `log_plugin()` (stdout plus a rotating file in the log dir, 3 × 5 MiB, `tao`/`wry` capped at
      Warn), `init_logging(level)` (sets the effective level right after the log plugin's setup, whose
      dispatch level caps every later change), opener, dialog, deep-link, autostart
      (`MacosLauncher::LaunchAgent` with `--hidden`);
-   - `on_menu_event` → `menu::forward`;
-   - `on_window_event`: `CloseRequested` on `main` prevents the close and hides the window.
+   - `on_menu_event` → `menu::clicked` (the menu bar's and the tray's clicks: Tauri hands every menu event to
+     every handler);
+   - `on_window_event`: `CloseRequested` on `main` or `settings` prevents the close and hides the window;
+     `Focused` tells `menu::sync::focus_changed`, `Destroyed` drops the window's menu report.
 
    Then `setup` runs: it logs the version, sets the native menu (`menu::build`), queues the initial launch
    message (`LaunchQueue::push`), calls `commands::apply_settings(app, None, &settings)`, installs the tray
@@ -82,19 +85,20 @@ the `sidebar` vibrancy effect. The away prompt (`away_prompt/window.rs`), the ti
 Settings ([ADR 0034](adr/0034-settings-is-a-window-of-its-own.md)): label `settings`,
 `src/windows/settings/index.html`, 880 × 720 (minimum 760 × 560), not maximizable, overlay title bar with
 hidden title, built hidden on first use. `window::settings::open(app, page)` (the `open_settings` command,
-the menu's `settings.toggle`, the tray's Settings…, `IpcMessage::Settings`) shows it and brings it forward;
+the bus's `app:settings` and `app:settings:<page>`: the menu, the tray, links and `timetracker run`) shows it
+and brings it forward;
 the page or section id goes in as `?page=` the first time and as `open_settings` after. Closing it hides it
 (`window::close_requested`), so it reopens on its page. `show_welcome` shows the main window and runs its
 `welcome.show` there (`window::run_in_main`).
 
 | Event | Result |
 |---|---|
-| close button / ⌘W (`window.hide`: `window::close_focused`; `hide_window` hides the calling window) | the window in front hides (main or Settings); the app, the tray and the Dock icon stay |
+| close button / ⌘W (`window:close`: `window::close_focused`; `hide_window` hides the calling window) | the window in front hides (main or Settings); the app, the tray and the Dock icon stay |
 | last window closed (`ExitRequested { code: None }`) | prevented |
-| ⌘Q (`app.background`, `hide_to_menu_bar`) | `window::hide_to_menu_bar`: the window and the Dock icon hide (`set_dock_visibility`); the tray, the tracker and the timer keep running |
-| tray "Open TimeTracker", a second `timetracker` launch, Dock icon click (`RunEvent::Reopen`) | `window::show_main`: the Dock icon returns, show, unminimize, focus |
+| ⌘Q (`app:background`, `hide_to_menu_bar`) | `window::hide_to_menu_bar`: the window and the Dock icon hide (`set_dock_visibility`); the tray, the tracker and the timer keep running |
+| tray "Open TimeTracker" (`app:show`), a second `timetracker` launch, Dock icon click (`RunEvent::Reopen`) | `window::show_main`: the Dock icon returns, show, unminimize, focus |
 | `timetracker --hidden` (launch at login) | first instance: the window is never shown; running instance: nothing |
-| "Quit TimeTracker" (`app.quit`, no default key) in the app menu, the palette and the tray, `quit_app` | `app.exit(0)` |
+| "Quit TimeTracker" (`app:quit`, no default key) in the app menu, the palette and the tray, `quit_app` | `app.exit(0)` |
 
 `window/mod.rs` never sets the window theme, so its native appearance follows macOS (the page draws every surface
 opaquely). It also has `bring_to_front`, which does nothing with `TIMETRACKER_BACKGROUND=1` in debug builds.
@@ -140,7 +144,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `open_log_folder` | – | – | `io` |
 | `open_url` | `url: String` | – | `invalid_input` unless `http(s)` without credentials (`is_web_url`) |
 | `log_frontend_error` | `message: String` | – | – |
-| `take_launch_events` | – | `LaunchEvent[]` (`error`, `notice`, `activate`, `showDay`) | – |
+| `take_launch_events` | – | `LaunchEvent[]` (`error`, `notice`, `activate`, `showDay`, `command`: a `command/page:<id>` link's page command) | – |
 | `remote_reply` | `id, result, error` | – | – |
 | `hide_window` | – | – | – |
 | `quit_app` | – | never returns | – |
@@ -148,7 +152,9 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `choose_folder` | – | `string \| null` (the folder panel, which can create a folder; `null` when cancelled) | `io` |
 | `reveal_path` | `path: String` | – (Finder shows the enclosing folder with `path` selected) | `io` |
 | `open_readme` (`help.rs`) | – | – (opens the README, see [Native menu](#native-menu)) | `not_found` (none in this build), `io` |
-| `menu_sync` (`menu/sync.rs`) | `state: MenuState { enabled, checked }` | – (greys out and checks the menu items) | – |
+| `menu_sync` (`menu/sync.rs`) | `state: MenuState { enabled, checked }` (the calling window's page command ids) | – (stored by window label; the menu's `page:` items show the focused window's) | – |
+| `run_command` (`bus/app.rs`) | `id: String` | – (runs a bus command, [Command bus](#command-bus)) | `not_found` (unknown id), `invalid_input` (can't run now), the command's own |
+| `menu_commands` (`menu/palette.rs`) | – | `MenuCommand[] { menu, label, command, keys, checked }`: every menu item in menu order but Command Palette…, app items only while enabled, `page:` items all (the page filters them) | – |
 | `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, firstActivityLabel, available, error, binaryPath }` (`binaryPath`: `~/.local/bin/timetracker` when that link exists, else this executable; for the `claude mcp add` line) | – (errors are reported inside) |
 | `data_move` (`db/commands.rs`) | `path: String` | `DataInfo` of the new folder ([data.md](data.md#moving-the-data-folder)) | `invalid_input` (a refused folder), `io`, `db` |
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes, recordings, activities }` | `db`, `io`, `invalid_input` |
@@ -578,7 +584,7 @@ through the CLI and MCP, share the list and the review.
 | Constant | Name | Payload |
 |---|---|---|
 | `LAUNCH_EVENT` | `launch` | none; the page calls `take_launch_events` |
-| `COMMAND_EVENT` | `command` | a command id (menu or tray) |
+| `PAGE_COMMAND_EVENT` | `page_command` | a page command id (`page:<id>` without the prefix), to the window `menu::sync::page_target` names (`window::run_page_command`), or to `main` (`window::run_in_main`) |
 | `REMOTE_EVENT` | `remote` | `RemoteEvent { id, request }`, answered with `remote_reply` |
 | `DATA_CHANGED_EVENT` | `data_changed` | `DataChanged { kind, day }` |
 | `TRACKER_STATUS_EVENT` | `tracker_status` | `TrackerStatus` on every change and at least every 10 s ([capture.md](capture.md#status)) |
@@ -646,6 +652,8 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `suggestions [RANGE]`, `recordings [RANGE]` | `suggestions { range }`, `recordings { range }` (`Range` as `report`'s) | one line each with its id, or `no suggestions` / `no recordings`; `--json`: `SuggestionEntry[]` / `RecordingEntry[]` |
 | `projects [--archived]`, `clients [--archived]`, `tags` | `projects { archived }`, `clients { archived }`, `tags` | one line each with its id; `--json`: `ProjectEntry[]` (with `color`, an accent name, and `shade`, 0 to 8) / `ClientEntry[]` / `TagEntry[]` |
 | `undo`, `redo` | `undo`, `redo` (`Recordings::undo/redo`, the app's ⌘Z stack) | `undid Record 30m for Acme` or `nothing to undo` |
+| `run ID` | `run { id }`: a bus command (`app:settings:capture`, `timer:stop`, `tracker:pause:60`) or `page:<id>`, as its menu item runs it ([Command bus](#command-bus)) | – ; refused (exit 1) when unknown or unavailable, e.g. `“timer:stop” isn't available right now.` |
+| `commands` | `commands` | one line per visible bus command (a family with its argument, `tracker:pause:<15\|60\|tomorrow\|resumed>`), then per `page:` menu item with its menu, `page:view.week  View → Week`; ` (unavailable)` after one that can't run now; `--json`: `ListedCommand[] { id, title, menu, enabled }` |
 
 `parse(args, now, tz, stdin) -> Result<CliOutcome, CliError>` is pure: `CliOutcome` is `Run { hidden,
 log_level }`, `Exit { message }` (help, version), `Mcp`, `Watch { json }` or `Remote { message, json,
@@ -741,6 +749,8 @@ Every message is logged by type (`IpcMessage::kind`, never the contents).
 | `activate`, `error` | `launch::queue`: pushed to `LaunchQueue` (`error` → `LaunchEvent::Error`, `activate { hidden: false }` → `Activate`), `launch` emitted, the window shown unless `hidden` | `null` |
 | `show { day, focus }` | shows the window (`window::show_main`, or `show_main_in_background` without `focus`), then asks the page `ShowDay { day }` (today when `null`) | `null` |
 | `hide` | `window::hide_main` | `null` |
+| `run { id }` | `remote::run`: a `page:<id>` shows the main window and asks the page `RunCommand { id }` (it fails when the command is unknown or can't run); any other id runs on the bus (`run_or_err`), one that `quits` 200 ms after replying | `null` |
+| `commands` | `menu::palette::command_list` | `ListedCommand[]` |
 | `quit` | `app.exit(0)` 200 ms after replying | `null` |
 | `status` | `remote::status_report` | `StatusReport` |
 | `pause { until }`, `resume`, `trackerStatus` | `Tracker::pause`, `Tracker::resume`, `Tracker::status` | `TrackerStatus` |
@@ -817,13 +827,15 @@ may arrive before the listener.
 | `timetracker://activity?source=planner&title=Lunch&start=2026-10-21T12:00&end=2026-10-21T12:45[&app=&url=&path=]` | `activityAdd` with one item |
 | `timetracker://activity/start?source=…&title=…[&start=…]` | `activityStart` |
 | `timetracker://activity/stop?source=…[&end=…]` | `activityStop` |
-| `timetracker://command/app:settings[:<page or section>]` | `settings { page }`: opens Settings (`window::settings::open`) |
+| `timetracker://command/<id>` | `run { id }` for the ids `link_command` allows: `app:show`, `app:settings`, `app:settings:<page or section>`, `timer:start`, `timer:stop`, `tracker:pause:<15\|60\|tomorrow\|resumed>`, `tracker:resume`, `page:view.<view>`, `page:nav.today`; nothing that quits, deletes or writes data |
 
 Query values are percent-decoded and `+` reads as a space, so an offset like `+05:30` must be written
 `%2B05:30`.
 
-`show` links are queued like a launch (`launch::queue`), so a link that starts the app waits for the page.
-Activity links run through `remote::handle` at once and do not show the window. A link that does not parse
+`show` links and `page:` command links are queued like a launch (`launch::queue`; a page command becomes
+`LaunchEvent::Command { id }`, which the page runs when it can), so a link that starts the app waits for the
+page. Activity links and the other command links run through `remote::handle` at once; activity links do
+not show the window. A link that does not parse
 or fails becomes `IpcMessage::Error`: the window shows a toast, nothing is written.
 
 ## MCP server
@@ -888,17 +900,21 @@ app with an `IpcMessage`; and a test over the JSON-RPC duplex
 `tray.rs`: `tray::install(app)` builds the menu bar item `main` as a template image (macOS tints it for the
 menu bar), tooltip `TimeTracker`, menu on left click:
 
+Every item's id but the status line's and the recent timers' is the bus command it runs
+([Command bus](#command-bus)); Tauri hands the tray's clicks to `menu::clicked` like the menu bar's, and the
+tray's own `on_menu_event` only starts recent timers (`start_recent`).
+
 | Item | Id | Action |
 |---|---|---|
 | the tracker's status text (disabled) | `status` | relabelled on every status |
-| Pause Tracking ▸ For 15 Minutes, For 1 Hour, Until Tomorrow, Until Resumed | `pause-15`, `pause-60`, `pause-tomorrow`, `pause-resumed` | `Tracker::pause` (hidden while paused) |
-| Resume Tracking | `resume` | `Tracker::resume` (only while paused) |
-| Start Timer… | `timer.start` | `timers::picker::open` |
-| Stop Timer (Acme, 1h 23m) | `timer.stop` | `timers::commands::stop` (disabled without a timer) |
-| Recent Timers ▸ `Project · note` | `timer.recent.<n>` | starts that combination |
-| Open TimeTracker | `open` | `window::show_main` |
-| Settings… | `settings` | `window::settings::open` |
-| Quit TimeTracker | `quit` | `app.exit(0)` |
+| Pause Tracking ▸ For 15 Minutes, For 1 Hour, Until Tomorrow, Until Resumed | `tracker:pause:15`, `:60`, `:tomorrow`, `:resumed` | `Tracker::pause` (hidden while paused) |
+| Resume Tracking | `tracker:resume` | `Tracker::resume` (only while paused) |
+| Start Timer… | `timer:startUnderTray` (hidden) | `timers::picker::open(app, Place::UnderTray)` |
+| Stop Timer (Acme, 1h 23m) | `timer:stop` | `timers::commands::stop` (disabled without a timer) |
+| Recent Timers ▸ `Project · note` | `timer.recent.<n>` | starts that combination (tray only) |
+| Open TimeTracker | `app:show` | `window::show_main` |
+| Settings… | `app:settings` | `window::settings::open` |
+| Quit TimeTracker | `app:quit` | `app.exit(0)` |
 
 `tracker::start` passes every tracker status to `tray::sync(app, &status)`. The icon
 follows `TrayIcon::of(state)`: `icons/tray/tray@2x.png` (running or away), `paused@2x.png` (a pause sign in
@@ -921,12 +937,14 @@ A timer is a recording with an open span, so the overlap rule, undo and reports 
   the timer run again.
 - `timers/mod.rs`: `status(db, now) -> TimerStatus { running: Option<RunningTimer { recording, projectName,
   color, shade, elapsedMs }> }` (`elapsedMs` since the open span started, `open_start`), `recent(db, 8) -> RecentTimer[]` (distinct project, note and tag of finished
-  recordings, newest first, archived projects left out; also `timer recent` and the MCP `recent_timers`), `publish(app)` (the `timer_status` event, the tray and the watchers),
+  recordings, newest first, archived projects left out; also `timer recent` and the MCP `recent_timers`), `publish(app)` (the `timer_status` event, the tray, the watchers and `Running`, the flag `timers::runs` reads for `timer:stop`; a change refreshes the menu),
   `start_ticking(app)` (publishes at startup and every minute while a timer runs).
 - `timers/commands.rs`: `timer_start(projectId, note, tagId)`, `timer_stop` (`null` without a timer),
   `timer_update(projectId, note, tagId)` (the running timer's fields through `Recordings::update_timer`, spans
   untouched; `null` without a timer),
-  `timer_status`, `timers_recent`, `timer_picker_open`, `timer_picker_close`; `start_by_name` serves the CLI.
+  `timer_status`, `timers_recent`, `timer_picker_open`, `timer_picker_close`; `start_by_name` serves the CLI;
+  `register` adds the bus commands `timer:start`, `timer:startUnderTray` (hidden), `timer:stop` (while one
+  runs) and `timer:toggle`.
 - `timers/picker.rs`: the `timer` window (`src/windows/timer/index.html`, 380×380, no decorations, transparent,
   always on top, hidden on blur); capability `capabilities/timer.json`. `open(app, Place)`: `UnderTray` from the
   tray menu, `OnFocusedScreen` from the shortcut and `timer_picker_open`: `timers/screen.rs` puts it at the top
@@ -1013,41 +1031,98 @@ cannot flood or forge log lines. Window titles, URLs and paths are user data: lo
 
 ts-rs generates `AppError`, `AppErrorField` and `ErrorKind` into `src/api/types.gen.ts`.
 
+## Command bus
+
+`bus/` ([ADR 0038](adr/0038-app-commands-live-in-a-rust-bus.md), inherited from Taskboard): every app-level
+action is a command with an id, which the menu bar, the tray, the page (`run_command`), the palette, links and
+`timetracker run` run by id, so none of them imports the features.
+
+- **Building.** `Command::new(id, title)` gives a `Spec` with `help`, `hidden` (left out of `timetracker
+  commands`), `quits` (a caller answers first), `enabled_when` and `checked_when`, then `run` (async) or `run_now`.
+  `.family(arg)` makes the id a prefix: `prefix` + argument runs it with the argument; a family's
+  `enabled_for` / `checked_for` see the argument. `CommandBus::find` takes an exact id first, else the family
+  with the longest matching prefix.
+- **Running.** `start(host, id)` refuses an unknown id (`not_found`, `Unknown command “…”.`) and a disabled one
+  (`invalid_input`, `“…” isn't available right now.`), else returns the work; `run_or_err` awaits it; `run`
+  hands a failure to the host. The app is the host (`bus/app.rs`, `impl Host for AppHandle`): a failure from a
+  menu or the tray becomes an error toast (`launch::queue(IpcMessage::Error)`). `bus::spawn` runs one without
+  waiting (clicks).
+- **Status.** `available(host)` is a `CommandStatus` (`knows`, `is_enabled`, `is_checked`), which the menu
+  builds and refreshes with.
+- **Registration.** `bus::Commands::registered()`: `bus::register` (`bus/commands.rs`), then
+  `timers::commands::register` and `tracker::commands::register`.
+
+| Id | Title | Does | Enabled / checked |
+|---|---|---|---|
+| `app:settings` | Settings… | `window::settings::open(app, None)` | |
+| `app:settings:<page>` (hidden family) | Settings Page | Settings at a page or section id | |
+| `app:show` | Show TimeTracker | `window::show_main` | |
+| `window:close` (hidden) | Close Window | `window::close_focused` | |
+| `app:background` | Hide to Menu Bar | `window::hide_to_menu_bar` | |
+| `app:quit` (`quits`) | Quit TimeTracker | `app.exit(0)` | |
+| `app:launchAtLogin` | Launch at Login | `autostart::set` with the opposite of `settings.launchAtLogin` | checked by `settings.launchAtLogin` |
+| `app:logs` | Open Log Folder | `commands::open_log_folder` | |
+| `app:dataFolder` | Show Data Folder | the database file in Finder | |
+| `app:readme` | README | `help::open_readme` | |
+| `timer:start` | Start Timer… | `picker::open(OnFocusedScreen)` | |
+| `timer:startUnderTray` (hidden) | Start Timer… | `picker::open(UnderTray)` (the tray) | |
+| `timer:stop` | Stop Timer | `timers::commands::stop` | while a timer runs (`timers::runs`) |
+| `timer:toggle` | Start or Stop Timer | stops the timer, else opens the picker | |
+| `tracker:pause:<15\|60\|tomorrow\|resumed>` (family) | Pause Tracking | `Tracker::pause`; another argument is `invalid_input` | while tracking (not paused) |
+| `tracker:resume` | Resume Tracking | `Tracker::resume` | while paused |
+| `page:<id>` (hidden family) | Window Action | `window::run_page_command`: `page_command` with `id` to the window `menu::sync::page_target` names | as that window's `menu_sync` report lists `id` (before any report: enabled) |
+
+What depends on the view, the selection or the focus stays a page command (`src/commands`), reached as
+`page:<id>`. The checks read state that changes elsewhere, so those places refresh the menu
+(`menu::refresh`): `commands::settings_saved` (Launch at Login), `timers::publish` (a timer starts or stops),
+`tracker::task::forward_statuses` (pausing or resuming).
+
+To add an app command: register it in the feature's `register` (or `bus/commands.rs`), add its menu item to
+`MENUS` if it has one, a binding proxy in `src/commands/busCommands.ts` when it takes a key, and list it here and
+in [ux.md](ux.md#keys).
+
 ## Native menu
 
 `menu/` builds the menu bar: TimeTracker (About, Settings…, Launch at Login, Show Welcome Again, Services,
-Hide, Hide Others, Show All, Quit TimeTracker), File, Edit (Undo and Redo are app items; Cut, Copy, Paste and
-Select All are native), View (ends with the native Enter Full Screen), Go, Day, Window (native Minimize, Zoom,
-Bring All to Front) and Help. [ux.md](ux.md#menu-bar) lists every item.
+Hide, Hide Others, Show All, Hide to Menu Bar, Quit TimeTracker), File, Edit (Undo and Redo are app items; Cut,
+Copy, Paste and Select All are native), View (ends with the native Enter Full Screen), Go, Day, Window (native
+Minimize, Zoom, Bring All to Front) and Help. [ux.md](ux.md#menu-bar) lists every item.
 
-- **Items.** `menu/items.rs` lists every item that runs an app command once in `MENU_ITEMS`
-  (`MenuItemDef`: id, label, default binding, `binding_of`, `check`). `build()` in `menu/mod.rs` places them
-  in groups of ids (`groups`). The TypeScript command with the same id has `menu: true` and the same default.
-- **Bindings.** An item shows `KeybindingsStore::menu_binding` of its command: the user override, else the
-  default (`menu::default_binding`). `binding_of` lets an item show another command's key: Record Selection
-  shows ↵ of `recording.open`, which records the selection (or edits the focused recording).
-  `label_and_accelerator` turns a binding with ⌘ or ⌃ (`keybindings::is_chord`) into an accelerator; any other
-  binding goes into the label (`Previous (P)`, `Delete Recording (⌫)`, `Move Recording to Previous Day (⌥←)`)
-  and is never an accelerator, because a bare-key or ⌥ accelerator would take its key from text fields; the
-  page's `handleKeydown` runs those keys. `keybindings::accelerator` converts to Tauri's form (`Mod` →
-  `CmdOrCtrl`, `-` → `Minus`, `=` → `Equal`, `+` → `Shift+Equal`). `set_keybindings` rebuilds the menu
-  (`menu::rebuild`). Two items may share an accelerator only when listed in `SHARED_ACCELERATORS` (New Project
-  and New Rule, both ⌘N): their scopes exclude each other, so at most one is enabled and macOS gives it the key.
-- **Enabled and checked.** The page reports `MenuState { enabled, checked }` (ids) through `menu_sync`
-  whenever it changes; `menu/sync.rs` keeps it in the managed `MenuSync` and applies it to every listed item
-  (`item_state`): items missing from `enabled` are greyed out, check items show `checked` (the active view,
-  Launch at Login). Before the first report every item is enabled; `app.quit` and `app.background` always are.
-  `rebuild` builds with the last report.
-- **Clicks.** `menu::forward`: `app.quit` exits and `app.background` hides to the menu bar right there, so both
-  work even when the page is broken;
-  every other listed id is emitted as `command` (`is_menu_command` filters out the native items). A click on
-  a check item re-applies the last report first, since macOS toggles the mark itself; the page's next report
-  sets it.
-- **README.** Help → README calls `open_readme` (`help.rs`): the `README.md` bundled as a resource
+- **Items.** `menu/items.rs` holds one table, `MENUS`: each `MenuDef { title, groups }` lists groups of `Item {
+  label, command, default_binding, binding_of, check }` in menu order. An item's id is its `command`, a bus id:
+  an app command (`app:settings`) or `page:<id>`, whose TypeScript command has `menu: true` and the same default.
+  `menu/build.rs` builds the bar from it (`build`), with separators between groups and macOS's items placed
+  around the app menu's and the Edit menu's groups (`app_submenu`, `edit_submenu`); an item whose command the
+  bus doesn't know is left out with a warning.
+- **Bindings.** An item shows `KeybindingsStore::menu_binding(binding_key(item))`: the user override, else
+  `menu::default_binding`. `binding_key` is the page command's id for a `page:` item (`recording.create`), the
+  bus id otherwise (`app:settings`); `binding_of` borrows another command's key: Record Selection shows ↵ of
+  `recording.open`. `label_and_accelerator` turns a binding with ⌘ or ⌃ (`keybindings::is_chord`) into an
+  accelerator; any other binding goes into the label (`Previous (P)`, `Delete Recording (⌫)`) and is never an
+  accelerator, because a bare-key or ⌥ accelerator would take its key from text fields; the page's
+  `handleKeydown` runs those keys. `keybindings::accelerator` converts to Tauri's form (`Mod` → `CmdOrCtrl`,
+  `-` → `Minus`, `=` → `Equal`, `+` → `Shift+Equal`). `set_keybindings` rebuilds the menu (`menu::rebuild`).
+  Two items may share an accelerator only when listed in `SHARED_ACCELERATORS` (New Project, New Tag and New
+  Rule, all ⌘N): their scopes exclude each other, so at most one is enabled and macOS gives it the key.
+  `keybindings::RENAMED` moves overrides stored under the ids the commands had before the bus
+  (`settings.toggle` → `app:settings`, `window.hide` → `window:close`, …) when the file is read.
+- **Enabled and checked.** Each window's page reports `MenuState { enabled, checked }` (its page command ids)
+  through `menu_sync`; `menu/sync.rs` keeps the reports in the managed `MenuSync` by window label, with the
+  window in front (`focus_changed`). `page_target` is the focused window when it reports, else `main`;
+  `page_item` reads that report (`item_state`: missing from `enabled` is greyed, `checked` is checked; before
+  the first report every item is enabled). `apply` sets every item as the bus says (`is_enabled`,
+  `is_checked`), after each report, each focus change and each `menu::refresh`.
+- **Clicks.** `menu::clicked`: a known id runs on the bus (`bus::spawn`); others (macOS's items, the tray's
+  recent timers) are ignored. A click on a check item re-applies first, since macOS toggles the mark itself.
+- **Palette.** `menu/palette.rs`: `menu_commands` lists the items for the palette ([ADR
+  0039](adr/0039-the-palette-runs-the-menus.md), `listed`), `command_list` the visible bus commands and the
+  `page:` items for `timetracker commands`.
+- **README.** Help → README runs `app:readme` (`help::open_readme`): the `README.md` bundled as a resource
   (`bundle.resources` in `tauri.conf.json`), else in debug builds the repository's, opened in the default app.
 
-To add a menu item: add the TypeScript command with `menu: true` (and `checked` for a check item), add the id,
-label and default to `MENU_ITEMS`, place it in `build()`, and list it in [ux.md](ux.md#menu-bar).
+To add a menu item: add its `Item` to `MENUS` (a page command also gets `menu: true`, its default binding and
+`checked` for a check item in `src/commands`; an app command its bus registration), and list it in
+[ux.md](ux.md#menu-bar).
 
 ## Dependencies
 

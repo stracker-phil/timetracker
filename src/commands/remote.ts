@@ -1,11 +1,24 @@
-/** Answers requests from other processes (`timetracker show`) that only the page can answer. */
+/** Answers requests from other processes (`timetracker show`, `timetracker run page:<id>`) that only the page
+ *  can answer. */
 import { api, toAppError, type RemoteEvent, type RemoteRequest } from "../api";
 import { useStore } from "../state/store";
+import { canRunFromMenu } from "./pageCommands";
+import { getCommand } from "./registry";
+
+function runPageCommand(id: string) {
+  const command = getCommand(id);
+  if (!command?.menu) throw new Error(`Unknown command “page:${id}”.`);
+  if (!canRunFromMenu(command)) throw new Error(`“page:${id}” isn't available right now.`);
+  void command.run();
+}
 
 function handle(request: RemoteRequest): unknown {
   switch (request.type) {
     case "showDay":
       useStore.getState().goToDay(request.day);
+      return null;
+    case "runCommand":
+      runPageCommand(request.id);
       return null;
     default:
       throw new Error(`Unknown request ${JSON.stringify(request)}`);

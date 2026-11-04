@@ -47,3 +47,5 @@ stands in TimeTracker. The numbers in this table are TimeTracker's.
 | [0035](0035-appearance-keeps-schemes-and-an-accent.md) | Appearance keeps a scheme per mode and an accent | Accepted (2026-11-04) |
 | [0036](0036-the-status-bar-stays.md) | The status bar stays | Accepted (2026-11-04) |
 | [0037](0037-menus-are-drawn-in-the-page.md) | Menus are drawn in the page | Accepted (2026-11-04), implemented |
+| [0038](0038-app-commands-live-in-a-rust-bus.md) | App commands live in a Rust bus | Accepted (2026-11-04), implemented |
+| [0039](0039-the-palette-runs-the-menus.md) | The palette runs the menus | Accepted (2026-11-04), implemented |

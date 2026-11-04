@@ -28,6 +28,10 @@ pub enum LaunchEvent {
     ShowDay {
         day: Day,
     },
+    /// Run one of the page's own commands (a `command/page:<id>` link), when it can run.
+    Command {
+        id: String,
+    },
 }
 
 #[derive(Default)]
@@ -43,6 +47,10 @@ impl LaunchQueue {
             IpcMessage::Activate { hidden: false } => LaunchEvent::Activate,
             IpcMessage::Show { day, .. } => LaunchEvent::ShowDay {
                 day: day.unwrap_or_else(Day::today),
+            },
+            IpcMessage::Run { id } => match id.strip_prefix(crate::bus::PAGE_PREFIX) {
+                Some(page) => LaunchEvent::Command { id: page.into() },
+                None => return false,
             },
             _ => return false,
         };
@@ -144,10 +152,10 @@ mod tests {
     fn messages_for_the_cli_only_produce_no_event() {
         let messages = [
             IpcMessage::Hide,
-            IpcMessage::Settings { page: None },
-            IpcMessage::Settings {
-                page: Some("capture".into()),
+            IpcMessage::Run {
+                id: "app:settings:capture".into(),
             },
+            IpcMessage::Commands,
             IpcMessage::Quit,
             IpcMessage::Status,
             IpcMessage::Resume,
@@ -165,6 +173,40 @@ mod tests {
             assert!(!queue.push(message.clone()), "{message:?}");
             assert_eq!(queue.take_events(), vec![], "{message:?}");
         }
+    }
+
+    #[test]
+    fn running_a_page_command_becomes_a_command_event_without_the_prefix() {
+        let queue = LaunchQueue::default();
+        assert!(queue.push(IpcMessage::Run {
+            id: "page:view.week".into()
+        }));
+        assert_eq!(
+            queue.take_events(),
+            vec![LaunchEvent::Command {
+                id: "view.week".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn running_a_bus_command_produces_no_event() {
+        for id in ["app:settings", "timer:stop", "tracker:pause:60"] {
+            let queue = LaunchQueue::default();
+            assert!(!queue.push(IpcMessage::Run { id: id.into() }), "{id}");
+            assert_eq!(queue.take_events(), vec![], "{id}");
+        }
+    }
+
+    #[test]
+    fn command_event_serializes_with_a_type_tag_and_the_id() {
+        assert_eq!(
+            serde_json::to_value(LaunchEvent::Command {
+                id: "view.week".into()
+            })
+            .unwrap(),
+            serde_json::json!({ "type": "command", "id": "view.week" })
+        );
     }
 
     #[test]

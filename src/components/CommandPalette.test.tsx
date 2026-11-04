@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Sun } from "lucide-react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,13 +6,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api, type DateJump } from "../api";
-import { installCommands } from "../commands";
+import { installCommands, runCommand } from "../commands";
 import { registerSettingsPage } from "../registry/settingsPages";
 import { resetStore, useStore, type Store } from "../state/store";
+import { trackerStatus } from "../test/data";
+import { menuCommand, menuCommands } from "../test/menuFixtures";
 import { client, projectItem, projectsStore } from "../test/projectFixtures";
 import { savedReport } from "../test/reportFixtures";
 import { CommandPalette } from "./CommandPalette";
 import { Dialogs } from "./Dialogs";
+import { TrackerLine } from "./TrackerStatus";
 
 const mocked = vi.mocked(api, true);
 
@@ -27,8 +30,9 @@ const weekly = savedReport({ id: "s1", name: "Weekly" });
 
 const today: DateJump = { name: "Today", unit: "day", from: "2026-03-10", to: "2026-03-10", label: "Tue, Mar 10" };
 
+/** Opens the palette the way ⌘K does, which notes what the page can run before the sheet covers it. */
 async function openPalette(query = "", patch: Partial<Store> = {}) {
-  resetStore({ ...projectsStore({ projects: [promo, solo, archived], clients: [acme, oldClient] }), paletteOpen: true, view: "projects", ...patch });
+  resetStore({ ...projectsStore({ projects: [promo, solo, archived], clients: [acme, oldClient] }), paletteOpen: false, view: "projects", ...patch });
   installCommands();
   render(
     <>
@@ -36,18 +40,25 @@ async function openPalette(query = "", patch: Partial<Store> = {}) {
       <Dialogs />
     </>,
   );
-  const input = screen.getByLabelText("Search");
+  act(() => void runCommand("palette.toggle"));
+  const input = await screen.findByLabelText("Search");
   if (query) await userEvent.type(input, query);
 }
 
 const options = () => screen.queryAllByRole("option").map((o) => o.textContent ?? "");
-const indexOfOption = (pattern: RegExp) => options().findIndex((t) => pattern.test(t));
+/** Waits until Rust's menu list reached the palette, for the tests that expect an item to be absent. */
+async function menusLoaded() {
+  await vi.waitFor(() => expect(mocked.menuCommands).toHaveBeenCalled());
+  await act(async () => {});
+}
+const indexOfOption =(pattern: RegExp) => options().findIndex((t) => pattern.test(t));
 const choose = (query: string, patch: Partial<Store> = {}) => openPalette(query, patch).then(() => userEvent.keyboard("{Enter}"));
 
 describe("CommandPalette", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocked.calendarJumps.mockResolvedValue([]);
+    mocked.menuCommands.mockResolvedValue(menuCommands());
   });
 
   describe("with nothing typed", () => {
@@ -93,8 +104,9 @@ describe("CommandPalette", () => {
   describe("ranking", () => {
     it("lists the sections by their best match", async () => {
       await openPalette("rep", { view: "reports", savedReports: [savedReport({ id: "s2", name: "Prepare" })] });
+      await screen.findByRole("option", { name: /^Copy Report as Text/ });
       const reports = indexOfOption(/^Reports/);
-      const copy = indexOfOption(/^Copy report as text/);
+      const copy = indexOfOption(/^Copy Report as Text/);
       const prepare = indexOfOption(/^Prepare/);
       expect(reports).toBeGreaterThanOrEqual(0);
       expect(copy).toBeGreaterThan(reports);
@@ -172,10 +184,29 @@ describe("CommandPalette", () => {
       expect(useStore.getState().paletteOpen).toBe(false);
     });
 
-    it("runs the command", async () => {
-      await choose(">new project");
+    it("runs a page command of the menus directly", async () => {
+      await openPalette(">new project");
+      await screen.findByRole("option", { name: /^New Project…/ });
+      await userEvent.keyboard("{Enter}");
       expect(await screen.findByRole("dialog", { name: "New project" })).toBeInTheDocument();
       expect(useStore.getState().paletteOpen).toBe(false);
+      expect(mocked.runCommand).not.toHaveBeenCalled();
+    });
+
+    it("asks the bus to run an app item of the menus and closes", async () => {
+      await openPalette(">start timer");
+      await screen.findByRole("option", { name: /^Start Timer…/ });
+      await userEvent.keyboard("{Enter}");
+      expect(mocked.runCommand).toHaveBeenCalledWith("timer:start");
+      expect(useStore.getState().paletteOpen).toBe(false);
+    });
+
+    it("shows a toast when the bus refuses an app item", async () => {
+      mocked.runCommand.mockRejectedValueOnce({ kind: "invalid_input", message: "No timer runs", code: null });
+      await openPalette(">start timer");
+      await screen.findByRole("option", { name: /^Start Timer…/ });
+      await userEvent.keyboard("{Enter}");
+      await vi.waitFor(() => expect(useStore.getState().toasts.map((t) => t.message)).toEqual(["Couldn't run Start Timer…: No timer runs"]));
     });
 
     it("chooses the row that is clicked", async () => {
@@ -206,12 +237,114 @@ describe("CommandPalette", () => {
     });
   });
 
+  describe("menu commands", () => {
+    it("lists the items of the menus with their keys, in menu order, under the menus' titles", async () => {
+      await openPalette(">");
+      await screen.findByRole("option", { name: /^Settings…/ });
+      expect(options()).toEqual(["Settings…⌘,", "Start Timer…⌘T", "New Project…⌘N", "Day⌘1", "Week⌘2", "Zoom In⌘=", "Zoom Out⌘-", "Reset Zoom⌘0"]);
+      ["TimeTracker", "File", "View"].forEach((menu) => expect(screen.getByText(menu)).toBeInTheDocument());
+    });
+
+    it("matches an item by its label", async () => {
+      await openPalette("zoom");
+      await screen.findByRole("option", { name: /^Zoom In/ });
+      expect(options()).toEqual(["Zoom In⌘=", "Zoom Out⌘-", "Reset Zoom⌘0"]);
+    });
+
+    it("shows nothing of the menus while nothing is typed", async () => {
+      await openPalette();
+      await menusLoaded();
+      expect(indexOfOption(/^Start Timer…/)).toBe(-1);
+      expect(screen.queryByText("File")).not.toBeInTheDocument();
+    });
+
+    it("leaves a page item out when its command could not run as the palette opened", async () => {
+      await openPalette(">new", { view: "projects" });
+      await screen.findByRole("option", { name: /^New Project…/ });
+      expect(indexOfOption(/^New Rule…/)).toBe(-1);
+    });
+
+    it("lists a page item once its command can run", async () => {
+      await openPalette(">new", { view: "rules" });
+      await screen.findByRole("option", { name: /^New Rule…/ });
+      expect(indexOfOption(/^New Project…/)).toBe(-1);
+    });
+
+    it("lists app items whatever the page shows", async () => {
+      await openPalette(">timer", { view: "rules" });
+      expect(await screen.findByRole("option", { name: /^Start Timer…/ })).toBeInTheDocument();
+    });
+
+    it("leaves the views to Go to without >", async () => {
+      await openPalette("week");
+      await menusLoaded();
+      expect(options().filter((o) => /^Week/.test(o))).toHaveLength(1);
+      expect(screen.queryByText("View")).not.toBeInTheDocument();
+    });
+
+    it("lists the views under the View menu after >", async () => {
+      await openPalette(">week");
+      expect(await screen.findByRole("option", { name: /^Week/ })).toBeInTheDocument();
+      expect(screen.getByText("View")).toBeInTheDocument();
+      expect(screen.queryByText("Go to")).not.toBeInTheDocument();
+    });
+
+    it("leaves out a page item whose command the page does not have", async () => {
+      mocked.menuCommands.mockResolvedValue([menuCommand({ menu: "File", label: "Ghost", command: "page:ghost.command" })]);
+      await openPalette(">ghost");
+      await menusLoaded();
+      expect(screen.getByText("No matches.")).toBeInTheDocument();
+    });
+
+    it("shows a toast when Rust cannot list the commands", async () => {
+      mocked.menuCommands.mockRejectedValue({ kind: "io", message: "No menus", code: null });
+      await openPalette(">");
+      await vi.waitFor(() => expect(useStore.getState().toasts.map((t) => t.message)).toEqual(["Couldn't list the commands: No menus"]));
+    });
+  });
+
+  describe("menus on screen", () => {
+    const running = trackerStatus();
+    const paused = trackerStatus({ state: { kind: "paused", until: null }, text: "Paused" });
+
+    /** The tracker line offers its Pause menu while the tracker runs. */
+    function mountTrackerLine() {
+      resetStore({ tracker: running });
+      return render(<TrackerLine />);
+    }
+
+    it("lists the rows of a mounted menu under its section, and runs the chosen one", async () => {
+      mountTrackerLine();
+      await openPalette("pause", { tracker: running });
+      const row = await screen.findByRole("option", { name: /^Pause tracking: For 1 hour/ });
+      expect(within(screen.getByRole("listbox", { name: "Results" })).getByText("Tracking")).toBeInTheDocument();
+      await userEvent.click(row);
+      expect(mocked.trackerPause).toHaveBeenCalledWith({ minutes: 60 });
+      expect(useStore.getState().paletteOpen).toBe(false);
+    });
+
+    it("lists no rows once the menu unmounted", async () => {
+      mountTrackerLine().unmount();
+      await openPalette("pause", { tracker: running });
+      await menusLoaded();
+      expect(indexOfOption(/^Pause tracking:/)).toBe(-1);
+    });
+
+    it("lists no rows while the tracker is paused", async () => {
+      mountTrackerLine();
+      act(() => resetStore({ tracker: paused }));
+      await openPalette("pause", { tracker: paused });
+      await menusLoaded();
+      expect(indexOfOption(/^Pause tracking:/)).toBe(-1);
+    });
+  });
+
   describe("prefixes", () => {
     it("lists only commands after >, the views' commands included", async () => {
       await openPalette(">", { recent: [promo.project], savedReports: [weekly] });
-      expect(indexOfOption(/^Show Week/i)).toBeGreaterThanOrEqual(0);
-      expect(indexOfOption(/^Show Hours/)).toBe(-1);
-      expect(indexOfOption(/^New project/)).toBeGreaterThanOrEqual(0);
+      await screen.findByRole("option", { name: /^Week/ });
+      expect(indexOfOption(/^Hours/)).toBe(-1);
+      expect(indexOfOption(/^New Project…/)).toBeGreaterThanOrEqual(0);
       ["Go to", "Recent projects", "Projects", "Saved reports"].forEach((name) => expect(screen.queryByText(name)).not.toBeInTheDocument());
     });
 

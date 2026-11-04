@@ -112,6 +112,8 @@ reports can be saved under a name and sit under Reports in the sidebar.
 | `timetracker timer update [--project P] [--note N] [--tag T\|--no-tag]` | changes the running timer in place |
 | `timetracker timer pick` | opens the timer picker (the timer shortcut's, ⌘F4 by default) on the focused screen; the main window stays hidden |
 | `timetracker timer recent [--limit N] [--json]` | the menu bar's Recent Timers (default 8, at most 100): the latest distinct project, note and tag of the recordings, newest first, archived projects left out; `--json` is `[{ projectId, project, client, tagId, tag, note, lastUsedAt }]` (`lastUsedAt`: where its latest span starts, ms) |
+| `timetracker commands [--json]` | lists every command `run` takes: the app's (`app:settings`, `timer:stop`, `tracker:pause:<15\|60\|tomorrow\|resumed>` …) and the menu items for the window's own (`page:view.week  View → Week`) |
+| `timetracker run ID` | runs a command as its menu item does: `run app:settings:capture` opens Settings at Capture, `run page:view.week` shows the Week view; refused when it can't run now (`timer:stop` without a timer) |
 | `timetracker watch [--json]` | prints the timer and the tracker, then one line per change until TimeTracker quits, see [Watching for changes](#watching-for-changes) |
 | `timetracker mcp` | serves the MCP server on stdin/stdout, see [MCP](#mcp) |
 | `timetracker dev seed [--years N \| --showcase] [--yes]` | debug builds only: writes N years (default 2) of generated workdays, or the small made-up history of the screenshots, into the running app's database ([docs/testing.md](docs/testing.md#sample-data)) |
@@ -192,7 +194,10 @@ done
 
 `--json` on `activity add` reads an array of `{ source, title, start, end, app?, url?, path? }` from stdin,
 with times in UTC milliseconds. Links also take `timetracker://show?day=…`, `timetracker://activity/start?…`
-and `timetracker://activity/stop?source=…`, and `timetracker://command/app:settings:capture` opens Settings at a page; encode a `+` in a time offset as `%2B`. The protocol behind the
+and `timetracker://activity/stop?source=…`, and `timetracker://command/<id>` runs one of a few commands:
+`app:show`, `app:settings` and `app:settings:<page>` (`…/command/app:settings:capture` opens Settings at
+Capture), `timer:start`, `timer:stop`, `tracker:pause:<15|60|tomorrow|resumed>`, `tracker:resume`,
+`page:view.<day|week|month|reports|projects|tags|rules>` and `page:nav.today`; encode a `+` in a time offset as `%2B`. The protocol behind the
 CLI is in [docs/backend.md](docs/backend.md#cli-and-single-instance-handoff).
 
 ## MCP

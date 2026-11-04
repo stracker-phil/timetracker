@@ -3,9 +3,9 @@ pub mod settings;
 
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
-use crate::events::{COMMAND_EVENT, WINDOW_OPENED_EVENT};
+use crate::events::{PAGE_COMMAND_EVENT, WINDOW_OPENED_EVENT};
 
-const MAIN: &str = "main";
+pub const MAIN: &str = "main";
 
 /// Skipped with `TIMETRACKER_BACKGROUND=1` in debug builds so scripts/dev never steal focus.
 pub fn bring_to_front(app: &AppHandle) {
@@ -89,11 +89,21 @@ fn set_dock_icon(app: &AppHandle, shown: bool) {
     }
 }
 
-/// Shows the main window and runs one of its page commands there (`COMMAND_EVENT`).
+/// Shows the main window and runs one of its page commands there (`PAGE_COMMAND_EVENT`).
 pub fn run_in_main(app: &AppHandle, command: &str) {
     show_main(app);
-    if let Err(e) = app.emit_to(MAIN, COMMAND_EVENT, command) {
-        log::warn!("Couldn't run {command} in the main window: {e}");
+    emit_page_command(app, MAIN, command);
+}
+
+/// Runs a page command (`page:<id>` from the menus) in the window whose report the menu shows: the
+/// focused one, else the main window (`menu::sync::page_target`).
+pub fn run_page_command(app: &AppHandle, command: &str) {
+    emit_page_command(app, &crate::menu::sync::page_target(app), command);
+}
+
+fn emit_page_command(app: &AppHandle, label: &str, command: &str) {
+    if let Err(e) = app.emit_to(label, PAGE_COMMAND_EVENT, command) {
+        log::warn!("Couldn't run {command} in the {label} window: {e}");
     }
 }
 

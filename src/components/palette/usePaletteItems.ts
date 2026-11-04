@@ -1,16 +1,18 @@
-import { api, type Client, type DateJump, type Keybindings, type PeriodUnit, type Project, type ProjectListItem, type SavedReport } from "../../api";
-import { activeScopes, allCommands, bindingFor, bindingLabel } from "../../commands";
+import { api, type Client, type DateJump, type Keybindings, type MenuCommand, type PeriodUnit, type Project, type ProjectListItem, type SavedReport } from "../../api";
+import { bindingFor, bindingLabel, getCommand, paletteCanRun } from "../../commands";
+import { useApiResult } from "../../lib/useApiResult";
 import { settingsPages, useSettingsPagesVersion } from "../../registry/settingsPages";
 import { fail } from "../../state/requests";
 import { projectLabel } from "../../state/slices/projects";
 import { useStore, type View } from "../../state/store";
 import { VIEWS } from "../views";
+import { paletteMenuItems } from "./menus";
 import { fuzzyScore, parsePrefix, score, type Prefix } from "./parse";
 import { useDateJumps } from "./useDateJumps";
 
 export interface Item {
   key: string;
-  /** Go to, Settings, Recent projects, Projects, Clients, Saved reports or Commands. */
+  /** Go to, Settings, Recent projects, Projects, Clients, Saved reports, a menu's title or a menu on screen's. */
   section: string;
   title: string;
   subtitle?: string;
@@ -139,22 +141,35 @@ function savedItems(saved: SavedReport[], prefix: Prefix, needle: string): Item[
   }));
 }
 
-/** The active scopes' enabled commands; without `>` the views' commands are left to the views above. */
-function commandItems(custom: Keybindings, prefix: Prefix, needle: string): Item[] {
+const PAGE = "page:";
+
+/** Takes the focus off the palette's field first, so a command reading the focus (Undo) acts on the page. */
+function runMenuItem(command: string, label: string) {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  if (command.startsWith(PAGE)) return void getCommand(command.slice(PAGE.length))?.run();
+  void api.runCommand(command).catch((e) => fail(e, `Couldn't run ${label}`));
+}
+
+/** The menus' items (ADR 0039) under their menus' titles, then the rows of the menus on screen; a page item only when
+ *  its command could run as the palette opened. Without `>` the views are left to Go to, and nothing shows before
+ *  something is typed. */
+function menuItems(commands: MenuCommand[], prefix: Prefix, needle: string): Item[][] {
   const listed = prefix === ">" || (prefix === null && needle !== "");
   if (!listed) return [];
-  const scopes = activeScopes();
-  return allCommands()
-    .filter((c) => c.id !== "palette.toggle" && scopes.includes(c.scope) && (c.when?.() ?? true))
-    .filter((c) => prefix === ">" || !c.id.startsWith("view."))
-    .map((c) => ({
-      key: `cmd:${c.id}`,
-      section: "Commands",
-      title: c.title,
-      keys: bindingLabel(bindingFor(c.id, custom)),
-      rank: score([c.title], needle),
-      go: closeThen(() => void c.run()),
-    }));
+  const sections = new Map<string, Item[]>();
+  const add = (item: Item) => {
+    const list = sections.get(item.section) ?? [];
+    list.push(item);
+    sections.set(item.section, list);
+  };
+  for (const c of commands) {
+    const page = c.command.startsWith(PAGE) ? c.command.slice(PAGE.length) : null;
+    if (page !== null && !paletteCanRun(page)) continue;
+    if (prefix !== ">" && page?.startsWith("view.")) continue;
+    add({ key: `cmd:${c.command}`, section: c.menu, title: c.label, keys: c.keys ?? undefined, rank: score([c.label], needle), go: closeThen(() => runMenuItem(c.command, c.label)) });
+  }
+  for (const row of paletteMenuItems()) add({ key: row.key, section: row.section, title: row.title, rank: score([row.title], needle), go: closeThen(row.run) });
+  return [...sections.values()];
 }
 
 /** Each section's matches best first, the sections by their best match; ties keep the providers' order. */
@@ -177,6 +192,8 @@ export function usePaletteItems(query: string) {
   useSettingsPagesVersion();
   const { prefix, needle } = parsePrefix(query);
   const jumps = useDateJumps(prefix, needle);
+  // Asked once per opening: what the menus hold doesn't change while the palette covers the page.
+  const { data: commands } = useApiResult("menuCommands", api.menuCommands, { onError: (e) => fail(e, "Couldn't list the commands") });
   const goTo = [...viewItems(custom, prefix, needle), ...dateItems(jumps, needle)];
   const items = arrange([
     goTo,
@@ -184,7 +201,7 @@ export function usePaletteItems(query: string) {
     projectItems(projects, recent, prefix, needle),
     clientItems(clients, prefix, needle),
     savedItems(saved, prefix, needle),
-    commandItems(custom, prefix, needle),
+    ...menuItems(commands ?? [], prefix, needle),
   ]);
   return { items, prefix, needle };
 }

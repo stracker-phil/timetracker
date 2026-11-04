@@ -53,7 +53,13 @@ These rules hold everywhere in the code. Keep them when you change things.
 11. **Debug is a separate app on demo data** ([ADR 0031](adr/0031-the-debug-build-runs-on-demo-data.md)):
     its own identifier, scheme and data folder, made-up capture and the showcase. Nothing in the repo
     carries real data ([`demo-data.md`](../.claude/rules/demo-data.md)).
-12. **The webview stays on the app's pages** ([ADR 0033](adr/0033-hardened-runtime-strict-csp-and-no-navigation.md)):
+12. **Commands live in Rust** ([ADR 0038](adr/0038-app-commands-live-in-a-rust-bus.md),
+    [ADR 0039](adr/0039-the-palette-runs-the-menus.md)). Every app-level action is a bus command with a colon
+    id (`app:settings`, `timer:stop`, `bus/`), registered by its feature; the menu bar, the tray, the page,
+    links and `timetracker run` run it by id. What depends on the view, the selection or the focus stays a page
+    command, reached from Rust as `page:<id>`. The menus are one table (`menu/items.rs` `MENUS`), and the
+    palette lists that table.
+13. **The webview stays on the app's pages** ([ADR 0033](adr/0033-hardened-runtime-strict-csp-and-no-navigation.md)):
     a strict CSP, a navigation guard on every window and the hardened runtime, because the page shows
     window titles and addresses it doesn't control.
 
@@ -157,9 +163,11 @@ Recording an hour of activity:
   without showing the window.
 - **Launch requests are pulled, not pushed.** Rust queues launch events and emits a bare `launch` event;
   the page calls `take_launch_events`, so it can't miss the request that started the app.
-- **The native menu and the tray emit `command` events** carrying a command id. The page runs that id
-  through the same registry that handles shortcuts and the palette. The page reports back which menu items
-  can run and which are checked (`menu_sync`), so Rust greys them out.
+- **Menu, tray, links and `timetracker run` run bus commands** (`bus/`, [backend: command
+  bus](backend.md#command-bus)): an item's id is the command it runs. App commands run in Rust; a `page:<id>`
+  item emits `page_command` to the focused window (else the main window), whose page runs `id` through the
+  same registry that handles its keys. Each page reports which of its menu commands can run and which are
+  checked (`menu_sync`), and the menu shows the report of the window in front.
 - **Data changes** are announced with `data_changed { kind, day }`; views showing that day reload. Other
   apps get them, the timer and the tracker over the socket with `timetracker watch`
   ([backend: watching](backend.md#watching), [ADR 0029](adr/0029-other-apps-may-subscribe-over-the-socket.md)).
@@ -186,7 +194,8 @@ src-tauri/
   src/store/                 JsonFile, JsonStore, settings/, keybindings.rs, ui_state.rs
   src/commands.rs            settings, keybindings, ui state, misc; feature commands sit in their module
   src/tray.rs window/ deep_link.rs   tray, window helpers, timetracker:// links
-  src/menu/                  native menu: items.rs (MENU_ITEMS), mod.rs (build, forward), sync.rs (enabled and checked items)
+  src/bus/                   command bus: mod.rs (CommandBus, families), command.rs (builder), commands.rs (app commands, page:), app.rs (host, run_command)
+  src/menu/                  native menu: items.rs (MENUS), build.rs, sync.rs (each window's report), palette.rs (menu_commands, command list)
   src/help.rs                Help menu targets outside the app (the README)
   src/dev.rs                 debug builds only: window frame, background launch, eval, dev seed
   src/test_support/          test helpers behind cfg(test) / feature test-util; seed.rs and showcase/ also in debug builds
@@ -202,7 +211,7 @@ src/
   main.tsx modules.ts App.tsx
   api/index.ts types.gen.ts types.ts
   state/store.ts requests.ts slices/
-  commands/                  registry, scopes, index (APP_COMMANDS)
+  commands/                  registry, scopes, index (APP_COMMANDS), pageCommands (page:<id>), busCommands (keys of bus commands)
   components/                shell: Toolbar, Sidebar, StatusBar, Modal, CommandPalette, Dialogs, settings/
   registry/settingsPages.ts
   lib/ styles/ test/

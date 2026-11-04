@@ -9,8 +9,9 @@ use crate::watch;
 
 /// No payload; the page then calls `take_launch_events`.
 pub const LAUNCH_EVENT: &str = "launch";
-/// Payload: a command id.
-pub const COMMAND_EVENT: &str = "command";
+/// To the focused window (else the main window). Payload: the id of one of the page's own commands
+/// (`page:<id>` without its prefix).
+pub const PAGE_COMMAND_EVENT: &str = "page_command";
 /// Payload: a `RemoteEvent`.
 pub const REMOTE_EVENT: &str = "remote";
 /// Payload: a `TrackerStatus`.

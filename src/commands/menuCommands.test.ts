@@ -4,7 +4,6 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api, EMPTY_UI_STATE } from "../api";
 import { resetStore, useStore } from "../state/store";
-import { dataInfo } from "../test/data";
 import { at, DAY, dayView } from "../test/dayFixtures";
 import { storedSuggestion, suggestion } from "../test/ruleFixtures";
 import { settings } from "../test/settings";
@@ -186,29 +185,6 @@ describe("suggestion commands", () => {
   });
 });
 
-describe("app.launchAtLogin", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resetStore();
-    installCommands();
-  });
-
-  it.each([
-    [false, true],
-    [true, false],
-  ])("turns launch at login from %s to %s", async (current, next) => {
-    resetStore({ settings: settings({ launchAtLogin: current }) });
-    expect(runCommand("app.launchAtLogin")).toBe(true);
-    await vi.waitFor(() => expect(mocked.autostartSet).toHaveBeenCalledWith(next));
-    await vi.waitFor(() => expect(state().settings?.launchAtLogin).toBe(next));
-  });
-
-  it("does not run before the settings are loaded", () => {
-    expect(runCommand("app.launchAtLogin")).toBe(false);
-    expect(mocked.autostartSet).not.toHaveBeenCalled();
-  });
-});
-
 describe("welcome.show", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -222,14 +198,14 @@ describe("welcome.show", () => {
   });
 });
 
-describe("data and help commands", () => {
+describe("data.exportBackup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetStore();
     installCommands();
   });
 
-  it("data.exportBackup writes the backup to the chosen path and confirms with a toast", async () => {
+  it("writes the backup to the chosen path and confirms with a toast", async () => {
     mocked.chooseSavePath.mockResolvedValue("/tmp/backup.json");
     mocked.backupExport.mockResolvedValue({ bytes: 10, recordings: 3, activities: 40 });
     expect(runCommand("data.exportBackup")).toBe(true);
@@ -237,35 +213,13 @@ describe("data and help commands", () => {
     await vi.waitFor(() => expect(state().toasts.map((t) => t.message)).toEqual(["Backup written: 3 recordings, 40 activities"]));
   });
 
-  it("data.exportBackup writes nothing when the save panel is cancelled", async () => {
+  it("writes nothing when the save panel is cancelled", async () => {
     mocked.chooseSavePath.mockResolvedValue(null);
     runCommand("data.exportBackup");
     await vi.waitFor(() => expect(mocked.chooseSavePath).toHaveBeenCalled());
     expect(mocked.backupExport).not.toHaveBeenCalled();
   });
 
-  it("data.reveal shows the database file in Finder", async () => {
-    mocked.dataInfo.mockResolvedValue(dataInfo({ file: "/data/dir/timetracker.sqlite" }));
-    expect(runCommand("data.reveal")).toBe(true);
-    await vi.waitFor(() => expect(mocked.revealPath).toHaveBeenCalledWith("/data/dir/timetracker.sqlite"));
-  });
-
-  it("data.reveal reports a failure", async () => {
-    mocked.revealPath.mockRejectedValueOnce({ kind: "io", message: "no Finder", code: null });
-    runCommand("data.reveal");
-    await vi.waitFor(() => expect(state().toasts.map((t) => t.message)).toEqual(["Couldn't reveal the folder: no Finder"]));
-  });
-
-  it("help.readme opens the README", async () => {
-    expect(runCommand("help.readme")).toBe(true);
-    await vi.waitFor(() => expect(mocked.openReadme).toHaveBeenCalled());
-  });
-
-  it("help.readme reports a failure", async () => {
-    mocked.openReadme.mockRejectedValueOnce({ kind: "not_found", message: "README is missing", code: null });
-    runCommand("help.readme");
-    await vi.waitFor(() => expect(state().toasts.map((t) => t.message)).toEqual(["Couldn't open the README: README is missing"]));
-  });
 });
 
 describe("edit.undo and edit.redo", () => {

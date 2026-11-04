@@ -1,36 +1,32 @@
 //! The menu bar item: the tracker's status line, the timer (its time and project as the item's title),
-//! Pause (or Resume), Open and Quit.
+//! Pause (or Resume), Open and Quit. Every item but the status line and the recent timers runs a bus
+//! command; its clicks reach `menu::clicked` like the menu bar's.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use tauri::image::Image;
 use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Wry};
 
-use crate::db::time::{format_duration, now_ms};
-use crate::error::AppResult;
+use crate::db::time::format_duration;
 use crate::lock::MutexExt;
 use crate::recordings::timer::TimerInput;
-use crate::timers::{self, RecentTimer, RunningTimer, picker};
-use crate::tracker::{PauseUntil, Tracker, TrackerState, TrackerStatus};
-use crate::window;
+use crate::timers::{self, RecentTimer, RunningTimer};
+use crate::tracker::{TrackerState, TrackerStatus};
 
 const TRAY_ID: &str = "main";
 const STATUS_ID: &str = "status";
-const RESUME_ID: &str = "resume";
-const OPEN_ID: &str = "open";
-const SETTINGS_ID: &str = "settings";
-const QUIT_ID: &str = "quit";
-const TIMER_START_ID: &str = "timer.start";
-const TIMER_STOP_ID: &str = "timer.stop";
+/// Tray-only items: the picker opens under the tray icon, the recent timers start a combination.
+const TIMER_START_ID: &str = "timer:startUnderTray";
 const TIMER_RECENT_PREFIX: &str = "timer.recent.";
 const TITLE_PROJECT_CHARS: usize = 24;
-const PAUSES: [(&str, &str, PauseUntil); 4] = [
-    ("pause-15", "For 15 Minutes", PauseUntil::Minutes(15)),
-    ("pause-60", "For 1 Hour", PauseUntil::Minutes(60)),
-    ("pause-tomorrow", "Until Tomorrow", PauseUntil::Tomorrow),
-    ("pause-resumed", "Until Resumed", PauseUntil::Resumed),
+/// The Pause Tracking submenu: the `tracker:pause:` family's lengths.
+const PAUSES: [(&str, &str); 4] = [
+    ("tracker:pause:15", "For 15 Minutes"),
+    ("tracker:pause:60", "For 1 Hour"),
+    ("tracker:pause:tomorrow", "Until Tomorrow"),
+    ("tracker:pause:resumed", "Until Resumed"),
 ];
 
 /// Template images: macOS tints them for the menu bar's appearance.
@@ -89,7 +85,8 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         .tooltip(crate::APP_NAME)
         .menu(&menu)
         .show_menu_on_left_click(true)
-        .on_menu_event(|app, event| on_menu_event(app, event.id().as_ref()))
+        // Called for every menu's clicks; the bus commands run from `menu::clicked`.
+        .on_menu_event(|app, event| start_recent(app, event.id().as_ref()))
         // The timer picker opens under the icon, so the positioner needs to know where it is.
         .on_tray_icon_event(|tray, event| {
             tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event)
@@ -195,7 +192,7 @@ fn build_menu(
             &MenuItem::with_id(app, TIMER_START_ID, "Start Timer…", true, None::<&str>)?,
             &MenuItem::with_id(
                 app,
-                TIMER_STOP_ID,
+                "timer:stop",
                 stop_label,
                 timer.running.is_some(),
                 None::<&str>,
@@ -204,10 +201,10 @@ fn build_menu(
             &PredefinedMenuItem::separator(app)?,
             pause_or_resume.as_ref(),
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, OPEN_ID, "Open TimeTracker", true, None::<&str>)?,
-            &MenuItem::with_id(app, SETTINGS_ID, "Settings…", true, None::<&str>)?,
+            &MenuItem::with_id(app, "app:show", "Open TimeTracker", true, None::<&str>)?,
+            &MenuItem::with_id(app, "app:settings", "Settings…", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, QUIT_ID, "Quit TimeTracker", true, None::<&str>)?,
+            &MenuItem::with_id(app, "app:quit", "Quit TimeTracker", true, None::<&str>)?,
         ],
     )?;
     Ok((menu, status))
@@ -243,7 +240,7 @@ fn pause_or_resume_item(
     Ok(if icon == TrayIcon::Paused {
         Box::new(MenuItem::with_id(
             app,
-            RESUME_ID,
+            "tracker:resume",
             "Resume Tracking",
             true,
             None::<&str>,
@@ -251,7 +248,7 @@ fn pause_or_resume_item(
     } else {
         let items = PAUSES
             .iter()
-            .map(|(id, label, _)| MenuItem::with_id(app, *id, *label, true, None::<&str>))
+            .map(|(id, label)| MenuItem::with_id(app, *id, *label, true, None::<&str>))
             .collect::<tauri::Result<Vec<_>>>()?;
         let refs: Vec<&dyn IsMenuItem<Wry>> =
             items.iter().map(|i| i as &dyn IsMenuItem<Wry>).collect();
@@ -259,77 +256,26 @@ fn pause_or_resume_item(
     })
 }
 
-fn on_menu_event(app: &AppHandle, id: &str) {
-    match id {
-        OPEN_ID => window::show_main(app),
-        SETTINGS_ID => window::settings::open(app, None),
-        QUIT_ID => app.exit(0),
-        RESUME_ID => resume(app),
-        TIMER_START_ID => picker::open(app, picker::Place::UnderTray),
-        TIMER_STOP_ID => stop_timer(app),
-        _ if id.starts_with(TIMER_RECENT_PREFIX) => start_recent(app, id),
-        _ => {
-            if let Some((_, _, until)) = PAUSES.iter().find(|(pause_id, ..)| *pause_id == id) {
-                pause(app, *until);
-            }
-        }
-    }
-}
-
-fn stop_timer(app: &AppHandle) {
-    let app = app.clone();
-    in_background("stop", async move {
-        timers::commands::stop(&app).await.map(drop)
-    });
-}
-
+/// A recent timer's item starts its project, note and tag again.
 fn start_recent(app: &AppHandle, id: &str) {
+    let Some(index) = id.strip_prefix(TIMER_RECENT_PREFIX) else {
+        return;
+    };
     let Some(handle) = app.try_state::<TrayHandle>() else {
         return;
     };
-    let index = id[TIMER_RECENT_PREFIX.len()..].parse::<usize>().ok();
-    let Some(recent) = index.and_then(|i| handle.0.lock_unpoisoned().timer.recent.get(i).cloned())
-    else {
+    let recent = index
+        .parse::<usize>()
+        .ok()
+        .and_then(|i| handle.0.lock_unpoisoned().timer.recent.get(i).cloned());
+    let Some(recent) = recent else {
         return;
     };
     let input = TimerInput::from(recent);
     let app = app.clone();
-    in_background("start", async move {
-        timers::commands::start(&app, input).await.map(drop)
-    });
-}
-
-/// Runs a timer change from a menu click; a failure is logged.
-fn in_background(what: &'static str, change: impl Future<Output = AppResult<()>> + Send + 'static) {
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = change.await {
-            log::warn!("Couldn't {what} the timer from the tray: {e}");
-        }
-    });
-}
-
-fn pause(app: &AppHandle, until: PauseUntil) {
-    with_tracker(app, move |tracker| async move {
-        tracker.pause(until, now_ms()).await
-    });
-}
-
-fn resume(app: &AppHandle) {
-    with_tracker(app, |tracker| async move { tracker.resume(now_ms()).await });
-}
-
-/// Runs `call` on the tracker in the background; without a tracker (no data store) nothing happens.
-fn with_tracker<F, Fut>(app: &AppHandle, call: F)
-where
-    F: FnOnce(Arc<Tracker>) -> Fut + Send + 'static,
-    Fut: Future<Output = AppResult<TrackerStatus>> + Send,
-{
-    let Some(tracker) = app.try_state::<Arc<Tracker>>().map(|t| t.inner().clone()) else {
-        return;
-    };
-    tauri::async_runtime::spawn(async move {
-        if let Err(e) = call(tracker).await {
-            log::warn!("Couldn't change the pause from the tray: {e}");
+        if let Err(e) = timers::commands::start(&app, input).await {
+            log::warn!("Couldn't start the timer from the tray: {e}");
         }
     });
 }

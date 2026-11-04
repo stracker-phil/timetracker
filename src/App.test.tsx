@@ -11,6 +11,7 @@ import { resetStore, useStore, type View } from "./state/store";
 import { activityRow, trackerStatus } from "./test/data";
 import { miniMonth } from "./test/calendarFixtures";
 import { dayView } from "./test/dayFixtures";
+import { menuCommands } from "./test/menuFixtures";
 import { projectItem, tag } from "./test/projectFixtures";
 import { savedReport } from "./test/reportFixtures";
 import { rule } from "./test/ruleFixtures";
@@ -33,7 +34,10 @@ const sidebarEntry = (name: string) => within(screen.getByRole("navigation", { n
 const sidebar = () => within(screen.getByRole("complementary", { name: "Sidebar" }));
 
 describe("App", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocked.menuCommands.mockResolvedValue(menuCommands());
+  });
 
   describe("shell", () => {
     it("shows the status bar and the Day view without a global title bar", async () => {
@@ -115,6 +119,39 @@ describe("App", () => {
       await renderApp({ view: "month" });
       await vi.waitFor(() => expect(mocked.dayView).toHaveBeenCalledWith("2026-10-20"));
       expect(mainHeading("Day")).toBeInTheDocument();
+    });
+
+    it("runs the page command of a command launch event", async () => {
+      mocked.takeLaunchEvents.mockResolvedValueOnce([{ type: "command", id: "view.week" }]);
+      await renderApp();
+      expect(await screen.findByRole("region", { name: "Week" })).toBeInTheDocument();
+    });
+
+    it("ignores a command launch event for an unknown command", async () => {
+      mocked.takeLaunchEvents.mockResolvedValueOnce([{ type: "command", id: "nothing.here" }]);
+      await renderApp();
+      expect(mainHeading("Day")).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("runs the page command Rust sends when it can run", async () => {
+      await renderApp();
+      act(() => mocked.onPageCommand.mock.calls[0][0]("view.projects"));
+      expect(await screen.findByRole("heading", { level: 1, name: "Projects" })).toBeInTheDocument();
+    });
+
+    it("ignores a page command that cannot run in the shown view", async () => {
+      await renderApp();
+      act(() => mocked.onPageCommand.mock.calls[0][0]("rules.new"));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("runs a runCommand request from another process and replies without an error", async () => {
+      await renderApp();
+      const onRemote = mocked.onRemote.mock.calls[0][0];
+      act(() => void onRemote({ id: "4", request: { type: "runCommand", id: "view.rules" } }));
+      expect(await screen.findByRole("heading", { level: 1, name: "Rules" })).toBeInTheDocument();
+      await vi.waitFor(() => expect(mocked.remoteReply).toHaveBeenCalledWith("4", null, null));
     });
 
     it("shows the day of a showDay request from another process and replies without an error", async () => {
@@ -420,7 +457,7 @@ describe("App", () => {
     it("opens its own window with ⌘,", async () => {
       await renderApp();
       await userEvent.keyboard("{Meta>},{/Meta}");
-      expect(mocked.openSettings).toHaveBeenCalled();
+      expect(mocked.runCommand).toHaveBeenCalledWith("app:settings");
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
@@ -428,14 +465,14 @@ describe("App", () => {
       await renderApp();
       await userEvent.keyboard("{Meta>}k{/Meta}");
       await userEvent.type(await screen.findByLabelText("Search"), "settings");
-      await userEvent.click(screen.getByRole("option", { name: /^Settings…/ }));
-      await vi.waitFor(() => expect(mocked.openSettings).toHaveBeenCalled());
+      await userEvent.click(await screen.findByRole("option", { name: /^Settings…/ }));
+      expect(mocked.runCommand).toHaveBeenCalledWith("app:settings");
     });
 
     it("opens from the gear in the sidebar", async () => {
       await renderApp();
       await userEvent.click(sidebar().getByRole("button", { name: "Settings" }));
-      expect(mocked.openSettings).toHaveBeenCalled();
+      expect(mocked.runCommand).toHaveBeenCalledWith("app:settings");
     });
 
     it("follows a settings change saved in the Settings window", async () => {
@@ -456,9 +493,10 @@ describe("App", () => {
       await renderApp();
       await userEvent.keyboard("{Meta>}k{/Meta}");
       await userEvent.type(await screen.findByLabelText("Search"), "zoom");
+      await screen.findByRole("option", { name: /^Zoom In/ });
       const options = screen.getAllByRole("option").map((o) => o.textContent);
       expect(options).toHaveLength(3);
-      expect(options.join(" ")).toMatch(/Zoom in.*Zoom out.*Reset zoom/);
+      expect(options.join(" ")).toMatch(/Zoom In.*Zoom Out.*Reset Zoom/);
     });
 
     it("says so when no command matches", async () => {
@@ -471,7 +509,9 @@ describe("App", () => {
     it("runs the chosen command on Enter and closes", async () => {
       await renderApp();
       await userEvent.keyboard("{Meta>}k{/Meta}");
-      await userEvent.type(await screen.findByLabelText("Search"), ">show week{Enter}");
+      await userEvent.type(await screen.findByLabelText("Search"), ">week");
+      await screen.findByRole("option", { name: /^Week/ });
+      await userEvent.keyboard("{Enter}");
       expect(mainHeading("Week")).toBeInTheDocument();
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });

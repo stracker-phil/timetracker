@@ -11,6 +11,7 @@ use crate::db::activities::ActivityRow;
 use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms, format_hm};
 use crate::ipc::IpcMessage;
+use crate::menu::palette::ListedCommand;
 use crate::recordings::cli::spans_text;
 use crate::remote::StatusReport;
 use crate::reports::cli::Reported;
@@ -97,6 +98,7 @@ pub fn render<Tz: TimeZone>(
             None => "no timer running".into(),
         }),
         IpcMessage::Report { .. } => Some(read::<Reported>(result)?.text.trim_end().to_string()),
+        IpcMessage::Commands => Some(command_list(&read::<Vec<ListedCommand>>(result)?)),
         #[cfg(debug_assertions)]
         IpcMessage::DevSeed { .. } => {
             let stats = read::<crate::test_support::seed::SeedStats>(result)?;
@@ -107,6 +109,23 @@ pub fn render<Tz: TimeZone>(
         }
         _ => super::written::render(message, result, now, tz)?,
     })
+}
+
+/// `timer:stop  Stop Timer`, `page:view.week  View → Week`; `(unavailable)` after one that can't run now.
+fn command_list(commands: &[ListedCommand]) -> String {
+    let width = commands.iter().map(|c| c.id.len()).max().unwrap_or(0);
+    commands
+        .iter()
+        .map(|c| {
+            let title = match &c.menu {
+                Some(menu) => format!("{menu} → {}", c.title),
+                None => c.title.clone(),
+            };
+            let state = if c.enabled { "" } else { " (unavailable)" };
+            format!("{:width$}  {title}{state}", c.id)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// `412 activity spans and 3 away spans`.
@@ -982,6 +1001,9 @@ mod tests {
             },
             IpcMessage::Activate { hidden: false },
             IpcMessage::TimerPicker,
+            IpcMessage::Run {
+                id: "app:settings".into(),
+            },
         ] {
             assert_eq!(
                 render_at_now(&message, &Value::Null),
@@ -989,6 +1011,38 @@ mod tests {
                 "{message:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_command_list_aligns_ids_and_shows_menus_and_unavailable_commands() {
+        let result = json!([
+            { "id": "app:settings", "title": "Settings…", "menu": null, "enabled": true },
+            { "id": "timer:stop", "title": "Stop Timer", "menu": null, "enabled": false },
+            { "id": "page:view.week", "title": "Week", "menu": "View", "enabled": true },
+            { "id": "page:edit.undo", "title": "Undo", "menu": "Edit", "enabled": false },
+        ]);
+
+        assert_eq!(
+            render_at_now(&IpcMessage::Commands, &result),
+            Ok(Some(
+                [
+                    "app:settings    Settings…",
+                    "timer:stop      Stop Timer (unavailable)",
+                    "page:view.week  View → Week",
+                    "page:edit.undo  Edit → Undo (unavailable)",
+                ]
+                .join("\n")
+            ))
+        );
+    }
+
+    #[test]
+    fn a_command_list_of_the_wrong_shape_is_an_error() {
+        let err = render_at_now(&IpcMessage::Commands, &json!({ "id": "app:quit" })).unwrap_err();
+        assert!(
+            err.starts_with("The running TimeTracker sent an unexpected reply"),
+            "{err}"
+        );
     }
 
     #[test]
