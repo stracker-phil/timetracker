@@ -82,7 +82,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar" aria-label="Sidebar">
       <div className="sidebar-titlebar" data-tauri-drag-region />
-      <div className="sidebar-body">
+      <div className="sidebar-body scroller">
         <MiniCalendar />
         <nav className="sidebar-nav" aria-label="Views">
           <HoursEntry />

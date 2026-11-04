@@ -47,7 +47,7 @@ export function ViewOptionsPopover() {
   const style = useAnchoredStyle("[data-view-options]", "right");
   if (!timeline) return null;
   return (
-    <Modal onClose={close} variant="popover" className="view-options" label="View options" style={style}>
+    <Modal onClose={close} variant="popover" className="view-options scroller" label="View options" style={style}>
       <Group title="Lanes">
         <Switch label="Summary" description={`The main app of every ${timeline.summaryMinutes} minutes.`} checked={timeline.summaryLane} onChange={(summaryLane) => saveTimeline({ summaryLane })} />
         <Switch label="Activity" description="Everything tracked, app by app." checked={timeline.showAllActivity} onChange={(showAllActivity) => saveTimeline({ showAllActivity })} />

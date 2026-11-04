@@ -114,7 +114,7 @@ export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) 
 
   return (
     <div className="timeline-frame">
-      <div className={view.compact ? "timeline timeline--compact" : "timeline"} ref={scrollRef} onMouseLeave={hover.leave}>
+      <div className={view.compact ? "timeline timeline--compact scroller" : "timeline scroller"} ref={scrollRef} onMouseLeave={hover.leave}>
         <LaneHeader lanes={view.lanes} trackedMs={view.totals.trackedMs} />
         <div
           className={pxPerMinute >= FIVE_MINUTES_FROM_PX ? "timeline-body five-minutes" : "timeline-body"}

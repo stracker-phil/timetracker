@@ -14,7 +14,7 @@ export function RulePreviewPanel({ input }: { input: RuleInput }) {
   const data = key === null ? null : preview.data;
 
   return (
-    <section className="rule-preview" aria-label="Matching activity">
+    <section className="rule-preview scroller" aria-label="Matching activity">
       <h3>Last {PREVIEW_DAYS} days</h3>
       {key === null && <p className="o2">Give each condition a value to see what it matches.</p>}
       {preview.state === "failed" && key !== null && <p className="settings-alert">{preview.error.message}</p>}

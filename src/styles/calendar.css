@@ -1,5 +1,5 @@
 /* ---------- week: seven columns of filled cards in time order, no time axis ---------- */
-.week { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.week { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .week-head, .week-body { display: grid; grid-template-columns: repeat(7, minmax(8rem, 1fr)); min-width: min-content; }
 .week-head { position: sticky; top: 0; z-index: 3; background: var(--bg); border-bottom: 1px solid var(--line); }
 .week-day-head {
@@ -37,7 +37,7 @@
 .week-add:hover, .week-add:focus-visible { border-color: var(--line); background: var(--fill); color: var(--text); }
 
 /* ---------- month: rows of whole weeks filling the view; one line per recording ---------- */
-.month-grid { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.month-grid { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 /* Weeks share the height; a fuller week grows and the grid scrolls. */
 .month-week { flex: 1 0 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .month-week:last-child .month-day { border-bottom: 1px solid var(--line); }

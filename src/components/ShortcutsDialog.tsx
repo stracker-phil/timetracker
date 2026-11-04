@@ -31,7 +31,7 @@ export function ShortcutsDialog({ scopes }: { scopes: string[] }) {
     <Modal onClose={close} className="shortcuts" labelledBy="shortcuts-title">
       <h2 id="shortcuts-title">Keyboard shortcuts</h2>
       {/* Only the list scrolls: Close stays in view, so focusing it never scrolls the list to its end. */}
-      <div className="shortcuts-list">
+      <div className="shortcuts-list scroller">
         {shortcutGroups(scopes, custom).map((group) => (
           <section key={group.scope} aria-label={group.label}>
             <h3>{group.label}</h3>

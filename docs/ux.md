@@ -51,8 +51,17 @@ of grey on grey. In the Default scheme the dark sidebar is
 opaque; in the Light scheme in light mode and the Dark scheme in dark mode the sidebar is transparent, so the
 window's `sidebar` material (vibrancy) shows through, and it greys out while the window is inactive.
 
-**Scrollbars** are macOS's own overlay scrollbars, shown only while scrolling: no `::-webkit-scrollbar` rule
-anywhere, since any would make WebKit draw a permanent bar.
+## Scrollbars
+
+None are styled: every scroller keeps macOS's overlay scrollbars, shown only while scrolling. Any
+`::-webkit-scrollbar` rule would make WebKit draw a permanent bar, so there is none anywhere. Every
+user-scrollable box carries the one `.scroller` class (`styles/base.css`: `overflow: auto` and
+`isolation: isolate`), never its own `overflow: auto`; a box that scrolls one axis only keeps `.scroller` and
+overrides the other. Being its own stacking context keeps a nested scroller's bar from staying behind while an
+outer box scrolls; menus and modals portal to `<body>` for the same reason. A scroller starts below its title
+row (the sidebar below `.sidebar-titlebar`, Settings below the search field and the page title, every view
+below its toolbar), so its bar never reaches the window buttons. Modal sheets scroll as a whole (`Modal` gives
+the `sheet` variant `.scroller`); panels let their list scroll instead.
 
 ## Shell
 
@@ -269,6 +278,43 @@ AppKit sizes and looks ([ADR 0024](adr/0024-native-macos-look.md)), in `styles/c
 
 Buttons in a row end with the default button: Cancel, then Save; a destructive or secondary action sits at the
 leading end (the recording editor's Delete).
+
+## Stable controls
+
+The rule for every control, list and popover ([`.claude/rules/stable-controls.md`](../.claude/rules/stable-controls.md)):
+
+- **A click never changes what is under the cursor.** Clicking the same spot again does the same thing again:
+  a switch switches back; the sidebar status's Pause becomes Play in the same slot, so a second click resumes.
+  Only closing an overlay or menu and navigating away may replace what was clicked.
+- **Lists don't re-sort while they are used.** A popover or picker keeps the order it opened with: switching an
+  app's lane on or off in View options changes only its switch, never the App lanes' order (most time first).
+- **Controls keep their size.** A toggle shows its state by color, never by an added icon or text that changes
+  its width (Settings switches, the segmented controls). A button that only sometimes applies keeps its slot,
+  so its neighbors don't move: the Day toolbar's View options and ⋯ stay at the trailing end whatever the
+  totals say, and Pause and Play share one icon button's slot.
+- **Nothing jumps; things move.** What appears fades in, and controls that change position glide to the new
+  one (`useGlide` in `lib/motion.ts`); rows that grow or shrink animate their height (`useHeightGlide`).
+  A window resize may move things at once.
+- **Width follows the window only.** Timeline lanes share the width and scroll sideways past their minimums
+  when the window narrows; a click never makes a lane or a toolbar control wider or narrower.
+
+## Motion
+
+Nothing jumps from one state to another (`styles/motion.css`). Tokens: `--motion-fast` 120ms (hover, press,
+the scrim, the palette), `--motion-base` 150ms (fades, switches, dialogs and toasts popping in, an exit),
+`--motion-slow` 200ms (movement and size: glides, expand and collapse), `--ease-out`, `--ease-in-out`; no
+literal durations elsewhere (the running timer's 1.6s pulse is an ambient loop, not a state change). Under
+`prefers-reduced-motion` movement and size changes are instant (`--motion-slow` is 0) and fades are short
+(`--motion-base` takes `--motion-fast`); the pulse and the flash stop.
+
+- Show and hide fade: the scrim fades in, dialogs, popovers and toasts pop in (`fade`, `pop`). `usePresence`
+  (`lib/motion.ts`) keeps something mounted for its exit, with `state` "leaving" for the CSS.
+- Moves glide: `useGlide` slides a row's children to their new place and fades a new one in while the row keeps
+  its width; its `scope` (a view switch) shows the new state at once, without transitions (`.motion-off`).
+- Something that changed without the user's hand on it flashes once (`useFlash` with `.flash`): an accent wash
+  that fades out, never a size or position change.
+- `motionMs(token)` gives a token's duration in ms as the stylesheet sets it, so timers in components follow
+  reduced motion too.
 
 ## Components
 

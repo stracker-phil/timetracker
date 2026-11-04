@@ -41,7 +41,7 @@ function AppPicker({ apps, excluded, onPick, onClose }: { apps: AppSeen[]; exclu
         <input autoFocus aria-label="Search apps" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
       </InsetField>
       {choices.length === 0 && <p className="hint">{apps.length === 0 ? `No apps recorded in the last ${RECENT_DAYS} days.` : "No app matches."}</p>}
-      <ul className="app-picker-list">
+      <ul className="app-picker-list scroller">
         {choices.map((a) => (
           <li key={appId(a)}>
             <button type="button" className="app-picker-row" onClick={() => onPick(appId(a))}>

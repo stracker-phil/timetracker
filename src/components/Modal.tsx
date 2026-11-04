@@ -78,7 +78,7 @@ export function Modal({ onClose, variant = "sheet", className = "", labelledBy, 
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={sheetRef}
-        className={["dialog", variant === "bare" ? "" : variant, className].filter(Boolean).join(" ")}
+        className={["dialog", variant === "bare" ? "" : variant, variant === "sheet" && "scroller", className].filter(Boolean).join(" ")}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}

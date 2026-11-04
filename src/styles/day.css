@@ -17,7 +17,7 @@
 .timesheet-label { font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }
 .timesheet-total { font-size: var(--fs-display); font-weight: 700; color: var(--text-strong); }
 .timesheet-add { width: var(--toolbar-control-h); height: var(--toolbar-control-h); padding: 0; }
-.timesheet-cards { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1) var(--space-4) var(--space-6); }
+.timesheet-cards { flex: 1; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1) var(--space-4) var(--space-6); }
 .timesheet-empty { margin: var(--space-2) 0; line-height: 1.5; }
 
 /* Taller for longer recordings, never shorter than its text. */
@@ -46,7 +46,7 @@
 
 /* ---------- timeline: hour axis, time column, then the lanes ---------- */
 .timeline-frame { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
-.timeline { flex: 1; overflow: auto; position: relative; }
+.timeline { flex: 1; position: relative; }
 /* The lanes never shrink below their minimum widths: past that the timeline scrolls sideways, the axis and the
    time column staying in place. */
 .timeline-head, .timeline-body { display: grid; grid-template-columns: var(--timeline-axis-w) var(--recordings-col-w) minmax(min-content, 1fr); min-width: min-content; }

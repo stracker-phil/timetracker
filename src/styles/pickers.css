@@ -46,6 +46,6 @@
 
 /* ---------- app picker (Settings → Capture) ---------- */
 .app-picker { width: min(28rem, 90vw); }
-.app-picker-list { display: flex; flex-direction: column; max-height: 20rem; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.app-picker-list { display: flex; flex-direction: column; max-height: 20rem; margin: 0; padding: 0; list-style: none; }
 .app-picker-row { display: flex; width: 100%; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-2); border: 0; border-radius: 6px; background: none; color: var(--text); text-align: left; }
 .app-picker-row:hover, .app-picker-row:focus-visible { background: var(--fill); }

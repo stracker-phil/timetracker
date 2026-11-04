@@ -2,20 +2,20 @@
 /* Overlays (dialogs, palette, menus, toasts, popovers): --pop with --shadow (a hairline ring and a soft drop, no
    border), --radius (sheets and panels --radius-lg); sheets and panels sit over --scrim, popovers over nothing
    (docs/ux.md, Overlays). */
-.overlay { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 50; animation: fade .12s ease-out; }
+.overlay { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 50; animation: fade var(--motion-fast) var(--ease-out); }
 .overlay:has(> .dialog.popover) { background: none; }
 /* Modal's `variant`: a padded .sheet for forms and messages, a .panel surface laid out by its content (the
    palette), a .popover placed under the control that opened it, or bare. */
-.dialog { animation: pop .14s ease-out; }
+.dialog { animation: pop var(--motion-base) var(--ease-out); }
 .dialog:is(.sheet, .panel, .popover) { background: var(--pop); box-shadow: var(--shadow); }
 .dialog:is(.sheet, .panel) { border-radius: var(--radius-lg); }
 .dialog.popover { border-radius: var(--radius); }
 .dialog.sheet {
-  width: min(33.846rem, calc(100vw - 2.462rem)); max-height: calc(100vh - 4.615rem); overflow: auto;
+  width: min(33.846rem, calc(100vw - 2.462rem)); max-height: calc(100vh - 4.615rem);
   padding: var(--margin); display: flex; flex-direction: column; gap: var(--space-3);
 }
 .dialog.panel { overflow: hidden; }
-.dialog.view-options { display: flex; flex-direction: column; gap: var(--space-4); width: min(26rem, calc(100vw - 1.231rem)); max-height: calc(100vh - 8rem); overflow: auto; padding: var(--space-3); }
+.dialog.view-options { display: flex; flex-direction: column; gap: var(--space-4); width: min(26rem, calc(100vw - 1.231rem)); max-height: calc(100vh - 8rem); padding: var(--space-3); }
 .dialog.wide { width: min(43.077rem, calc(100vw - 2.462rem)); }
 .dialog.sheet h2 { margin: 0; font-size: var(--fs-body); font-weight: 700; color: var(--text-strong); }
 .form-contents { display: contents; }
@@ -46,7 +46,7 @@
 .toasts { position: fixed; right: 1.231rem; bottom: 2.769rem; z-index: 70; display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-end; }
 .toast {
   display: flex; align-items: flex-start; gap: var(--space-2); max-width: 32.308rem; padding: var(--space-2) var(--space-3) var(--space-2) var(--space-3);
-  border-radius: var(--radius); background: var(--pop); box-shadow: var(--shadow); animation: pop .16s ease-out;
+  border-radius: var(--radius); background: var(--pop); box-shadow: var(--shadow); animation: pop var(--motion-base) var(--ease-out);
 }
 .toast.error svg:first-child { color: var(--style-red); }
 .toast.success svg:first-child { color: var(--style-green); }
@@ -54,16 +54,16 @@
 .toast .text { flex: 1; user-select: text; line-height: 1.35; }
 .toast-action { flex: none; font-weight: 600; }
 .toast-title { display: block; margin-bottom: 0.154rem; }
-.toast-details { margin: var(--space-1) 0 0; max-height: 10rem; overflow: auto; font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; word-break: break-word; color: var(--o2); }
+.toast-details { margin: var(--space-1) 0 0; max-height: 10rem; font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; word-break: break-word; color: var(--o2); }
 
 /* ---------- palette ---------- */
 .overlay:has(> .dialog.palette) { place-items: start center; padding-top: 12vh; }
-.dialog.palette { width: min(58.462rem, calc(100vw - 2.462rem)); animation-duration: .12s; }
+.dialog.palette { width: min(58.462rem, calc(100vw - 2.462rem)); animation-duration: var(--motion-fast); }
 .palette-input { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4) var(--space-4); border-bottom: 1px solid var(--line); color: var(--o3); }
 .palette-input input { flex: 1; border: none; outline: none; background: none; font-size: var(--fs-title); color: var(--text); }
 .palette-input input::placeholder { color: var(--o3); }
 /* Results share the row anatomy; the active one is an accent-filled rounded row, as in Spotlight. */
-.palette-list { list-style: none; margin: 0; padding: var(--space-1) var(--space-2); max-height: 50vh; overflow: auto; }
+.palette-list { list-style: none; margin: 0; padding: var(--space-1) var(--space-2); max-height: 50vh; }
 .palette-list > li:not(.palette-section) { display: flex; align-items: center; gap: var(--space-3); min-height: 2.154rem; padding: var(--pad) var(--space-2); border-radius: var(--radius-sm); line-height: 20px; }
 .palette-list li.active { background: var(--accent); color: var(--on-accent); }
 .palette-list li.active :is(.o2, .o3, .keycap) { color: inherit; opacity: 0.85; }
@@ -82,7 +82,7 @@
 
 /* ---------- shortcut overview ---------- */
 .dialog.shortcuts { max-height: 80vh; overflow: hidden; }
-.shortcuts-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--space-3); }
+.shortcuts-list { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-3); }
 .shortcuts section { display: flex; flex-direction: column; gap: var(--space-2); }
 .shortcuts section + section { border-top: 1px solid var(--line); padding-top: var(--space-3); }
 .shortcuts h3 { margin: var(--space-1) 0 0; font-size: var(--fs-meta); font-weight: 600; color: var(--o2); }

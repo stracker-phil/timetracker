@@ -4,6 +4,7 @@ import "./palettes/content-dark.css";
 import "./palettes/sidebar-light.css";
 import "./palettes/sidebar-dark.css";
 import "./theme.css";
+import "./motion.css";
 import "./base.css";
 import "./controls.css";
 import "./shell.css";

@@ -19,7 +19,7 @@ export function PaletteList({ items, active, activeRef, onHover, onChoose }: Pro
   }, [active, items, activeRef]);
 
   return (
-    <ul className="palette-list" role="listbox" aria-label="Results">
+    <ul className="palette-list scroller" role="listbox" aria-label="Results">
       {items.map((it, i) => {
         const header = it.section !== items[i - 1]?.section ? it.section : null;
         return (

@@ -69,7 +69,7 @@ export function MonthView() {
       />
       {error && !month && <p className="settings-alert">{error.message}</p>}
       {month && (
-        <div className="month-grid" role="grid" aria-label={month.label}>
+        <div className="month-grid scroller" role="grid" aria-label={month.label}>
           {month.weeks.map((week) => (
             <div key={week[0].day} className="month-week" role="row">
               {week.map((cell) => (

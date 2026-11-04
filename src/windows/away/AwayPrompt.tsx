@@ -192,7 +192,7 @@ export function AwayPrompt() {
     if (e.key === "Escape" && !e.defaultPrevented) skip();
   };
   return (
-    <div className="away-prompt" onKeyDown={onKeyDown}>
+    <div className="away-prompt scroller" onKeyDown={onKeyDown}>
       {prompt === null ? <NothingToRecord /> : prompt && <PromptBody prompt={prompt} onGone={reload} />}
     </div>
   );

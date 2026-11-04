@@ -132,7 +132,7 @@ function RecentTimers({ recent, onStart }: { recent: RecentTimer[]; onStart: Sta
       <span className="timer-recent-label" aria-hidden="true">
         Recent
       </span>
-      <ul className="timer-recent" aria-label="Recent timers">
+      <ul className="timer-recent scroller" aria-label="Recent timers">
         {recent.map((t) => (
           <li key={`${t.projectId}:${t.note}:${t.tagId ?? ""}`}>
             <button type="button" onClick={() => onStart(t.projectId, t.note, t.tagId)}>

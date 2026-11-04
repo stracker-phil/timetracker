@@ -21,7 +21,7 @@ export function ReportOptionsPopover() {
   const style = useAnchoredStyle("[data-report-options]", "right");
   const filter = reportFilter ?? defaultFilter(settings);
   return (
-    <Modal onClose={close} variant="popover" className="view-options" label="Report options" style={style}>
+    <Modal onClose={close} variant="popover" className="view-options scroller" label="Report options" style={style}>
       <Group>
         <Row label="Rounding" htmlFor="report-rounding">
           <select id="report-rounding" className="input" value={filter.rounding} onChange={(e) => setReportFilter({ rounding: e.target.value as Rounding })}>

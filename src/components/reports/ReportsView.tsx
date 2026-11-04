@@ -63,7 +63,7 @@ export function ReportsView() {
         </button>
       </Toolbar>
       <ReportFilters filter={filter} shown={shown} onChange={setReportFilter} />
-      <div className="report-result">
+      <div className="report-result scroller">
         {error && <p className="settings-alert">{error.message}</p>}
         {result && <ReportBody result={result} />}
       </div>

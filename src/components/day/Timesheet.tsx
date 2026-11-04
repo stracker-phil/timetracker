@@ -70,7 +70,7 @@ export function Timesheet({ view }: { view: DayView }) {
           </button>
         )}
       </header>
-      <div className="timesheet-cards">
+      <div className="timesheet-cards scroller">
         {items.length === 0 ? <p className="timesheet-empty o3">Nothing recorded yet. Drag over the timeline or click an activity.</p> : items}
       </div>
     </aside>

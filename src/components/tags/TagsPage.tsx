@@ -30,7 +30,7 @@ export function TagsPage() {
           <Plus size="1.154rem" /> New tag
         </button>
       </Toolbar>
-      <div className="tags-page">
+      <div className="tags-page scroller">
         {tags.length === 0 ? (
           <p className="o3">No tags yet.</p>
         ) : (

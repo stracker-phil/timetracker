@@ -72,7 +72,7 @@ export function WeekView() {
       />
       {error && !week && <p className="settings-alert">{error.message}</p>}
       {week && (
-        <div className="week">
+        <div className="week scroller">
           <div className="week-head" role="row">
             {week.days.map((d) => (
               <DayHead key={d.day} column={d} />

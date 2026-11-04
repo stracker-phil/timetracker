@@ -67,7 +67,7 @@ export function RulesView() {
           </button>
         </div>
       ) : (
-        <div className="rules-page">
+        <div className="rules-page scroller">
           <p className="rules-intro">
             Rules suggest recordings for activity they match; the first matching rule wins. Suggestions wait in the Day view until you approve or dismiss them. {DRAG_TIP}
           </p>

@@ -1,4 +1,4 @@
-/* Reset, scrollbars, keyframes and text utilities. */
+/* Reset, scrollers and text utilities. */
 * { box-sizing: border-box; }
 
 html { font-size: var(--ui-font-size); background: transparent; }
@@ -25,12 +25,11 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 /* ---------- scrollbars ---------- */
 /* None styled: an unstyled scroller keeps macOS's overlay scrollbars, shown only while scrolling (docs/ux.md,
    Scrollbars); any ::-webkit-scrollbar rule would make WebKit draw a permanent one. */
-/* Every user-scrollable box is its own stacking context: WebKit keeps a nested scroller's scrollbar with its own
-   layers only then, so the bar never stays behind while an outer box scrolls. A fixed overlay inside one would be
-   stacked inside it too, so overlays render outside them (menus and modals portal to <body>). */
-:is(
-  .main, .sidebar-body, .settings-body, .settings-nav-list, .dialog, .palette-list, .toast-details
-) { isolation: isolate; }
+/* Every user-scrollable box carries .scroller (docs/ux.md, Scrollbars) and is its own stacking context: WebKit keeps a
+   nested scroller's scrollbar with its own layers only then, so the bar never stays behind while an outer box
+   scrolls. A fixed overlay inside one would be stacked inside it too, so overlays render outside them (menus and
+   modals portal to <body>). A rule that scrolls one axis only keeps .scroller and overrides the other. */
+.scroller { overflow: auto; isolation: isolate; }
 
 /* Inset groups (docs/ux.md, Surfaces): each screen's own rule sets only its padding. */
 :is(.project-rows, .tag-rows, .project-none, .rule-rows) { border-block: 1px solid var(--line-faint); }
@@ -46,5 +45,3 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .grow-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dimmed { opacity: 0.55; }
 
-@keyframes fade { from { opacity: 0; } }
-@keyframes pop { from { opacity: 0; transform: scale(0.97); } }

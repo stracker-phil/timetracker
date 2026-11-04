@@ -33,7 +33,7 @@ export function PickerList<T>({ anchor, label, rows, active, isCurrent, onHover,
   let option = -1;
   return createPortal(
     <ul
-      className="palette-list picker-list"
+      className="palette-list picker-list scroller"
       role="listbox"
       aria-label={label}
       style={box ?? undefined}

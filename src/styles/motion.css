@@ -1,0 +1,29 @@
+/* Motion (docs/ux.md, Motion): nothing jumps between states. Durations and easings come only from these tokens;
+   lib/motion.ts reads the same ones. */
+:root {
+  --motion-fast: 120ms;
+  --motion-base: 150ms;
+  --motion-slow: 200ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Movement and size changes become instant; fades stay, short. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-base: var(--motion-fast);
+    --motion-slow: 0ms;
+  }
+}
+
+/* Overlays fade in (the scrim) and pop in (dialogs, toasts). */
+@keyframes fade { from { opacity: 0; } }
+@keyframes pop { from { opacity: 0; transform: scale(0.97); } }
+
+/* A row of controls switching to another view shows its new state at once (useGlide). */
+.motion-off, .motion-off * { transition: none !important; }
+
+/* A row or card whose content just changed (useFlash): an accent wash that fades out; no size or position change. */
+.flash { animation: flash 1200ms var(--ease-out); }
+@keyframes flash { from { box-shadow: inset 0 0 0 100vmax color-mix(in srgb, var(--accent) 18%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .flash { animation: none; } }

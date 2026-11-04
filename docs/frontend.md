@@ -18,7 +18,7 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
    blocks, recordings, suggestions, timesheet and Week cards) apply only under it, so a click draws no outline.
 6. `main.tsx` assigns the store to `window.timetracker` only when `import.meta.env.VITE_DEV_HOOKS` is `"1"`
    (the debug bundle of `bun run build:app`), then renders `<ErrorBoundary><App/></ErrorBoundary>`.
-7. `App.tsx` imports the stylesheets (`styles/index.ts`: the palettes, `theme.css`, then the
+7. `App.tsx` imports the stylesheets (`styles/index.ts`: the palettes, `theme.css`, `motion.css`, then the
    stylesheets by layer) and calls
    `useBackendEvents()` once:
    1. `loadUiState()` loads the window layout; the page starts on today. `loadSettings()` loads settings and keybindings; `installCommands()` runs again to apply the user's
@@ -474,8 +474,10 @@ A change saves through `saveSettings` (`api.updateSettings`) and applies at once
 
 The CSS is plain and global, imported by `styles/index.ts` in this order: the four palettes
 `styles/palettes/{content,sidebar}-{light,dark}.css`, `styles/theme.css` (derived tokens, the sidebar's token
-mapping, the block colors), then one stylesheet per layer, base to windows: `base.css` (reset, scrollbars,
-text utilities), `controls.css` (the AppKit-sized controls of [ux.md](ux.md#controls): buttons, fields, popup
+mapping, the block colors), `styles/motion.css` (the `--motion-*` and easing tokens, the reduced-motion rule,
+the `fade` and `pop` keyframes, `.motion-off`, `.flash`; [ux.md](ux.md#motion)), then one stylesheet per layer,
+base to windows: `base.css` (reset, `.scroller` for every scroll area ([ux.md](ux.md#scrollbars)), text
+utilities), `controls.css` (the AppKit-sized controls of [ux.md](ux.md#controls): buttons, fields, popup
 buttons, key caps, segmented control, switch, swatches, secondary labels), `shell.css` (grid, the unified
 toolbar, splitter, status bar), `sidebar.css`, `overlays.css` (dialogs, menus, toasts, palette, hover
 card, shortcut overview), `forms.css`, `pickers.css` (pickers, date picker, app picker), `settings.css`,

@@ -118,7 +118,7 @@ export function ProjectsPage() {
           <Plus size="1.154rem" /> New project
         </button>
       </Toolbar>
-      <div className="projects-page">
+      <div className="projects-page scroller">
         {loaded && groups.length === 0 && <p className="o3">No projects yet. A project is where recorded time goes.</p>}
         {groups.map((group) => (
           <section key={group.client?.id ?? ""} className="projects-card" aria-label={group.client?.name ?? "No client"}>
