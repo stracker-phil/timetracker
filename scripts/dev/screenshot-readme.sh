@@ -1,6 +1,6 @@
 #!/bin/zsh
-# Captures the README screenshots from the running debug app, seeded with `timetracker dev seed --showcase`
-# (best on an empty debug data folder): the Day view of the last workday in the Default and the Dark scheme,
+# Captures the README screenshots from the running debug app on the showcase (a new debug data folder starts
+# on it; `timetracker dev seed --showcase` adds it to another): the Day view of the last workday in the Default and the Dark scheme,
 # and Reports for last week. Writes day.png, day-dark.png and reports.png to <out-dir> (default
 # docs/screens); the settings, view and zoom are restored afterwards.
 set -e

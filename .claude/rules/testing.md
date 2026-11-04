@@ -10,6 +10,7 @@
   integration tests on a temp file (`tempfile`), in `src-tauri/tests/` or in the module.
 - UI: `*.test.tsx` next to the component; mock the `src/api` module with `createApiMock()` (`src/test/apiMock.ts`),
   never components or the store.
+- Test data is made up ([demo-data.md](demo-data.md)).
 
 ## Delegation
 

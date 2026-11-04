@@ -35,8 +35,9 @@ This page covers `src-tauri/`, the Rust side of TimeTracker.
 
    Then `setup` runs: it logs the version, sets the native menu (`menu::build`), queues the initial launch
    message (`LaunchQueue::push`), calls `commands::apply_settings(app, None, &settings)`, installs the tray
-   (`tray::install`), starts the tracker (`start_tracker`: only with an open data store; see
-   [capture.md](capture.md)), applies `TIMETRACKER_WINDOW_FRAME` in debug builds (`apply_dev_frame`), binds and
+   (`tray::install`), in debug builds seeds a database without activity with the showcase
+   (`dev::seed_first_run`, [ADR 0031](adr/0031-the-debug-build-runs-on-demo-data.md)), starts the tracker
+   (`start_tracker`: only with an open data store; see [capture.md](capture.md)), applies `TIMETRACKER_WINDOW_FRAME` in debug builds (`apply_dev_frame`), binds and
    serves the socket (`start_ipc`; a bind error is logged and the app runs without handoff), registers
    `deep_link::listen`, and shows the window in front (`window::show_main`) unless started with
    `--hidden`. The window is declared `"visible": false`, so a hidden start never flashes it.
@@ -793,8 +794,10 @@ after TimeTracker restarts (retrying while it is down) and takes the reply as th
 
 ### Deep links
 
-`deep_link.rs`: `listen` registers `on_open_url` for `timetracker://` (scheme in `tauri.conf.json`
-`plugins.deep-link`). macOS delivers a link to the running app, or starts the app and then delivers it.
+`deep_link.rs`: `listen` registers `on_open_url` for `timetracker://` (`timetracker-debug://` in debug builds:
+`lib.rs` `LINK_SCHEME`, both Tauri configs' `plugins.deep-link`). macOS delivers a link to the running app, or
+starts the app and then delivers it; `listen` also reads the link that started the app (`get_current`), which
+may arrive before the listener.
 `link_message(url, now, tz)` maps a link to a message, reading times as the CLI does:
 
 | Link | Message |
@@ -921,7 +924,8 @@ A timer is a recording with an open span, so the overlap rule, undo and reports 
   every space, full-screen ones too (`NSStatusWindowLevel`), and takes the keyboard without activating the app,
   so the app in front keeps focus when it hides. Its AppKit calls run on the main thread.
 - `timers/shortcut.rs`: `register(app, Option<binding>)` makes `Settings.timerShortcut` (default
-  `DEFAULT_TIMER_SHORTCUT`, `Mod+Ctrl+Alt+T`; `null` turns it off) open or close the picker from any app (`tauri-plugin-global-shortcut`). Only a chord with a Tauri key name
+  `DEFAULT_TIMER_SHORTCUT`: `RELEASE_TIMER_SHORTCUT`, `Mod+Ctrl+Alt+T`, in release builds and none in debug
+  builds, so the release app keeps it; `null` turns it off) open or close the picker from any app (`tauri-plugin-global-shortcut`). Only a chord with a Tauri key name
   (`keybindings::is_global`) qualifies; `sanitized` resets others. `update_settings` registers a changed
   shortcut before saving it and returns `invalid_input` when the system refuses.
 - `status` and `timer status` (CLI, `StatusReport.timer`, a flat `scripting::timer::TimerState`) print `timer: Acme · standup · 0:25`.
@@ -944,7 +948,7 @@ save leaves memory unchanged. `JsonStore::open_with` normalizes the loaded value
 
 | File | Contents |
 |---|---|
-| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `textSize` (`TextSize`: small, medium, the default, or large) is the one text size; the pixel sizes per step are the frontend's `TEXT_SIZES`. Unknown keys are ignored on load and dropped on the next save; a `uiFontSize` in pixels is read into the private `legacy_ui_font_size` (`#[serde(rename = "uiFontSize", skip_serializing)]`) and `sanitized()` turns it into the nearest step (`TextSize::nearest_to_px`: up to 12 Small, 13–14 Medium, 15 and up Large). `sanitized()` clamps on load and on update: `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets an unknown accent (neither `system` (`SYSTEM_ACCENT`) nor one of `ACCENTS`: `is_app_accent`) to `system` (an unknown `lightScheme` or `darkScheme` falls back to `default` or `dark` through `lenient`) and moves a 0021 file's `scheme` into `lightScheme`; turns a blank `dataDir` into `null` (an unknown `calendarTitle` (`CalendarTitle`: short, the default, or full) or `dayTitle` (`DayTitle`: long, the default, or short) falls back through `lenient`); a `timerShortcut` that is no global chord becomes `Mod+Ctrl+Alt+T` (`null` stays off). `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline`, `apps`, `dayTitle` or `calendarTitle` emits `data_changed { kind: settings, day: null }`, so every open day and the sidebar calendar reload. `apps` maps an app key to its `AppOverride { hidden, ownLane }`; an entry left at the defaults is removed. |
+| `settings.json` | `Settings` (camelCase, `#[serde(default)]`; nested `tracker`, `capture`, `timeline`, `apps`, `reports`, `mcp` (`McpSettings { exposeActivity: false }`) each `#[serde(default)]`). Enum, free-text and nested fields use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `textSize` (`TextSize`: small, medium, the default, or large) is the one text size; the pixel sizes per step are the frontend's `TEXT_SIZES`. Unknown keys are ignored on load and dropped on the next save; a `uiFontSize` in pixels is read into the private `legacy_ui_font_size` (`#[serde(rename = "uiFontSize", skip_serializing)]`) and `sanitized()` turns it into the nearest step (`TextSize::nearest_to_px`: up to 12 Small, 13–14 Medium, 15 and up Large). `sanitized()` clamps on load and on update: `tracker.idleMinutes` 1..=120, `tracker.awayPromptMinutes` 1..=240, `timeline.zoom` 0.5..=4.0 (non-finite: 1.0); snaps `timeline.summaryMinutes` to `SUMMARY_MINUTES` and `timeline.snapMinutes` to `SNAP_MINUTES` (nearest, smaller on a tie); resets an unknown accent (neither `system` (`SYSTEM_ACCENT`) nor one of `ACCENTS`: `is_app_accent`) to `system` (an unknown `lightScheme` or `darkScheme` falls back to `default` or `dark` through `lenient`) and moves a 0021 file's `scheme` into `lightScheme`; turns a blank `dataDir` into `null` (an unknown `calendarTitle` (`CalendarTitle`: short, the default, or full) or `dayTitle` (`DayTitle`: long, the default, or short) falls back through `lenient`); a `timerShortcut` that is no global chord becomes the build's default (`Mod+Ctrl+Alt+T`, off in debug builds; `null` stays off). `SettingsStore::update` returns `(previous, saved)` from one lock. A save that changes `timeline`, `apps`, `dayTitle` or `calendarTitle` emits `data_changed { kind: settings, day: null }`, so every open day and the sidebar calendar reload. `apps` maps an app key to its `AppOverride { hidden, ownLane }`; an entry left at the defaults is removed. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed. A trailing `++` is the `+` key |
 | `ui_state.json` | `UiState`: `sidebarHidden`, `sidebarWidth` (px, default 200), `timelineZoom` (the Day view's px per minute, default 2.5), `paneSizes` (px by pane id), `onboardingDone` (default `false`: the welcome sheet shows); unknown keys, such as the dropped `dayMode` and `lastDay`, are ignored |
 | `data/timetracker.sqlite` (+ `-wal`, `-shm`) | clients, projects, tags, activity, away spans, recordings ([data.md](data.md)); `dataDir` in `settings.json` points elsewhere (written only by `data_move`) |

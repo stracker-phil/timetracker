@@ -16,6 +16,8 @@ a dark sidebar.
 - Write unit tests for every change and run them (through the `ci` agent) before every commit; tests and
   lint must be green.
 - Tests pin behavior, not internals: public interfaces only, no log assertions, no call counts.
+- Demo data only: code, docs, tests, commits and screenshots never contain the owner's real data
+  (`.claude/rules/demo-data.md`). The debug build runs on its own data folder, made-up capture and the showcase.
 - Refactor continuously: when a file grows large (over ~400 lines of production code) or complex, simplify it
   and split it into focused modules in the same step, without asking.
 - The implementation plan lives in `docs/plan/` (gitignored): `README.md` plus one file per step. Work one

@@ -4,7 +4,7 @@
 use crate::db::away::AwayReason;
 
 /// `(app, bundle id, window title, url)`.
-pub(super) type Window = (
+pub type Window = (
     &'static str,
     &'static str,
     &'static str,
@@ -51,6 +51,22 @@ impl Work {
             Work::Writing => WRITING_WINDOWS,
         }
     }
+}
+
+/// The windows the debug build's demo capture replays (`capture/demo.rs`).
+pub fn demo_windows() -> impl Iterator<Item = Window> {
+    [
+        Work::Admin,
+        Work::Web,
+        Work::Meeting,
+        Work::Api,
+        Work::Support,
+        Work::Ios,
+        Work::Design,
+        Work::Writing,
+    ]
+    .into_iter()
+    .flat_map(|work| work.windows().iter().copied())
 }
 
 const ADMIN_WINDOWS: &[Window] = &[

@@ -1,8 +1,12 @@
 # Architecture decision records
 
 Each record (`NNNN-<slug>.md`, Nygard format: Status, Context, Decision, Consequences) explains why, in at
-most a page; the docs pages explain how. An accepted decision is never edited: a new record supersedes it,
-and a dated amendment under Status only corrects facts that changed.
+most a page; the docs pages explain how. A Decision names the alternatives it rejected. An accepted decision
+is never edited: a new record supersedes it, and a dated amendment under Status only corrects facts that
+changed.
+
+Records inherited from Taskboard, Daybook or DataBee say so under Status; they state the decision as it
+stands in TimeTracker. The numbers in this table are TimeTracker's.
 
 | No. | Title | Status |
 |---|---|---|
@@ -36,3 +40,4 @@ and a dated amendment under Status only corrects facts that changed.
 | [0028](0028-outside-writes-are-suggestions.md) | Writes from other apps are suggestions unless final | Accepted (2026-10-23), implemented, superseded in part by 0030 |
 | [0029](0029-other-apps-may-subscribe-over-the-socket.md) | Other apps may subscribe to changes over the socket | Accepted (2026-10-27), implemented |
 | [0030](0030-suggestions-may-have-no-project.md) | A stored suggestion may have no project | Accepted (2026-10-27), implemented |
+| [0031](0031-the-debug-build-runs-on-demo-data.md) | The debug build runs on demo data | Accepted (2026-11-04), implemented |

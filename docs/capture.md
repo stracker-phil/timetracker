@@ -17,8 +17,13 @@ through the `Source` trait ([ADR 0008](adr/0008-capture-behind-a-source-trait.md
 | `permission()` | `PermissionStatus`: `granted`, `denied`, `unknown` |
 | `request_permission()` | shows the system prompt, at most once per app run |
 
-`capture::new_source(app)` returns the macOS source. `capture/fake.rs` (`cfg(test)` or feature `test-util`,
-[ADR 0015](adr/0015-test-doubles-behind-test-util.md)) has `FakeSource`, which tests script.
+`capture::new_source(app)` returns the macOS source in release builds. Debug builds get `capture/demo.rs`
+`DemoSource` instead ([ADR 0031](adr/0031-the-debug-build-runs-on-demo-data.md)): it shows the showcase's
+made-up windows (`test_support::showcase::demo_windows`), the next one every `DWELL_MS` (3 minutes), with
+the permission granted, no idle time and no system events. `TIMETRACKER_REAL_CAPTURE=1` (`dev::real_capture`)
+gives a debug build the macOS source, to check capture code; it is off by default. `capture/fake.rs`
+(`cfg(test)` or feature `test-util`, [ADR 0015](adr/0015-test-doubles-behind-test-util.md)) has `FakeSource`,
+which tests script.
 
 ### macOS APIs
 

@@ -73,6 +73,11 @@ pub fn start(
                 log::warn!("{e}");
             }
             timers::start_ticking(app.handle());
+            #[cfg(debug_assertions)]
+            if let Err(e) = tauri::async_runtime::block_on(crate::dev::seed_first_run(app.handle()))
+            {
+                log::warn!("Couldn't seed the debug data folder: {e}");
+            }
             start_tracker(app.handle(), &state);
             #[cfg(debug_assertions)]
             apply_dev_frame(app);

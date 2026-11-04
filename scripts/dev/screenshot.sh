@@ -1,5 +1,32 @@
 #!/bin/zsh
-# Captures the TimeTracker window (works while it is in the background): screenshot.sh <out.png>
-# Picks the largest TimeTracker window so sheets (e.g. Screen Time) don't hide the app.
-WID=$(swift -e 'import CoreGraphics; let l = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as! [[String: Any]]; var best: (Int, Double) = (0, 0); for w in l where (w["kCGWindowOwnerName"] as? String)?.hasPrefix("TimeTracker") == true && (w["kCGWindowLayer"] as? Int) == 0 && (w["kCGWindowIsOnscreen"] as? Bool) == true { let b = w["kCGWindowBounds"] as! [String: Double]; let area = b["Width"]! * b["Height"]!; if area > best.1 { best = (w["kCGWindowNumber"] as! Int, area) } }; print(best.0)' 2>/dev/null)
+# Captures the debug app's window, also in the background: screenshot.sh <out.png> [--overlay]
+# Picks its largest normal window so sheets don't hide the app; the release app is never captured (its window
+# shows real data, ADR 0031). With --overlay it picks the open panel instead (the timer picker or the away
+# prompt): the visible window on the highest level above normal windows.
+MODE=${2:-window}
+WID=$(swift - "$MODE" <<'SWIFT' 2>/dev/null
+import CoreGraphics
+let overlay = CommandLine.arguments[1] == "--overlay"
+let all = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as! [[String: Any]]
+// macOS reports a window on another Space as not on screen; then any window of the app counts.
+let ownWindows = all.filter { ($0["kCGWindowOwnerName"] as? String) == "TimeTracker (Debug)" }
+let onscreen = ownWindows.filter { ($0["kCGWindowIsOnscreen"] as? Bool) == true }
+var best: (id: Int, layer: Int, area: Double) = (0, -1, 0)
+for w in (onscreen.isEmpty ? ownWindows : onscreen) {
+  let layer = w["kCGWindowLayer"] as? Int ?? 0
+  if overlay {
+    guard layer > 0, (w["kCGWindowAlpha"] as? Double ?? 0) > 0.5 else { continue }
+  } else if layer != 0 {
+    continue
+  }
+  let b = w["kCGWindowBounds"] as! [String: Double]
+  let area = b["Width"]! * b["Height"]!
+  if layer > best.layer || (layer == best.layer && area > best.area) {
+    best = (w["kCGWindowNumber"] as! Int, layer, area)
+  }
+}
+print(best.id)
+SWIFT
+)
+[[ -n "$WID" && "$WID" != 0 ]] || { echo "No window of the debug app to capture" >&2; exit 1; }
 screencapture -x -o -l "$WID" "$1"

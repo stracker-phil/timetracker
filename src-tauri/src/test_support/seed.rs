@@ -414,6 +414,15 @@ pub(super) async fn ensure_tags(db: &Db, names: &[&str]) -> AppResult<Vec<String
 }
 
 /// Whether any activity starts before `day`: a seed into it would overlap real data.
+/// False on a new data folder.
+pub async fn has_any_activity(db: &Db) -> AppResult<bool> {
+    Ok(
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM activities)")
+            .fetch_one(db.pool())
+            .await?,
+    )
+}
+
 pub async fn has_activity_before(db: &Db, day: Day) -> AppResult<bool> {
     Ok(
         sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM activities WHERE start < ?1)")
@@ -706,6 +715,28 @@ mod tests {
         for name in TAGS {
             assert_eq!(tag_names.iter().filter(|n| *n == name).count(), 1, "{name}");
         }
+    }
+
+    #[tokio::test]
+    async fn an_empty_database_has_no_activity() {
+        let db = Db::open_memory().await.unwrap();
+        assert!(!has_any_activity(&db).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn an_inserted_activity_counts_as_activity() {
+        let db = Db::open_memory().await.unwrap();
+        activity(&db, Day::today().bounds().0 + HOUR, None, "Code", "main.rs").await;
+        assert!(has_any_activity(&db).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn the_showcase_seed_leaves_activity_behind() {
+        let db = Db::open_memory().await.unwrap();
+        crate::test_support::showcase::seed_showcase(&db, 7)
+            .await
+            .unwrap();
+        assert!(has_any_activity(&db).await.unwrap());
     }
 
     #[tokio::test]

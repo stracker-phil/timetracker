@@ -63,6 +63,12 @@ pub const APP_NAME: &str = if cfg!(debug_assertions) {
     "TimeTracker"
 };
 const SOCKET_NAME: &str = "timetracker.sock";
+/// Debug builds claim their own scheme (`tauri.debug.conf.json`), so links reach the installed app.
+pub const LINK_SCHEME: &str = if cfg!(debug_assertions) {
+    "timetracker-debug"
+} else {
+    "timetracker"
+};
 
 /// Same directory Tauri resolves as `app_config_dir`, but available before the app starts.
 fn config_dir() -> PathBuf {
@@ -151,18 +157,60 @@ mod tests {
 
     const NETWORK_CRATES: &[&str] = &["reqwest", "hyper", "ureq", "tauri-plugin-updater"];
 
-    #[test]
-    fn identifier_matches_the_tauri_config() {
-        let conf: serde_json::Value =
-            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
-        assert_eq!(conf["identifier"], serde_json::json!(IDENTIFIER));
+    fn configs() -> (serde_json::Value, serde_json::Value) {
+        (
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap(),
+            serde_json::from_str(include_str!("../tauri.debug.conf.json")).unwrap(),
+        )
+    }
+
+    fn this_build() -> serde_json::Value {
+        let (release, debug) = configs();
+        if cfg!(debug_assertions) {
+            debug
+        } else {
+            release
+        }
     }
 
     #[test]
-    fn debug_identifier_matches_the_debug_tauri_config() {
-        let conf: serde_json::Value =
-            serde_json::from_str(include_str!("../tauri.debug.conf.json")).unwrap();
-        assert_eq!(conf["identifier"], serde_json::json!(DEBUG_IDENTIFIER));
+    fn identifier_matches_the_tauri_config() {
+        let (release, debug) = configs();
+        assert_eq!(release["identifier"], serde_json::json!(IDENTIFIER));
+        assert_eq!(debug["identifier"], serde_json::json!(DEBUG_IDENTIFIER));
+    }
+
+    #[test]
+    fn app_name_matches_the_product_name_in_the_tauri_config() {
+        assert_eq!(this_build()["productName"], serde_json::json!(APP_NAME));
+    }
+
+    #[test]
+    fn link_scheme_matches_the_deep_link_scheme_in_the_tauri_config() {
+        assert_eq!(
+            this_build()["plugins"]["deep-link"]["desktop"]["schemes"],
+            serde_json::json!([LINK_SCHEME])
+        );
+    }
+
+    #[test]
+    fn the_debug_build_differs_from_the_release_build_in_name_identifier_and_scheme() {
+        let (release, debug) = configs();
+        assert_eq!(release["productName"], serde_json::json!("TimeTracker"));
+        assert_eq!(
+            debug["productName"],
+            serde_json::json!("TimeTracker (Debug)")
+        );
+        assert_eq!(debug["identifier"], serde_json::json!(DEBUG_IDENTIFIER));
+        assert_eq!(DEBUG_IDENTIFIER, format!("{IDENTIFIER}.debug"));
+        assert_eq!(
+            release["plugins"]["deep-link"]["desktop"]["schemes"],
+            serde_json::json!(["timetracker"])
+        );
+        assert_eq!(
+            debug["plugins"]["deep-link"]["desktop"]["schemes"],
+            serde_json::json!(["timetracker-debug"])
+        );
     }
 
     #[test]

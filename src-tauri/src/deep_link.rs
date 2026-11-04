@@ -11,7 +11,7 @@ use crate::activity::ActivityInput;
 use crate::cli::time;
 use crate::db::time::{Ms, now_ms};
 use crate::ipc::IpcMessage;
-use crate::{launch, remote};
+use crate::{LINK_SCHEME, launch, remote};
 
 pub fn listen(handle: &AppHandle) {
     let app = handle.clone();
@@ -21,6 +21,16 @@ pub fn listen(handle: &AppHandle) {
             open(&app, url.as_str());
         }
     });
+    // The link that started the app may have come before the listener.
+    match handle.deep_link().get_current() {
+        Ok(Some(urls)) => {
+            for url in urls {
+                open(handle, url.as_str());
+            }
+        }
+        Ok(None) => {}
+        Err(e) => log::warn!("Couldn't read the link that started the app: {e}"),
+    }
 }
 
 fn open(app: &AppHandle, url: &str) {
@@ -42,7 +52,7 @@ fn open(app: &AppHandle, url: &str) {
 /// The message a link stands for, or an `Error` naming what is wrong with it. Times read as in the CLI.
 pub fn link_message<Tz: TimeZone>(url: &str, now: Ms, tz: &Tz) -> IpcMessage {
     parse_link(url, now, tz).unwrap_or_else(|message| IpcMessage::Error {
-        message: format!("A timetracker:// link failed: {message}"),
+        message: format!("A {LINK_SCHEME}:// link failed: {message}"),
     })
 }
 
@@ -135,7 +145,7 @@ mod tests {
 
     fn failure(reason: &str) -> IpcMessage {
         IpcMessage::Error {
-            message: format!("A timetracker:// link failed: {reason}"),
+            message: format!("A {}:// link failed: {reason}", crate::LINK_SCHEME),
         }
     }
 
@@ -298,9 +308,20 @@ mod tests {
                 panic!("expected an error for `{url}`");
             };
             assert!(
-                message.starts_with("A timetracker:// link failed: "),
+                message.starts_with(&format!("A {}:// link failed: ", crate::LINK_SCHEME)),
                 "{url}: {message}"
             );
         }
+    }
+
+    #[test]
+    fn a_failed_link_names_the_scheme_of_this_build() {
+        let IpcMessage::Error { message } = link("not a url") else {
+            panic!("expected an error");
+        };
+        assert!(
+            message.starts_with("A timetracker-debug:// link failed: "),
+            "{message}"
+        );
     }
 }

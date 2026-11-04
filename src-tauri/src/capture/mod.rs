@@ -1,7 +1,9 @@
 //! What the tracker reads from the system. `Source` hides macOS (`macos.rs`) so the tracker runs
-//! against `FakeSource` in tests.
+//! against `FakeSource` in tests and against `DemoSource` in debug builds.
 
 pub mod browsers;
+#[cfg(debug_assertions)]
+pub mod demo;
 #[cfg(any(test, feature = "test-util"))]
 pub mod fake;
 #[cfg(target_os = "macos")]
@@ -66,7 +68,13 @@ pub trait Source: Send + Sync {
     fn request_permission(&self);
 }
 
+/// Debug builds capture made-up windows unless `TIMETRACKER_REAL_CAPTURE=1` asks for the real ones (ADR 0031).
 #[cfg(target_os = "macos")]
 pub fn new_source(app: &tauri::AppHandle) -> Arc<dyn Source> {
+    #[cfg(debug_assertions)]
+    if !crate::dev::real_capture() {
+        log::info!("Capturing demo windows; TIMETRACKER_REAL_CAPTURE=1 captures the real ones");
+        return demo::DemoSource::new();
+    }
     macos::MacSource::new(app)
 }

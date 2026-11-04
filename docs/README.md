@@ -18,6 +18,8 @@ use it, see the [project README](../README.md).
 Suggested reading order: architecture, then the layer you are changing, then adapting.
 
 The rules in [`.claude/rules/`](../.claude/rules/) are binding for changes:
+- [`demo-data.md`](../.claude/rules/demo-data.md): nothing in the repo carries real data; the debug build
+  runs on the showcase ([ADR 0031](adr/0031-the-debug-build-runs-on-demo-data.md))
 - [`testing.md`](../.claude/rules/testing.md)
 - [`commits.md`](../.claude/rules/commits.md)
 - [`rust-test-conventions.md`](../.claude/rules/rust-test-conventions.md)

@@ -7,7 +7,9 @@ use sqlx::{QueryBuilder, Sqlite};
 
 mod data;
 
-use self::data::{Block, INTERNAL_COLOR, INTERRUPTIONS, PROJECTS, SCHEDULES, TAGS, Window};
+pub use self::data::{Window, demo_windows};
+
+use self::data::{Block, INTERNAL_COLOR, INTERRUPTIONS, PROJECTS, SCHEDULES, TAGS};
 use super::seed::{Rng, SeedStats, ensure_tags, insert_recording, local_ms};
 use crate::db::away::AwayReason;
 use crate::db::time::{Day, Ms};

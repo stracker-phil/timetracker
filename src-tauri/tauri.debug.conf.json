@@ -1,4 +1,13 @@
 {
   "productName": "TimeTracker (Debug)",
-  "identifier": "com.philippstracker.timetracker.debug"
+  "identifier": "com.philippstracker.timetracker.debug",
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "timetracker-debug"
+        ]
+      }
+    }
+  }
 }

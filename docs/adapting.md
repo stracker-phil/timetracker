@@ -8,24 +8,32 @@ review changed files. This page lists what such changes touch.
 
 ## Identity
 
-The app's name and ids live in a few places. Change them together.
+The app's name and ids live in a few places. Change them together. Debug builds are a second app with their
+own name, identifier, data, socket and URL scheme, and they run on demo data
+([ADR 0031](adr/0031-the-debug-build-runs-on-demo-data.md)). Keep this table current: every new name-, path-
+or build-specific place gets a row here.
 
-| What | Value | Where |
-|---|---|---|
-| Product name | `TimeTracker` | `tauri.conf.json` `productName` and window `title`; `menu/` (app menu, `Quit TimeTracker`); `tray.rs` (tooltip, item labels); `index.html`; the toolbar; user-facing errors in `lib.rs`, `instance.rs` and `remote.rs`; the `TimeTracker.app` path in `scripts/install.sh`, `scripts/stop-app.sh`, `scripts/dev/launch.sh` and the `app` script of `package.json`; the window owner in `scripts/dev/screenshot.sh`; `Info.plist` usage strings |
-| Bundle identifier | `com.philippstracker.timetracker` | `tauri.conf.json` `identifier`; `lib.rs` `IDENTIFIER` (a test compares both); `scripts/dev/js.sh` (the debug socket path); `scripts/dev/launch.sh` (the debug signing identifier); `tauri.debug.conf.json` (the debug bundle's `.debug` identifier, `lib.rs` `DEBUG_IDENTIFIER`, and `TimeTracker (Debug)` name, so macOS lists and grants it apart). It also names the config dir and the log dir (the debug build has its own of both, `BUILD_IDENTIFIER`); changing it starts with empty settings and data |
-| Binary and CLI command | `timetracker` | Cargo package `name` in `src-tauri/Cargo.toml`; `cli/mod.rs` `name` and `EXAMPLES`; `cli/reply.rs` (`TimeTracker <version>` line); the README Scripting examples; `scripts/install.sh`; `scripts/stop-app.sh`; `scripts/dev/launch.sh`; `.claude/settings.json` (`pkill -x timetracker`) |
-| Rust lib | `timetracker_lib` | `Cargo.toml` `[lib]`; `main.rs`; `tests/` |
-| URL scheme | `timetracker://` | `tauri.conf.json` `plugins.deep-link.desktop.schemes` (the bundler writes it into `Info.plist`); `deep_link.rs` (`link_message`, error text); the README Scripting examples |
-| Socket, lock | `timetracker.sock`, `timetracker.lock` in the config dir | `lib.rs` `SOCKET_NAME`, `instance.rs` `LOCK_NAME`; `scripts/dev/js.sh` (the socket) |
-| Data file | `timetracker.sqlite` in `<config dir>/data/` | `db/mod.rs` `DB_FILE`, `default_data_dir`; `db/relocate.rs` (the copy) |
-| LaunchAgent | `~/Library/LaunchAgents/TimeTracker.plist`, written by `tauri-plugin-autostart` and named after `productName` | `app.rs` (`MacosLauncher::LaunchAgent`, `--hidden`), `autostart.rs` |
-| Config dir | `~/Library/Application Support/com.philippstracker.timetracker/` (debug builds: `….debug/`) | `lib.rs` `config_dir()`, `BUILD_IDENTIFIER` |
-| Logs dir | `~/Library/Logs/com.philippstracker.timetracker/` | Tauri's `app_log_dir`, from the identifier |
-| Env vars | `TIMETRACKER_WINDOW_FRAME`, `TIMETRACKER_BACKGROUND` (debug builds), `TIMETRACKER_DEV_TERMINAL`, `TIMETRACKER_SIGN_IDENTITY`, `TIMETRACKER_CLI` | `dev.rs`, `window.rs`, `scripts/dev/launch.sh`, `scripts/dev/seed-day.sh` |
-| Store on `window` | `window.timetracker` | `src/main.tsx`, `src/vite-env.d.ts`, the dev scripts |
-| Icons | clock glyph | `design/icon.svg`, rasterized to `design/icon-1024.png` (`rsvg-convert -w 1024 -h 1024`); `src-tauri/icons/` regenerated with `bun tauri icon design/icon-1024.png` (only the desktop files are kept); tray template images in `src-tauri/icons/tray/` |
-| Author, license | Philipp Stracker, MIT | `Cargo.toml`, `package.json`, `LICENSE` |
+| What | Release | Debug | Where |
+|---|---|---|---|
+| Product name | `TimeTracker` | `TimeTracker (Debug)` | `tauri.conf.json` `productName` and window `title`; `tauri.debug.conf.json`; `lib.rs` `APP_NAME` (tested against both); `menu/` (app menu, `Quit TimeTracker`); `tray.rs` (tooltip, item labels); `index.html`; the toolbar; user-facing errors in `lib.rs`, `instance.rs` and `remote.rs`; `Info.plist` usage strings |
+| Bundle | `TimeTracker.app` | `TimeTracker (Debug).app` | `scripts/install.sh`, `scripts/stop-app.sh`, `scripts/dev/launch.sh`; the window owner in `scripts/dev/screenshot.sh` |
+| Bundle identifier | `com.philippstracker.timetracker` | `com.philippstracker.timetracker.debug` | both Tauri configs; `lib.rs` `IDENTIFIER`, `DEBUG_IDENTIFIER`, `BUILD_IDENTIFIER` (tested against both); `scripts/install.sh`, `scripts/dev/launch.sh` (signing identifiers); `scripts/dev/js.sh` (the debug socket path). It names the config dir and the log dir; changing it starts with empty settings and data |
+| Binary and CLI command | `timetracker` | the same name inside the debug bundle, run by path | Cargo package `name` in `src-tauri/Cargo.toml`; `cli/mod.rs` `name` and `EXAMPLES`; `cli/reply.rs` (`TimeTracker <version>` line); the README Scripting examples; `scripts/install.sh`; `scripts/stop-app.sh`; `scripts/dev/launch.sh`; `.claude/settings.json` (`pkill -x timetracker`) |
+| Installed links | `~/Applications/TimeTracker.app`, `~/.local/bin/timetracker` | none | `scripts/install.sh` |
+| Rust lib | `timetracker_lib` | the same | `Cargo.toml` `[lib]`; `main.rs`; `tests/` |
+| URL scheme | `timetracker://` | `timetracker-debug://` | both Tauri configs' `plugins.deep-link.desktop.schemes` (the bundler writes it into `Info.plist`); `lib.rs` `LINK_SCHEME` (tested); `deep_link.rs` (`link_message`, error text); the README Scripting examples |
+| Global timer shortcut | `Mod+Ctrl+Alt+T` | none by default | `store/settings/mod.rs` `RELEASE_TIMER_SHORTCUT`, `DEFAULT_TIMER_SHORTCUT` |
+| Capture | the frontmost window (`capture/macos.rs`) | made-up windows of the showcase (`capture/demo.rs`); the real ones with `TIMETRACKER_REAL_CAPTURE=1` | `capture::new_source`, `dev::real_capture` |
+| First launch | empty | seeded with the showcase when the database holds no activity | `dev::seed_first_run`, `test_support/showcase/` |
+| Socket, lock | `timetracker.sock`, `timetracker.lock` in the config dir | the same in the debug config dir | `lib.rs` `SOCKET_NAME`, `instance.rs` `LOCK_NAME`; `scripts/dev/js.sh` (the socket) |
+| Data file | `timetracker.sqlite` in `<config dir>/data/` | the same in the debug config dir | `db/mod.rs` `DB_FILE`, `default_data_dir`; `db/relocate.rs` (the copy) |
+| LaunchAgent | `~/Library/LaunchAgents/TimeTracker.plist`, written by `tauri-plugin-autostart` and named after `productName` | `TimeTracker (Debug).plist` if turned on | `app.rs` (`MacosLauncher::LaunchAgent`, `--hidden`), `autostart.rs` |
+| Config dir | `~/Library/Application Support/com.philippstracker.timetracker/` | `….timetracker.debug/` | `lib.rs` `config_dir()`, `BUILD_IDENTIFIER` |
+| Logs dir | `~/Library/Logs/com.philippstracker.timetracker/` | `….timetracker.debug/` | Tauri's `app_log_dir`, from the identifier |
+| Env vars | `TIMETRACKER_SIGN_IDENTITY`, `TIMETRACKER_CLI` | also `TIMETRACKER_WINDOW_FRAME`, `TIMETRACKER_BACKGROUND`, `TIMETRACKER_REAL_CAPTURE`, `TIMETRACKER_DEV_TERMINAL` | `scripts/sign-app.sh`; `dev.rs`, `window.rs`; `scripts/dev/launch.sh`, `scripts/dev/seed-day.sh` |
+| Store on `window` | none | `window.timetracker` (`VITE_DEV_HOOKS=1`) | `src/main.tsx`, `src/vite-env.d.ts`, the dev scripts |
+| Icons | clock glyph | the same | `design/icon.svg`, rasterized to `design/icon-1024.png` (`rsvg-convert -w 1024 -h 1024`); `src-tauri/icons/` regenerated with `bun tauri icon design/icon-1024.png` (only the desktop files are kept); tray template images in `src-tauri/icons/tray/` |
+| Author, license | Philipp Stracker, MIT | | `Cargo.toml`, `package.json`, `LICENSE` |
 
 ## Platform-specific code
 
@@ -38,7 +46,7 @@ The app's name and ids live in a few places. Change them together.
 | **Permissions**: Accessibility (window titles, document paths) and Automation per browser (the prompt shows `NSAppleEventsUsageDescription`) | `capture/macos.rs`; `src-tauri/Info.plist`; `tracker/commands.rs` `PRIVACY_SETTINGS` (the System Settings link); `PermissionDialog`, the welcome sheet | No prompts; `permission()` returns `granted` | Same |
 | **Tray**: template images (black with alpha, tinted by macOS), menu on left click, the timer picker placed under it | `tray.rs`, `src-tauri/icons/tray/`; `timers/picker.rs` (`Position::TrayCenter`, `tauri-plugin-positioner`); from the keyboard on the focused screen (`timers/screen.rs`, AppKit and `CGWindowListCopyWindowInfo`) | Works with an `AppIndicator`; template tinting does not apply, ship colored icons | Works; colored icons |
 | **Launch at login**: `MacosLauncher::LaunchAgent` with `--hidden` | `app.rs` (autostart plugin), `autostart.rs` | The plugin writes an XDG autostart entry | The plugin writes a registry key |
-| **Global shortcut** for the timer picker (`Settings.timerShortcut`, default `Mod+Ctrl+Alt+T`, `null` for none) | `timers/shortcut.rs` (`tauri-plugin-global-shortcut`), `store/keybindings.rs` `accelerator`, `is_global` | X11 works; Wayland needs the GlobalShortcuts portal | Works |
+| **Global shortcut** for the timer picker (`Settings.timerShortcut`, default `Mod+Ctrl+Alt+T` in release builds and none in debug builds, `null` for none) | `timers/shortcut.rs` (`tauri-plugin-global-shortcut`), `store/keybindings.rs` `accelerator`, `is_global` | X11 works; Wayland needs the GlobalShortcuts portal | Works |
 | **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs | `src/commands/registry.ts`, `store/keybindings.rs` `key_label`, `menu/mod.rs` | Map `Mod` to Ctrl | Same |
 | **Config dir** hard-coded to `~/Library/Application Support/<id>` | `lib.rs` `config_dir()`, `scripts/dev/js.sh` | `dirs::config_dir()`; it must resolve before Tauri starts, because the CLI and socket run first | `dirs::config_dir()` (`%APPDATA%\<id>`) |
 | **Unix socket** for the single-instance handoff, CLI, `watch` and MCP `status`/`open_day` | `ipc/`, `watch.rs`, `mcp/ui.rs` | Works as is; mind the ~108-byte path limit | A named pipe (`tokio::net::windows::named_pipe`) with the same line protocol |

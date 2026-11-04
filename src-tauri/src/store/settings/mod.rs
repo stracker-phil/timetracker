@@ -61,7 +61,13 @@ pub struct Settings {
 }
 
 /// ⌃⌥⌘T, which neither macOS nor common IDEs bind.
-pub const DEFAULT_TIMER_SHORTCUT: &str = "Mod+Ctrl+Alt+T";
+const RELEASE_TIMER_SHORTCUT: &str = "Mod+Ctrl+Alt+T";
+/// Debug builds register no global shortcut by default, so the release app keeps its own (ADR 0031).
+const DEFAULT_TIMER_SHORTCUT: Option<&str> = if cfg!(debug_assertions) {
+    None
+} else {
+    Some(RELEASE_TIMER_SHORTCUT)
+};
 
 impl Default for Settings {
     fn default() -> Self {
@@ -81,7 +87,7 @@ impl Default for Settings {
             timeline: TimelineSettings::default(),
             apps: HashMap::new(),
             reports: ReportSettings::default(),
-            timer_shortcut: Some(DEFAULT_TIMER_SHORTCUT.into()),
+            timer_shortcut: DEFAULT_TIMER_SHORTCUT.map(Into::into),
             mcp: McpSettings::default(),
         }
     }
@@ -540,29 +546,37 @@ mod tests {
             ("Shift+T", DEFAULT_TIMER_SHORTCUT),
             ("Alt+R", DEFAULT_TIMER_SHORTCUT),
             ("Mod+", DEFAULT_TIMER_SHORTCUT),
-            ("Mod+Alt+R", "Mod+Alt+R"),
-            ("Ctrl+Alt+K", "Ctrl+Alt+K"),
+            ("Mod+Alt+R", Some("Mod+Alt+R")),
+            ("Ctrl+Alt+K", Some("Ctrl+Alt+K")),
         ] {
             let sanitized = settings(|s| s.timer_shortcut = Some(input.into())).sanitized();
-            assert_eq!(
-                sanitized.timer_shortcut.as_deref(),
-                Some(expected),
-                "{input:?}"
-            );
+            assert_eq!(sanitized.timer_shortcut.as_deref(), expected, "{input:?}");
         }
     }
 
     #[test]
-    fn the_timer_shortcut_defaults_to_control_option_command_t() {
-        assert_eq!(DEFAULT_TIMER_SHORTCUT, "Mod+Ctrl+Alt+T");
+    fn the_release_timer_shortcut_is_control_option_command_t() {
+        assert_eq!(RELEASE_TIMER_SHORTCUT, "Mod+Ctrl+Alt+T");
+    }
+
+    #[test]
+    fn the_debug_build_has_no_timer_shortcut_by_default() {
+        assert_eq!(DEFAULT_TIMER_SHORTCUT, None);
+    }
+
+    #[test]
+    fn default_missing_and_sanitized_default_timer_shortcuts_all_use_the_build_default() {
+        let missing: Settings = serde_json::from_value(json!({ "accent": "teal" })).unwrap();
+
         assert_eq!(
             Settings::default().timer_shortcut.as_deref(),
-            Some(DEFAULT_TIMER_SHORTCUT)
+            DEFAULT_TIMER_SHORTCUT
         );
         assert_eq!(
             Settings::default().sanitized().timer_shortcut.as_deref(),
-            Some(DEFAULT_TIMER_SHORTCUT)
+            DEFAULT_TIMER_SHORTCUT
         );
+        assert_eq!(missing.timer_shortcut.as_deref(), DEFAULT_TIMER_SHORTCUT);
     }
 
     #[test]
@@ -571,16 +585,6 @@ mod tests {
 
         assert_eq!(loaded.timer_shortcut, None);
         assert_eq!(loaded.sanitized().timer_shortcut, None);
-    }
-
-    #[test]
-    fn a_missing_timer_shortcut_gets_the_default() {
-        let loaded: Settings = serde_json::from_value(json!({ "accent": "teal" })).unwrap();
-
-        assert_eq!(
-            loaded.timer_shortcut.as_deref(),
-            Some(DEFAULT_TIMER_SHORTCUT)
-        );
     }
 
     #[test]
@@ -714,7 +718,7 @@ mod tests {
                 },
                 "apps": {},
                 "reports": { "rounding": "none", "defaultGroup": "project" },
-                "timerShortcut": "Mod+Ctrl+Alt+T",
+                "timerShortcut": DEFAULT_TIMER_SHORTCUT,
                 "mcp": { "exposeActivity": false }
             })
         );

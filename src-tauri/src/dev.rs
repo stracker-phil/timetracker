@@ -8,7 +8,7 @@ use crate::db::time::Day;
 use crate::error::{AppError, AppResult};
 use crate::events::{DataKind, data_changed};
 use crate::state::AppState;
-use crate::test_support::seed::{SeedStats, has_activity_before, seed_years};
+use crate::test_support::seed::{SeedStats, has_activity_before, has_any_activity, seed_years};
 use crate::test_support::showcase::seed_showcase;
 
 /// `TIMETRACKER_WINDOW_FRAME="x,y,width,height"` (logical points) places the main window.
@@ -19,6 +19,12 @@ pub fn window_frame() -> Option<(f64, f64, f64, f64)> {
 /// `TIMETRACKER_BACKGROUND=1` keeps the window from taking focus.
 pub fn background() -> bool {
     std::env::var("TIMETRACKER_BACKGROUND").is_ok_and(|v| v == "1")
+}
+
+/// `TIMETRACKER_REAL_CAPTURE=1` makes the debug build capture the real frontmost windows instead of the demo
+/// ones (`capture::demo`). Off by default: the debug build's data and screenshots stay made up.
+pub fn real_capture() -> bool {
+    std::env::var("TIMETRACKER_REAL_CAPTURE").is_ok_and(|v| v == "1")
 }
 
 /// Runs JavaScript sent by `scripts/dev/js.sh` in the main window, or in another one named by a first
@@ -56,6 +62,23 @@ pub async fn seed(
     } else {
         seed_years(&db, years, SEED).await?
     };
+    announce_seed(app);
+    Ok(stats)
+}
+
+/// A debug build's first launch, on a data folder without activity, starts on the showcase (ADR 0031).
+pub async fn seed_first_run(app: &tauri::AppHandle) -> AppResult<()> {
+    let db = app.state::<AppState>().data.db()?;
+    if has_any_activity(&db).await? {
+        return Ok(());
+    }
+    seed_showcase(&db, SEED).await?;
+    log::info!("Seeded the new debug data folder with the showcase");
+    announce_seed(app);
+    Ok(())
+}
+
+fn announce_seed(app: &tauri::AppHandle) {
     for kind in [
         DataKind::Activity,
         DataKind::Recordings,
@@ -64,7 +87,6 @@ pub async fn seed(
     ] {
         data_changed(app, kind, None);
     }
-    Ok(stats)
 }
 
 /// The seed of `timetracker dev seed`, so every dev database looks the same.

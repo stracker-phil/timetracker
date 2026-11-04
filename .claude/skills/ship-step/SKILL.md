@@ -17,7 +17,9 @@ description: Finish a development step in TimeTracker - clean up and review the 
    Drive the UI with `scripts/dev/js.sh '<js>'` (fire-and-forget; wrap code in an IIFE, the store is
    `window.timetracker`) and check it with `scripts/dev/screenshot.sh <png>`. Never use AppleScript clicks or
    keystrokes; they need focus.
-5. Update the affected `docs/` page if behavior, commands, files or extension points changed.
+5. Update the affected `docs/` page if behavior, commands, files or extension points changed; add an ADR for
+   each new decision. Check that no real data slipped into code, docs, tests or screenshots
+   (`.claude/rules/demo-data.md`).
 6. Stage the step's files by path (check `git status` for stray files), then commit following
    `.claude/rules/commits.md`. Never push.
 7. `bun run release` (in the background; it takes minutes): `scripts/install.sh` installs the release build
