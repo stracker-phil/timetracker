@@ -184,5 +184,6 @@ fn start_tracker(app: &AppHandle, state: &AppState) {
     tracker.set_capture(settings.capture);
     app.manage(Arc::clone(&tracker));
     away_prompt::watch(app, &tracker);
+    timers::auto_stop::watch_wake(app, &tracker);
     tracker::start(app, tracker);
 }

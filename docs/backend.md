@@ -956,25 +956,28 @@ rebuilds the timer items. The tray's click events go to
 A timer is a recording with an open span, so the overlap rule, undo and reports need nothing new. One that
 another app starts (the CLI's `timer start` and `start`, the MCP `timer_start`, a socket `timerStart` without
 `final`) is a suggested timer instead: a stored suggestion with an open start, reviewed like any suggestion
-([ADR 0041](adr/0041-programmatic-timers-start-as-suggestions.md)). At most one timer of either kind runs.
+([ADR 0041](adr/0041-programmatic-timers-start-as-suggestions.md)). At most one timer of either kind runs,
+and it never passes a calendar day ([ADR 0042](adr/0042-a-timer-ends-by-midnight-or-when-the-mac-slept.md)).
 
 - `timers/current.rs`: `Timer { Recording | Suggestion }` (serialized with `kind`), the running one, and
   `current(db)`: the running recording, else the running stored suggestion (`stored_suggestions::running`);
   `id`, `open_start`, `project_id`, `note`, `tag_id`, `is_suggested` and `source` read either.
 - `recordings/timer/mod.rs`: `Recordings::start_timer(TimerInput, now)` starts at `snap(now)`, moved forward past
   any span that ended since (`free_start`); a running timer of either kind stops at that same instant, in one
-  batch ("Start timer for Acme"). A finished recording of today with the same project, note and tag whose spans
-  all end by then continues: it gets the open span instead of a new recording being made (the latest such
-  one). When the running timer already is that project, note and tag, nothing changes. `stop_timer(now)`
-  closes the open span at `stop_time(start, now, snap)`: on the grid, and at least a minute long; it
+  batch ("Start timer for Acme"), unless it started before today: then it stops at its day's midnight and the
+  new one starts at the free start (`start_after`). A finished recording wholly on the start's day with the
+  same project, note and tag whose spans all end by then continues: it gets the open span instead of a new
+  recording being made (the latest such one). When the running timer already is that project, note and tag,
+  nothing changes. `stop_timer(now)` closes the open span at `capped_stop_time(start, now, snap)`:
+  `stop_time` (on the grid, and at least a minute long), never past the midnight after the open start; it
   changes nothing else, so edits made while the timer ran stay; a suggested timer's open start becomes its last
   span (`closed`). `stop_timer` and `update_timer` (project, note and tag; "Edit timer", or "Edit suggestion"
   on a suggested timer) return the `Timer`. All go through `apply`'s checks and onto the undo stack; undoing a
   stop makes the timer run again.
 - `recordings/timer/suggested.rs`: `start_suggested_timer(TimerInput, source, now)` starts like `start_timer`
   and stops whatever runs first, in one batch ("Suggest timer for Acme"); today's finished stored suggestion
-  with the same project, note, tag and source whose spans end by then continues (it gets the open start),
-  else a new one is stored with no spans and the open start. When the running timer, a recording or a
+  with the same project, note, tag and source whose spans lie on that day and end by then continues (it gets
+  the open start), else a new one is stored with no spans and the open start. When the running timer, a recording or a
   suggested one, already has that project, note and tag, nothing changes and it returns that `Timer` (the
   owner's timer wins; `timers::commands::start_suggested` also returns it when the start repeats its origin). `approve_suggested_timer(id, input, open_start)` turns the
   running suggestion into the running recording (`rules::approve`, see [Rules and
@@ -984,7 +987,24 @@ another app starts (the CLI's `timer start` and `start`, the MCP `timer_start`, 
   recording's or the suggestion's, `projectName` null and the graphite accent for a suggested timer without a
   project; `elapsedMs` since the open span started), `recent(db, 8) -> RecentTimer[]` (distinct project, note and tag of finished
   recordings, newest first, archived projects left out; also `timer recent` and the MCP `recent_timers`), `publish(app)` (the `timer_status` event, the tray, the watchers and `Running`, the flag `timers::runs` reads for `timer:stop`; a change refreshes the menu),
-  `start_ticking(app)` (publishes at startup and every minute while a timer runs).
+  `start_ticking(app)` (publishes at startup and every minute while a timer runs, each time after
+  `auto_stop::stop_if_due`; missed ticks are delayed, not caught up).
+- **Automatic stop** (ADR 0042). `recordings/auto_stop.rs`: `auto_stop_in(open_start, now, sleeps, tz)` is the pure rule
+  (`auto_stop_timer` passes local time): the earliest of the start of the first sleep from the open
+  start on that lasts more than `SLEEP_STOP_MS` (60 min; an open sleep lasts until now), and, once now has
+  passed it, the midnight after the open start (`day_end_in`, `Day::bounds_in`, so 23 and 25 h days hold),
+  or the start of a sleep across that midnight. It returns `AutoStop { end, reason: Midnight | Sleep }`.
+  `Recordings::auto_stop_timer(now, unseen)` reads the running timer and its sleeps
+  (`db::away::sleeps_since(db, open_start)`: the tracker's `sleep` away spans, written at the system's sleep
+  notification), adds `unseen` when no recorded sleep starts in it, and stops the timer of either kind as
+  `stop_timer` does at `capped_stop_time(open_start, end, snap)`, one undoable change labelled "Stop timer at
+  midnight" or "Stop timer (the Mac slept)". `timers/auto_stop.rs` runs it: `stop_if_due(app, now,
+  last_tick)` on every minute tick (the first at startup), where a gap of more than an hour since the last
+  tick (`unseen`: the wall clock moved on while the process did not, a sleep the paused or permissionless
+  tracker never recorded) counts as a sleep from that tick; and `watch_wake(app, tracker)` on every sleep
+  span the tracker closes (`Tracker::subscribe_away`), so a timer stops as the Mac wakes. Through
+  `recordings::commands::changing`, so the days change and the timer publishes. Known limit: while the app is
+  quit nothing records a sleep, so a timer left running then stops only at midnight, when the app next runs.
 - `timers/origin.rs`: `TimerOrigin { timer_id, input: TimerInput }`, the last start of this run, kept in
   `AppState.timer_origin` (memory only); `repeats(origin, running_id, input)` is whether a start repeats
   the one that made the running timer (a recording or a suggestion). `timers::commands::start` (and

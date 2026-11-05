@@ -80,6 +80,17 @@ pub async fn open(db: &Db) -> AppResult<Option<AwayRow>> {
     .await?)
 }
 
+/// The sleeps that start at or after `from`, by start, as `(start, end)`; `None` while asleep.
+pub async fn sleeps_since(db: &Db, from: Ms) -> AppResult<Vec<(Ms, Option<Ms>)>> {
+    Ok(sqlx::query_as(
+        r#"SELECT start, "end" FROM away_spans WHERE reason = ?1 AND start >= ?2 ORDER BY start, id"#,
+    )
+    .bind(AwayReason::Sleep)
+    .bind(from)
+    .fetch_all(db.pool())
+    .await?)
+}
+
 /// Spans that share time with `[from, to)`, open ones included, by start. Not clipped.
 pub async fn list_for_range(db: &Db, from: Ms, to: Ms) -> AppResult<Vec<AwayRow>> {
     Ok(sqlx::query_as(
@@ -402,5 +413,27 @@ mod tests {
             [early, late, kept]
         );
         assert_eq!(list_for_range(&db, 0, 1_000).await.unwrap()[..2], taken[..]);
+    }
+
+    #[tokio::test]
+    async fn sleeps_since_lists_only_sleeps_starting_at_or_after_the_bound_by_start() {
+        let db = Db::open_memory().await.unwrap();
+        insert(&db, away(30, AwayReason::Sleep)).await.unwrap();
+        close_open(&db, 40).await.unwrap();
+        insert(&db, away(5, AwayReason::Sleep)).await.unwrap();
+        close_open(&db, 8).await.unwrap();
+        insert(&db, away(20, AwayReason::Idle)).await.unwrap();
+        insert(&db, away(25, AwayReason::Lock)).await.unwrap();
+        insert(&db, away(26, AwayReason::Paused)).await.unwrap();
+        close_open(&db, 27).await.unwrap();
+        insert(&db, away(10, AwayReason::Sleep)).await.unwrap();
+        close_open(&db, 20).await.unwrap();
+        insert(&db, away(50, AwayReason::Sleep)).await.unwrap();
+
+        assert_eq!(
+            sleeps_since(&db, 10).await.unwrap(),
+            [(10, Some(20)), (30, Some(40)), (50, None)]
+        );
+        assert!(sleeps_since(&db, 51).await.unwrap().is_empty());
     }
 }

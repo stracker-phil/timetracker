@@ -17,7 +17,9 @@ detail: [backend](backend.md), [frontend](frontend.md), [design language](ux.md)
 Activity never becomes a recording on its own. Rules only suggest recordings; tags classify them for
 reports; a timer is a recording whose last span ends "now" ([ADR 0005](adr/0005-activity-and-recordings-are-separate-layers.md)),
 or, when another app started it, a stored suggestion with an open start that waits for review like any
-suggestion ([ADR 0041](adr/0041-programmatic-timers-start-as-suggestions.md)).
+suggestion ([ADR 0041](adr/0041-programmatic-timers-start-as-suggestions.md)). Either ends by the midnight
+after it started, or where the Mac slept more than an hour
+([ADR 0042](adr/0042-a-timer-ends-by-midnight-or-when-the-mac-slept.md)).
 
 ## Design rules
 

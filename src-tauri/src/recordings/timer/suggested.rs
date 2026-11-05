@@ -50,7 +50,7 @@ impl Recordings<'_> {
         if unchanged && let Some(timer) = &running {
             return Ok(Change::unchanged(timer.clone()));
         }
-        let start = self.start_after(running.as_ref(), now).await?;
+        let (stop, start) = self.start_after(running.as_ref(), now).await?;
         let continued = self
             .continued_suggestion(&project.id, &note, tag_id.as_deref(), &source, start)
             .await?;
@@ -78,7 +78,7 @@ impl Recordings<'_> {
             after: Some(timed.clone()),
         };
         let label = format!("Suggest timer for {}", project.name);
-        let op = after_stopping(running, start, now, timing, &label);
+        let op = after_stopping(running, stop, now, timing, &label);
         let days = self.apply_and_push(&mut undo, label, op).await?;
         Ok(Change {
             value: Timer::Suggestion(timed),
@@ -86,7 +86,8 @@ impl Recordings<'_> {
         })
     }
 
-    /// The latest finished stored suggestion of `start`'s day with these fields that ends by `start`.
+    /// The latest finished stored suggestion with these fields that lies wholly on `start`'s day and ends by
+    /// `start`.
     async fn continued_suggestion(
         &self,
         project_id: &str,
@@ -96,10 +97,13 @@ impl Recordings<'_> {
         start: Ms,
     ) -> AppResult<Option<StoredSuggestion>> {
         let last_end = |s: &StoredSuggestion| s.spans.last().map(|span| span.end);
-        Ok(stored_suggestions::list_for_day(self.db, Day::of(start))
+        let day = Day::of(start);
+        let from = day.bounds().0;
+        Ok(stored_suggestions::list_for_day(self.db, day)
             .await?
             .into_iter()
             .filter(|s| !s.is_running() && s.source == source)
+            .filter(|s| s.spans.iter().all(|span| span.start >= from))
             .filter(|s| same_fields(s, project_id, note, tag_id))
             .filter(|s| last_end(s).is_some_and(|end| end <= start))
             .max_by_key(last_end))

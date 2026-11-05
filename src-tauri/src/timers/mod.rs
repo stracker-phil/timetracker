@@ -1,6 +1,7 @@
 //! The running timer as the tray, the page and the CLI see it, the recent timers, and the window and the
 //! global shortcut that start one. Starting and stopping are recordings changes (`recordings::timer`).
 
+pub mod auto_stop;
 pub mod commands;
 mod current;
 pub mod origin;
@@ -16,6 +17,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
+use tokio::time::MissedTickBehavior;
 use ts_rs::TS;
 
 use crate::db::Db;
@@ -191,18 +193,23 @@ pub async fn publish(app: &AppHandle) -> bool {
     status.running.is_some()
 }
 
-/// Publishes now, and again every minute while a timer runs; a change in between publishes on its own.
+/// Publishes now, and again every minute while a timer runs, each time after stopping a timer that is due
+/// (`auto_stop`); a change in between publishes on its own.
 pub fn start_ticking(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let mut running = publish(&app).await;
         let mut ticks = tokio::time::interval(TICK);
-        ticks.tick().await;
+        ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let mut running = true;
+        let mut last_tick = None;
         loop {
             ticks.tick().await;
+            let now = now_ms();
             if running || timer_runs(&app).await {
+                auto_stop::stop_if_due(&app, now, last_tick).await;
                 running = publish(&app).await;
             }
+            last_tick = Some(now);
         }
     });
 }

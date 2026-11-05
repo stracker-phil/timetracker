@@ -4,6 +4,7 @@
 
 mod suggested;
 
+use super::auto_stop::capped_stop_time;
 use super::checks::{check_tag, checked_note, usable_project};
 use super::ops::Op;
 use super::{Change, MINUTE_MS, Recordings, snap};
@@ -48,9 +49,9 @@ impl Recordings<'_> {
         {
             return Ok(Change::unchanged(r.clone()));
         }
-        let start = self.start_after(running.as_ref(), now).await?;
+        let (stop, start) = self.start_after(running.as_ref(), now).await?;
         let continued = self
-            .continued(&project.id, &note, input.tag_id.as_deref(), start, now)
+            .continued(&project.id, &note, input.tag_id.as_deref(), start)
             .await?;
         let timer = TimerInput {
             project_id: project.id,
@@ -59,32 +60,41 @@ impl Recordings<'_> {
         };
         let (timed, timing) = continuation_or_new(continued, timer, start, now);
         let label = format!("Start timer for {}", project.name);
-        let op = after_stopping(running, start, now, timing, &label);
+        let op = after_stopping(running, stop, now, timing, &label);
         self.commit(&mut undo, label, op, &timed.id).await
     }
 
-    /// Where a timer started now begins: where the running one stops, else the free start.
-    async fn start_after(&self, running: Option<&Timer>, now: Ms) -> AppResult<Ms> {
-        match running {
-            Some(timer) => Ok(stop_time(timer.open_start(), now, self.snap_minutes)),
-            None => self.free_start(now).await,
+    /// `(stop, start)` for a timer started now: the running one stops at `stop` and the new one begins
+    /// there, unless the running one ran past its midnight; then, and with none running, at the free start.
+    async fn start_after(&self, running: Option<&Timer>, now: Ms) -> AppResult<(Ms, Ms)> {
+        let Some(timer) = running else {
+            let start = self.free_start(now).await?;
+            return Ok((start, start));
+        };
+        let open_start = timer.open_start();
+        let stop = capped_stop_time(open_start, now, self.snap_minutes);
+        let ran_past_midnight = stop < stop_time(open_start, now, self.snap_minutes);
+        if ran_past_midnight {
+            return Ok((stop, self.free_start(now).await?.max(stop)));
         }
+        Ok((stop, stop))
     }
 
-    /// The latest finished recording of today with this project, note and tag that ends by `start`.
+    /// The latest finished recording with this project, note and tag that lies wholly on `start`'s day
+    /// and ends by `start`.
     async fn continued(
         &self,
         project_id: &str,
         note: &str,
         tag_id: Option<&str>,
         start: Ms,
-        now: Ms,
     ) -> AppResult<Option<Recording>> {
-        let (from, to) = Day::of(now).bounds();
+        let (from, to) = Day::of(start).bounds();
         Ok(recordings::list_for_range(self.db, from, to)
             .await?
             .into_iter()
             .filter(|r| same_timer(r, project_id, note, tag_id))
+            .filter(|r| r.start() >= from)
             .filter(|r| r.end().is_some_and(|end| end <= start))
             .max_by_key(Recording::end))
     }
@@ -104,13 +114,14 @@ impl Recordings<'_> {
             .fold(snapped, Ms::max))
     }
 
-    /// Stops the running timer, a recording or a suggested one; `None` when none runs.
+    /// Stops the running timer, a recording or a suggested one, at its day's midnight at the latest; `None`
+    /// when none runs.
     pub async fn stop_timer(&self, now: Ms) -> AppResult<Change<Option<Timer>>> {
         let mut undo = self.undo.lock().await;
         let Some(running) = timers::current(self.db).await? else {
             return Ok(Change::unchanged(None));
         };
-        let end = stop_time(running.open_start(), now, self.snap_minutes);
+        let end = capped_stop_time(running.open_start(), now, self.snap_minutes);
         let timer = running.clone();
         let days = self
             .apply_and_push(&mut undo, "Stop timer".into(), stopping(running, end, now))
@@ -122,7 +133,7 @@ impl Recordings<'_> {
     }
 
     /// `timer` as it is stored now.
-    async fn reread(&self, timer: &Timer) -> AppResult<Timer> {
+    pub(super) async fn reread(&self, timer: &Timer) -> AppResult<Timer> {
         Ok(match timer {
             Timer::Recording(r) => Timer::Recording(recordings::get(self.db, &r.id).await?),
             Timer::Suggestion(s) => {
@@ -184,7 +195,7 @@ fn after_stopping(running: Option<Timer>, at: Ms, now: Ms, start: Op, label: &st
 }
 
 /// Stops `timer` at `end`: a recording's open span closes, a suggestion's open start becomes a span.
-fn stopping(timer: Timer, end: Ms, now: Ms) -> Op {
+pub(super) fn stopping(timer: Timer, end: Ms, now: Ms) -> Op {
     match timer {
         Timer::Recording(before) => stopped(before, end, now),
         Timer::Suggestion(before) => Op::Suggestion {

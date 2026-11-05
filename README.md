@@ -136,7 +136,9 @@ next to `--final`, so a wrapper script can't be talked into changing recordings.
 starts a suggested timer that runs until it is stopped and waits for review like any suggestion (ADR
 [0041](docs/adr/0041-programmatic-timers-start-as-suggestions.md)); approving it while it runs makes it the
 running timer. `timer start --final` starts a recording, as the timer picker and the menu bar do. `timer
-stop` and `timer update` change whatever timer runs.
+stop` and `timer update` change whatever timer runs. A timer never runs past midnight: a forgotten one
+stops there, or where the Mac fell asleep for more than an hour (ADR
+[0042](docs/adr/0042-a-timer-ends-by-midnight-or-when-the-mac-slept.md)).
 
 A suggestion may leave out the project (ADR [0030](docs/adr/0030-suggestions-may-have-no-project.md)), as a
 reminder that time was spent: it shows as "No project" and can't be approved until you pick one, in the

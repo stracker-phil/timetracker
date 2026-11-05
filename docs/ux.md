@@ -697,6 +697,11 @@ timeline's for every app.
   the pulsing dot (on the card left of ✓ and ✕), `since 09:00` in place of its span and no end; it grows with
   the minute tick. ✓ approves it, and it keeps running as the timer ("Timer approved for Acme", Undo). The
   status bar reads `⏱ Acme 1:23 · Suggested`.
+- **A timer never passes a calendar day** (ADR 0042): a forgotten timer, final or suggested, stops on its own
+  at midnight, and earlier where the Mac fell asleep for more than an hour (started 14:00, asleep from
+  17:00: it ends at 17:00 when the Mac wakes; asleep from 23:15 over night: it ends at 23:15). Stopping it
+  just after midnight ends it at midnight too. Edit → Undo names it "Stop timer at midnight" or "Stop timer
+  (the Mac slept)" and lets it run again.
 - The picker (⌃⌥⌘T from any app, ⌘T in the window, Start Timer… in the tray) is a small floating panel on
   `--pop` with `--radius-lg`, under the tray icon from the tray, else at the top center of the screen with
   the front window (or the pointer): "Start Timer", then the labelled fields in the editor's order
