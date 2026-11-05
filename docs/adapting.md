@@ -62,7 +62,7 @@ or build-specific place gets a row here.
 | **Install and dev scripts** (zsh, `ln` into `~/Applications` and `~/.local/bin`, `codesign`, Swift, CoreGraphics, `screencapture`) | `scripts/install.sh`, `scripts/stop-app.sh`, `scripts/sign-app.sh`, `scripts/create-signing-cert.sh`, `scripts/dev/` | Link into `~/.local/bin` and a `.desktop` file; rewrite the dev scripts or use `bun tauri dev` | PowerShell |
 | **Tests**: the setup pretends to be a Mac | `src/test-setup.ts` | Make the platform a parameter | Same |
 
-A port is done when `bun run test`, `bun run lint`, `bun run test:db` and `bun run release` pass on the
+A port is done when `bun run test`, `bun run lint`, `bun run test:db` and `bun run release patch` pass on the
 target, and the app can: track the frontmost app and its window title, and mark idle, sleep and lock as away;
 hand a second `timetracker` launch and every CLI command to the running instance; hide on close and come back
 from the tray; start hidden at login; open the timer picker with the global shortcut; show its menus and

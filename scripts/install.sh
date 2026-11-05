@@ -2,7 +2,7 @@
 # Installs the release build as the one TimeTracker of this machine: ~/Applications/TimeTracker.app links to
 # it and the `timetracker` command links through that app. A running release TimeTracker restarts on it, its
 # window shown or hidden as before; a running debug build is left alone.
-# `bun run release` ends here; debug builds are never installed (scripts/dev/launch.sh runs them by path).
+# `bun run release major|minor|patch` (scripts/release.sh) runs this before it commits and tags the version; debug builds are never installed (scripts/dev/launch.sh runs them by path).
 # A ~/.local/bin/timetracker that isn't this script's link stays unless `scripts/install.sh --replace-cli`.
 set -e
 REPLACE_CLI=

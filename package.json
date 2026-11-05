@@ -17,7 +17,7 @@
     "lint": "bun run types && git diff --exit-code -- src/api/types.gen.ts && tsc --noEmit && eslint . && cargo clippy --manifest-path src-tauri/Cargo.toml --lib --bins -- -D warnings",
     "types": "PATH=/opt/homebrew/opt/rustup/bin:$PATH cargo test --manifest-path src-tauri/Cargo.toml --lib export_bindings",
     "build:app": "PATH=/opt/homebrew/opt/rustup/bin:$PATH VITE_DEV_HOOKS=1 tauri build --debug --bundles app --config src-tauri/tauri.debug.conf.json",
-    "release": "PATH=/opt/homebrew/opt/rustup/bin:$PATH tauri build && scripts/install.sh"
+    "release": "scripts/release.sh"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.106.0",

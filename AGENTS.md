@@ -35,12 +35,13 @@ git clone <this repository>
 cd timetracker
 bun install
 bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/TimeTracker (Debug).app
-bun run release          # release bundle: src-tauri/target/release/bundle/macos/TimeTracker.app and a .dmg
+bun run release patch    # next version (major|minor|patch, ADR 0043); release bundle: src-tauri/target/release/bundle/macos/TimeTracker.app and a .dmg
 ```
 
 The first Rust build takes several minutes. `bun run release` also installs the build (`scripts/install.sh`):
 the app in `~/Applications` and the `timetracker` command in `~/.local/bin` link to the release build, and a
-running TimeTracker restarts on it. Debug builds are never installed; call them by path.
+running TimeTracker restarts on it. Then it commits the version as "Release X.Y.Z" and tags `vX.Y.Z` (never pushed);
+a failed build puts the version back. Debug builds are never installed; call them by path.
 
 ## Verify
 
@@ -50,7 +51,7 @@ running TimeTracker restarts on it. Debug builds are never installed; call them 
 | `bun run lint` | exits 0: types drift check, `tsc`, ESLint, `clippy -D warnings` |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml --check` | no differences |
 | `bun run test:db` | the `#[ignore]` integration tests on temp SQLite files pass (no Docker needed), including `src-tauri/tests/performance.rs`: two seeded years, the Day view under 50 ms, a month's report under 200 ms, week under 100 ms, month under 150 ms, the list under 50 ms (medians) |
-| `bun run release` | `TimeTracker.app` and a `.dmg` in `src-tauri/target/release/bundle/` |
+| `bun run release patch` | `TimeTracker.app` and a `.dmg` in `src-tauri/target/release/bundle/`, a "Release X.Y.Z" commit and a `vX.Y.Z` tag |
 
 Try the app: `scripts/dev/launch.sh` starts the debug build next to the terminal without taking focus.
 Its data and settings live in `~/Library/Application Support/com.philippstracker.timetracker.debug/`, apart from

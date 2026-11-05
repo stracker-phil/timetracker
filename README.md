@@ -28,13 +28,15 @@ Build from source (needs Xcode Command Line Tools, rustup and bun; details in [A
 
 ```sh
 bun install
-bun run release          # builds and installs the app (Spotlight, Launchpad) and the `timetracker` command
+bun run release patch    # next version (major|minor|patch); builds and installs the app (Spotlight, Launchpad) and the `timetracker` command
 ```
 
 `bun run release` ends with `scripts/install.sh`: `~/Applications/TimeTracker.app` links to the release build,
 `~/.local/bin/timetracker` links through that app (unless another command of that name is there;
 `scripts/install.sh --replace-cli` replaces it), and a running TimeTracker restarts on the new build, so one
-version runs on the machine. Updates are a new build. Debug builds (`bun run build:app`) are never installed;
+version runs on the machine. Updates are a new build. Every release gets a new semantic version (major for a
+change that breaks existing use, minor for new features, patch for fixes; [ADR 0043](docs/adr/0043-every-release-gets-a-new-version.md)),
+committed as "Release X.Y.Z" and tagged `vX.Y.Z` locally. Debug builds (`bun run build:app`) are never installed;
 `scripts/dev/launch.sh` runs one by its path.
 
 On first launch a welcome sheet explains what is recorded, asks for the **Accessibility** permission (window

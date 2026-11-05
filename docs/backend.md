@@ -694,7 +694,7 @@ The zone is a parameter, so tests use fixed zones.
 this order, so scripts can grep:
 
 ```
-TimeTracker 0.1.0
+TimeTracker 1.0.0
 tracker: running          (paused | paused until 14:30 | paused until tomorrow | away since 13:02 (idle) | needs permission | off)
 current: Safari · Pull request #42 · 13 min        (current: none)
 timer: none
