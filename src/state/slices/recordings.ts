@@ -1,9 +1,11 @@
-import { api, toAppError, type Overlap, type Recording, type RecordingInput, type RecordingPatch, type SnapEdge, type Span, type UndoStatus } from "../../api";
+import { api, toAppError, type Overlap, type Recording, type RecordingInput, type RecordingPatch, type SnapEdge, type Span } from "../../api";
 import { formatDuration } from "../../lib/format";
 import { recordedMs } from "../../lib/recordings";
 import { focusCleared } from "../focus";
 import { fail } from "../requests";
-import type { Slice, Store } from "../store";
+import type { Slice } from "../store";
+import { projectLists } from "../../queries/projects";
+import { shownDayView } from "../../queries/day";
 
 /** A span picked on the timeline and the activity blocks it came from, on ticks when dragged, else the blocks' own times. */
 export interface Selection {
@@ -28,8 +30,6 @@ export interface RecordingsSlice {
   /** The recording under the pointer, in the timesheet or the time column: all its spans and its card light up. */
   hoveredRecording: string | null;
   hoverRecording: (id: string | null) => void;
-  undoStatus: UndoStatus;
-  loadUndoStatus: () => Promise<void>;
   /**
    * Saves; an overlap asks first whether to replace. Rejects with the error when a form field shows it. With
    * `suggestionId`, the recording approves that suggestion of the shown day as edited.
@@ -49,11 +49,8 @@ export interface RecordingsSlice {
   redo: () => Promise<void>;
 }
 
-
-const NOTHING_TO_UNDO: UndoStatus = { undoLabel: null, redoLabel: null };
-
-function blockSpan(s: Store, id: string): { start: number; end: number } | null {
-  for (const lane of s.dayView?.lanes ?? []) {
+function blockSpan(id: string): { start: number; end: number } | null {
+  for (const lane of shownDayView()?.lanes ?? []) {
     const block = lane.blocks.find((b) => b.id === id);
     if (block) return block;
   }
@@ -93,7 +90,6 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
         return null;
       } finally {
         applying = false;
-        void get().loadUndoStatus();
       }
     }
 
@@ -112,7 +108,6 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
       selectionSnap: null,
       focusedRecording: null,
       hoveredRecording: null,
-      undoStatus: NOTHING_TO_UNDO,
 
       setSelection(selection) {
         if (!selection) return set({ selection, selectionSnap: null });
@@ -124,7 +119,7 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
       },
 
       extendSelection(blockId) {
-        const span = blockSpan(get(), blockId);
+        const span = blockSpan(blockId);
         if (!span) return;
         const current = get().selection ?? { ...span, blockIds: [] };
         const selection = {
@@ -157,21 +152,13 @@ export const recordingsSlice: Slice<RecordingsSlice> = {
         if (get().hoveredRecording !== id) set({ hoveredRecording: id });
       },
 
-      async loadUndoStatus() {
-        try {
-          set({ undoStatus: await api.undoStatus() });
-        } catch {
-          set({ undoStatus: NOTHING_TO_UNDO });
-        }
-      },
-
       async createRecording(input, suggestionId) {
         const day = get().day;
         const saved = await writing("Could not save the recording", (overlap) =>
           suggestionId ? api.suggestionApproveEdited(day, suggestionId, input, overlap) : api.recordingCreate(input, overlap),
         );
         if (saved) {
-          const project = get().projects.find((p) => p.project.id === saved.projectId)?.project.name ?? "the project";
+          const project = projectLists().projects.find((p) => p.project.id === saved.projectId)?.project.name ?? "the project";
           undoToast(`Recorded ${formatDuration(recordedMs(saved))} for ${project}`);
           set({ selection: null, focusedRecording: saved.id });
         }

@@ -9,9 +9,9 @@ HERE=${0:A:h}
 MODE=light
 [[ $(defaults read -g AppleInterfaceStyle 2>/dev/null) == Dark ]] && MODE=dark
 mkdir -p "$DIR"
-"$HERE/js.sh" "window.__looksBefore = window.timetracker.getState().settings; window.timetracker.getState().setView('$VIEW')"
+"$HERE/js.sh" "window.__looksBefore = window.timetrackerQueries.getQueryData(['settings']); window.timetracker.getState().setView('$VIEW')"
 for scheme in default light dark; do
-  "$HERE/js.sh" "(() => { const s = window.timetracker.getState(); void s.saveSettings({ ...s.settings, ${MODE}Scheme: '$scheme' }, { quiet: true }); })()"
+  "$HERE/js.sh" "(() => { const s = window.timetracker.getState(); void s.saveSettings({ ...window.timetrackerQueries.getQueryData(['settings']), ${MODE}Scheme: '$scheme' }, { quiet: true }); })()"
   sleep 1
   "$HERE/screenshot.sh" "$DIR/$scheme-$MODE-$VIEW.png"
 done

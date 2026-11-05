@@ -1,17 +1,18 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Sun } from "lucide-react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api, type DateJump } from "../api";
+import { api, type DateJump, type Project, type SavedReport, type TrackerStatus } from "../api";
 import { installCommands, runCommand } from "../commands";
 import { registerSettingsPage } from "../registry/settingsPages";
 import { resetStore, useStore, type Store } from "../state/store";
 import { trackerStatus } from "../test/data";
 import { menuCommand, menuCommands } from "../test/menuFixtures";
-import { client, projectItem, projectsStore } from "../test/projectFixtures";
+import { client, projectItem } from "../test/projectFixtures";
+import { renderWithClient, SAVED_REPORTS_KEY, seedProjects, seedQuery, TRACKER_KEY } from "../test/queries";
 import { savedReport } from "../test/reportFixtures";
 import { CommandPalette } from "./CommandPalette";
 import { Dialogs } from "./Dialogs";
@@ -30,11 +31,17 @@ const weekly = savedReport({ id: "s1", name: "Weekly" });
 
 const today: DateJump = { name: "Today", unit: "day", from: "2026-03-10", to: "2026-03-10", label: "Tue, Mar 10" };
 
+/** Store state, plus the query data the palette lists. */
+type PaletteSetup = Partial<Store> & { recent?: Project[]; savedReports?: SavedReport[]; tracker?: TrackerStatus };
+
 /** Opens the palette the way ⌘K does, which notes what the page can run before the sheet covers it. */
-async function openPalette(query = "", patch: Partial<Store> = {}) {
-  resetStore({ ...projectsStore({ projects: [promo, solo, archived], clients: [acme, oldClient] }), paletteOpen: false, view: "projects", ...patch });
+async function openPalette(query = "", { recent = [], savedReports = [], tracker, ...patch }: PaletteSetup = {}) {
+  resetStore({ paletteOpen: false, view: "projects", ...patch });
+  seedProjects({ projects: [promo, solo, archived], clients: [acme, oldClient], recent });
+  seedQuery(SAVED_REPORTS_KEY, savedReports);
+  if (tracker) seedQuery(TRACKER_KEY, tracker);
   installCommands();
-  render(
+  renderWithClient(
     <>
       <CommandPalette />
       <Dialogs />
@@ -52,7 +59,7 @@ async function menusLoaded() {
   await act(async () => {});
 }
 const indexOfOption =(pattern: RegExp) => options().findIndex((t) => pattern.test(t));
-const choose = (query: string, patch: Partial<Store> = {}) => openPalette(query, patch).then(() => userEvent.keyboard("{Enter}"));
+const choose = (query: string, patch: PaletteSetup = {}) => openPalette(query, patch).then(() => userEvent.keyboard("{Enter}"));
 
 describe("CommandPalette", () => {
   beforeEach(() => {
@@ -309,8 +316,8 @@ describe("CommandPalette", () => {
 
     /** The tracker line offers its Pause menu while the tracker runs. */
     function mountTrackerLine() {
-      resetStore({ tracker: running });
-      return render(<TrackerLine />);
+      seedQuery(TRACKER_KEY, running);
+      return renderWithClient(<TrackerLine />);
     }
 
     it("lists the rows of a mounted menu under its section, and runs the chosen one", async () => {
@@ -332,7 +339,8 @@ describe("CommandPalette", () => {
 
     it("lists no rows while the tracker is paused", async () => {
       mountTrackerLine();
-      act(() => resetStore({ tracker: paused }));
+      act(() => seedQuery(TRACKER_KEY, paused));
+      await vi.waitFor(() => expect(screen.getAllByText(/Paused/).length).toBeGreaterThan(0));
       await openPalette("pause", { tracker: paused });
       await menusLoaded();
       expect(indexOfOption(/^Pause tracking:/)).toBe(-1);

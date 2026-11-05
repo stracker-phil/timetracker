@@ -5,6 +5,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api, type ActivityBlock, type AppOverride, type Lane, type Settings } from "../../api";
 import { resetStore, useStore } from "../../state/store";
 import { appLane, block, lane, sourceLane } from "../../test/dayFixtures";
+import { seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import type { MenuEntry } from "../menu";
 import { blockMenu } from "./blockMenu";
@@ -31,7 +32,8 @@ function menu(s: Settings | null, b: ActivityBlock = block(), l: Lane = lane({ b
 describe("blockMenu", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resetStore({ settings: settings() });
+    resetStore();
+    seedQuery(SETTINGS_KEY, settings());
   });
 
   describe("of a tracker block", () => {

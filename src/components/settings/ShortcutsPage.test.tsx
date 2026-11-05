@@ -1,21 +1,25 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api } from "../../api";
+import { api, type Keybindings, type Settings } from "../../api";
 import { installCommands } from "../../commands";
+import { KEYBINDINGS_KEY } from "../../queries/settings";
 import { resetStore } from "../../state/store";
+import { renderWithClient, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { SettingsWindow } from "./SettingsWindow";
 
 const mocked = vi.mocked(api, true);
 
-function renderPage(patch: Parameters<typeof resetStore>[0] = {}) {
-  resetStore({ settings: settings(), ...patch });
+function renderPage({ settings: saved = settings(), keybindings = {} }: { settings?: Settings; keybindings?: Keybindings } = {}) {
+  resetStore();
+  seedQuery(SETTINGS_KEY, saved);
+  seedQuery(KEYBINDINGS_KEY, keybindings);
   installCommands();
-  return render(<SettingsWindow page="shortcuts" onPage={() => {}} />);
+  return renderWithClient(<SettingsWindow page="shortcuts" onPage={() => {}} />);
 }
 
 async function searchFor(text: string) {

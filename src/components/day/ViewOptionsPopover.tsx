@@ -6,6 +6,8 @@ import { Modal } from "../Modal";
 import { Group, Row, Segmented, Switch } from "../settings/controls";
 import { TITLES, saveTimeline } from "../settings/timelineActions";
 import { useAnchoredStyle } from "../useAnchoredStyle";
+import { useDayView } from "../../queries/day";
+import { useSettings } from "../../queries/settings";
 
 const NO_APPS: DayApp[] = [];
 const NO_HIDDEN: HiddenApp[] = [];
@@ -41,9 +43,10 @@ function HiddenApps({ apps }: { apps: HiddenApp[] }) {
  */
 export function ViewOptionsPopover() {
   const close = useStore((s) => s.closeDialog);
-  const timeline = useStore((s) => s.settings?.timeline);
-  const apps = useStore((s) => s.dayView?.apps ?? NO_APPS);
-  const hiddenApps = useStore((s) => s.dayView?.hiddenApps ?? NO_HIDDEN);
+  const timeline = useSettings()?.timeline;
+  const { data: view } = useDayView(useStore((s) => s.day));
+  const apps = view?.apps ?? NO_APPS;
+  const hiddenApps = view?.hiddenApps ?? NO_HIDDEN;
   const style = useAnchoredStyle("[data-view-options]", "right");
   if (!timeline) return null;
   return (

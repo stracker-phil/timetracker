@@ -1,11 +1,12 @@
 import { api, type ReportFilter, type SavedReport, type Settings } from "../../api";
 import { fail } from "../requests";
 import type { Slice } from "../store";
+import { setSavedReports } from "../../queries/reports";
+import { currentSettings } from "../../queries/settings";
 
 export interface ReportsSlice {
   /** `null` until changed: the report then follows `settings.reports`. */
   reportFilter: ReportFilter | null;
-  savedReports: SavedReport[];
   /** The saved report shown, until the filter changes. */
   openedReport: string | null;
   /** Merges `patch` into the shown filter; the Reports view runs it again. */
@@ -15,7 +16,6 @@ export interface ReportsSlice {
    * given; `by = 0` with an anchor is the period holding `anchor`.
    */
   shiftReportRange: (anchor: string | null, by: number) => Promise<void>;
-  loadSavedReports: () => Promise<void>;
   /** Saves the shown filter under `name`. */
   saveReport: (name: string) => Promise<void>;
   renameSavedReport: (id: string, name: string) => Promise<void>;
@@ -36,12 +36,11 @@ export function defaultFilter(settings: Settings | null): ReportFilter {
   };
 }
 
-export const selectReportFilter = (s: { reportFilter: ReportFilter | null; settings: Settings | null }) => s.reportFilter ?? defaultFilter(s.settings);
+export const selectReportFilter = (s: { reportFilter: ReportFilter | null }) => s.reportFilter ?? defaultFilter(currentSettings());
 
 export const reportsSlice: Slice<ReportsSlice> = {
   create: (set, get) => ({
     reportFilter: null,
-    savedReports: [],
     openedReport: null,
 
     setReportFilter(patch) {
@@ -57,18 +56,10 @@ export const reportsSlice: Slice<ReportsSlice> = {
       }
     },
 
-    async loadSavedReports() {
-      try {
-        set({ savedReports: await api.savedReportsList() });
-      } catch (e) {
-        fail(e, "Could not load the saved reports");
-      }
-    },
-
     async saveReport(name) {
       try {
         const saved = await api.savedReportSave(name, selectReportFilter(get()));
-        set((s) => ({ savedReports: [...s.savedReports, saved] }));
+        setSavedReports((reports) => [...reports, saved]);
         get().toast("success", `Saved report "${saved.name}"`);
       } catch (e) {
         fail(e, "Could not save the report");
@@ -78,7 +69,7 @@ export const reportsSlice: Slice<ReportsSlice> = {
     async renameSavedReport(id, name) {
       try {
         const renamed = await api.savedReportRename(id, name);
-        set((s) => ({ savedReports: s.savedReports.map((r) => (r.id === id ? renamed : r)) }));
+        setSavedReports((reports) => reports.map((r) => (r.id === id ? renamed : r)));
       } catch (e) {
         fail(e, "Could not rename the report");
       }
@@ -87,7 +78,8 @@ export const reportsSlice: Slice<ReportsSlice> = {
     async deleteSavedReport(id) {
       try {
         await api.savedReportDelete(id);
-        set((s) => ({ savedReports: s.savedReports.filter((r) => r.id !== id), openedReport: s.openedReport === id ? null : s.openedReport }));
+        setSavedReports((reports) => reports.filter((r) => r.id !== id));
+        set((s) => ({ openedReport: s.openedReport === id ? null : s.openedReport }));
       } catch (e) {
         fail(e, "Could not delete the report");
       }

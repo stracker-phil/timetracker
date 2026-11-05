@@ -1,12 +1,12 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api } from "../../api";
-import { resetStore } from "../../state/store";
-import { client, projectsStore } from "../../test/projectFixtures";
+import { client } from "../../test/projectFixtures";
+import { renderWithClient, seedProjects } from "../../test/queries";
 import { ClientSheet } from "./ClientSheet";
 
 const mocked = vi.mocked(api, true);
@@ -14,8 +14,9 @@ const save = () => userEvent.click(screen.getByRole("button", { name: "Save" }))
 
 function renderSheet(id?: string, clients = [client({ id: "c1", name: "Acme" })]) {
   const onClose = vi.fn();
-  resetStore(projectsStore({ clients }));
-  render(<ClientSheet id={id} onClose={onClose} />);
+  seedProjects({ clients });
+  mocked.clientsList.mockResolvedValue(clients);
+  renderWithClient(<ClientSheet id={id} onClose={onClose} />);
   return { onClose };
 }
 

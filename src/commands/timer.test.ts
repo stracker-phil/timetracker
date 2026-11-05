@@ -5,6 +5,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import { api } from "../api";
 import { installCommands, runCommand } from "./index";
 import { resetStore } from "../state/store";
+import { seedQuery, TIMER_KEY } from "../test/queries";
 import { runningStatus } from "../test/timerFixtures";
 
 const mocked = vi.mocked(api, true);
@@ -25,18 +26,17 @@ describe("timer commands", () => {
 
   describe("timer:stop", () => {
     it("does not run without a running timer", () => {
-      resetStore({ timer: { running: null } });
+      seedQuery(TIMER_KEY, { running: null });
       expect(runCommand("timer:stop")).toBe(false);
       expect(mocked.runCommand).not.toHaveBeenCalled();
     });
 
     it("does not run before the timer status arrived", () => {
-      resetStore({ timer: null });
       expect(runCommand("timer:stop")).toBe(false);
     });
 
     it("asks the bus to stop the running timer", () => {
-      resetStore({ timer: runningStatus() });
+      seedQuery(TIMER_KEY, runningStatus());
       expect(runCommand("timer:stop")).toBe(true);
       expect(mocked.runCommand).toHaveBeenCalledWith("timer:stop");
     });
@@ -47,7 +47,7 @@ describe("timer commands", () => {
       ["no timer runs", { running: null }],
       ["a timer runs", runningStatus()],
     ])("asks the bus to toggle while %s", (_, timer) => {
-      resetStore({ timer });
+      seedQuery(TIMER_KEY, timer);
       expect(runCommand("timer:toggle")).toBe(true);
       expect(mocked.runCommand).toHaveBeenCalledWith("timer:toggle");
     });

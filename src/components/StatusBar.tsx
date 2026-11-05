@@ -1,16 +1,17 @@
 import { PanelLeft } from "lucide-react";
-import { api, type Range } from "../api";
+import type { Range } from "../api";
 import { useBindingLabel, runCommand } from "../commands";
 import { formatClock, formatDuration } from "../lib/format";
-import { useApiResult } from "../lib/useApiResult";
 import { useStore } from "../state/store";
 import { useLiveReload } from "./day/useLiveReload";
 import { useCalendarPeriod, useReportRange } from "./shownPeriod";
 import { TrackerStatus } from "./TrackerStatus";
+import { useTimer } from "../queries/status";
+import { PERIOD_TOTALS_KEY, usePeriodTotals } from "../queries/calendar";
 
 /** `⏱ Project 1:23`; a click stops the timer. */
 function RunningTimer() {
-  const running = useStore((s) => s.timer?.running);
+  const running = useTimer()?.running;
   if (!running) return null;
   return (
     <button className="status-text status-timer" title="Stop timer" onClick={() => void useStore.getState().stopTimer()}>
@@ -36,10 +37,11 @@ function ShownPeriodTotals() {
   return <PeriodNumbers range={range} />;
 }
 
+const LIVE_KEYS = [PERIOD_TOTALS_KEY];
+
 function PeriodNumbers({ range }: { range: Range }) {
-  const tick = useLiveReload(true);
-  const changes = useStore((s) => s.changeCount);
-  const { data: totals } = useApiResult(`${JSON.stringify(range)}#${changes}#${tick}`, () => api.periodTotals(range), { keepData: true });
+  useLiveReload(true, LIVE_KEYS);
+  const { data: totals } = usePeriodTotals(range);
   if (!totals) return null;
   const percent = totals.billablePercent;
   return (

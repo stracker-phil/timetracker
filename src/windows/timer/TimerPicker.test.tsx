@@ -6,6 +6,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { resetStore, useStore } from "../../state/store";
+import { emit } from "../../test/apiMock";
 import { projectItem } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
 import { settings } from "../../test/settings";
@@ -28,9 +29,10 @@ const noteField = () => screen.getByRole("textbox", { name: "Note" });
 /** Focuses the project field; typing opens the filtered list and ↵ picks the first match. */
 async function chooseProject() {
   const field = await screen.findByRole("combobox", { name: "Project" });
-  await vi.waitFor(() => expect(useStore.getState().projects.length).toBeGreaterThan(0));
   await userEvent.click(field);
-  await userEvent.keyboard("Web{Enter}");
+  await userEvent.keyboard("Web");
+  await screen.findByRole("option", { name: "Website" });
+  await userEvent.keyboard("{Enter}");
 }
 
 describe("TimerPicker", () => {
@@ -223,14 +225,14 @@ describe("TimerPicker", () => {
     it("applies the accent saved in the Settings window", async () => {
       renderPicker();
       await screen.findByRole("heading", { name: "Start Timer" });
-      act(() => mocked.onSettingsChanged.mock.calls[0][0](settings({ accent: "teal" })));
+      emit("settings_changed", settings({ accent: "teal" }));
       await vi.waitFor(() => expect(document.documentElement.dataset.accent).toBe("teal"));
     });
 
     it("follows timer status events", async () => {
       renderPicker();
       await screen.findByRole("heading", { name: "Start Timer" });
-      act(() => mocked.onTimerStatus.mock.calls[0][0](runningStatus({ projectName: "Docs" })));
+      emit("timer_status", runningStatus({ projectName: "Docs" }));
       expect(await screen.findByRole("button", { name: "Stop" })).toBeInTheDocument();
     });
   });

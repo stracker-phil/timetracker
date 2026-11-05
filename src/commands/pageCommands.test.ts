@@ -4,6 +4,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api } from "../api";
 import { resetStore, useStore } from "../state/store";
+import { SAVED_REPORTS_KEY, seedQuery } from "../test/queries";
 import { savedReport } from "../test/reportFixtures";
 import { installCommands, listenPageCommands, notePaletteRunnable, paletteCanRun } from "./index";
 
@@ -46,7 +47,8 @@ describe("page_command", () => {
   });
 
   it("runs a command whose condition holds", async () => {
-    resetStore({ view: "reports", savedReports: [savedReport({ id: "s1" })], openedReport: "s1" });
+    seedQuery(SAVED_REPORTS_KEY, [savedReport({ id: "s1" })]);
+    resetStore({ view: "reports", openedReport: "s1" });
     await pageCommand("reports.rename");
     expect(state().dialog).toMatchObject({ type: "prompt", title: "Rename report" });
   });

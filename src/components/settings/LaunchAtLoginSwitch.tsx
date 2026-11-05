@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { api } from "../../api";
-import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
 import { Switch } from "./controls";
+import { useAutostartStatus } from "../../queries/system";
 
 /** Shows whether the LaunchAgent is installed (not the stored setting) and switches it. */
 export function LaunchAtLoginSwitch() {
-  const { data: installed } = useApiResult("autostart-status", api.autostartStatus);
+  const { data: installed } = useAutostartStatus();
   const [changed, setChanged] = useState<boolean | null>(null);
   const change = async (enabled: boolean) => {
     const now = await useStore.getState().setLaunchAtLogin(enabled);

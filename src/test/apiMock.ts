@@ -1,7 +1,8 @@
+import { act } from "@testing-library/react";
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ClientInput, type DateJump, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingAutofill, type RecordingInput, type RecordingPatch, type RecordingSpan, type ReportFilter, type RuleInput, type Settings, type SnapEdge, type Span, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type AwayPrompt, type ClientInput, type DataChanged, type RemoteEvent, type TimerStatus, type TrackerStatus, type DateJump, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingAutofill, type RecordingInput, type RecordingPatch, type RecordingSpan, type ReportFilter, type RuleInput, type Settings, type SnapEdge, type Span, type UiState } from "../api/types";
 import { mondayOf, monthView, weekView } from "./calendarFixtures";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
@@ -11,7 +12,46 @@ import { reportResult, savedReport } from "./reportFixtures";
 import { rule, rulePreview } from "./ruleFixtures";
 import { settings } from "./settings";
 
-const noUnlisten = () => Promise.resolve(() => {});
+/**
+ * What a Rust event carries, by event name. `emit(name, payload)` calls the handlers the matching `api.on…`
+ * registered: launch → onLaunch, window_opened → onWindowOpened, page_command → onPageCommand,
+ * remote → onRemote, tracker_status → onTrackerStatus, data_changed → onDataChanged,
+ * away_prompt_changed → onAwayPromptChanged, timer_status → onTimerStatus, settings_changed →
+ * onSettingsChanged, keybindings_changed → onKeybindingsChanged, open_settings → onOpenSettings.
+ */
+export interface MockEvents {
+  launch: void;
+  window_opened: void;
+  page_command: string;
+  remote: RemoteEvent;
+  tracker_status: TrackerStatus;
+  data_changed: DataChanged;
+  away_prompt_changed: AwayPrompt;
+  timer_status: TimerStatus;
+  settings_changed: Settings;
+  keybindings_changed: Keybindings;
+  open_settings: string;
+}
+
+type Handler = (payload?: unknown) => void;
+const handlers = new Map<keyof MockEvents, Set<Handler>>();
+
+/** Fires a Rust event at every handler registered and not yet unlistened; the handlers run inside `act`. */
+export function emit<K extends keyof MockEvents>(name: K, ...payload: MockEvents[K] extends void ? [] : [MockEvents[K]]): void {
+  act(() => {
+    for (const handler of [...(handlers.get(name) ?? [])]) handler(payload[0]);
+  });
+}
+
+/** An `on…` function that records its handler until the returned unlisten runs. */
+function listener<K extends keyof MockEvents>(name: K) {
+  return vi.fn(async (handler: (payload: MockEvents[K]) => void) => {
+    const set = handlers.get(name) ?? new Set<Handler>();
+    handlers.set(name, set);
+    set.add(handler as Handler);
+    return () => void set.delete(handler as Handler);
+  });
+}
 
 /** Spans as Rust returns them: with ids. */
 /** The editor's spans as Rust answers: as given, with their sum. */
@@ -40,6 +80,7 @@ function parseClock(text: string, on: number): number | null {
 
 /** An `api` where every call resolves to a valid default; override per test with mockResolvedValue. */
 export function createApiMock(): typeof realApi {
+  handlers.clear();
   return {
     getSettings: vi.fn().mockResolvedValue(settings()),
     updateSettings: vi.fn(async (s: Settings) => s),
@@ -177,16 +218,16 @@ export function createApiMock(): typeof realApi {
     suggestionApproveEdited: vi.fn(async () => recording()),
     suggestionsDismiss: vi.fn().mockResolvedValue(1),
     rulesToday: vi.fn().mockResolvedValue([]),
-    onLaunch: vi.fn(noUnlisten),
-    onWindowOpened: vi.fn(noUnlisten),
-    onPageCommand: vi.fn(noUnlisten),
-    onRemote: vi.fn(noUnlisten),
-    onTrackerStatus: vi.fn(noUnlisten),
-    onTimerStatus: vi.fn(noUnlisten),
-    onDataChanged: vi.fn(noUnlisten),
-    onSettingsChanged: vi.fn(noUnlisten),
-    onKeybindingsChanged: vi.fn(noUnlisten),
-    onOpenSettings: vi.fn(noUnlisten),
-    onAwayPromptChanged: vi.fn(noUnlisten),
+    onLaunch: listener("launch"),
+    onWindowOpened: listener("window_opened"),
+    onPageCommand: listener("page_command"),
+    onRemote: listener("remote"),
+    onTrackerStatus: listener("tracker_status"),
+    onTimerStatus: listener("timer_status"),
+    onDataChanged: listener("data_changed"),
+    onSettingsChanged: listener("settings_changed"),
+    onKeybindingsChanged: listener("keybindings_changed"),
+    onOpenSettings: listener("open_settings"),
+    onAwayPromptChanged: listener("away_prompt_changed"),
   };
 }

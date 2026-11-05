@@ -18,6 +18,7 @@ import { useNow } from "./useNow";
 import { useTimelineScroll } from "./useTimelineScroll";
 import { useVisibleRange } from "./useVisibleRange";
 import { ZoomControl } from "./ZoomControl";
+import { currentSettings } from "../../queries/settings";
 
 const MINUTE_MS = 60_000;
 const SHOW_CARD_MS = 300;
@@ -97,7 +98,7 @@ export function Timeline({ view, empty }: { view: DayView; empty?: ReactNode }) 
 
   const menuOf = (id: string | null) => {
     const found = findBlock(view, id);
-    return found ? blockMenu(found.block, view.lanes[found.lane], useStore.getState().settings) : null;
+    return found ? blockMenu(found.block, view.lanes[found.lane], currentSettings()) : null;
   };
   const openBlockMenu = (id: string, at: MenuAt) => {
     const entries = menuOf(id);

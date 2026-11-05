@@ -1,10 +1,10 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { api, type MiniDay, type MiniWeek } from "../api";
+import { type MiniDay, type MiniWeek } from "../api";
 import { today } from "../lib/day";
-import { useApiResult } from "../lib/useApiResult";
 import { useStore } from "../state/store";
 import { useShown, useShownDay } from "./shownPeriod";
+import { useMiniMonth } from "../queries/calendar";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
@@ -56,13 +56,11 @@ function WeekRow({ week }: { week: MiniWeek }) {
 export function MiniCalendar() {
   const shownDay = useShownDay();
   const shown = useShown();
-  const changes = useStore((s) => s.changeCount);
   // Months paged with ‹ ›, from the shown day's; a new shown day starts over.
   const [paged, setPaged] = useState({ day: shownDay, offset: 0 });
   const offset = paged.day === shownDay ? paged.offset : 0;
   const page = (by: number) => setPaged({ day: shownDay, offset: offset + by });
-  const key = `${shownDay}|${offset}|${JSON.stringify(shown)}|${today()}|${changes}`;
-  const { data } = useApiResult(key, () => api.calendarMiniMonth(shownDay, offset, shown), { keepData: true });
+  const { data } = useMiniMonth(shownDay, offset, shown, today());
 
   return (
     <div className="mini-calendar" role="group" aria-label="Calendar">

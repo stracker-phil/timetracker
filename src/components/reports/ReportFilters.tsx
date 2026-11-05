@@ -2,9 +2,9 @@ import { Building2, FolderKanban, Tag } from "lucide-react";
 import type { Range, ReportFilter } from "../../api";
 import { today } from "../../lib/day";
 import { projectLabel } from "../../state/slices/projects";
-import { useStore } from "../../state/store";
 import { PopUpButton } from "../menu";
 import { MultiSelect } from "./MultiSelect";
+import { useProjectLists } from "../../queries/projects";
 
 type RangeKind = Range["kind"];
 
@@ -48,9 +48,7 @@ function RangePicker({ range, shown, onChange }: { range: Range; shown: Props["s
 
 /** The slim filter bar above the report. */
 export function ReportFilters({ filter, shown, onChange }: Props) {
-  const projects = useStore((s) => s.projects);
-  const clients = useStore((s) => s.clients);
-  const tags = useStore((s) => s.tags);
+  const { projects, clients, tags } = useProjectLists();
   return (
     <div className="report-filters">
       <RangePicker range={filter.range} shown={shown} onChange={(range) => onChange({ range })} />

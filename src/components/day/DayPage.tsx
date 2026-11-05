@@ -1,19 +1,22 @@
-import { useEffect } from "react";
-import type { DayView } from "../../api";
+import { useEffect, useRef } from "react";
+import { toAppError, type DayView } from "../../api";
 import { isToday } from "../../lib/day";
-import { selectDayVersion, useStore } from "../../state/store";
+import { dayKey, useDayView } from "../../queries/day";
+import { focusCleared } from "../../state/focus";
+import { useStore } from "../../state/store";
 import { Splitter, usePaneSize } from "../Splitter";
 import { DayHeader } from "./DayHeader";
 import { Timeline } from "./Timeline";
 import { Timesheet } from "./Timesheet";
 import { useLiveReload } from "./useLiveReload";
+import { useTracker } from "../../queries/status";
 
 const TIMESHEET = { min: 220, max: 560, share: 0.25 };
 
 const isEmpty = (view: DayView) => view.recordings.length === 0 && view.lanes.every((lane) => lane.blocks.length === 0);
 
 function EmptyDay({ day }: { day: string }) {
-  const tracker = useStore((s) => s.tracker);
+  const tracker = useTracker();
   if (isToday(day) && tracker?.state.kind === "needsPermission") {
     return (
       <div className="day-empty">
@@ -33,20 +36,27 @@ function EmptyDay({ day }: { day: string }) {
   );
 }
 
+/** Another day's view arriving takes the key focus off the last day's blocks, recordings and suggestions. */
+function useFocusClearedOnNewDay(shown: string | undefined) {
+  const last = useRef(shown);
+  useEffect(() => {
+    if (shown === undefined || shown === last.current) return;
+    last.current = shown;
+    useStore.setState(focusCleared("day"));
+  }, [shown]);
+}
+
 /** The Day view: the timesheet beside the shown day's timeline; it reloads when the day's data changes and keeps following today. */
 export function DayPage() {
   const day = useStore((s) => s.day);
-  const version = useStore(selectDayVersion(day));
-  const live = useLiveReload(isToday(day));
-  const view = useStore((s) => (s.dayView?.day === day ? s.dayView : null));
-  const error = useStore((s) => s.dayError);
+  const query = useDayView(day);
+  useLiveReload(isToday(day), [dayKey(day)]);
+  const view = query.data?.day === day ? query.data : null;
+  const error = query.error && toAppError(query.error);
   // The last loaded title stays while the next day loads, so the toolbar never blanks.
-  const label = useStore((s) => s.dayView?.label);
+  const label = query.data?.label;
   const pane = usePaneSize("timesheet", Math.round(window.innerWidth * TIMESHEET.share), TIMESHEET.min, TIMESHEET.max);
-
-  useEffect(() => {
-    void useStore.getState().loadDay();
-  }, [day, version, live]);
+  useFocusClearedOnNewDay(view?.day);
 
   return (
     <section className="day-page" aria-label="Day">

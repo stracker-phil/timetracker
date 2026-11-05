@@ -11,6 +11,7 @@ import { useAutofill } from "./useAutofill";
 import { useDraftColor } from "./useDraftColor";
 import { useNow } from "./useNow";
 import { useProposal } from "./useProposal";
+import { useSettings } from "../../queries/settings";
 
 const MINUTE_MS = 60_000;
 /** How often the running timer's logged time is renewed. */
@@ -28,7 +29,7 @@ export function RecordingEditor({ id }: { id?: string }) {
   const editing = useStore((s) => s.editing);
   const overlap = useStore((s) => s.editorOverlap);
   const color = useDraftColor();
-  const step = useStore((s) => s.settings?.timeline.snapMinutes ?? 5) * MINUTE_MS;
+  const step = (useSettings()?.timeline.snapMinutes ?? 5) * MINUTE_MS;
   const { closeEditor, patchDraft, setDraftTotal } = useStore.getState();
   const { errors, save, remove } = useEditorSave();
   const ref = useRef<HTMLFormElement>(null);

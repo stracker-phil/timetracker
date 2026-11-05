@@ -1,18 +1,21 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, type DayView } from "../../api";
+import { api, type DayView, type ProjectListItem, type TrackerStatus } from "../../api";
+import { useEvents } from "../../queries/useEvents";
+import { emit } from "../../test/apiMock";
+import { renderWithClient, seedProjects, seedQuery, SETTINGS_KEY, TRACKER_KEY } from "../../test/queries";
 import { handleKeydown, installCommands, runCommand } from "../../commands";
 import { today } from "../../lib/day";
 import { installInputModality } from "../../lib/inputModality";
-import { resetStore, useStore } from "../../state/store";
+import { resetStore, useStore, type Store } from "../../state/store";
 import { trackerStatus } from "../../test/data";
 import { appLane, at, block, dayApp, dayBounds, DAY, dayView, lane, recordingBlock, sourceLane, summaryLane, timesheetCard, withTimesheet } from "../../test/dayFixtures";
 import { checkedInPopUp } from "../../test/menus";
-import { projectItem, projectsStore } from "../../test/projectFixtures";
+import { projectItem } from "../../test/projectFixtures";
 import { recording } from "../../test/recordingFixtures";
 import { storedSuggestion, suggestion } from "../../test/ruleFixtures";
 import { settings } from "../../test/settings";
@@ -39,17 +42,40 @@ const website = projectItem({ project: { id: "p-site", name: "Website" } });
 const meeting = recordingBlock({ id: "r1", projectId: "p-site", projectName: "Website", note: "standup", start: at("11:00"), end: at("11:45") });
 const meetingRow = recording({ id: "r1", projectId: "p-site", note: "standup", start: at("11:00"), end: at("11:45") });
 const recordedDay = () => withTimesheet(dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [meeting] }));
-const withProject = { settings: settings(), ...projectsStore({ projects: [website] }) };
+/** Store state, plus the query data the page reads: the project lists and the tracker status. */
+type DaySetup = Partial<Store> & { projects?: ProjectListItem[]; tracker?: TrackerStatus };
+const withProject: DaySetup = { projects: [website] };
+
+/** The window root's event subscriptions. */
+function Events() {
+  useEvents();
+  return null;
+}
 
 /** The `clientY` of a wall-clock time of `DAY` on the unscrolled timeline. */
 const px = (time: string) => ((at(time) - dayBounds(DAY)[0]) / MINUTE_MS) * PX_PER_MINUTE;
 
-function renderDay(view: DayView, patch: Parameters<typeof resetStore>[0] = {}) {
+function renderDay(view: DayView, setup: DaySetup = {}) {
   mocked.dayView.mockResolvedValue(view);
-  resetStore({ day: view.day, permissionDialogHidden: true, settings: settings(), ...patch });
+  return mountDay(view.day, setup);
+}
+
+/** Today's view whose tracked minutes count how often it was loaded: "tracked 1m" after the first load, "tracked 2m" after one reload. */
+function renderCountingLoads(day: string) {
+  let loads = 0;
+  mocked.dayView.mockImplementation(async (shown) => dayView({ day: shown, totals: { recordedMs: 0, trackedMs: ++loads * MINUTE_MS, awayMs: 0 } }));
+  return mountDay(day);
+}
+
+function mountDay(day: string, { projects = [], tracker = trackerStatus(), ...patch }: DaySetup = {}) {
+  resetStore({ day, permissionDialogHidden: true, ...patch });
+  seedQuery(SETTINGS_KEY, settings());
+  seedQuery(TRACKER_KEY, tracker);
+  seedProjects({ projects });
   installCommands();
-  return render(
+  return renderWithClient(
     <>
+      <Events />
       <DayPage />
       <Toasts />
       <PermissionDialog />
@@ -327,58 +353,61 @@ describe("DayPage", () => {
     it("shows the error when the day cannot be loaded", async () => {
       mocked.dayView.mockRejectedValue({ kind: "db", message: "Database locked", code: null });
       resetStore({ day: DAY });
-      render(<DayPage />);
+      renderWithClient(<DayPage />);
       expect(await screen.findByText("Database locked")).toBeInTheDocument();
     });
   });
 
   describe("reloading", () => {
-    it("loads the shown day again when its data changed, keeping the focused block", async () => {
-      renderDay(busyDay());
+    const tracked = (minutes: number) => `tracked ${minutes}m`;
+    const trackedOf = (minutes: number) => ({ recordedMs: 0, trackedMs: minutes * MINUTE_MS, awayMs: 0 });
+
+    it("shows the new totals when the shown day's data changed, keeping the focused block", async () => {
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], totals: trackedOf(10) }));
       await userEvent.click(await blockEl("Safari: Docs"));
-      mocked.dayView.mockClear();
-      act(() => useStore.getState().dataChanged({ kind: "activity", day: DAY }));
-      await vi.waitFor(() => expect(mocked.dayView).toHaveBeenCalledWith(DAY));
+      expect(await screen.findByLabelText("Totals")).toHaveTextContent(tracked(10));
+      mocked.dayView.mockResolvedValue(dayView({ lanes: [lane({ blocks: [docs] })], totals: trackedOf(30) }));
+      emit("data_changed", { kind: "activity", day: DAY });
+      await vi.waitFor(() => expect(screen.getByLabelText("Totals")).toHaveTextContent(tracked(30)));
       expect(screen.getByLabelText("Safari: Docs")).toHaveClass("focused");
     });
 
-    it("ignores a change of another day", async () => {
-      renderDay(busyDay());
-      await blockEl("Safari: Docs");
-      mocked.dayView.mockClear();
-      act(() => useStore.getState().dataChanged({ kind: "activity", day: "2026-03-12" }));
+    it("keeps the totals when another day's data changed", async () => {
+      renderDay(dayView({ lanes: [lane({ blocks: [docs] })], totals: trackedOf(10) }));
+      expect(await screen.findByLabelText("Totals")).toHaveTextContent(tracked(10));
+      mocked.dayView.mockResolvedValue(dayView({ lanes: [lane({ blocks: [docs] })], totals: trackedOf(30) }));
+      emit("data_changed", { kind: "activity", day: "2026-03-12" });
       await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(mocked.dayView).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("Totals")).toHaveTextContent(tracked(10));
     });
 
-    it("follows today every 30 seconds", async () => {
+    it("shows the new totals of today on its 30 second tick", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
-      renderDay(dayView({ day: today() }));
-      await screen.findByText("Nothing tracked on this day");
-      mocked.dayView.mockClear();
+      renderDay(dayView({ day: today(), totals: trackedOf(10) }));
+      expect(await screen.findByLabelText("Totals")).toHaveTextContent(tracked(10));
+      mocked.dayView.mockResolvedValue(dayView({ day: today(), totals: trackedOf(40) }));
       await act(() => vi.advanceTimersByTimeAsync(30_100));
-      expect(mocked.dayView).toHaveBeenCalledWith(today());
+      await vi.waitFor(() => expect(screen.getByLabelText("Totals")).toHaveTextContent(tracked(40)));
     });
 
     it("does not poll a past day", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
-      renderDay(dayView());
-      await screen.findByText("Nothing tracked on this day");
-      mocked.dayView.mockClear();
+      renderDay(dayView({ totals: trackedOf(10) }));
+      expect(await screen.findByLabelText("Totals")).toHaveTextContent(tracked(10));
+      mocked.dayView.mockResolvedValue(dayView({ totals: trackedOf(40) }));
       await act(() => vi.advanceTimersByTimeAsync(60_000));
-      expect(mocked.dayView).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("Totals")).toHaveTextContent(tracked(10));
     });
 
     it("reloads today after a tracker status change, at most every 10 seconds", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
-      renderDay(dayView({ day: today() }));
-      await screen.findByText("Nothing tracked on this day");
-      mocked.dayView.mockClear();
-      act(() => useStore.setState({ tracker: trackerStatus({ text: "Tracking · Mail" }) }));
+      renderCountingLoads(today());
+      expect(await screen.findByLabelText("Totals")).toHaveTextContent(tracked(1));
+      emit("tracker_status", trackerStatus({ text: "Tracking · Mail" }));
       await act(() => vi.advanceTimersByTimeAsync(5_000));
-      expect(mocked.dayView).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("Totals")).toHaveTextContent(tracked(1));
       await act(() => vi.advanceTimersByTimeAsync(5_200));
-      expect(mocked.dayView).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(screen.getByLabelText("Totals")).toHaveTextContent(tracked(2)));
     });
 
     describe("while the window is hidden", () => {
@@ -393,18 +422,19 @@ describe("DayPage", () => {
         delete (document as { visibilityState?: string }).visibilityState;
       });
 
+      const loads = (n: number) => vi.waitFor(() => expect(screen.getByLabelText("Totals")).toHaveTextContent(`tracked ${n}m`));
+
       async function renderTodayHidden() {
         vi.useFakeTimers({ shouldAdvanceTime: true });
-        renderDay(dayView({ day: today() }));
-        await screen.findByText("Nothing tracked on this day");
+        renderCountingLoads(today());
+        await loads(1);
         setVisibility("hidden");
-        mocked.dayView.mockClear();
       }
 
       it("does not reload today, however long it stays hidden", async () => {
         await renderTodayHidden();
         await act(() => vi.advanceTimersByTimeAsync(95_000));
-        expect(mocked.dayView).not.toHaveBeenCalled();
+        expect(screen.getByLabelText("Totals")).toHaveTextContent("tracked 1m");
       });
 
       it("reloads once at once when shown again, then every 30 seconds", async () => {
@@ -412,36 +442,35 @@ describe("DayPage", () => {
         await act(() => vi.advanceTimersByTimeAsync(45_000));
         setVisibility("visible");
         await act(() => vi.advanceTimersByTimeAsync(0));
-        expect(mocked.dayView).toHaveBeenCalledTimes(1);
-        mocked.dayView.mockClear();
+        await loads(2);
         await act(() => vi.advanceTimersByTimeAsync(15_000));
-        expect(mocked.dayView).not.toHaveBeenCalled();
+        expect(screen.getByLabelText("Totals")).toHaveTextContent("tracked 2m");
         await act(() => vi.advanceTimersByTimeAsync(15_200));
-        expect(mocked.dayView).toHaveBeenCalledTimes(1);
+        await loads(3);
       });
 
       it("catches up with one reload for a tracker change and adds none 10 seconds later", async () => {
         await renderTodayHidden();
-        act(() => useStore.setState({ tracker: trackerStatus({ text: "Tracking · Mail" }) }));
+        emit("tracker_status", trackerStatus({ text: "Tracking · Mail" }));
         await act(() => vi.advanceTimersByTimeAsync(15_000));
-        expect(mocked.dayView).not.toHaveBeenCalled();
+        expect(screen.getByLabelText("Totals")).toHaveTextContent("tracked 1m");
         setVisibility("visible");
         await act(() => vi.advanceTimersByTimeAsync(0));
-        expect(mocked.dayView).toHaveBeenCalledTimes(1);
+        await loads(2);
         await act(() => vi.advanceTimersByTimeAsync(12_000));
-        expect(mocked.dayView).toHaveBeenCalledTimes(1);
+        expect(screen.getByLabelText("Totals")).toHaveTextContent("tracked 2m");
       });
 
       it("does not reload a past day when shown again", async () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
-        renderDay(dayView());
-        await screen.findByText("Nothing tracked on this day");
-        mocked.dayView.mockClear();
+        renderDay(dayView({ totals: { recordedMs: 0, trackedMs: 10 * MINUTE_MS, awayMs: 0 } }));
+        expect(await screen.findByLabelText("Totals")).toHaveTextContent("tracked 10m");
+        mocked.dayView.mockResolvedValue(dayView({ totals: { recordedMs: 0, trackedMs: 40 * MINUTE_MS, awayMs: 0 } }));
         setVisibility("hidden");
         await act(() => vi.advanceTimersByTimeAsync(45_000));
         setVisibility("visible");
         await act(() => vi.advanceTimersByTimeAsync(60_000));
-        expect(mocked.dayView).not.toHaveBeenCalled();
+        expect(screen.getByLabelText("Totals")).toHaveTextContent("tracked 10m");
       });
     });
   });
@@ -917,7 +946,7 @@ describe("DayPage", () => {
 
       it("shows only tick times in the band and the status bar when the pointer is between pixels", async () => {
         const { band } = await dragOver(lanesEl, FRACTION_PX);
-        render(<StatusBar />);
+        renderWithClient(<StatusBar />);
         expect(band).toBeEmptyDOMElement();
         expect(screen.getByLabelText("Selection")).toHaveTextContent("09:00–10:30 · 1h 30m");
       });

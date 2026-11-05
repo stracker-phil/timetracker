@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { api, type PeriodUnit, type Range } from "../api";
+import { type PeriodUnit, type Range } from "../api";
 import { formatMonthLabel, today } from "../lib/day";
 import { dayStepper } from "../lib/dayStepper";
-import { useApiResult } from "../lib/useApiResult";
 import { useStore } from "../state/store";
 import { useCalendarPeriod, useReportRange } from "./shownPeriod";
 import { Modal } from "./Modal";
 import { useAnchoredStyle } from "./useAnchoredStyle";
+import { usePickerMonth } from "../queries/calendar";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const KEY_STEPS: Record<string, [PeriodUnit, number]> = {
@@ -55,8 +55,7 @@ export function DatePickerPopover() {
   );
   const selected = useSelectedDays();
   const gridRef = useRef<HTMLDivElement>(null);
-  const month = focus.slice(0, 7);
-  const { data: grid } = useApiResult(`${month}:${selected?.join(":") ?? ""}`, () => api.calendarPicker(focus, selected), { keepData: true });
+  const { data: grid } = usePickerMonth(focus, selected);
 
   // The focused day takes the keyboard focus on opening, and after arrow keys (which may turn the month).
   const opened = useRef(false);

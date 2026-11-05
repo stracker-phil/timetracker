@@ -5,10 +5,11 @@ import { plural } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { Toolbar } from "../Toolbar";
 import { TagRow } from "./TagRow";
+import { useTags } from "../../queries/projects";
 
 /** The tags, one per recording, for kinds of work across projects; added, renamed and deleted here. */
 export function TagsPage() {
-  const tags = useStore((s) => s.tags);
+  const tags = useTags();
   const newKeys = useBindingLabel("tags.new");
 
   function remove(tag: TagListItem) {

@@ -6,6 +6,7 @@ import { api } from "../api";
 import { installCommands, runCommand } from "./index";
 import { resetStore } from "../state/store";
 import { trackerStatus } from "../test/data";
+import { seedQuery, TRACKER_KEY } from "../test/queries";
 
 const mocked = vi.mocked(api, true);
 const paused = trackerStatus({ state: { kind: "paused", until: null }, text: "Paused" });
@@ -13,7 +14,8 @@ const paused = trackerStatus({ state: { kind: "paused", until: null }, text: "Pa
 describe("tracker commands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resetStore({ tracker: trackerStatus() });
+    resetStore();
+    seedQuery(TRACKER_KEY, trackerStatus());
     installCommands();
   });
 
@@ -24,7 +26,7 @@ describe("tracker commands", () => {
     });
 
     it("also runs while the tracker waits for the permission", () => {
-      resetStore({ tracker: trackerStatus({ state: { kind: "needsPermission" } }) });
+      seedQuery(TRACKER_KEY, trackerStatus({ state: { kind: "needsPermission" } }));
       expect(runCommand("tracker:pause:resumed")).toBe(true);
     });
 
@@ -32,7 +34,7 @@ describe("tracker commands", () => {
       ["paused", paused],
       ["off", null],
     ])("does not run while the tracker is %s", (_, tracker) => {
-      resetStore({ tracker });
+      seedQuery(TRACKER_KEY, tracker);
       expect(runCommand("tracker:pause:resumed")).toBe(false);
       expect(mocked.runCommand).not.toHaveBeenCalled();
     });
@@ -40,7 +42,7 @@ describe("tracker commands", () => {
 
   describe("tracker:resume", () => {
     it("asks the bus to resume while paused", () => {
-      resetStore({ tracker: paused });
+      seedQuery(TRACKER_KEY, paused);
       expect(runCommand("tracker:resume")).toBe(true);
       expect(mocked.runCommand).toHaveBeenCalledWith("tracker:resume");
     });
@@ -49,7 +51,7 @@ describe("tracker commands", () => {
       ["running", trackerStatus()],
       ["off", null],
     ])("does not run while the tracker is %s", (_, tracker) => {
-      resetStore({ tracker });
+      seedQuery(TRACKER_KEY, tracker);
       expect(runCommand("tracker:resume")).toBe(false);
       expect(mocked.runCommand).not.toHaveBeenCalled();
     });

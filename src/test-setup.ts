@@ -10,6 +10,8 @@ beforeEach(async () => {
   const { registerCoreSettingsPages } = await import("./components/settings/pages");
   registerCoreScopes();
   registerCoreSettingsPages();
+  const { queryClient } = await import("./queries/queryClient");
+  queryClient.clear();
 });
 
 class ResizeObserverStub {

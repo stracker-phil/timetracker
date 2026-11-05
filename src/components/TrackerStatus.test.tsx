@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import { api } from "../api";
 import { resetStore, useStore } from "../state/store";
 import { trackerStatus } from "../test/data";
+import { renderWithClient, seedQuery, TRACKER_KEY } from "../test/queries";
 import { MenuHost } from "./menu";
 import { TrackerStatus as Subject } from "./TrackerStatus";
 
@@ -21,18 +22,21 @@ const mocked = vi.mocked(api, true);
 const paused = trackerStatus({ state: { kind: "paused", until: null }, text: "Paused until resumed" });
 
 describe("TrackerStatus", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+  });
 
   it("says tracking is off while there is no tracker status", () => {
-    resetStore({ tracker: null });
-    render(<TrackerStatus />);
+    seedQuery(TRACKER_KEY, null);
+    renderWithClient(<TrackerStatus />);
     expect(screen.getByText("Tracking off")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
   });
 
   it("shows the status text", () => {
-    resetStore({ tracker: trackerStatus({ text: "Tracking · Safari" }) });
-    render(<TrackerStatus />);
+    seedQuery(TRACKER_KEY, trackerStatus({ text: "Tracking · Safari" }));
+    renderWithClient(<TrackerStatus />);
     expect(screen.getByText("Tracking · Safari")).toBeInTheDocument();
   });
 
@@ -42,29 +46,30 @@ describe("TrackerStatus", () => {
     ["paused", paused, "Resume"],
     ["needsPermission", trackerStatus({ state: { kind: "needsPermission" } }), "Allow…"],
   ])("offers only the matching action while %s", (_, tracker, name) => {
-    resetStore({ tracker });
-    render(<TrackerStatus />);
+    seedQuery(TRACKER_KEY, tracker);
+    renderWithClient(<TrackerStatus />);
     expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([name]);
   });
 
   it("has no action while tracking is off", () => {
-    resetStore({ tracker: null });
-    render(<TrackerStatus />);
+    seedQuery(TRACKER_KEY, null);
+    renderWithClient(<TrackerStatus />);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
   it("Allow… shows the permission dialog again", async () => {
-    resetStore({ tracker: trackerStatus({ state: { kind: "needsPermission" } }), permissionDialogHidden: true });
-    render(<TrackerStatus />);
+    seedQuery(TRACKER_KEY, trackerStatus({ state: { kind: "needsPermission" } }));
+    resetStore({ permissionDialogHidden: true });
+    renderWithClient(<TrackerStatus />);
     await userEvent.click(screen.getByRole("button", { name: "Allow…" }));
     expect(useStore.getState().permissionDialogHidden).toBe(false);
   });
 
   describe("pausing", () => {
-    beforeEach(() => resetStore({ tracker: trackerStatus() }));
+    beforeEach(() => seedQuery(TRACKER_KEY, trackerStatus()));
 
     it("offers the pause durations in a menu", async () => {
-      render(<TrackerStatus />);
+      renderWithClient(<TrackerStatus />);
       await userEvent.click(screen.getByRole("button", { name: "Pause" }));
       expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["For 15 minutes", "For 1 hour", "Until tomorrow", "Until resumed"]);
     });
@@ -75,7 +80,7 @@ describe("TrackerStatus", () => {
       ["Until tomorrow", "tomorrow"],
       ["Until resumed", "resumed"],
     ])("sends %s to the backend", async (label, until) => {
-      render(<TrackerStatus />);
+      renderWithClient(<TrackerStatus />);
       await userEvent.click(screen.getByRole("button", { name: "Pause" }));
       await userEvent.click(screen.getByRole("menuitem", { name: label }));
       expect(mocked.trackerPause).toHaveBeenCalledWith(until);
@@ -83,7 +88,7 @@ describe("TrackerStatus", () => {
 
     it("shows the text of the status the backend returns", async () => {
       mocked.trackerPause.mockResolvedValueOnce(paused);
-      render(<TrackerStatus />);
+      renderWithClient(<TrackerStatus />);
       await userEvent.click(screen.getByRole("button", { name: "Pause" }));
       await userEvent.click(screen.getByRole("menuitem", { name: "Until resumed" }));
       expect(await screen.findByText("Paused until resumed")).toBeInTheDocument();
@@ -92,17 +97,17 @@ describe("TrackerStatus", () => {
   });
 
   describe("while paused", () => {
-    beforeEach(() => resetStore({ tracker: paused }));
+    beforeEach(() => seedQuery(TRACKER_KEY, paused));
 
     it("offers Resume instead of Pause", () => {
-      render(<TrackerStatus />);
+      renderWithClient(<TrackerStatus />);
       expect(screen.getByRole("button", { name: "Resume" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
     });
 
     it("resumes tracking and shows the returned status", async () => {
       mocked.trackerResume.mockResolvedValueOnce(trackerStatus({ text: "Tracking · Mail" }));
-      render(<TrackerStatus />);
+      renderWithClient(<TrackerStatus />);
       await userEvent.click(screen.getByRole("button", { name: "Resume" }));
       expect(mocked.trackerResume).toHaveBeenCalled();
       expect(await screen.findByText("Tracking · Mail")).toBeInTheDocument();

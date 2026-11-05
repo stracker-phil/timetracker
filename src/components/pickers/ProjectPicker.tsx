@@ -2,11 +2,11 @@ import { Plus, Sparkles } from "lucide-react";
 import { useState } from "react";
 import type { Client, Project, ProjectListItem } from "../../api";
 import { groupProjects, projectLabel, recentProjects, searchProjects } from "../../state/slices/projects";
-import { useStore } from "../../state/store";
 import { AccentDot } from "../Accent";
 import { ProjectSheet } from "../projects/ProjectSheet";
 import { PickerField } from "./PickerField";
 import type { PickerRow } from "./PickerList";
+import { useProjectLists } from "../../queries/projects";
 
 const RECENT_SHOWN = 5;
 
@@ -98,9 +98,7 @@ function RecentProjects({ items, suggested, onPick }: { items: ProjectListItem[]
 
 /** Pick an active project, or create one (see `PickerField` for the keys). */
 export function ProjectPicker({ value, onChange, autoFocus, showRecent, suggested = null }: Props) {
-  const projects = useStore((s) => s.projects);
-  const clients = useStore((s) => s.clients);
-  const recent = useStore((s) => s.recent);
+  const { projects, clients, recent } = useProjectLists();
   const chosen = projects.find((p) => p.project.id === value);
   const [creating, setCreating] = useState<string | null>(null);
 

@@ -1,11 +1,12 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api } from "../api";
+import { api, type SavedReport, type TrackerStatus } from "../api";
 import { installCommands, runCommand } from "../commands";
+import { renderWithClient, SAVED_REPORTS_KEY, seedQuery, SETTINGS_KEY, TRACKER_KEY } from "../test/queries";
 import { menuCommands } from "../test/menuFixtures";
 import { today } from "../lib/day";
 import { trackerStatus } from "../test/data";
@@ -23,10 +24,14 @@ const mocked = vi.mocked(api, true);
 const weekly = savedReport({ id: "s1", name: "Weekly", filter: { ...defaultFilter(null), range: { kind: "lastWeek" }, groupBy: "tag" } });
 const monthly = savedReport({ id: "s2", name: "Monthly", filter: { ...defaultFilter(null), range: { kind: "lastMonth" } } });
 
-function renderSidebar(patch: Parameters<typeof resetStore>[0] = {}) {
-  resetStore({ settings: settings(), savedReports: [weekly, monthly], ...patch });
+/** Renders the sidebar with the saved reports and tracker status seeded; the rest of `patch` goes into the store. */
+function renderSidebar({ savedReports = [weekly, monthly], tracker, ...patch }: Parameters<typeof resetStore>[0] & { savedReports?: SavedReport[]; tracker?: TrackerStatus } = {}) {
+  resetStore(patch);
+  seedQuery(SETTINGS_KEY, settings());
+  seedQuery(SAVED_REPORTS_KEY, savedReports);
+  if (tracker) seedQuery(TRACKER_KEY, tracker);
   installCommands();
-  render(
+  renderWithClient(
     <>
       <Sidebar />
       <CommandPalette />

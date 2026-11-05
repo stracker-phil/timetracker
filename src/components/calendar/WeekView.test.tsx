@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,7 +9,10 @@ import { handleKeydown, installCommands } from "../../commands";
 import { resetStore, useStore } from "../../state/store";
 import { calendarEntry, dayColumn, weekView } from "../../test/calendarFixtures";
 import { at, DAY } from "../../test/dayFixtures";
-import { projectItem, projectsStore } from "../../test/projectFixtures";
+import { useEvents } from "../../queries/useEvents";
+import { emit } from "../../test/apiMock";
+import { projectItem } from "../../test/projectFixtures";
+import { renderWithClient, seedProjects, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { recording } from "../../test/recordingFixtures";
 import { settings } from "../../test/settings";
 import { Dialogs } from "../Dialogs";
@@ -33,12 +36,21 @@ const recordedWeek = (entries: CalendarEntry[] = [standup], extra: Partial<Week>
   return weekView({ ...extra, days, totalMs, trackedMs: HOUR_MS });
 };
 
+/** The window root's event subscriptions. */
+function Events() {
+  useEvents();
+  return null;
+}
+
 function renderWeek(week: Week | null = weekView(), patch: Parameters<typeof resetStore>[0] = {}) {
   if (week) mocked.weekView.mockResolvedValue(week);
-  resetStore({ view: "week", day: DAY, settings: settings(), ...projectsStore({ projects: [website] }), ...patch });
+  resetStore({ view: "week", day: DAY, ...patch });
+  seedQuery(SETTINGS_KEY, settings());
+  seedProjects({ projects: [website] });
   installCommands();
-  return render(
+  return renderWithClient(
     <>
+      <Events />
       <WeekView />
       <Toasts />
       <Dialogs />
@@ -363,12 +375,13 @@ describe("WeekView", () => {
       expect(useStore.getState().view).toBe("week");
     });
 
-    it("loads the week again when recordings changed", async () => {
-      renderWeek();
-      await screen.findAllByRole("columnheader");
-      mocked.weekView.mockClear();
-      act(() => useStore.getState().dataChanged({ kind: "recordings", day: DAY }));
-      await vi.waitFor(() => expect(mocked.weekView).toHaveBeenCalledWith(DAY));
+    it("shows the new week when recordings changed", async () => {
+      renderWeek(recordedWeek([standup]));
+      await screen.findByRole("button", { name: "Website: standup" });
+      mocked.weekView.mockResolvedValue(recordedWeek([docs]));
+      emit("data_changed", { kind: "recordings", day: DAY });
+      expect(await screen.findByRole("button", { name: "Docs" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Website: standup" })).not.toBeInTheDocument();
     });
   });
 });

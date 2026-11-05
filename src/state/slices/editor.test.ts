@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api, type DraftSpans, type Span } from "../../api";
-import { at, block, dayView, lane, recordingBlock } from "../../test/dayFixtures";
+import { at, block, DAY, dayView, lane, recordingBlock } from "../../test/dayFixtures";
+import { dayKey, seedQuery } from "../../test/queries";
 import { recording } from "../../test/recordingFixtures";
 import { resetStore, useStore } from "../store";
 
@@ -34,7 +35,7 @@ describe("editor slice", () => {
     vi.clearAllMocks();
     mocked.recordingSnap.mockImplementation(async (start, end) => ({ start, end }));
     mocked.recordingsList.mockResolvedValue([]);
-    resetStore();
+    resetStore({ day: DAY });
   });
 
   describe("openEditor", () => {
@@ -80,7 +81,7 @@ describe("editor slice", () => {
 
       it("shows no draft until the recording has loaded and Rust answered, then its closed spans", async () => {
         mocked.recordingsList.mockResolvedValue([stored]);
-        resetStore({ dayView: dayView({ recordings: [recordingBlock({ id: "r1", ...morning })] }) });
+        seedQuery(dayKey(DAY), dayView({ recordings: [recordingBlock({ id: "r1", ...morning })] }));
         state().openEditor({ mode: "edit", id: "r1" });
         expect(state().draft).toBeNull();
         await vi.waitFor(() =>
@@ -98,7 +99,7 @@ describe("editor slice", () => {
         expect(mocked.recordingsList).toHaveBeenCalledWith(noon.start, noon.end);
       });
 
-      it("loads nothing when neither the day nor the opener knows where the recording is", () => {
+      it("loads nothing when the shown day has not loaded and the opener names no span", () => {
         state().openEditor({ mode: "edit", id: "r1" });
         expect(mocked.recordingsList).not.toHaveBeenCalled();
         expect(state().draft).toBeNull();
@@ -371,7 +372,7 @@ describe("editor slice", () => {
   describe("toggleBlock", () => {
     const docs = block({ id: "a1", ...morning });
     const todo = block({ id: "a2", ...noon });
-    beforeEach(() => resetStore({ dayView: dayView({ lanes: [lane({ blocks: [docs, todo] })] }) }));
+    beforeEach(() => seedQuery(dayKey(DAY), dayView({ lanes: [lane({ blocks: [docs, todo] })] })));
 
     it("opens an editor on the block's span and remembers the block", async () => {
       await state().toggleBlock("a1");
@@ -416,7 +417,7 @@ describe("editor slice", () => {
     it("does nothing while the running timer's recording is edited", async () => {
       const running = recording({ id: "r1", spans: [{ id: "r1-s1", ...evening }, { id: "r1-s2", start: at("18:00"), end: null }] });
       mocked.recordingsList.mockResolvedValue([running]);
-      resetStore({ dayView: dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [recordingBlock({ id: "r1", ...evening })] }) });
+      seedQuery(dayKey(DAY), dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [recordingBlock({ id: "r1", ...evening })] }));
       state().openEditor({ mode: "edit", id: "r1" });
       await vi.waitFor(() => expect(state().draft).not.toBeNull());
       await state().toggleBlock("a1");

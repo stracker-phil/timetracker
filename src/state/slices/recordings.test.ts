@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api } from "../../api";
-import { at, block, dayView, lane } from "../../test/dayFixtures";
-import { projectItem, projectsStore } from "../../test/projectFixtures";
+import { at, block, DAY, dayView, lane } from "../../test/dayFixtures";
+import { projectItem } from "../../test/projectFixtures";
+import { dayKey, seedProjects, seedQuery } from "../../test/queries";
 import { recording } from "../../test/recordingFixtures";
 import { resetStore, useStore } from "../store";
 
@@ -27,13 +28,14 @@ async function overlapDialog() {
 describe("recordings slice", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resetStore({ day: "2026-03-10", ...projectsStore({ projects: [projectItem({ project: { id: "p-site", name: "Website" } })] }) });
+    resetStore({ day: DAY });
+    seedProjects({ projects: [projectItem({ project: { id: "p-site", name: "Website" } })] });
   });
 
   describe("selection", () => {
     const docs = block({ id: "a1", start: at("09:00"), end: at("09:30") });
     const todo = block({ id: "a2", start: at("10:00"), end: at("10:30") });
-    beforeEach(() => resetStore({ dayView: dayView({ lanes: [lane({ blocks: [docs, todo] })] }) }));
+    beforeEach(() => seedQuery(dayKey(DAY), dayView({ lanes: [lane({ blocks: [docs, todo] })] })));
 
     it("starts a selection from the block's span", () => {
       state().extendSelection("a2");
@@ -373,19 +375,11 @@ describe("recordings slice", () => {
     });
   });
 
-  describe("loadUndoStatus", () => {
-    it("stores the labels", async () => {
-      mocked.undoStatus.mockResolvedValueOnce({ undoLabel: "Move recording", redoLabel: null });
-      await state().loadUndoStatus();
-      expect(state().undoStatus).toEqual({ undoLabel: "Move recording", redoLabel: null });
-    });
-
-    it("falls back to nothing to undo when the status cannot be read", async () => {
-      mocked.undoStatus.mockResolvedValueOnce({ undoLabel: "Move recording", redoLabel: null });
-      await state().loadUndoStatus();
-      mocked.undoStatus.mockRejectedValueOnce({ kind: "io", message: "x", code: null });
-      await state().loadUndoStatus();
-      expect(state().undoStatus).toEqual({ undoLabel: null, redoLabel: null });
+  describe("a selection on a day that is not loaded", () => {
+    it("ignores a block when the shown day has no view yet", () => {
+      resetStore({ day: "2026-03-11" });
+      state().extendSelection("a1");
+      expect(state().selection).toBeNull();
     });
   });
 });

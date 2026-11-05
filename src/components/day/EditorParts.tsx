@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { spansText } from "../../lib/recordings";
 import type { EditorOverlap } from "../../state/slices/editor";
 import { useStore } from "../../state/store";
+import { useProjects } from "../../queries/projects";
 
 const MINUTE_MS = 60_000;
 
@@ -77,7 +78,7 @@ export function EditorLine({ icon, error, children }: { icon?: ReactNode; error?
 
 /** The recordings a save would overlap, asked in the editor: replace their overlapped part, or go back. */
 export function OverlapNotice({ overlap }: { overlap: EditorOverlap }) {
-  const projects = useStore((s) => s.projects);
+  const projects = useProjects();
   const nameOf = (id: string) => projects.find((p) => p.project.id === id)?.project.name ?? "Unknown project";
   const { answerOverlap } = useStore.getState();
   const count = overlap.recordings.length;

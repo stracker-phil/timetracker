@@ -1,6 +1,5 @@
 import { Save, SlidersHorizontal } from "lucide-react";
-import { api, type ReportResult } from "../../api";
-import { useApiResult } from "../../lib/useApiResult";
+import type { ReportResult } from "../../api";
 import { defaultFilter } from "../../state/slices/reports";
 import { useStore } from "../../state/store";
 import { Toolbar } from "../Toolbar";
@@ -10,6 +9,8 @@ import { ReportChart } from "./ReportChart";
 import { ReportFilters } from "./ReportFilters";
 import { ReportTable } from "./ReportTable";
 import { ReportTotals } from "./ReportTotals";
+import { useReport } from "../../queries/reports";
+import { useSettings } from "../../queries/settings";
 
 function ReportBody({ result }: { result: ReportResult }) {
   if (result.clients.length === 0) {
@@ -35,12 +36,11 @@ function ReportBody({ result }: { result: ReportResult }) {
 /** The period's report under a slim filter bar; it runs again whenever the filter or the data changes. */
 export function ReportsView() {
   const reportFilter = useStore((s) => s.reportFilter);
-  const settings = useStore((s) => s.settings);
-  const changes = useStore((s) => s.changeCount);
+  const settings = useSettings();
   const setReportFilter = useStore((s) => s.setReportFilter);
   const filter = reportFilter ?? defaultFilter(settings);
-  const key = settings ? `${JSON.stringify(filter)}#${changes}` : null;
-  const { data: result, error } = useApiResult(key, () => api.reportRun(filter), { keepData: true });
+  // The default filter follows the settings, so nothing runs before they load.
+  const { data: result, error } = useReport(settings ? filter : null);
   const shown = result ? { from: result.from, to: result.to } : null;
 
   return (

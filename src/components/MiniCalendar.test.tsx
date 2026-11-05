@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +9,7 @@ import { resetStore, useStore } from "../state/store";
 import { defaultFilter } from "../state/slices/reports";
 import { miniMonth } from "../test/calendarFixtures";
 import { DAY } from "../test/dayFixtures";
+import { renderWithClient as render } from "../test/queries";
 import { MiniCalendar } from "./MiniCalendar";
 
 const mocked = vi.mocked(api, true);

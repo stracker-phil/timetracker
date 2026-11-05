@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,7 +7,8 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api } from "../../api";
 import { installCommands } from "../../commands";
 import { resetStore } from "../../state/store";
-import { projectsStore, tag } from "../../test/projectFixtures";
+import { tag } from "../../test/projectFixtures";
+import { renderWithClient, seedProjects } from "../../test/queries";
 import { Dialogs } from "../Dialogs";
 import { Toasts } from "../Toasts";
 import { TagsPage } from "./TagsPage";
@@ -15,9 +16,10 @@ import { TagsPage } from "./TagsPage";
 const mocked = vi.mocked(api, true);
 
 function renderTags(tags = [tag({ name: "admin" }), tag({ name: "research", recordings: 3 }), tag({ name: "support", recordings: 1 })]) {
-  resetStore(projectsStore({ tags }));
+  seedProjects({ tags });
+  mocked.tagsList.mockResolvedValue(tags);
   installCommands();
-  render(
+  renderWithClient(
     <>
       <TagsPage />
       <Dialogs />
@@ -29,6 +31,7 @@ function renderTags(tags = [tag({ name: "admin" }), tag({ name: "research", reco
 describe("TagsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetStore();
     mocked.tagsSave.mockReset();
   });
 

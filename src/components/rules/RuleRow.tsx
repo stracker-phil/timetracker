@@ -5,6 +5,7 @@ import { formatDuration } from "../../lib/format";
 import { useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
 import { conditionSummary } from "./conditions";
+import { useProjects } from "../../queries/projects";
 
 interface Props {
   rule: Rule;
@@ -26,7 +27,7 @@ function todayText(rule: Rule, today: RuleDay | undefined): string {
 
 /** A rule as a card: its switch, name, project chip, conditions and today's matches; a click opens the sheet. */
 export function RuleRow({ rule, today, offset, onGrip }: Props) {
-  const project = useStore((s) => s.projects.find((p) => p.project.id === rule.projectId)?.project);
+  const project = useProjects().find((p) => p.project.id === rule.projectId)?.project;
   const ref = useRef<HTMLLIElement>(null);
   const classes = ["rule-card", !rule.enabled && "dimmed", offset !== 0 && "dragging"];
   const pending = rule.enabled && (today?.pending ?? 0) > 0;

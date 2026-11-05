@@ -3,11 +3,11 @@
  *  accelerators take over elsewhere). Each one in the menus has its item's default binding (`menu/items.rs`). */
 import { api } from "../api";
 import { fail } from "../state/requests";
-import { useStore } from "../state/store";
 import type { Command } from "./registry";
+import { currentTimer, currentTracker } from "../queries/status";
 
-const timerRuns = () => !!useStore.getState().timer?.running;
-const trackerKind = () => useStore.getState().tracker?.state.kind;
+const timerRuns = () => !!currentTimer()?.running;
+const trackerKind = () => currentTracker()?.state.kind;
 const trackerPausable = () => {
   const kind = trackerKind();
   return kind !== undefined && kind !== "paused";

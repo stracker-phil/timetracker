@@ -20,6 +20,7 @@
     "release": "PATH=/opt/homebrew/opt/rustup/bin:$PATH tauri build && scripts/install.sh"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.106.0",
     "@tauri-apps/api": "^2",
     "lucide-react": "^1.57.0",
     "react": "^19.1.0",

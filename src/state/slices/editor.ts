@@ -2,6 +2,7 @@ import { api, type DayView, type DraftSpans, type Recording, type SnapEdge, type
 import { findBlock } from "../../lib/blockFocus";
 import { fail } from "../requests";
 import type { Slice, View } from "../store";
+import { shownDayView } from "../../queries/day";
 
 /** The suggestion a new recording approves once saved. */
 export interface EditedSuggestion {
@@ -139,7 +140,7 @@ export const editorSlice: Slice<EditorSlice> = {
     }
 
     async function load(editor: Extract<Editor, { mode: "edit" }>) {
-      const shown = get().dayView?.recordings.find((r) => r.id === editor.id);
+      const shown = shownDayView()?.recordings.find((r) => r.id === editor.id);
       const block = editor.at ?? shown;
       if (!block) return;
       // The block is cut to the day; the editor edits the whole recording.
@@ -257,7 +258,8 @@ export const editorSlice: Slice<EditorSlice> = {
       },
 
       async toggleBlock(blockId) {
-        const { editor, draft, editing, dayView, draftBlockIds, setSelection } = get();
+        const { editor, draft, editing, draftBlockIds, setSelection } = get();
+        const dayView = shownDayView();
         const found = dayView && findBlock(dayView, blockId);
         if (!dayView || !found) return;
         const block = { start: found.block.start, end: found.block.end };

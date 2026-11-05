@@ -2,6 +2,7 @@ import type { Recording } from "../../api";
 import { spansText } from "../../lib/recordings";
 import { useStore } from "../../state/store";
 import { Modal } from "../Modal";
+import { useProjects } from "../../queries/projects";
 
 interface Props {
   recordings: Recording[];
@@ -11,7 +12,7 @@ interface Props {
 
 /** Asks whether a new or changed recording may replace the overlapped part of the ones listed. */
 export function OverlapDialog({ recordings, onReplace, onCancel }: Props) {
-  const projects = useStore((s) => s.projects);
+  const projects = useProjects();
   const close = (replace: boolean) => {
     useStore.getState().closeDialog();
     if (replace) onReplace();

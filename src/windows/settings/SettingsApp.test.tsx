@@ -7,6 +7,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api, type Keybindings, type Settings } from "../../api";
 import { bindingLabel } from "../../commands";
 import { resetStore } from "../../state/store";
+import { emit } from "../../test/apiMock";
 import { settings } from "../../test/settings";
 import { SettingsApp } from "./SettingsApp";
 
@@ -18,13 +19,6 @@ async function renderAt(query = "") {
   window.history.replaceState(null, "", `/${query}`);
   render(<SettingsApp />);
   await heading();
-}
-
-/** The handler the app registered for an event, to play the event Rust would emit. */
-async function emit<T>(listener: { mock: { lastCall?: unknown[] } }, payload: T) {
-  await vi.waitFor(() => expect(listener.mock.lastCall).toBeDefined());
-  const handler = listener.mock.lastCall![0] as (payload: T) => void;
-  await act(async () => handler(payload));
 }
 
 describe("SettingsApp", () => {
@@ -61,7 +55,7 @@ describe("SettingsApp", () => {
 
     it("switches page when Rust sends open_settings", async () => {
       await renderAt("?page=capture");
-      await emit(mocked.onOpenSettings, "shortcuts");
+      emit("open_settings", "shortcuts");
       expect(await screen.findByRole("heading", { level: 2, name: "Shortcuts" })).toBeInTheDocument();
     });
   });
@@ -71,8 +65,8 @@ describe("SettingsApp", () => {
       await renderAt("?page=capture");
       expect(screen.getByRole("switch", { name: "Capture document paths" })).toBeChecked();
       const changed: Settings = settings({ capture: { ...settings().capture, captureDocuments: false } });
-      await emit(mocked.onSettingsChanged, changed);
-      expect(screen.getByRole("switch", { name: "Capture document paths" })).not.toBeChecked();
+      emit("settings_changed", changed);
+      await vi.waitFor(() => expect(screen.getByRole("switch", { name: "Capture document paths" })).not.toBeChecked());
     });
 
     it("shows rebound shortcuts (keybindings_changed) on the Shortcuts page", async () => {
@@ -80,8 +74,8 @@ describe("SettingsApp", () => {
       expect(screen.queryByRole("button", { name: "Reset Search Settings" })).not.toBeInTheDocument();
       const binding = "Mod+Alt+Shift+J";
       const rebound: Keybindings = { "settings.search": binding };
-      await emit(mocked.onKeybindingsChanged, rebound);
-      const reset = screen.getByRole("button", { name: "Reset Search Settings" });
+      emit("keybindings_changed", rebound);
+      const reset = await screen.findByRole("button", { name: "Reset Search Settings" });
       expect(within(reset.parentElement!).getByText(bindingLabel(binding))).toBeInTheDocument();
     });
   });

@@ -1,11 +1,11 @@
-import { api, type AppOverride, type AppSettingPatch, type KnownApp } from "../../api";
+import { type AppOverride, type AppSettingPatch, type KnownApp } from "../../api";
 import { formatDuration } from "../../lib/format";
-import { useApiResult } from "../../lib/useApiResult";
 import type { SettingsPageProps } from "../../registry/settingsPages";
 import { useStore } from "../../state/store";
 import { AppIcon } from "../AppIcon";
 import { Group, Row } from "./controls";
 import { TimelineControls } from "./TimelineControls";
+import { useApps } from "../../queries/system";
 
 function AppSwitch({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -35,7 +35,7 @@ function AppRow({ app, override }: { app: KnownApp; override: AppOverride | unde
 }
 
 export function TimelinePage({ s }: SettingsPageProps) {
-  const { data: apps, error } = useApiResult("apps", api.appsList);
+  const { data: apps, error } = useApps();
   return (
     <>
       <Group section="lanes">

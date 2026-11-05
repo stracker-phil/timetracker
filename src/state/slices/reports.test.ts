@@ -2,13 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api } from "../../api";
+import { api, type SavedReport } from "../../api";
+import { queryData, SAVED_REPORTS_KEY, seedQuery } from "../../test/queries";
 import { savedReport } from "../../test/reportFixtures";
 import { resetStore, useStore } from "../store";
 import { defaultFilter } from "./reports";
 
 const mocked = vi.mocked(api, true);
 const state = () => useStore.getState();
+const savedIds = () => (queryData<SavedReport[]>(SAVED_REPORTS_KEY) ?? []).map((r) => r.id);
 const weekly = savedReport({ id: "s1", name: "Weekly", filter: { ...defaultFilter(null), range: { kind: "lastWeek" } } });
 const monthly = savedReport({ id: "s2", name: "Monthly", filter: { ...defaultFilter(null), range: { kind: "lastMonth" } } });
 
@@ -35,7 +37,8 @@ describe("reports slice, shifting the period", () => {
 describe("reports slice, the opened saved report", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resetStore({ savedReports: [weekly, monthly], view: "day" });
+    resetStore({ view: "day" });
+    seedQuery(SAVED_REPORTS_KEY, [weekly, monthly]);
   });
 
   it("is none until a saved report is opened", () => {
@@ -60,12 +63,49 @@ describe("reports slice, the opened saved report", () => {
     state().openSavedReport(weekly);
     await state().deleteSavedReport("s1");
     expect(state().openedReport).toBeNull();
-    expect(state().savedReports.map((r) => r.id)).toEqual(["s2"]);
+    expect(savedIds()).toEqual(["s2"]);
   });
 
   it("stays when another report is deleted", async () => {
     state().openSavedReport(weekly);
     await state().deleteSavedReport("s2");
     expect(state().openedReport).toBe("s1");
+  });
+});
+
+describe("reports slice, the saved reports", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore({ view: "reports", reportFilter: { ...defaultFilter(null), groupBy: "tag" } });
+    seedQuery(SAVED_REPORTS_KEY, [weekly]);
+  });
+
+  it("saveReport sends the name and the shown filter, lists the saved report and toasts", async () => {
+    mocked.savedReportSave.mockResolvedValueOnce(savedReport({ id: "s3", name: "Tags" }));
+    await state().saveReport("Tags");
+    expect(mocked.savedReportSave).toHaveBeenCalledWith("Tags", expect.objectContaining({ groupBy: "tag" }));
+    expect(savedIds()).toEqual(["s1", "s3"]);
+    expect(state().toasts.map((t) => t.message)).toEqual(['Saved report "Tags"']);
+  });
+
+  it("saveReport toasts the error and lists nothing new when saving fails", async () => {
+    mocked.savedReportSave.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
+    await state().saveReport("Tags");
+    expect(savedIds()).toEqual(["s1"]);
+    expect(state().toasts.map((t) => t.message)).toEqual(["Could not save the report: Disk full"]);
+  });
+
+  it("renameSavedReport shows the name Rust saved", async () => {
+    mocked.savedReportRename.mockResolvedValueOnce(savedReport({ id: "s1", name: "Last week" }));
+    await state().renameSavedReport("s1", "Last week");
+    expect(mocked.savedReportRename).toHaveBeenCalledWith("s1", "Last week");
+    expect(queryData<SavedReport[]>(SAVED_REPORTS_KEY)?.map((r) => r.name)).toEqual(["Last week"]);
+  });
+
+  it("deleteSavedReport keeps the report and toasts when deleting fails", async () => {
+    mocked.savedReportDelete.mockRejectedValueOnce({ kind: "not_found", message: "Gone", code: null });
+    await state().deleteSavedReport("s1");
+    expect(savedIds()).toEqual(["s1"]);
+    expect(state().toasts.map((t) => t.message)).toEqual(["Could not delete the report: Gone"]);
   });
 });

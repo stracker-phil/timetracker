@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +7,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { resetStore, useStore } from "../../state/store";
+import { renderWithClient, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { SettingsWindow } from "./SettingsWindow";
 
@@ -17,7 +18,10 @@ function Harness({ initial }: { initial?: string }) {
   return <SettingsWindow page={page} onPage={setPage} />;
 }
 
-const renderWindow = (initial?: string) => render(<Harness initial={initial} />);
+function renderWindow(initial?: string, loaded = true) {
+  if (loaded) seedQuery(SETTINGS_KEY, settings({ accent: "blue" }));
+  return renderWithClient(<Harness initial={initial} />);
+}
 const nav = () => screen.getByRole("navigation", { name: "Settings pages" });
 const search = () => screen.getByRole("searchbox", { name: "Search Settings" });
 const heading = () => screen.getByRole("heading", { level: 2 });
@@ -26,7 +30,7 @@ describe("SettingsWindow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocked.updateSettings.mockImplementation(async (s) => s);
-    resetStore({ settings: settings({ accent: "blue" }) });
+    resetStore();
   });
 
   afterEach(() => {
@@ -34,8 +38,8 @@ describe("SettingsWindow", () => {
   });
 
   it("renders nothing until the settings are loaded", () => {
-    resetStore({ settings: null });
-    const { container } = renderWindow();
+    mocked.getSettings.mockReturnValueOnce(new Promise(() => {}));
+    const { container } = renderWindow(undefined, false);
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -139,7 +143,6 @@ describe("SettingsWindow", () => {
   describe("changing a setting", () => {
     it("saves the whole settings with the change on top and shows no success toast", async () => {
       const current = settings({ accent: "blue" });
-      resetStore({ settings: current });
       renderWindow("capture");
       await userEvent.click(screen.getByRole("switch", { name: "Capture document paths" }));
       expect(mocked.updateSettings).toHaveBeenCalledWith({ ...current, capture: { ...current.capture, captureDocuments: false } });

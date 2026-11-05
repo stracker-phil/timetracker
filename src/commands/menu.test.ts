@@ -7,6 +7,7 @@ import { api } from "../api";
 import { VIEWS } from "../components/views";
 import { resetStore, useStore, type View } from "../state/store";
 import { at, DAY, dayView } from "../test/dayFixtures";
+import { dayKey, seedQuery, SETTINGS_KEY } from "../test/queries";
 import { storedSuggestion, suggestion } from "../test/ruleFixtures";
 import { settings } from "../test/settings";
 import { BUS_COMMANDS } from "./busCommands";
@@ -97,7 +98,7 @@ describe("menuState", () => {
 
   describe("bus commands", () => {
     it("reports none of them, which Rust enables itself", () => {
-      resetStore({ view: "day", settings: settings() });
+      seedQuery(SETTINGS_KEY, settings());
       expect(enabled().filter((id) => id.includes(":"))).toEqual([]);
     });
   });
@@ -142,7 +143,8 @@ describe("menuState", () => {
       ["the palette", { paletteOpen: true }],
       ["the recording editor", { editor: { mode: "create", start: at("09:00"), end: at("10:00") } }],
     ])("enables only the items that still run over %s", (_, patch) => {
-      resetStore({ view: "day", settings: settings(), ...patch });
+      seedQuery(SETTINGS_KEY, settings());
+      resetStore({ view: "day", ...patch });
       const rest = enabled().filter((id) => !ALLOWED.includes(id));
       expect(rest).toEqual([]);
       expect(enabled()).toEqual(expect.arrayContaining(["zoom.in", "zoom.out", "zoom.reset"]));
@@ -152,7 +154,10 @@ describe("menuState", () => {
   describe("suggestions", () => {
     const proposed = suggestion();
 
-    beforeEach(() => resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed] }) }));
+    beforeEach(() => {
+      resetStore({ view: "day", day: DAY });
+      seedQuery(dayKey(DAY), dayView({ suggestions: [proposed] }));
+    });
 
     const FOCUSED = ["suggestion.approve", "suggestion.edit", "suggestion.dismiss", "suggestion.approveRule"];
     const ALL = ["suggestion.approveAll", "suggestion.dismissAll"];
@@ -165,7 +170,7 @@ describe("menuState", () => {
 
     it("disables Approve all of the rule for a focused stored suggestion and keeps the other items", () => {
       const stored = storedSuggestion({ start: at("12:00"), end: at("12:30") });
-      resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed, stored] }) });
+      seedQuery(dayKey(DAY), dayView({ suggestions: [proposed, stored] }));
       state().focusSuggestion(stored.id);
       expect(enabled()).not.toContain("suggestion.approveRule");
       expect(enabled()).toEqual(expect.arrayContaining(["suggestion.approve", "suggestion.edit", "suggestion.dismiss"]));
@@ -187,7 +192,7 @@ describe("menuState", () => {
     });
 
     it("disables Approve all and Dismiss all on a day without suggestions", () => {
-      resetStore({ view: "day", day: DAY, dayView: dayView() });
+      seedQuery(dayKey(DAY), dayView());
       expect(enabled().filter((id) => ALL.includes(id))).toEqual([]);
     });
 
@@ -247,8 +252,9 @@ describe("menu sync", () => {
 
   it("follows the focus onto and off a suggestion", () => {
     const proposed = suggestion();
-    resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed] }) });
-    stop = installMenuSync();
+    resetStore({ view: "day", day: DAY });
+    seedQuery(dayKey(DAY), dayView({ suggestions: [proposed] }));
+    stop =installMenuSync();
     mocked.menuSync.mockClear();
     state().focusSuggestion(proposed.id);
     expect(mocked.menuSync).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: expect.arrayContaining(["suggestion.approve"]) }));

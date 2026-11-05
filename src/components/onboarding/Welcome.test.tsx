@@ -1,12 +1,13 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, EMPTY_UI_STATE } from "../../api";
+import { api, EMPTY_UI_STATE, type TrackerStatus, type UiState } from "../../api";
 import { flushUiState, resetStore, useStore } from "../../state/store";
 import { dataInfo, trackerStatus } from "../../test/data";
+import { renderWithClient, seedQuery, SETTINGS_KEY, TRACKER_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { Toasts } from "../Toasts";
 import { Welcome } from "./Welcome";
@@ -15,9 +16,11 @@ const mocked = vi.mocked(api, true);
 const needsPermission = trackerStatus({ state: { kind: "needsPermission" }, permission: "denied", text: "Needs permission" });
 const sheet = () => screen.queryByRole("dialog");
 
-function renderWelcome(patch: Parameters<typeof resetStore>[0] = {}) {
-  resetStore({ settings: settings(), tracker: needsPermission, uiState: { ...EMPTY_UI_STATE, onboardingDone: false }, ...patch });
-  return render(
+function renderWelcome({ tracker = needsPermission, uiState = { ...EMPTY_UI_STATE, onboardingDone: false } }: { tracker?: TrackerStatus | null; uiState?: UiState } = {}) {
+  resetStore({ uiState });
+  seedQuery(SETTINGS_KEY, settings());
+  seedQuery(TRACKER_KEY, tracker);
+  return renderWithClient(
     <>
       <Welcome />
       <Toasts />
@@ -75,7 +78,7 @@ describe("Welcome", () => {
       renderWelcome();
       await next();
       act(() => useStore.getState().setTracker(trackerStatus()));
-      expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+      await vi.waitFor(() => expect(screen.getByRole("button", { name: "Next" })).toBeEnabled());
     });
 
     it("stays blocked and says so when the permission is still missing after Grant access", async () => {

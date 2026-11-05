@@ -1,6 +1,5 @@
 import { api, type Client, type DateJump, type Keybindings, type MenuCommand, type PeriodUnit, type Project, type ProjectListItem, type SavedReport } from "../../api";
 import { bindingFor, bindingLabel, getCommand, paletteCanRun } from "../../commands";
-import { useApiResult } from "../../lib/useApiResult";
 import { settingsPages, useSettingsPagesVersion } from "../../registry/settingsPages";
 import { fail } from "../../state/requests";
 import { projectLabel } from "../../state/slices/projects";
@@ -9,6 +8,10 @@ import { VIEWS } from "../views";
 import { paletteMenuItems } from "./menus";
 import { fuzzyScore, parsePrefix, score, type Prefix } from "./parse";
 import { useDateJumps } from "./useDateJumps";
+import { useProjectLists } from "../../queries/projects";
+import { useMenuCommands } from "../../queries/system";
+import { useSavedReports } from "../../queries/reports";
+import { useKeybindings } from "../../queries/settings";
 
 export interface Item {
   key: string;
@@ -184,16 +187,14 @@ function arrange(sections: Item[][]): Item[] {
 
 /** The palette's results for `query`, grouped in sections and ranked by how well they match. */
 export function usePaletteItems(query: string) {
-  const custom = useStore((s) => s.keybindings);
-  const projects = useStore((s) => s.projects);
-  const recent = useStore((s) => s.recent);
-  const clients = useStore((s) => s.clients);
-  const saved = useStore((s) => s.savedReports);
+  const custom = useKeybindings();
+  const { projects, recent, clients } = useProjectLists();
+  const saved = useSavedReports();
   useSettingsPagesVersion();
   const { prefix, needle } = parsePrefix(query);
   const jumps = useDateJumps(prefix, needle);
   // Asked once per opening: what the menus hold doesn't change while the palette covers the page.
-  const { data: commands } = useApiResult("menuCommands", api.menuCommands, { onError: (e) => fail(e, "Couldn't list the commands") });
+  const { data: commands } = useMenuCommands();
   const goTo = [...viewItems(custom, prefix, needle), ...dateItems(jumps, needle)];
   const items = arrange([
     goTo,

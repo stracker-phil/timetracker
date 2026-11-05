@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useStore } from "../../state/store";
+import type { QueryKey } from "@tanstack/react-query";
+import { invalidate } from "../../queries/queryClient";
+import { useTracker } from "../../queries/status";
 
 const TICK_MS = 30_000;
 const STATUS_MIN_MS = 10_000;
@@ -15,21 +17,22 @@ function useDocumentVisible(): boolean {
 }
 
 /**
- * A counter that grows every 30 s while `live`, and on tracker status changes at most every 10 s, so today's
- * timeline follows the open span. The tracker itself sends no `data_changed`. While the window is hidden it
- * stands still, and grows once when the window shows again.
+ * Refetches the shown queries under `keys` every 30 s while `live`, and on tracker status changes at most every
+ * 10 s, so today's timeline and totals follow the open span. The tracker itself sends no `data_changed`. While
+ * the window is hidden it stands still, and refetches once when the window shows again.
  */
-export function useLiveReload(live: boolean): number {
-  const tracker = useStore((s) => s.tracker);
+export function useLiveReload(live: boolean, keys: QueryKey[]): void {
+  const tracker = useTracker();
   const visible = useDocumentVisible();
-  const [tick, setTick] = useState(0);
   const last = useRef(Date.now());
   const seenTracker = useRef(tracker);
   const stale = useRef(false);
+  const keysRef = useRef(keys);
+  keysRef.current = keys;
 
   const bump = useCallback(() => {
     last.current = Date.now();
-    setTick((t) => t + 1);
+    invalidate(keysRef.current);
   }, []);
 
   useEffect(() => {
@@ -55,6 +58,4 @@ export function useLiveReload(live: boolean): number {
     const timer = setTimeout(bump, wait);
     return () => clearTimeout(timer);
   }, [tracker, live, visible, bump]);
-
-  return tick;
 }

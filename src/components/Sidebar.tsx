@@ -10,6 +10,7 @@ import { MiniCalendar } from "./MiniCalendar";
 import { confirmDeleteReport, renameReport } from "./reports/actions";
 import { SidebarStatus } from "./SidebarStatus";
 import { VIEWS } from "./views";
+import { useSavedReports } from "../queries/reports";
 
 /** The pages below the calendar, which shows the Day, Week and Month itself; a separator between the groups. */
 const PAGES = [VIEWS.filter((v) => v.id === "reports"), VIEWS.filter((v) => v.id === "projects" || v.id === "tags" || v.id === "rules")];
@@ -56,7 +57,7 @@ const savedReportMenu = (report: SavedReport): MenuEntry[] => [
 
 /** The saved reports under Reports; a click shows one, right-click renames or deletes it. */
 function SavedReports() {
-  const saved = useStore((s) => s.savedReports);
+  const saved = useSavedReports();
   if (saved.length === 0) return null;
   return (
     <div className="sidebar-saved" role="group" aria-label="Saved reports">

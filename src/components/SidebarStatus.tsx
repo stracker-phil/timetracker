@@ -3,12 +3,13 @@ import { runCommand, useBindingLabel } from "../commands";
 import { useStore } from "../state/store";
 import { openContextMenu } from "./menu";
 import { TrackerLine, pauseMenu } from "./TrackerStatus";
+import { useTracker } from "../queries/status";
 
 const withKeys = (label: string, keys: string) => (keys ? `${label} (${keys})` : label);
 
 /** Play or pause; a right-click on Pause offers the durations. */
 function PlayPause() {
-  const kind = useStore((s) => s.tracker?.state.kind);
+  const kind = useTracker()?.state.kind;
   const { pauseTracker, resumeTracker, setPermissionDialogHidden } = useStore.getState();
 
   if (kind === "needsPermission") {

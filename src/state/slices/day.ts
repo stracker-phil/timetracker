@@ -1,13 +1,8 @@
-import { api, toAppError, type AppError, type DayView } from "../../api";
 import { focusCleared } from "../focus";
 import type { Slice } from "../store";
 
+/** The Day view's block focus; the day's view itself is a query (`useDayView`, `shownDayView`). */
 export interface DaySlice {
-  /** The shown day's view; while another day loads, the previous one stays. */
-  dayView: DayView | null;
-  dayError: AppError | null;
-  /** Loads the shown day; only the latest request's answer is applied. */
-  loadDay: () => Promise<void>;
   /** The block keys act on (`ActivityBlock.id`). */
   focusedBlock: string | null;
   focusBlock: (id: string | null) => void;
@@ -20,27 +15,10 @@ export interface DaySlice {
 }
 
 export const daySlice: Slice<DaySlice> = {
-  create: (set, get) => {
-    let latest = 0;
-    return {
-    dayView: null,
-    dayError: null,
+  create: (set, get) => ({
     focusedBlock: null,
     detailsBlock: null,
     blockMenuRequest: 0,
-
-    async loadDay() {
-      const day = get().day;
-      const request = ++latest;
-      try {
-        const view = await api.dayView(day);
-        if (request !== latest) return;
-        const otherDay = get().dayView?.day !== view.day;
-        set({ dayView: view, dayError: null, ...(otherDay && focusCleared("day")) });
-      } catch (e) {
-        if (request === latest) set({ dayError: toAppError(e) });
-      }
-    },
 
     focusBlock(id) {
       set({ focusedBlock: id, detailsBlock: null, ...(id !== null && focusCleared("other")) });
@@ -54,6 +32,5 @@ export const daySlice: Slice<DaySlice> = {
     requestBlockMenu() {
       if (get().focusedBlock !== null) set((s) => ({ blockMenuRequest: s.blockMenuRequest + 1 }));
     },
-    };
-  },
+  }),
 };

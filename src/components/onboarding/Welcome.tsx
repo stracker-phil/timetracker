@@ -1,16 +1,18 @@
 import { useState } from "react";
-import { api, type TrackerStatus } from "../../api";
+import { type TrackerStatus } from "../../api";
 import { bindingLabel } from "../../commands";
-import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
 import { KeyCap } from "../Field";
 import { Modal } from "../Modal";
 import { LaunchAtLoginSwitch } from "../settings/LaunchAtLoginSwitch";
+import { useTracker } from "../../queries/status";
+import { useDataInfo } from "../../queries/system";
+import { useSettings } from "../../queries/settings";
 
 const PANELS = 3;
 
 function RecordedPanel() {
-  const { data: info } = useApiResult("welcome-data-info", api.dataInfo);
+  const { data: info } = useDataInfo();
   return (
     <>
       <h2 id="welcome-title">Welcome to TimeTracker</h2>
@@ -34,7 +36,7 @@ function permissionLine(tracker: TrackerStatus | null): string {
 }
 
 function AccessibilityPanel({ onSkip }: { onSkip: () => void }) {
-  const tracker = useStore((s) => s.tracker);
+  const tracker = useTracker();
   const requestPermission = useStore((s) => s.requestPermission);
   return (
     <>
@@ -57,7 +59,7 @@ function AccessibilityPanel({ onSkip }: { onSkip: () => void }) {
 }
 
 function StartPanel() {
-  const shortcut = useStore((s) => s.settings?.timerShortcut ?? null);
+  const shortcut = useSettings()?.timerShortcut ?? null;
   return (
     <>
       <h2 id="welcome-title">Always at hand</h2>
@@ -82,7 +84,7 @@ export function Welcome() {
 }
 
 function WelcomeSheet() {
-  const granted = useStore((s) => s.tracker?.permission === "granted");
+  const granted = useTracker()?.permission === "granted";
   const finish = useStore((s) => s.finishOnboarding);
   const [panel, setPanel] = useState(0);
   const [skipped, setSkipped] = useState(false);

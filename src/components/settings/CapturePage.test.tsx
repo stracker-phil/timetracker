@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,7 @@ import { api } from "../../api";
 import { installCommands } from "../../commands";
 import { resetStore } from "../../state/store";
 import { pickFromPopUp } from "../../test/menus";
+import { renderWithClient, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { MenuHost } from "../menu";
 import { SettingsWindow } from "./SettingsWindow";
@@ -24,9 +25,10 @@ type Capture = ReturnType<typeof settings>["capture"];
 
 function renderPage(page: "capture" | "tracker", capture: Partial<Capture> = {}) {
   const base = settings();
-  resetStore({ settings: { ...base, capture: { ...base.capture, ...capture } } });
+  resetStore();
+  seedQuery(SETTINGS_KEY, { ...base, capture: { ...base.capture, ...capture } });
   installCommands();
-  return render(
+  return renderWithClient(
     <>
       <SettingsWindow page={page} onPage={() => {}} />
       <MenuHost />
@@ -227,9 +229,10 @@ describe("Settings Tracker page", () => {
 
     it("keeps a hand-edited threshold selectable", async () => {
       const base = settings();
-      resetStore({ settings: { ...base, tracker: { ...base.tracker, awayPromptMinutes: 12 } } });
+      resetStore();
+      seedQuery(SETTINGS_KEY, { ...base, tracker: { ...base.tracker, awayPromptMinutes: 12 } });
       installCommands();
-      render(
+      renderWithClient(
         <>
           <SettingsWindow page="tracker" onPage={() => {}} />
           <MenuHost />

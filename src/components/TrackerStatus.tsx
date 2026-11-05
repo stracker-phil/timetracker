@@ -3,6 +3,7 @@ import type { PauseUntil, TrackerState } from "../api";
 import { useStore } from "../state/store";
 import { useMenuOpenOn, type MenuEntry } from "./menu";
 import { usePaletteMenu } from "./palette/menus";
+import { useTracker } from "../queries/status";
 
 const PAUSES: { label: string; until: PauseUntil }[] = [
   { label: "For 15 minutes", until: { minutes: 15 } },
@@ -22,7 +23,7 @@ export function pauseMenu(): MenuEntry[] {
 /** The tracker's dot and the status text Rust computed (the tray shows the same); while tracking, the palette lists
  *  the pause lengths. */
 export function TrackerLine() {
-  const tracker = useStore((s) => s.tracker);
+  const tracker = useTracker();
   const kind = tracker?.state.kind;
   const text = tracker?.text ?? "Tracking off";
   usePaletteMenu("tracker.pause", kind === "running" || kind === "away" ? { section: "Tracking", title: "Pause tracking", entries: pauseMenu } : null);
@@ -38,7 +39,7 @@ export function TrackerLine() {
 
 /** The tracker's status in the status bar while the sidebar is hidden. */
 export function TrackerStatus() {
-  const kind = useStore((s) => s.tracker?.state.kind);
+  const kind = useTracker()?.state.kind;
   const resumeTracker = useStore((s) => s.resumeTracker);
   const showPermissionDialog = useStore((s) => s.setPermissionDialogHidden);
   const [pauseButton, setPauseButton] = useState<HTMLButtonElement | null>(null);

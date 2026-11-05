@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
@@ -6,7 +6,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api } from "../../api";
 import { resetStore, useStore, type View } from "../../state/store";
 import { at } from "../../test/dayFixtures";
-import { projectsStore } from "../../test/projectFixtures";
+import { renderWithClient, seedProjects, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { EditorSheet } from "./EditorSheet";
 
@@ -14,8 +14,10 @@ const mocked = vi.mocked(api, true);
 
 /** Opens a new-recording editor while `view` is shown. */
 async function openIn(view: View) {
-  resetStore({ view, settings: settings(), ...projectsStore() });
-  render(<EditorSheet />);
+  resetStore({ view });
+  seedQuery(SETTINGS_KEY, settings());
+  seedProjects();
+  renderWithClient(<EditorSheet />);
   act(() => useStore.getState().openEditor({ mode: "create", start: at("09:00"), end: at("09:30") }));
   await vi.waitFor(() => expect(useStore.getState().draft).not.toBeNull());
 }
@@ -40,7 +42,7 @@ describe("EditorSheet", () => {
 
   it("shows nothing without an editor", () => {
     resetStore({ view: "week" });
-    render(<EditorSheet />);
+    renderWithClient(<EditorSheet />);
     expect(screen.queryByRole("form")).not.toBeInTheDocument();
   });
 });

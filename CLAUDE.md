@@ -38,7 +38,7 @@ line number.
 
 ## Stack
 - Rust backend in `src-tauri/` (rustup stable; Homebrew rustup is keg-only: `/opt/homebrew/opt/rustup/bin`)
-- Tauri 2 + React 19 + TypeScript in `src/`, bun as package manager, zustand, lucide-react
+- Tauri 2 + React 19 + TypeScript in `src/`, bun as package manager, zustand, TanStack Query, lucide-react
 - macOS 27, Apple Silicon only
 - Sibling apps (read-only): Taskboard `../taskboard`, Daybook `../daybook`, DataBee `../databee` (same author,
   stack and conventions; `docs/README.md` → Sibling apps)
@@ -57,7 +57,8 @@ line number.
 - Errors cross the boundary as `{ kind, message, code }` (`error.rs`). IPC types are generated with ts-rs.
 - Timestamps are UTC milliseconds; days are local `YYYY-MM-DD`, computed in Rust.
 - No network crate, no HTTP; the CSP allows IPC only.
-- Frontend state: zustand store in `src/state/store.ts`; components in `src/components/`.
+- Frontend state: reads from Rust go through TanStack Query (`src/queries/`, invalidated by Rust's events; ADR
+  0040); UI state and writes in the zustand store (`src/state/store.ts`); components in `src/components/`.
 
 ## Commands
 Test, lint and format-check commands run through the `ci` agent, never in the main context.

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api } from "../../api";
 import { installCommands } from "../../commands";
 import { resetStore } from "../../state/store";
+import { renderWithClient, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { SettingsWindow } from "./SettingsWindow";
 
@@ -15,9 +16,10 @@ const mocked = vi.mocked(api, true);
 const group = (name: string) => within(screen.getByRole("group", { name }));
 
 function renderPage(patch: Parameters<typeof settings>[0] = {}) {
-  resetStore({ settings: settings(patch) });
+  resetStore();
+  seedQuery(SETTINGS_KEY, settings(patch));
   installCommands();
-  return render(<SettingsWindow page="appearance" onPage={() => {}} />);
+  return renderWithClient(<SettingsWindow page="appearance" onPage={() => {}} />);
 }
 
 describe("Settings Appearance page", () => {

@@ -74,6 +74,16 @@ The setup, mocking and fixtures are described in [frontend.md](frontend.md#tests
 - Tests are `*.test.tsx` files next to their components.
 - They mock the `src/api` module with `createApiMock()` (`src/test/apiMock.ts`).
 - They use Testing Library queries by role or text and `userEvent`.
+- Reads go through the module's one `queryClient` ([ADR 0040](adr/0040-reads-go-through-tanstack-query.md)),
+  so tests share it: `src/test-setup.ts` clears it before each test (`queryClient.clear()`). A component that
+  reads a query renders with `renderWithClient(ui)` (`src/test/queries.tsx`: `render` inside `QueryRoot`); the
+  window roots (`App`, `SettingsApp`, `TimerPicker`, `AwayPrompt`) carry their own. Data a test starts from goes
+  in with `seedQuery(key, data)` (the query's key, e.g. `dayKey(DAY)` or `PROJECT_LISTS_KEY`) or comes from
+  the mocked `api`; a Rust event is fired with `emit(name, payload)` (exported by `src/test/apiMock.ts`, names
+  as the events: `data_changed`, `settings_changed`, `timer_status`, …), which calls, inside `act`, the handlers
+  `api.on…` registered. A query only refetches while something observes it: a store test mounts the read with
+  `renderHookWithClient(useRules)`. `seedProjects({…})` seeds the project lists. Assert what shows after the
+  refetch, never that a query was invalidated.
 
 ## Driving the app
 
@@ -91,9 +101,9 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 | `scripts/dev/screenshot-readme.sh [dir]` | captures the README screenshots (`day.png`, `day-dark.png`, `reports.png`, default `docs/screens`): the Day view of the last workday in the Default and the Dark scheme and Reports for last week, then restores the settings, view and zoom. Run it on the showcase ([Sample data](#sample-data)) |
 | `bun run release` | builds the release `.app` and `.dmg` (`src-tauri/target/release/bundle/`), then re-signed and linked by `scripts/install.sh`; a `~/.local/bin/timetracker` that isn't its link stays unless `--replace-cli` |
 
-The store is available as `window.timetracker` in the debug bundle: `bun run build:app` sets
-`VITE_DEV_HOOKS=1` at build time, and `main.tsx` exposes the store only then. A release build has no
-`window.timetracker`.
+The store is available as `window.timetracker` and the query cache as `window.timetrackerQueries` in the
+debug bundle: `bun run build:app` sets `VITE_DEV_HOOKS=1` at build time, and `main.tsx` exposes them only
+then (`timetrackerQueries.getQueryData(['settings'])` reads the settings). A release build has neither.
 
 ```sh
 scripts/dev/js.sh 'timetracker.getState().openDialog({ type: "settings", page: "shortcuts" })'

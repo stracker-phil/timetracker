@@ -1,9 +1,10 @@
 import { Plus } from "lucide-react";
-import { useEffect, useState, type PointerEvent } from "react";
+import { useState, type PointerEvent } from "react";
 import { useStore } from "../../state/store";
 import { pointerDrag } from "../day/pointerDrag";
 import { Toolbar } from "../Toolbar";
 import { RuleRow } from "./RuleRow";
+import { useRules, useRulesToday } from "../../queries/rules";
 
 const DRAG_TIP = "Hold ⌥ and drag an activity onto a project to make a rule.";
 
@@ -21,13 +22,9 @@ function moved(ids: string[], from: number, to: number): string[] {
 
 /** The rules in the order they are tried: the first that matches an activity suggests its project. */
 export function RulesView() {
-  const rules = useStore((s) => s.rules);
-  const today = useStore((s) => s.rulesToday);
+  const rules = useRules();
+  const today = useRulesToday();
   const [drag, setDrag] = useState<{ id: string; dy: number } | null>(null);
-
-  useEffect(() => {
-    void useStore.getState().loadRules();
-  }, []);
 
   const grip = (index: number) => (e: PointerEvent<HTMLElement>, rowHeight: number) => {
     if (e.button !== 0 || rowHeight <= 0) return;

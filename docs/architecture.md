@@ -70,9 +70,11 @@ to bounds in Rust ([ADR 0011](adr/0011-utc-milliseconds-local-days.md)).
 
 The Day view showing a day, the main path through every layer:
 
-1. `DayPage` (`src/components/day/`) asks the `day` slice to `loadDay()` when the day, the day's data
-   version or today's live tick changes.
-2. The slice calls `api.dayView(day)`, which invokes the Tauri command `day_view` (`src/api/index.ts` is the
+1. `DayPage` (`src/components/day/`) reads the day through `useDayView(day)` (`src/queries/day.ts`), a
+   TanStack Query keyed `["day", day]` ([ADR 0040](adr/0040-reads-go-through-tanstack-query.md)); the previous
+   day's view stays as placeholder data while the next one loads, and an answer for a day no longer shown lands
+   under its own key.
+2. The query calls `api.dayView(day)`, which invokes the Tauri command `day_view` (`src/api/index.ts` is the
    only place that calls `invoke`).
 3. `day::commands::day_view` parses the day, reads the activity and away rows that share time with it
    (`db::activities::list_for_range`, `db::away::list_for_range`, one indexed query each) and the settings.
@@ -82,7 +84,8 @@ The Day view showing a day, the main path through every layer:
    function, tested without a database ([ADR 0012](adr/0012-timeline-layout-in-rust.md)).
 5. The `DayView` crosses IPC as generated types; `Timeline` positions every block from `start`, `end`, `col`
    and `cols` and computes nothing else.
-6. A change to the day's data (`data_changed`) bumps its version in the `data` slice, and the page asks again.
+6. A change to the day's data (`data_changed`) invalidates `["day", day]` (`useEvents`, `src/queries/useEvents.ts`),
+   so the shown day refetches; today's live tick (`useLiveReload`) invalidates it every 30 s while it shows.
 
 ## A write, end to end
 
@@ -98,8 +101,9 @@ Recording an hour of activity:
    `replace`.
 3. `recordings::Recordings::create` validates and snaps, builds an `Op` (a `Batch` when it replaces) and
    applies it in one transaction that also proves no recordings overlap, then pushes it on the undo stack.
-4. `data_changed { kind: recordings, day }` goes out for every day the op touched; the Day view reloads them,
-   and the toast offers Undo, which applies the op's inverse.
+4. `data_changed { kind: recordings, day }` goes out for every day the op touched; `useEvents` invalidates
+   those days' views and every read over many days (week, month, totals, reports, the project lists), the shown
+   ones refetch, and the toast offers Undo, which applies the op's inverse.
 
 ## A report, end to end
 
@@ -110,7 +114,8 @@ Recording an hour of activity:
    counts, the donuts' slices (by client, project and tag), the client/project table and each project's
    notes as the text "Copy notes" copies.
 3. `reports::text` renders the plain text the screen copies and the CLI prints; the screen draws the same
-   `ReportResult` itself and copies a project's notes as given. A `data_changed` event runs the report again.
+   `ReportResult` itself and copies a project's notes as given. A `data_changed` event invalidates `["report"]`,
+   which runs the shown report again.
 
 ## A suggestion, end to end
 
@@ -133,7 +138,7 @@ Recording an hour of activity:
 │  Webview (React, hidden when closed)      Rust core (tokio runtime)         │
 │  ┌──────────────────────┐   invoke   ┌────────────────────────────────┐    │
 │  │ components/          │ ─────────▶ │ #[tauri::command]s             │    │
-│  │ state/store.ts       │            │ commands.rs, feature modules   │    │
+│  │ state/ · queries/    │            │ commands.rs, feature modules   │    │
 │  │ commands/ (registry) │ ◀───────── │                                │    │
 │  │ api/index.ts         │   events   ├────────────────────────────────┤    │
 │  └──────────────────────┘            │ tracker/ ◀── capture/          │    │
@@ -153,7 +158,8 @@ Recording an hour of activity:
   ([ADR 0009](adr/0009-external-activity-with-a-source.md), [data: external activity](data.md#external-activity)).
 - **Windows.** The main window, Settings (`window/settings.rs`,
   [ADR 0034](adr/0034-settings-is-a-window-of-its-own.md)), the timer picker and the away prompt each run
-  their own page and store; `settings_changed` keeps them in step. Closing the main window hides it; the app keeps running and keeps its Dock icon. Quit only from the
+  their own page, store and query client; `useEvents` in each keeps them in step (`settings_changed` and the
+  rest). Closing the main window hides it; the app keeps running and keeps its Dock icon. Quit only from the
   tray menu, ⌘Q, or `timetracker quit` ([backend: window lifecycle](backend.md#window-lifecycle),
   [ADR 0007](adr/0007-tracker-in-process-menu-bar-app.md)).
 - **Tray.** A template-image menu bar item with the tracker status line, Pause Tracking (or Resume Tracking),
@@ -210,7 +216,8 @@ src-tauri/
 src/
   main.tsx modules.ts App.tsx
   api/index.ts types.gen.ts types.ts
-  state/store.ts requests.ts slices/
+  state/store.ts requests.ts slices/   page state and the write actions
+  queries/                   reads: queryClient, useEvents (event → invalidation), one module per domain (ADR 0040)
   commands/                  registry, scopes, index (APP_COMMANDS), pageCommands (page:<id>), busCommands (keys of bus commands)
   components/                shell: Toolbar, Sidebar, StatusBar, Modal, CommandPalette, Dialogs, settings/
   registry/settingsPages.ts

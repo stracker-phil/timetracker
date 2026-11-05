@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,7 +6,8 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { resetStore } from "../../state/store";
-import { client, projectItem, projectsStore } from "../../test/projectFixtures";
+import { client, projectItem } from "../../test/projectFixtures";
+import { renderWithClient, seedProjects } from "../../test/queries";
 import { ProjectPicker } from "./ProjectPicker";
 
 const mocked = vi.mocked(api, true);
@@ -18,10 +19,11 @@ const news = projectItem({ project: { id: "p-news", name: "Newsletter", clientId
 const solo = projectItem({ project: { id: "p-solo", name: "Solo" } });
 const legacy = projectItem({ project: { id: "p-legacy", name: "Legacy", clientId: acme.id, archivedAt: 5 }, client: acme });
 
-function renderPicker(store: Parameters<typeof projectsStore>[0] = {}, value: string | null = null, showRecent = false, suggested: string | null = null) {
+function renderPicker(lists: Parameters<typeof seedProjects>[0] = {}, value: string | null = null, showRecent = false, suggested: string | null = null) {
   const onChange = vi.fn();
-  resetStore(projectsStore({ projects: [site, news, solo, legacy], clients: [acme, bolt], recent: [solo.project, site.project, legacy.project], ...store }));
-  render(<ProjectPicker value={value} onChange={onChange} showRecent={showRecent} suggested={suggested} />);
+  resetStore();
+  seedProjects({ projects: [site, news, solo, legacy], clients: [acme, bolt], recent: [solo.project, site.project, legacy.project], ...lists });
+  renderWithClient(<ProjectPicker value={value} onChange={onChange} showRecent={showRecent} suggested={suggested} />);
   return { onChange };
 }
 
@@ -194,8 +196,9 @@ describe("ProjectPicker", () => {
 
     it("closes the list with Escape without the key reaching the surroundings", async () => {
       const outer = vi.fn();
-      resetStore(projectsStore({ projects: [site] }));
-      render(
+      resetStore();
+      seedProjects({ projects: [site] });
+      renderWithClient(
         <div onKeyDown={outer}>
           <ProjectPicker value={null} onChange={vi.fn()} />
         </div>,
@@ -227,8 +230,9 @@ describe("ProjectPicker", () => {
 
     it("lets Enter reach the surrounding form while the list is closed", async () => {
       const onSubmit = vi.fn((e: { preventDefault: () => void }) => e.preventDefault());
-      resetStore(projectsStore({ projects: [site] }));
-      render(
+      resetStore();
+      seedProjects({ projects: [site] });
+      renderWithClient(
         <form onSubmit={onSubmit}>
           <ProjectPicker value="p-site" onChange={vi.fn()} />
           <button type="submit">Go</button>

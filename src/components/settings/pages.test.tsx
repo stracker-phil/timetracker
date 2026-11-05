@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,15 +8,17 @@ import { api, EMPTY_UI_STATE } from "../../api";
 import { installCommands } from "../../commands";
 import { markSettingsWindow } from "../../lib/settingsWindow";
 import { resetStore, useStore } from "../../state/store";
+import { renderWithClient, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { SettingsWindow } from "./SettingsWindow";
 
 const mocked = vi.mocked(api, true);
 
 function renderGeneral(patch: Parameters<typeof resetStore>[0] = {}) {
-  resetStore({ settings: settings(), ...patch });
+  resetStore(patch);
+  seedQuery(SETTINGS_KEY, settings());
   installCommands();
-  return render(<SettingsWindow page="general" onPage={() => {}} />);
+  return renderWithClient(<SettingsWindow page="general" onPage={() => {}} />);
 }
 
 describe("Settings General page", () => {

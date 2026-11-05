@@ -9,8 +9,11 @@ import { formatClock, formatDuration, MINUTE_MS } from "../../lib/format";
 import { spansText } from "../../lib/recordings";
 import { disposeAll } from "../../lib/disposeAll";
 import { useFollowSettings } from "../../lib/useFollowSettings";
-import { useApiResult } from "../../lib/useApiResult";
-import { useStore } from "../../state/store";
+import { invalidate } from "../../queries/queryClient";
+import { PROJECT_LISTS_KEY, useProjectLists } from "../../queries/projects";
+import { useSettings } from "../../queries/settings";
+import { useDraftSpan } from "../../queries/system";
+import { QueryRoot } from "../../queries/QueryRoot";
 
 const REASONS: Record<AwayReason, string> = { idle: "idle", sleep: "asleep", lock: "locked", paused: "paused" };
 
@@ -23,9 +26,8 @@ function usePrompt(): [Prompt | null | undefined, () => void] {
   const reload = () => void api.awayPromptCurrent().then(setPrompt, () => setPrompt(null));
   useFollowSettings();
   useEffect(() => {
-    const s = useStore.getState();
     const refresh = () => {
-      void s.loadProjects();
+      invalidate([PROJECT_LISTS_KEY]);
       reload();
     };
     refresh();
@@ -60,9 +62,9 @@ function answerFailure(error: AppError, projects: ProjectListItem[]): AnswerFail
 }
 
 function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
-  const step = useStore((s) => s.settings?.timeline.snapMinutes ?? 5) * MINUTE_MS;
-  const lastProjectId = useStore((s) => s.recent[0]?.id ?? null);
-  const projects = useStore((s) => s.projects);
+  const step = (useSettings()?.timeline.snapMinutes ?? 5) * MINUTE_MS;
+  const { projects, recent } = useProjectLists();
+  const lastProjectId = recent[0]?.id ?? null;
   // Undefined until picked, so the last used project can arrive after the prompt.
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
   const [start, setStart] = useState(prompt.suggested.start);
@@ -85,9 +87,7 @@ function AwayForm({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) {
   const ids = { start: useId(), end: useId(), note: useId() };
 
   const projectId = picked === undefined ? lastProjectId : picked;
-  // Rust rolls an end at or before the start to the next day.
-  const draftSpans = () => api.recordingDraftSpans([{ start, end: endValue }]);
-  const { data: draft } = useApiResult(`away-span:${start}-${endValue}`, draftSpans, { keepData: true });
+  const { data: draft } = useDraftSpan({ start, end: endValue });
 
   async function record() {
     if (!projectId) {
@@ -186,7 +186,7 @@ function PromptBody({ prompt, onGone }: { prompt: Prompt; onGone: () => void }) 
 }
 
 /** The window after a long away span: what the user did meanwhile, recorded for a project, or skipped. */
-export function AwayPrompt() {
+function AwayPromptContent() {
   const [prompt, reload] = usePrompt();
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Escape" && !e.defaultPrevented) skip();
@@ -195,5 +195,13 @@ export function AwayPrompt() {
     <div className="away-prompt scroller" onKeyDown={onKeyDown}>
       {prompt === null ? <NothingToRecord /> : prompt && <PromptBody prompt={prompt} onGone={reload} />}
     </div>
+  );
+}
+
+export function AwayPrompt() {
+  return (
+    <QueryRoot>
+      <AwayPromptContent />
+    </QueryRoot>
   );
 }

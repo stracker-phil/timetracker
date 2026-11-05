@@ -2,7 +2,8 @@ import { api, type Suggestion } from "../../api";
 import { formatDuration } from "../../lib/format";
 import { focusCleared } from "../focus";
 import { fail } from "../requests";
-import type { Slice, Store } from "../store";
+import type { Slice } from "../store";
+import { shownDayView } from "../../queries/day";
 
 export interface SuggestionsSlice {
   /** The suggestion keys act on (↵ approve, E edit, ⌫ dismiss). */
@@ -22,7 +23,7 @@ export interface SuggestionsSlice {
 }
 
 /** The shown day's suggestions, once its view is loaded. */
-export const shownSuggestions = (s: Store) => (s.dayView?.day === s.day ? s.dayView.suggestions : []);
+export const shownSuggestions = (): Suggestion[] => shownDayView()?.suggestions ?? [];
 
 /** What a suggestion without a project shows in its place. */
 export const NO_PROJECT = "No project";
@@ -38,7 +39,7 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
     function focusNextAfter(ids: string[]) {
       const focused = get().focusedSuggestion;
       if (focused === null || !ids.includes(focused)) return;
-      const shown = shownSuggestions(get());
+      const shown = shownSuggestions();
       const at = shown.findIndex((s) => s.id === focused);
       const next = shown.slice(at + 1).find((s) => !ids.includes(s.id)) ?? shown.slice(0, at).find((s) => !ids.includes(s.id));
       set({ focusedSuggestion: next?.id ?? null });
@@ -68,7 +69,7 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
       async approveRuleSuggestions(ruleId) {
         try {
           const recorded = await api.suggestionApproveRule(get().day, ruleId);
-          focusNextAfter(shownSuggestions(get()).filter((s) => s.ruleIds.includes(ruleId)).map((s) => s.id));
+          focusNextAfter(shownSuggestions().filter((s) => s.ruleIds.includes(ruleId)).map((s) => s.id));
           undoToast(recorded.length === 1 ? "Recorded 1 suggestion" : `Recorded ${recorded.length} suggestions`);
         } catch (e) {
           fail(e, "Could not approve the suggestions");
@@ -76,7 +77,7 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
       },
 
       async approveSuggestions(requested) {
-        const ids = shownSuggestions(get())
+        const ids = shownSuggestions()
           .filter((s) => requested.includes(s.id) && isApprovable(s))
           .map((s) => s.id);
         if (ids.length === 0) return;

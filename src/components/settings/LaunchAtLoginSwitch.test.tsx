@@ -1,21 +1,23 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api } from "../../api";
-import { resetStore, useStore } from "../../state/store";
+import { api, type Settings } from "../../api";
+import { resetStore } from "../../state/store";
+import { queryData, renderWithClient, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { Toasts } from "../Toasts";
 import { LaunchAtLoginSwitch } from "./LaunchAtLoginSwitch";
 
 const mocked = vi.mocked(api, true);
 const toggle = () => screen.getByRole("switch", { name: "Launch at login" });
+const storedSetting = () => queryData<Settings>(SETTINGS_KEY)?.launchAtLogin;
 
 function renderSwitch() {
-  resetStore({ settings: settings({ launchAtLogin: false }) });
-  render(
+  seedQuery(SETTINGS_KEY, settings({ launchAtLogin: false }));
+  renderWithClient(
     <>
       <LaunchAtLoginSwitch />
       <Toasts />
@@ -24,7 +26,10 @@ function renderSwitch() {
 }
 
 describe("LaunchAtLoginSwitch", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+  });
 
   it("is off when the LaunchAgent is not installed", async () => {
     renderSwitch();
@@ -43,7 +48,7 @@ describe("LaunchAtLoginSwitch", () => {
     await userEvent.click(toggle());
     expect(mocked.autostartSet).toHaveBeenLastCalledWith(true);
     await vi.waitFor(() => expect(toggle()).toBeChecked());
-    expect(useStore.getState().settings?.launchAtLogin).toBe(true);
+    expect(storedSetting()).toBe(true);
   });
 
   it("asks to remove the LaunchAgent and shows it off", async () => {
@@ -61,7 +66,7 @@ describe("LaunchAtLoginSwitch", () => {
     await userEvent.click(toggle());
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not change launch at login: Permission denied");
     expect(toggle()).not.toBeChecked();
-    expect(useStore.getState().settings?.launchAtLogin).toBe(false);
+    expect(storedSetting()).toBe(false);
   });
 
   it("shows the state the backend reports when it differs from the request", async () => {

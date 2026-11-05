@@ -3,13 +3,14 @@ import type { Settings } from "../../api";
 import { resolveSettingsPage, settingsGroups, useSettingsPagesVersion, type SettingsNavEntry } from "../../registry/settingsPages";
 import { useStore } from "../../state/store";
 import { SectionTarget } from "./controls";
+import { currentSettings, useSettings } from "../../queries/settings";
 
 const targetOf = (match: SettingsNavEntry) => match.section?.id ?? match.page.id;
 
 /** Saves the page's change quietly on top of the settings as they are now; see `SettingsPageProps`. */
 async function savePatch(patch: Partial<Settings>, returnError: boolean): Promise<string | null> {
-  const { settings, saveSettings } = useStore.getState();
-  return settings ? saveSettings({ ...settings, ...patch }, { quiet: true, returnError }) : null;
+  const settings = currentSettings();
+  return settings ? useStore.getState().saveSettings({ ...settings, ...patch }, { quiet: true, returnError }) : null;
 }
 
 const set = (patch: Partial<Settings>) => void savePatch(patch, false);
@@ -65,7 +66,7 @@ function SettingsNav({ current, onPage }: { current: string; onPage: (id: string
  *  scrolled to that section's group. Every change applies right away. */
 export function SettingsWindow({ page: shown, onPage }: { page: string | undefined; onPage: (id: string) => void }) {
   useSettingsPagesVersion();
-  const settings = useStore((s) => s.settings);
+  const settings = useSettings();
   const resolved = resolveSettingsPage(shown);
   if (!settings || !resolved) return null;
   const { page, section } = resolved;

@@ -5,6 +5,7 @@ import { PopUpButton } from "../menu";
 import { Modal } from "../Modal";
 import { Group, Row, Switch } from "../settings/controls";
 import { useAnchoredStyle } from "../useAnchoredStyle";
+import { useSettings } from "../../queries/settings";
 
 const ROUNDING_STEPS = [5, 6, 10, 15, 30] as const;
 const ROUNDINGS: { value: Rounding; label: string }[] = [
@@ -17,7 +18,7 @@ const ROUNDINGS: { value: Rounding; label: string }[] = [
 export function ReportOptionsPopover() {
   const close = useStore((s) => s.closeDialog);
   const reportFilter = useStore((s) => s.reportFilter);
-  const settings = useStore((s) => s.settings);
+  const settings = useSettings();
   const setReportFilter = useStore((s) => s.setReportFilter);
   const style = useAnchoredStyle("[data-report-options]", "right");
   const filter = reportFilter ?? defaultFilter(settings);

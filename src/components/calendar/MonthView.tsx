@@ -1,13 +1,13 @@
 import type { CSSProperties } from "react";
 import { Plus } from "lucide-react";
-import { api, type CalendarEntry, type MonthDay } from "../../api";
+import { type CalendarEntry, type MonthDay } from "../../api";
 import { formatDuration } from "../../lib/format";
-import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
 import { Toolbar } from "../Toolbar";
 import { EditorSheet } from "./EditorSheet";
 import { editEntry, entryName } from "./entry";
+import { useMonthView } from "../../queries/calendar";
 
 /** One line per recording, the same height whatever its duration; a click edits it. */
 function EntryLine({ entry }: { entry: CalendarEntry }) {
@@ -52,8 +52,7 @@ function DayCell({ cell }: { cell: MonthDay }) {
 /** The month as rows of whole weeks, Monday first: each day lists its recordings, one line each; a busy day makes its week taller. */
 export function MonthView() {
   const day = useStore((s) => s.day);
-  const changes = useStore((s) => s.changeCount);
-  const { data: month, error } = useApiResult(`month:${day}#${changes}`, () => api.monthView(day), { keepData: true });
+  const { data: month, error } = useMonthView(day);
 
   return (
     <section className="day-page" aria-label="Month">

@@ -7,4 +7,6 @@ interface ImportMetaEnv {
 
 interface Window {
   timetracker?: typeof import("./state/store").useStore;
+  /** The window's query cache (`queryClient.getQueryData(["settings"])`), beside the store. */
+  timetrackerQueries?: typeof import("./queries/queryClient").queryClient;
 }

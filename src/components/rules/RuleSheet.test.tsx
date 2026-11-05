@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,8 +8,9 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api, type RuleInput } from "../../api";
 import { resetStore } from "../../state/store";
 import { at } from "../../test/dayFixtures";
-import { projectItem, projectsStore } from "../../test/projectFixtures";
+import { projectItem } from "../../test/projectFixtures";
 import { checkedInPopUp, pickFromPopUp } from "../../test/menus";
+import { renderWithClient, RULES_KEY, seedProjects, seedQuery } from "../../test/queries";
 import { previewHit, rule, rulePreview } from "../../test/ruleFixtures";
 import { Dialogs } from "../Dialogs";
 import { MenuHost } from "../menu";
@@ -35,10 +36,12 @@ const draft: RuleInput = {
   ],
 };
 
-function renderSheet(props: Partial<ComponentProps<typeof RuleSheet>> = {}) {
+function renderSheet(props: Partial<ComponentProps<typeof RuleSheet>> = {}, rules = [slack]) {
   const onClose = vi.fn();
-  resetStore({ ...projectsStore({ projects: [website] }), rules: [slack] });
-  render(
+  seedProjects({ projects: [website] });
+  seedQuery(RULES_KEY, rules);
+  mocked.rulesList.mockResolvedValue(rules);
+  renderWithClient(
     <>
       <RuleSheet onClose={onClose} {...props} />
       <Dialogs />
@@ -54,6 +57,7 @@ const preview = () => within(screen.getByRole("region", { name: "Matching activi
 describe("RuleSheet", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetStore();
     mocked.rulePreview.mockResolvedValue(rulePreview());
   });
 
@@ -181,8 +185,7 @@ describe("RuleSheet", () => {
     });
 
     it("shows the tag of the rule", () => {
-      resetStore({ ...projectsStore({ projects: [website] }), rules: [rule({ ...slack, tagId: "tag-research" })] });
-      render(<RuleSheet id="r-slack" onClose={vi.fn()} />);
+      renderSheet({ id: "r-slack" }, [rule({ ...slack, tagId: "tag-research" })]);
       expect(screen.getByRole("combobox", { name: "Tag" })).toHaveValue("research");
     });
 
@@ -297,6 +300,16 @@ describe("RuleSheet", () => {
       await userEvent.type(screen.getByLabelText("Title 1 value"), "x");
       expect(await preview().findByText("Docs home")).toBeInTheDocument();
       expect(mocked.rulePreview).toHaveBeenLastCalledWith(expect.objectContaining({ conditions: [draft.conditions[0], { field: "title", op: "contains", value: "docsx" }] }), 7);
+    });
+
+    it("keeps showing the last result while the next one loads", async () => {
+      mocked.rulePreview.mockResolvedValueOnce(rulePreview({ hits: [previewHit("2026-03-10", { id: "h1", title: "Docs home" })], totalMs: 30 * 60_000, days: 1 }));
+      renderSheet({ draft });
+      await preview().findByText("Docs home");
+      mocked.rulePreview.mockReturnValue(new Promise(() => {}));
+      await userEvent.type(screen.getByLabelText("Title 1 value"), "x");
+      await vi.waitFor(() => expect(mocked.rulePreview).toHaveBeenLastCalledWith(expect.objectContaining({ conditions: [draft.conditions[0], { field: "title", op: "contains", value: "docsx" }] }), 7));
+      expect(preview().getByText("Docs home")).toBeInTheDocument();
     });
 
     it("waits for a value in every condition that needs one", async () => {

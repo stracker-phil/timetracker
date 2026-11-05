@@ -1,12 +1,11 @@
 import { setOverrides } from "../../commands/registry";
 import { api, toAppError, type AppSettingPatch, type Keybindings, type Settings, type TimelineSettings } from "../../api";
+import { currentSettings, setKeybindingsData, setSettingsData } from "../../queries/settings";
 import { fail } from "../requests";
 import type { Slice } from "../store";
 
+/** The writes of the settings and shortcuts `useSettings` and `useKeybindings` read (`src/queries/settings.ts`); each stores what Rust saved. */
 export interface SettingsSlice {
-  settings: Settings | null;
-  keybindings: Keybindings;
-  loadSettings: () => Promise<void>;
   /** `quiet` skips the toast, for settings that apply as they change. With `returnError`, a value Rust refuses
    *  (`invalid_input`) is not toasted: its message resolves, for the field to show. Resolves null otherwise. */
   saveSettings: (settings: Settings, opts?: { quiet?: boolean; returnError?: boolean }) => Promise<string | null>;
@@ -22,22 +21,10 @@ export interface SettingsSlice {
 }
 
 export const settingsSlice: Slice<SettingsSlice> = {
-  create: (set, get) => ({
-    settings: null,
-    keybindings: {},
-
-    async loadSettings() {
-      try {
-        const [settings, keybindings] = await Promise.all([api.getSettings(), api.getKeybindings().catch(() => ({}))]);
-        set({ settings, keybindings });
-      } catch (e) {
-        fail(e, "Could not load settings");
-      }
-    },
-
+  create: (_set, get) => ({
     async saveSettings(settings, opts) {
       try {
-        set({ settings: await api.updateSettings(settings) });
+        setSettingsData(await api.updateSettings(settings));
         if (!opts?.quiet) get().toast("success", "Settings saved");
       } catch (e) {
         const error = toAppError(e);
@@ -48,10 +35,10 @@ export const settingsSlice: Slice<SettingsSlice> = {
     },
 
     async saveTimerShortcut(binding) {
-      const settings = get().settings;
+      const settings = currentSettings();
       if (!settings) return null;
       try {
-        set({ settings: await api.updateSettings({ ...settings, timerShortcut: binding }) });
+        setSettingsData(await api.updateSettings({ ...settings, timerShortcut: binding }));
         return null;
       } catch (e) {
         return toAppError(e).message;
@@ -60,7 +47,7 @@ export const settingsSlice: Slice<SettingsSlice> = {
 
     async setAppSetting(bundleId, patch) {
       try {
-        set({ settings: await api.setAppSetting(bundleId, patch) });
+        setSettingsData(await api.setAppSetting(bundleId, patch));
         return true;
       } catch (e) {
         fail(e, "Could not change the app's timeline setting");
@@ -72,8 +59,8 @@ export const settingsSlice: Slice<SettingsSlice> = {
       try {
         const launchAtLogin = await api.autostartSet(enabled);
         // Rust stored the choice; the copy here must match, or the next settings save would undo it.
-        const settings = get().settings;
-        if (settings) set({ settings: { ...settings, launchAtLogin } });
+        const settings = currentSettings();
+        if (settings) setSettingsData({ ...settings, launchAtLogin });
         return launchAtLogin;
       } catch (e) {
         fail(e, "Could not change launch at login");
@@ -82,14 +69,14 @@ export const settingsSlice: Slice<SettingsSlice> = {
     },
 
     async saveTimeline(patch) {
-      const { settings } = get();
+      const settings = currentSettings();
       if (settings) await get().saveSettings({ ...settings, timeline: { ...settings.timeline, ...patch } }, { quiet: true });
     },
 
     async saveKeybindings(bindings) {
       try {
         const saved = await api.setKeybindings(bindings);
-        set({ keybindings: saved });
+        setKeybindingsData(saved);
         setOverrides(saved);
       } catch (e) {
         fail(e, "Could not save shortcuts");

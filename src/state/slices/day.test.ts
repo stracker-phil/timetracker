@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api } from "../../api";
-import { block, dayView, lane } from "../../test/dayFixtures";
+import { api, type Settings } from "../../api";
+import { queryData, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { resetStore, useStore } from "../store";
 
@@ -15,80 +15,6 @@ describe("day slice", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetStore({ day: "2026-03-10" });
-  });
-
-  describe("loadDay", () => {
-    it("stores the view of the shown day", async () => {
-      const view = dayView({ day: "2026-03-10", lanes: [lane({ blocks: [block()] })] });
-      mocked.dayView.mockResolvedValueOnce(view);
-      await state().loadDay();
-      expect(mocked.dayView).toHaveBeenCalledWith("2026-03-10");
-      expect(state().dayView).toEqual(view);
-    });
-
-    it("drops a response that arrives after a newer request", async () => {
-      let resolveOld!: (v: ReturnType<typeof dayView>) => void;
-      mocked.dayView.mockReturnValueOnce(new Promise((r) => (resolveOld = r)));
-      const old = state().loadDay();
-      useStore.setState({ day: "2026-03-11" });
-      await state().loadDay();
-      resolveOld(dayView({ day: "2026-03-10" }));
-      await old;
-      expect(state().dayView?.day).toBe("2026-03-11");
-    });
-
-    it("keeps the previous view while another day loads", async () => {
-      await state().loadDay();
-      let resolveNext!: (v: ReturnType<typeof dayView>) => void;
-      mocked.dayView.mockReturnValueOnce(new Promise((r) => (resolveNext = r)));
-      useStore.setState({ day: "2026-03-11" });
-      const loading = state().loadDay();
-      expect(state().dayView?.day).toBe("2026-03-10");
-      resolveNext(dayView({ day: "2026-03-11" }));
-      await loading;
-      expect(state().dayView?.day).toBe("2026-03-11");
-    });
-
-    it("keeps the focused block when the same day reloads", async () => {
-      await state().loadDay();
-      state().focusBlock("a1");
-      await state().loadDay();
-      expect(state().focusedBlock).toBe("a1");
-    });
-
-    it("clears the focus when another day arrives", async () => {
-      await state().loadDay();
-      state().focusBlock("a1");
-      useStore.setState({ day: "2026-03-11" });
-      await state().loadDay();
-      expect(state().focusedBlock).toBeNull();
-    });
-
-    it("keeps the selection when the same day reloads and clears it with the focused recording when another day arrives", async () => {
-      await state().loadDay();
-      state().setSelection({ start: 1, end: 2, blockIds: [] });
-      state().focusRecording("r1");
-      await state().loadDay();
-      expect(state().selection).not.toBeNull();
-      expect(state().focusedRecording).toBe("r1");
-      useStore.setState({ day: "2026-03-11" });
-      await state().loadDay();
-      expect(state().selection).toBeNull();
-      expect(state().focusedRecording).toBeNull();
-    });
-
-    it("stores the error when the day cannot be loaded", async () => {
-      mocked.dayView.mockRejectedValueOnce({ kind: "db", message: "Database locked", code: null });
-      await state().loadDay();
-      expect(state().dayError?.message).toBe("Database locked");
-    });
-
-    it("clears an earlier error once a load succeeds", async () => {
-      mocked.dayView.mockRejectedValueOnce({ kind: "db", message: "Database locked", code: null });
-      await state().loadDay();
-      await state().loadDay();
-      expect(state().dayError).toBeNull();
-    });
   });
 
   describe("details", () => {
@@ -108,6 +34,20 @@ describe("day slice", () => {
     });
   });
 
+  describe("focusBlock", () => {
+    it("takes the focus off a suggestion when a block gets it", () => {
+      resetStore({ focusedSuggestion: "s1" });
+      state().focusBlock("a1");
+      expect([state().focusedBlock, state().focusedSuggestion]).toEqual(["a1", null]);
+    });
+
+    it("leaves the suggestion focus alone when it clears the block", () => {
+      resetStore({ focusedBlock: "a1", focusedSuggestion: "s1" });
+      state().focusBlock(null);
+      expect([state().focusedBlock, state().focusedSuggestion]).toEqual([null, "s1"]);
+    });
+  });
+
   describe("requestBlockMenu", () => {
     it("asks for the menu only while a block is focused", () => {
       state().requestBlockMenu();
@@ -124,7 +64,7 @@ describe("day slice", () => {
       mocked.setAppSetting.mockResolvedValueOnce(saved);
       await state().setAppSetting("com.apple.Safari", { hidden: true });
       expect(mocked.setAppSetting).toHaveBeenCalledWith("com.apple.Safari", { hidden: true });
-      expect(state().settings).toEqual(saved);
+      expect(queryData<Settings>(SETTINGS_KEY)).toEqual(saved);
     });
 
     it("resolves true when the patch was saved", async () => {
@@ -133,10 +73,10 @@ describe("day slice", () => {
 
     it("resolves false, shows a toast and keeps the settings when saving fails", async () => {
       const before = settings();
-      resetStore({ settings: before });
+      seedQuery(SETTINGS_KEY, before);
       mocked.setAppSetting.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
       await expect(state().setAppSetting("com.apple.Safari", { ownLane: true })).resolves.toBe(false);
-      expect(state().settings).toEqual(before);
+      expect(queryData<Settings>(SETTINGS_KEY)).toEqual(before);
       expect(toastMessages()).toContain("Could not change the app's timeline setting: Disk full");
     });
   });

@@ -1,8 +1,8 @@
 import { useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { useShallow } from "zustand/react/shallow";
 import type { ActivityBlock, Project } from "../../api";
-import { useStore, type Store } from "../../state/store";
+import { projectLists, useProjectLists, type ProjectLists } from "../../queries/projects";
+import { useStore } from "../../state/store";
 import { AccentDot } from "../Accent";
 import { draftFromBlock } from "../rules/conditions";
 import { pointerDrag } from "./pointerDrag";
@@ -10,10 +10,10 @@ import { pointerDrag } from "./pointerDrag";
 const TARGETS = 5;
 
 /** Recently used projects, else the first active ones. */
-const selectTargets = (s: Store): Project[] =>
-  s.recent.length > 0
-    ? s.recent
-    : s.projects
+const targetsOf = ({ recent, projects }: ProjectLists): Project[] =>
+  recent.length > 0
+    ? recent
+    : projects
         .filter((p) => p.project.archivedAt === null)
         .slice(0, TARGETS)
         .map((p) => p.project);
@@ -35,7 +35,7 @@ interface Drag {
  * new rule for the block's activity there. Nothing is saved before the sheet's Save.
  */
 export function useRuleDrag(columnRef: RefObject<HTMLElement | null>, scrollRef: RefObject<HTMLElement | null>) {
-  const targets = useStore(useShallow(selectTargets));
+  const targets = targetsOf(useProjectLists());
   const [drag, setDrag] = useState<Drag | null>(null);
 
   const start = (e: ReactPointerEvent<HTMLElement>, block: ActivityBlock) => {
@@ -48,7 +48,7 @@ export function useRuleDrag(columnRef: RefObject<HTMLElement | null>, scrollRef:
       move: (_, ev) => setDrag((d) => d && { ...d, over: projectAt(ev) }),
       end: (_, dragged, ev) => {
         setDrag(null);
-        const project = selectTargets(useStore.getState()).find((p) => p.id === projectAt(ev));
+        const project = targetsOf(projectLists()).find((p) => p.id === projectAt(ev));
         if (dragged && project) useStore.getState().openDialog({ type: "rule", draft: draftFromBlock(block, project) });
       },
     });

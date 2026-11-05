@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { waitFor } from "@testing-library/react";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api, type Rule, type RuleInput } from "../../api";
-import { rule, ruleDay } from "../../test/ruleFixtures";
+import { useRules } from "../../queries/rules";
+import { queryData, renderHookWithClient, RULES_KEY, seedQuery } from "../../test/queries";
+import { rule } from "../../test/ruleFixtures";
 import { resetStore, useStore } from "../store";
 
 const mocked = vi.mocked(api, true);
 const state = () => useStore.getState();
 const toastMessages = () => state().toasts.map((t) => t.message);
-const ids = () => state().rules.map((r) => r.id);
+const ids = () => (queryData<Rule[]>(RULES_KEY) ?? []).map((r) => r.id);
 const fieldError = { kind: "invalid_input", message: "Invalid", code: null, field: { path: "conditions.0.value", message: "Needs a value" } };
 const input: RuleInput = { name: "Slack", projectId: "project-1", enabled: true, note: "", tagId: null, conditions: [{ field: "app", op: "is", value: "Slack" }] };
 
@@ -23,33 +26,15 @@ describe("rules slice", () => {
     resetStore({ day: "2026-03-10" });
   });
 
-  describe("loadRules", () => {
-    it("stores the rules in the order the backend lists them", async () => {
-      mocked.rulesList.mockResolvedValueOnce([b, a]);
-      await state().loadRules();
-      expect(ids()).toEqual(["b", "a"]);
-    });
-
-    it("toasts when the rules cannot be read", async () => {
-      mocked.rulesList.mockRejectedValueOnce({ kind: "db", message: "Locked", code: null });
-      await state().loadRules();
-      expect(toastMessages()).toEqual(["Could not load the rules: Locked"]);
-    });
-
-    it("reloads when the rules changed", async () => {
-      mocked.rulesList.mockResolvedValueOnce([a]);
-      state().dataChanged({ kind: "rules", day: null });
-      await vi.waitFor(() => expect(ids()).toEqual(["a"]));
-    });
-  });
-
   describe("saveRule", () => {
-    it("sends the id and input, reloads the rules and returns the saved rule", async () => {
-      mocked.rulesList.mockResolvedValueOnce([a]);
-      const saved = await state().saveRule("a", input);
-      expect(mocked.ruleSave).toHaveBeenCalledWith("a", input);
-      expect(saved.id).toBe("a");
-      expect(ids()).toEqual(["a"]);
+    it("sends the id and input, shows the refetched rules and returns the saved rule", async () => {
+      seedQuery(RULES_KEY, [a]);
+      const view = renderHookWithClient(useRules);
+      mocked.rulesList.mockResolvedValue([a, b]);
+      const saved = await state().saveRule("b", input);
+      expect(mocked.ruleSave).toHaveBeenCalledWith("b", input);
+      expect(saved.id).toBe("b");
+      await waitFor(() => expect(view.result.current.map((r) => r.id)).toEqual(["a", "b"]));
     });
 
     it("rejects with a field error without a toast", async () => {
@@ -67,14 +52,14 @@ describe("rules slice", () => {
 
   describe("deleteRule", () => {
     it("removes the rule from the list", async () => {
-      resetStore({ rules: [a, b] });
+      seedQuery(RULES_KEY, [a, b]);
       await state().deleteRule("a");
       expect(mocked.ruleDelete).toHaveBeenCalledWith("a");
       expect(ids()).toEqual(["b"]);
     });
 
     it("keeps the rule and toasts when the delete fails", async () => {
-      resetStore({ rules: [a, b] });
+      seedQuery(RULES_KEY, [a, b]);
       mocked.ruleDelete.mockRejectedValueOnce({ kind: "not_found", message: "Gone", code: null });
       await state().deleteRule("a");
       expect(ids()).toEqual(["a", "b"]);
@@ -84,7 +69,7 @@ describe("rules slice", () => {
 
   describe("reorderRules", () => {
     it("shows the new order at once and keeps the order the backend answers", async () => {
-      resetStore({ rules: [a, b, c] });
+      seedQuery(RULES_KEY, [a, b, c]);
       let answer: (rules: Rule[]) => void = () => {};
       mocked.rulesReorder.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
       const pending = state().reorderRules(["c", "a", "b"]);
@@ -92,11 +77,11 @@ describe("rules slice", () => {
       answer([rule({ id: "c", position: 0 }), rule({ id: "a", position: 1 }), rule({ id: "b", position: 2 })]);
       await pending;
       expect(mocked.rulesReorder).toHaveBeenCalledWith(["c", "a", "b"]);
-      expect(state().rules.map((r) => r.position)).toEqual([0, 1, 2]);
+      expect((queryData<Rule[]>(RULES_KEY) ?? []).map((r) => r.position)).toEqual([0, 1, 2]);
     });
 
     it("restores the old order and toasts when the write fails", async () => {
-      resetStore({ rules: [a, b, c] });
+      seedQuery(RULES_KEY, [a, b, c]);
       mocked.rulesReorder.mockRejectedValueOnce({ kind: "invalid_input", message: "Unknown rule", code: null });
       await state().reorderRules(["c", "a", "b"]);
       expect(ids()).toEqual(["a", "b", "c"]);
@@ -109,7 +94,7 @@ describe("rules slice", () => {
       ["down swaps a rule with the next", "a", 1, ["b", "a", "c"]],
       ["up swaps a rule with the previous", "c", -1, ["a", "c", "b"]],
     ] as const)("%s", async (_name, id, by, expected) => {
-      resetStore({ rules: [a, b, c] });
+      seedQuery(RULES_KEY, [a, b, c]);
       await state().moveRule(id, by);
       expect(mocked.rulesReorder).toHaveBeenCalledWith(expected);
     });
@@ -119,7 +104,7 @@ describe("rules slice", () => {
       ["down from the last rule", "c", 1],
       ["an unknown rule", "x", 1],
     ] as const)("does nothing for %s", async (_name, id, by) => {
-      resetStore({ rules: [a, b, c] });
+      seedQuery(RULES_KEY, [a, b, c]);
       await state().moveRule(id, by);
       expect(mocked.rulesReorder).not.toHaveBeenCalled();
       expect(ids()).toEqual(["a", "b", "c"]);
@@ -128,37 +113,19 @@ describe("rules slice", () => {
 
   describe("setRuleEnabled", () => {
     it("replaces the rule with the saved one", async () => {
-      resetStore({ rules: [a, b] });
+      seedQuery(RULES_KEY, [a, b]);
       mocked.ruleSetEnabled.mockResolvedValueOnce({ ...b, enabled: false });
       await state().setRuleEnabled("b", false);
       expect(mocked.ruleSetEnabled).toHaveBeenCalledWith("b", false);
-      expect(state().rules.map((r) => r.enabled)).toEqual([true, false]);
+      expect((queryData<Rule[]>(RULES_KEY) ?? []).map((r) => r.enabled)).toEqual([true, false]);
     });
 
     it("toasts when the change fails", async () => {
-      resetStore({ rules: [a] });
+      seedQuery(RULES_KEY, [a]);
       mocked.ruleSetEnabled.mockRejectedValueOnce({ kind: "not_found", message: "Gone", code: null });
       await state().setRuleEnabled("a", false);
-      expect(state().rules[0].enabled).toBe(true);
+      expect(queryData<Rule[]>(RULES_KEY)?.[0].enabled).toBe(true);
       expect(toastMessages()).toEqual(["Could not change the rule: Gone"]);
-    });
-  });
-
-  describe("today of the rules", () => {
-    it("loads the rules' day along with the rules", async () => {
-      mocked.rulesList.mockResolvedValueOnce([a]);
-      mocked.rulesToday.mockResolvedValueOnce([ruleDay({ ruleId: "a", matchedMs: 80 * 60_000, pending: 2 })]);
-      await state().loadRules();
-      expect(state().rulesToday).toEqual([ruleDay({ ruleId: "a", matchedMs: 80 * 60_000, pending: 2 })]);
-    });
-
-    it("keeps the rules and shows no day when the day cannot be read", async () => {
-      mocked.rulesList.mockResolvedValueOnce([a]);
-      mocked.rulesToday.mockRejectedValueOnce({ kind: "db", message: "Locked", code: null });
-      await state().loadRules();
-      expect(ids()).toEqual(["a"]);
-      expect(state().rulesToday).toEqual([]);
-      expect(toastMessages()).toEqual([]);
     });
   });
 });

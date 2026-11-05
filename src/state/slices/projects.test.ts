@@ -2,8 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
+import { waitFor } from "@testing-library/react";
 import { api, type ClientInput, type ProjectInput } from "../../api";
-import { client, project, projectItem, tag } from "../../test/projectFixtures";
+import { useProjectLists } from "../../queries/projects";
+import { client, projectItem, tag } from "../../test/projectFixtures";
+import { renderHookWithClient, seedProjects } from "../../test/queries";
 import { resetStore, useStore } from "../store";
 import { groupProjects, projectLabel } from "./projects";
 
@@ -19,33 +22,11 @@ describe("projects slice", () => {
     resetStore();
   });
 
-  describe("loadProjects", () => {
-    it("stores the projects, clients, tags and recent projects the backend lists", async () => {
-      const item = projectItem({ project: { id: "p1" } });
-      mocked.projectsList.mockResolvedValueOnce([item]);
-      mocked.clientsList.mockResolvedValueOnce([client()]);
-      mocked.tagsList.mockResolvedValueOnce([tag({ name: "billing" })]);
-      mocked.projectsRecent.mockResolvedValueOnce([project({ id: "p1" })]);
-      await useStore.getState().loadProjects();
-      const s = useStore.getState();
-      expect([s.projects, s.clients, s.tags, s.recent, s.projectsLoaded]).toEqual([[item], [client()], [tag({ name: "billing" })], [project({ id: "p1" })], true]);
-    });
-
-    it("asks for archived projects and clients too", async () => {
-      await useStore.getState().loadProjects();
-      expect(mocked.projectsList).toHaveBeenCalledWith(true);
-      expect(mocked.clientsList).toHaveBeenCalledWith(true);
-    });
-
-    it("toasts and stays unloaded when a list cannot be read", async () => {
-      mocked.tagsList.mockRejectedValueOnce({ kind: "db", message: "Locked", code: null });
-      await useStore.getState().loadProjects();
-      expect(toastMessages()).toEqual(["Could not load the projects: Locked"]);
-      expect(useStore.getState().projectsLoaded).toBe(false);
-    });
-  });
-
   describe("writes", () => {
+    const lists = () => renderHookWithClient(useProjectLists).result;
+    const names = (result: { current: ReturnType<typeof useProjectLists> }) => result.current.projects.map((p) => p.project.name);
+    const tagNames = (result: { current: ReturnType<typeof useProjectLists> }) => result.current.tags.map((t) => t.name);
+
     it("saveProject sends the id and input and returns the saved project", async () => {
       const saved = await useStore.getState().saveProject("p9", input);
       expect(mocked.projectsSave).toHaveBeenCalledWith("p9", input);
@@ -59,16 +40,20 @@ describe("projects slice", () => {
       ["deleteTag", () => useStore.getState().deleteTag("tag-1")],
       ["archiveProject", () => useStore.getState().archiveProject("p1", true)],
       ["archiveClient", () => useStore.getState().archiveClient("c1", true)],
-    ])("%s reloads the lists afterwards", async (_, run) => {
-      mocked.projectsList.mockResolvedValueOnce([projectItem({ project: { name: "After" } })]);
+    ])("%s shows the refetched lists afterwards", async (_, run) => {
+      seedProjects({ projects: [projectItem({ project: { name: "Before" } })] });
+      const result = lists();
+      mocked.projectsList.mockResolvedValue([projectItem({ project: { name: "After" } })]);
       await run();
-      await vi.waitFor(() => expect(useStore.getState().projects.map((p) => p.project.name)).toEqual(["After"]));
+      await waitFor(() => expect(names(result)).toEqual(["After"]));
     });
 
-    it("saveTag resolves only after the tags have reloaded", async () => {
-      mocked.tagsList.mockResolvedValueOnce([tag({ name: "analysis" })]);
+    it("saveTag resolves only after the tags have refetched", async () => {
+      seedProjects();
+      const result = lists();
+      mocked.tagsList.mockResolvedValue([tag({ name: "analysis" })]);
       await useStore.getState().saveTag("tag-research", "analysis");
-      expect(useStore.getState().tags.map((t) => t.name)).toEqual(["analysis"]);
+      await waitFor(() => expect(tagNames(result)).toEqual(["analysis"]));
     });
 
     it("saveClient sends the id and input", async () => {
@@ -93,11 +78,21 @@ describe("projects slice", () => {
       expect(toastMessages()).toEqual([]);
     });
 
-    it("reloads the lists after a failed write too", async () => {
+    it("refetches the lists after a failed write too", async () => {
+      seedProjects();
+      const result = lists();
       mocked.tagsDelete.mockRejectedValueOnce({ kind: "not_found", message: "Gone", code: null });
-      mocked.tagsList.mockResolvedValueOnce([tag({ name: "left" })]);
+      mocked.tagsList.mockResolvedValue([tag({ name: "left" })]);
       await expect(useStore.getState().deleteTag("tag-1")).rejects.toBeDefined();
-      await vi.waitFor(() => expect(useStore.getState().tags.map((t) => t.name)).toEqual(["left"]));
+      await waitFor(() => expect(tagNames(result)).toEqual(["left"]));
+    });
+
+    it("rejects with the write's error even when the refetch fails", async () => {
+      seedProjects();
+      lists();
+      mocked.tagsDelete.mockRejectedValueOnce({ kind: "not_found", message: "Gone", code: null });
+      mocked.tagsList.mockRejectedValue({ kind: "db", message: "Locked", code: null });
+      await expect(useStore.getState().deleteTag("tag-1")).rejects.toMatchObject({ message: "Gone" });
     });
   });
 

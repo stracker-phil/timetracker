@@ -4,6 +4,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { at, DAY, dayView } from "../../test/dayFixtures";
+import { dayKey, seedQuery } from "../../test/queries";
 import { recording } from "../../test/recordingFixtures";
 import { suggestion } from "../../test/ruleFixtures";
 import { resetStore, useStore } from "../store";
@@ -18,10 +19,14 @@ const second = suggestion({ ruleIds: ["rule-2"], start: at("10:00"), end: at("10
 const third = suggestion({ ruleIds: ["rule-1"], start: at("11:00"), end: at("11:30") });
 const unassigned = suggestion({ ruleIds: ["rule-3"], projectId: null, projectName: null, color: "graphite", start: at("12:00"), end: at("12:30") });
 
+/** The shown day's view, as the day query holds it, with these suggestions. */
+const show = (...suggestions: ReturnType<typeof suggestion>[]) => seedQuery(dayKey(DAY), dayView({ suggestions }));
+
 describe("suggestions slice", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resetStore({ day: DAY, dayView: dayView({ suggestions: [first, second, third] }) });
+    resetStore({ day: DAY });
+    show(first, second, third);
   });
 
   describe("focusSuggestion", () => {
@@ -67,6 +72,13 @@ describe("suggestions slice", () => {
       expect(state().toasts[0].action).toBeUndefined();
     });
 
+    it("keeps the focus and records nothing before the shown day has loaded", async () => {
+      resetStore({ day: "2026-03-11", focusedSuggestion: first.id });
+      await state().approveSuggestions([first.id]);
+      expect(mocked.suggestionsApprove).not.toHaveBeenCalled();
+      expect(state().focusedSuggestion).toBe(first.id);
+    });
+
     it("moves the focus to the next suggestion", async () => {
       state().focusSuggestion(first.id);
       await state().approveSuggestion(first);
@@ -80,7 +92,8 @@ describe("suggestions slice", () => {
     });
 
     it("clears the focus when it was the only suggestion", async () => {
-      resetStore({ day: DAY, dayView: dayView({ suggestions: [first] }), focusedSuggestion: first.id });
+      show(first);
+      state().focusSuggestion(first.id);
       await state().approveSuggestion(first);
       expect(state().focusedSuggestion).toBeNull();
     });
@@ -147,7 +160,8 @@ describe("suggestions slice", () => {
 
     it("counts a suggestion joined from several rules as the rule's", async () => {
       const joined = suggestion({ ruleIds: ["rule-0", "rule-1"], start: at("08:00"), end: at("08:30") });
-      resetStore({ day: DAY, dayView: dayView({ suggestions: [joined, second, third] }), focusedSuggestion: joined.id });
+      show(joined, second, third);
+      state().focusSuggestion(joined.id);
       await state().approveRuleSuggestions("rule-1");
       expect(state().focusedSuggestion).toBe(second.id);
     });
@@ -169,14 +183,14 @@ describe("suggestions slice", () => {
     });
 
     it("sends only the suggestions that have a project", async () => {
-      resetStore({ day: DAY, dayView: dayView({ suggestions: [first, unassigned, second] }) });
+      show(first, unassigned, second);
       mocked.suggestionsApprove.mockResolvedValueOnce([recording({ id: "r1" }), recording({ id: "r2" })]);
       await state().approveSuggestions([first.id, unassigned.id, second.id]);
       expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [first.id, second.id]);
     });
 
     it("asks for nothing when none of the suggestions has a project", async () => {
-      resetStore({ day: DAY, dayView: dayView({ suggestions: [unassigned] }) });
+      show(unassigned);
       await state().approveSuggestions([unassigned.id]);
       expect(mocked.suggestionsApprove).not.toHaveBeenCalled();
       expect(toastMessages()).toEqual([]);

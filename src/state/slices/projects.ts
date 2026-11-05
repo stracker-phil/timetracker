@@ -1,21 +1,12 @@
-import { api, toAppError, type Client, type ClientInput, type Project, type ProjectInput, type ProjectListItem, type Tag, type TagListItem } from "../../api";
+import { api, toAppError, type Client, type ClientInput, type Project, type ProjectInput, type ProjectListItem, type Tag } from "../../api";
 import { fuzzyFilter } from "../../lib/fuzzy";
+import { PROJECT_LISTS_KEY } from "../../queries/projects";
+import { refreshed } from "../../queries/queryClient";
 import { fail } from "../requests";
 import type { Slice } from "../store";
 
-const RECENT_LIMIT = 5;
-
+/** The writes of the lists `useProjectLists` reads (`src/queries/projects.ts`). */
 export interface ProjectsSlice {
-  /** Archived ones included; views filter. */
-  projects: ProjectListItem[];
-  /** Archived ones included. */
-  clients: Client[];
-  tags: TagListItem[];
-  /** Active projects by latest recording. */
-  recent: Project[];
-  projectsLoaded: boolean;
-  /** Loads all four lists; runs at boot and on every `data_changed` of projects or tags. */
-  loadProjects: () => Promise<void>;
   /** `id: null` creates. Rejects on failure: a field error for the form to show, anything else after a toast. */
   saveProject: (id: string | null, input: ProjectInput) => Promise<Project>;
   archiveProject: (id: string, archived: boolean) => Promise<void>;
@@ -28,48 +19,29 @@ export interface ProjectsSlice {
   setTagEmoji: (id: string, emoji: string | null) => Promise<Tag>;
 }
 
+/** Runs a write and settles once the lists have refetched; a failure is toasted under `context` unless a form field shows it. */
+async function write<T>(context: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (e) {
+    if (!toAppError(e).field) fail(e, context);
+    throw e;
+  } finally {
+    // A refetch failure is toasted by the query and never replaces the write's result or error.
+    await refreshed(PROJECT_LISTS_KEY).catch(() => {});
+  }
+}
+
 export const projectsSlice: Slice<ProjectsSlice> = {
-  create: (set, get) => {
-    /** Runs a write and settles once the lists have reloaded; a failure is toasted under `context` unless a form field shows it. */
-    async function write<T>(context: string, run: () => Promise<T>): Promise<T> {
-      try {
-        return await run();
-      } catch (e) {
-        if (!toAppError(e).field) fail(e, context);
-        throw e;
-      } finally {
-        // A reload failure is toasted on its own and never replaces the write's result or error.
-        await get()
-          .loadProjects()
-          .catch((e: unknown) => fail(e, "Could not reload the projects"));
-      }
-    }
-
-    return {
-      projects: [],
-      clients: [],
-      tags: [],
-      recent: [],
-      projectsLoaded: false,
-
-      async loadProjects() {
-        try {
-          const [projects, clients, tags, recent] = await Promise.all([api.projectsList(true), api.clientsList(true), api.tagsList(), api.projectsRecent(RECENT_LIMIT)]);
-          set({ projects, clients, tags, recent, projectsLoaded: true });
-        } catch (e) {
-          fail(e, "Could not load the projects");
-        }
-      },
-
-      saveProject: (id, input) => write("Could not save the project", () => api.projectsSave(id, input)),
-      archiveProject: (id, archived) => write(archived ? "Could not archive the project" : "Could not restore the project", () => api.projectsArchive(id, archived)).then(() => {}),
-      saveClient: (id, input) => write("Could not save the client", () => api.clientsSave(id, input)),
-      archiveClient: (id, archived) => write(archived ? "Could not archive the client" : "Could not restore the client", () => api.clientsArchive(id, archived)).then(() => {}),
-      saveTag: (id, name) => write("Could not save the tag", () => api.tagsSave(id, name)),
-      deleteTag: (id) => write("Could not delete the tag", () => api.tagsDelete(id)),
-      setTagEmoji: (id, emoji) => write("Could not save the emoji", () => api.tagsSetEmoji(id, emoji)),
-    };
-  },
+  create: () => ({
+    saveProject: (id, input) => write("Could not save the project", () => api.projectsSave(id, input)),
+    archiveProject: (id, archived) => write(archived ? "Could not archive the project" : "Could not restore the project", () => api.projectsArchive(id, archived)).then(() => {}),
+    saveClient: (id, input) => write("Could not save the client", () => api.clientsSave(id, input)),
+    archiveClient: (id, archived) => write(archived ? "Could not archive the client" : "Could not restore the client", () => api.clientsArchive(id, archived)).then(() => {}),
+    saveTag: (id, name) => write("Could not save the tag", () => api.tagsSave(id, name)),
+    deleteTag: (id) => write("Could not delete the tag", () => api.tagsDelete(id)),
+    setTagEmoji: (id, emoji) => write("Could not save the emoji", () => api.tagsSetEmoji(id, emoji)),
+  }),
 };
 
 export interface ProjectGroup {

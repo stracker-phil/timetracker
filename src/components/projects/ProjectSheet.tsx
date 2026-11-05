@@ -5,6 +5,7 @@ import { AccentSwatches, ShadeSwatches } from "../Accent";
 import { FormField } from "../Field";
 import { PopUpButton } from "../menu";
 import { Modal } from "../Modal";
+import { useProjectLists } from "../../queries/projects";
 
 const NEW_CLIENT = "\u0000new";
 
@@ -22,8 +23,8 @@ interface Props {
 
 /** Create or edit a project; archive or restore an existing one. */
 export function ProjectSheet({ id, initialName = "", initialClientId, onClose, onSaved }: Props) {
-  const existing = useStore((s) => s.projects.find((p) => p.project.id === id)?.project);
-  const clients = useStore((s) => s.clients);
+  const { projects, clients } = useProjectLists();
+  const existing = projects.find((p) => p.project.id === id)?.project;
   const { saveProject, archiveProject, saveClient } = useStore.getState();
   const [input, setInput] = useState<ProjectInput>(() => {
     const { clientId, name, color, shade, billable } = existing ?? { clientId: initialClientId ?? null, name: initialName, color: "orange", shade: null, billable: false };

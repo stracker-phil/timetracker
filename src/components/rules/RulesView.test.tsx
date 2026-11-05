@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,7 +7,8 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api } from "../../api";
 import { handleKeydown, installCommands } from "../../commands";
 import { resetStore, useStore } from "../../state/store";
-import { projectItem, projectsStore } from "../../test/projectFixtures";
+import { projectItem } from "../../test/projectFixtures";
+import { renderWithClient, seedProjects } from "../../test/queries";
 import { rule, ruleDay } from "../../test/ruleFixtures";
 import { Dialogs } from "../Dialogs";
 import { RulesView } from "./RulesView";
@@ -30,8 +31,8 @@ const website = projectItem({ project: { id: "project-1", name: "Website" } });
 
 async function renderView(rules = [slack, standup, docs]) {
   mocked.rulesList.mockResolvedValue(rules);
-  resetStore({ ...projectsStore({ projects: [website] }), rules });
-  render(
+  seedProjects({ projects: [website] });
+  renderWithClient(
     <>
       <RulesView />
       <Dialogs />
@@ -54,6 +55,7 @@ function dragGrip(name: string, dy: number) {
 describe("RulesView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetStore();
     mocked.rulesToday.mockResolvedValue([]);
   });
 
@@ -75,8 +77,8 @@ describe("RulesView", () => {
     describe("without rules", () => {
       async function renderEmpty() {
         mocked.rulesList.mockResolvedValue([]);
-        resetStore(projectsStore());
-        render(
+        seedProjects();
+        renderWithClient(
           <>
             <RulesView />
             <Dialogs />
@@ -105,8 +107,8 @@ describe("RulesView", () => {
 
     it("loads the rules when it opens", async () => {
       mocked.rulesList.mockResolvedValue([slack]);
-      resetStore(projectsStore({ projects: [website] }));
-      render(<RulesView />);
+      seedProjects({ projects: [website] });
+      renderWithClient(<RulesView />);
       expect(await screen.findByText("Slack")).toBeInTheDocument();
     });
 
@@ -160,6 +162,7 @@ describe("RulesView", () => {
 
   describe("enabling", () => {
     it("turns a rule off with its switch", async () => {
+      mocked.ruleSetEnabled.mockResolvedValueOnce({ ...slack, enabled: false });
       await renderView();
       await userEvent.click(screen.getByRole("switch", { name: "Suggest from Slack" }));
       expect(mocked.ruleSetEnabled).toHaveBeenCalledWith("r-slack", false);

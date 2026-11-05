@@ -4,6 +4,7 @@ import { fuzzyFilter } from "../../lib/fuzzy";
 import { useStore } from "../../state/store";
 import { PickerField } from "./PickerField";
 import type { PickerRow } from "./PickerList";
+import { useTags } from "../../queries/projects";
 
 /** The tag's emoji, else the tag icon. */
 function TagIcon({ emoji }: { emoji: string | null }) {
@@ -53,7 +54,7 @@ interface Props {
 
 /** One tag or none: picks or creates a tag; ⌫ removes it (see `PickerField` for the keys). */
 export function TagPicker({ value, onChange }: Props) {
-  const tags = useStore((s) => s.tags);
+  const tags = useTags();
   const tag = tags.find((t) => t.id === value);
   const chosen = value === null ? null : (tag?.name ?? value);
 

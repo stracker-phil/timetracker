@@ -22,7 +22,13 @@ import { answerRemote } from "./commands/remote";
 import { disposeAll } from "./lib/disposeAll";
 import { applyAppearance, useSystemDark } from "./lib/theme";
 import { useErrorToasts } from "./lib/useErrorToasts";
-import { keybindingsChanged, settingsChanged } from "./lib/useFollowSettings";
+import { queryClient } from "./queries/queryClient";
+import { QueryRoot } from "./queries/QueryRoot";
+import { projectListsQuery } from "./queries/projects";
+import { savedReportsQuery } from "./queries/reports";
+import { loadSettings, useSettings } from "./queries/settings";
+import { timerQuery, trackerQuery } from "./queries/status";
+import { useEvents } from "./queries/useEvents";
 import { flushUiState, useStore, type View } from "./state/store";
 import "./styles";
 
@@ -38,26 +44,22 @@ function handleLaunchEvents(events: LaunchEvent[]) {
 
 function useBackendEvents() {
   useEffect(() => {
-    const { loadSettings, loadUiState, loadTracker, loadProjects, setTracker, toast, dataChanged, windowOpened } = useStore.getState();
+    const { loadUiState, toast, windowOpened } = useStore.getState();
     const drainLaunches = () => api.takeLaunchEvents().then(handleLaunchEvents, (e) => toast("error", `Launch request failed: ${toAppError(e).message}`));
 
     // Re-installing applies the user's keybinding overrides, which arrive with the settings.
     void loadSettings().then(() => (installCommands(), drainLaunches()));
     void loadUiState();
-    void loadTracker();
-    void loadProjects();
-    void useStore.getState().loadSavedReports();
-    void useStore.getState().loadTimer();
+    // Read outside components too (commands, toasts), so loaded before any view asks.
+    void queryClient.prefetchQuery(trackerQuery);
+    void queryClient.prefetchQuery(timerQuery);
+    void queryClient.prefetchQuery(projectListsQuery);
+    void queryClient.prefetchQuery(savedReportsQuery);
     const subscriptions = [
-      api.onTimerStatus(useStore.getState().setTimerStatus),
       api.onLaunch(() => void drainLaunches()),
       api.onWindowOpened(windowOpened),
       listenPageCommands(),
       api.onRemote((e) => void answerRemote(e)),
-      api.onDataChanged(dataChanged),
-      api.onTrackerStatus(setTracker),
-      api.onSettingsChanged(settingsChanged),
-      api.onKeybindingsChanged(keybindingsChanged),
     ];
 
     window.addEventListener("keydown", handleKeydown, true);
@@ -109,9 +111,10 @@ function Workspace() {
   );
 }
 
-export default function App() {
-  const settings = useStore((s) => s.settings);
+function Shell() {
+  const settings = useSettings();
   const systemDark = useSystemDark();
+  useEvents();
   useBackendEvents();
   useErrorToasts();
   useMenuSync();
@@ -133,5 +136,13 @@ export default function App() {
       <MenuHost />
       <Toasts />
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <QueryRoot>
+      <Shell />
+    </QueryRoot>
   );
 }

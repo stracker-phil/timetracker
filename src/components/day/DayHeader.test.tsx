@@ -1,14 +1,15 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api } from "../../api";
+import { api, type DayView } from "../../api";
 import { installCommands, runCommand } from "../../commands";
 import { today } from "../../lib/day";
 import { resetStore } from "../../state/store";
 import { DAY, dayView } from "../../test/dayFixtures";
+import { dayKey, renderWithClient, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { Dialogs } from "../Dialogs";
 import { MenuHost } from "../menu";
@@ -16,10 +17,13 @@ import { DayHeader } from "./DayHeader";
 
 const mocked = vi.mocked(api, true);
 
-function renderHeader(patch: Parameters<typeof resetStore>[0] = { dayView: dayView({ label: "Tuesday, March 10, 2026" }), day: DAY }) {
-  resetStore({ settings: settings(), ...patch });
+/** The header of the shown day; `view` is that day's loaded view, null while it has not loaded. */
+function renderHeader(view: DayView | null = dayView({ day: DAY, label: "Tuesday, March 10, 2026" })) {
+  resetStore({ day: DAY });
+  seedQuery(SETTINGS_KEY, settings());
+  if (view) seedQuery(dayKey(DAY), view);
   installCommands();
-  return render(
+  return renderWithClient(
     <>
       <DayHeader totals={null} />
       <Dialogs />
@@ -40,9 +44,10 @@ describe("DayHeader", () => {
     const totals = { recordedMs: 3_600_000, trackedMs: 7_200_000, awayMs: 600_000 };
 
     function renderFor(label: string, shown = totals, day = DAY) {
-      resetStore({ settings: settings(), day });
+      resetStore({ day });
+      seedQuery(SETTINGS_KEY, settings());
       installCommands();
-      render(<DayHeader label={label} totals={shown} />);
+      renderWithClient(<DayHeader label={label} totals={shown} />);
     }
 
     it.each(["Tuesday, March 10", "Tue, Mar 10"])("shows the title %s Rust gives for the day, as is", (label) => {
@@ -96,9 +101,10 @@ describe("DayHeader", () => {
     });
 
     it("shows no mark when there are no totals", () => {
-      resetStore({ settings: settings(), day: DAY });
+      resetStore({ day: DAY });
+      seedQuery(SETTINGS_KEY, settings());
       installCommands();
-      render(<DayHeader label="Tuesday, March 10" totals={null} />);
+      renderWithClient(<DayHeader label="Tuesday, March 10" totals={null} />);
       expect(screen.queryByRole("img", { name: "Recorded" })).not.toBeInTheDocument();
       expect(screen.queryByRole("img", { name: "Nothing recorded" })).not.toBeInTheDocument();
     });
@@ -157,7 +163,7 @@ describe("DayHeader", () => {
     });
 
     it("opens no dialog while the shown day has not loaded", async () => {
-      renderHeader({ dayView: null, day: DAY });
+      renderHeader(null);
       await openMenu();
       await userEvent.click(screen.getByRole("menuitem", { name: "Delete activity for this day…" }));
 

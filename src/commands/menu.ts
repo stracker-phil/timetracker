@@ -3,6 +3,7 @@ import { useStore } from "../state/store";
 import { canRunFromMenu } from "./pageCommands";
 import { allCommands } from "./registry";
 import { activeScopes } from "./scopes";
+import { queryClient } from "../queries/queryClient";
 
 /** This window's menu page commands (`page:<id>` in `menu/items.rs`) that can run now and the checked ones. */
 export function menuState(): MenuState {
@@ -26,16 +27,20 @@ export function syncMenu() {
   api.menuSync(state).catch(() => (sent = ""));
 }
 
-/** Keeps the menu in step with the store and with the keyboard focus (a text field). */
+/** Keeps the menu in step with the store, the loaded data (the shown day's suggestions) and the keyboard focus (a text field). */
 export function installMenuSync(): () => void {
   sent = "";
   const onFocus = () => queueMicrotask(syncMenu);
   const unsubscribe = useStore.subscribe(syncMenu);
+  const unsubscribeData = queryClient.getQueryCache().subscribe((event) => {
+    if (event.type === "updated") syncMenu();
+  });
   window.addEventListener("focusin", onFocus);
   window.addEventListener("focusout", onFocus);
   syncMenu();
   return () => {
     unsubscribe();
+    unsubscribeData();
     window.removeEventListener("focusin", onFocus);
     window.removeEventListener("focusout", onFocus);
   };

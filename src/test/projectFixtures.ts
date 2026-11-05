@@ -1,6 +1,5 @@
 // Must not import the store or "../api" at runtime: apiMock.ts imports this file while the api module is mocked.
 import type { Client, Project, ProjectListItem, TagListItem } from "../api/types";
-import type { Store } from "../state/store";
 
 /** An active project without a client; `patch` overrides fields. */
 export function project(patch: Partial<Project> = {}): Project {
@@ -25,8 +24,3 @@ export function tag(patch: Partial<TagListItem> = {}): TagListItem {
 }
 
 export const DEFAULT_TAGS: TagListItem[] = ["admin", "research", "development", "maintenance", "internal meeting", "external meeting", "support"].map((name) => tag({ name }));
-
-/** A store patch for `resetStore` with the projects slice loaded. */
-export function projectsStore({ projects = [], clients = [], tags = DEFAULT_TAGS, recent = [] }: { projects?: ProjectListItem[]; clients?: Client[]; tags?: TagListItem[]; recent?: Project[] } = {}): Partial<Store> {
-  return { projects, clients, tags, recent, projectsLoaded: true };
-}

@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { api, type DayColumn as Column } from "../../api";
+import { type DayColumn as Column } from "../../api";
 import { formatDuration } from "../../lib/format";
-import { useApiResult } from "../../lib/useApiResult";
 import { useStore } from "../../state/store";
 import { Toolbar } from "../Toolbar";
 import { EditorSheet } from "./EditorSheet";
 import { WeekCard, type CardDrag } from "./WeekCard";
+import { useWeekView } from "../../queries/calendar";
 
 /** `Mon 20`. */
 const columnName = (column: Column) => `${column.weekday} ${column.dayOfMonth}`;
@@ -53,10 +53,9 @@ function DayColumn({ column, focused, drag, onDrag }: ColumnProps) {
 /** Seven columns of the days' recordings, Monday first, without a time axis; drag a card to another day to move it, with ⌥ to copy it. */
 export function WeekView() {
   const day = useStore((s) => s.day);
-  const changes = useStore((s) => s.changeCount);
   const focused = useStore((s) => s.focusedRecording);
   const [drag, setDrag] = useState<CardDrag | null>(null);
-  const { data: week, error } = useApiResult(`week:${day}#${changes}`, () => api.weekView(day), { keepData: true });
+  const { data: week, error } = useWeekView(day);
 
   return (
     <section className="day-page" aria-label="Week">

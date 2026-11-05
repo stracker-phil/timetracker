@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,7 +9,8 @@ import { handleKeydown, installCommands } from "../../commands";
 import { resetStore, useStore } from "../../state/store";
 import { calendarEntry, monthView } from "../../test/calendarFixtures";
 import { at, DAY } from "../../test/dayFixtures";
-import { projectItem, projectsStore } from "../../test/projectFixtures";
+import { projectItem } from "../../test/projectFixtures";
+import { renderWithClient, seedProjects, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { recording } from "../../test/recordingFixtures";
 import { settings } from "../../test/settings";
 import { Toasts } from "../Toasts";
@@ -33,9 +34,11 @@ const busyMonth = (entries = [landing]) =>
 
 function renderMonth(month: Month | null = monthView()) {
   if (month) mocked.monthView.mockResolvedValue(month);
-  resetStore({ view: "month", day: DAY, settings: settings(), ...projectsStore({ projects: [website] }) });
+  resetStore({ view: "month", day: DAY });
+  seedQuery(SETTINGS_KEY, settings());
+  seedProjects({ projects: [website] });
   installCommands();
-  return render(
+  return renderWithClient(
     <>
       <MonthView />
       <Toasts />

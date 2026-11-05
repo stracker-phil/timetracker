@@ -1,14 +1,15 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api } from "../../api";
+import { api, type DayView, type Project, type Settings } from "../../api";
 import type { Editor } from "../../state/slices/editor";
-import { resetStore, useStore } from "../../state/store";
+import { resetStore, useStore, type Store } from "../../state/store";
 import { at, dayView, recordingBlock } from "../../test/dayFixtures";
-import { client, projectItem, projectsStore } from "../../test/projectFixtures";
+import { client, projectItem } from "../../test/projectFixtures";
+import { dayKey, renderWithClient, seedProjects, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { recording } from "../../test/recordingFixtures";
 import { settings } from "../../test/settings";
 import { Dialogs } from "../Dialogs";
@@ -26,10 +27,16 @@ const END = at("10:30");
 const standupBlock = recordingBlock({ id: "r1", projectId: "p-site", note: "standup", start: at("11:00"), end: at("11:45") });
 const standupRow = recording({ id: "r1", projectId: "p-site", note: "standup", tagId: "tag-research", start: at("11:00"), end: at("11:45") });
 
-function renderEditor(editor: Editor, patch: Parameters<typeof resetStore>[0] = {}) {
-  resetStore({ settings: settings(), ...projectsStore({ projects: [website, intranet], clients: [acme] }), dayView: dayView({ recordings: [standupBlock] }), ...patch });
+/** Store state, plus the query data the editor reads: the recent projects, the settings and the shown day's view. */
+type EditorSetup = Partial<Store> & { recent?: Project[]; settings?: Settings; dayView?: DayView };
+
+function renderEditor(editor: Editor, { recent = [], settings: shownSettings = settings(), dayView: shownDay = dayView({ recordings: [standupBlock] }), ...patch }: EditorSetup = {}) {
+  resetStore({ day: shownDay.day, ...patch });
+  seedQuery(SETTINGS_KEY, shownSettings);
+  seedQuery(dayKey(shownDay.day), shownDay);
+  seedProjects({ projects: [website, intranet], clients: [acme], recent });
   act(() => useStore.getState().openEditor(editor));
-  render(
+  renderWithClient(
     <>
       <RecordingEditor />
       <Dialogs />
@@ -38,7 +45,7 @@ function renderEditor(editor: Editor, patch: Parameters<typeof resetStore>[0] = 
   );
 }
 
-const renderCreate = (patch: Parameters<typeof resetStore>[0] = {}) => renderEditor({ mode: "create", start: START, end: END }, patch);
+const renderCreate = (patch: EditorSetup = {}) => renderEditor({ mode: "create", start: START, end: END }, patch);
 const editorForm = (name: "New recording" | "Edit recording") => screen.findByRole("form", { name });
 const field = (label: string) => screen.getByLabelText(label);
 const projectField = () => screen.getByRole("combobox", { name: "Project" });
@@ -190,7 +197,7 @@ describe("RecordingEditor", () => {
 
     it("offers the proposed project first, marked Suggested, without filling it in", async () => {
       mocked.recordingProposal.mockResolvedValue({ projectId: "p-site" });
-      renderCreate(projectsStore({ projects: [website, intranet], clients: [acme], recent: [intranet.project] }));
+      renderCreate({ recent: [intranet.project] });
       await editorForm("New recording");
       const list = within(await screen.findByRole("list", { name: "Recent projects" }));
       expect(await list.findByText("Suggested")).toBeInTheDocument();
@@ -306,7 +313,7 @@ describe("RecordingEditor", () => {
   });
 
   describe("recent projects", () => {
-    const withRecent = projectsStore({ projects: [website, intranet], clients: [acme], recent: [website.project, intranet.project] });
+    const withRecent: EditorSetup = { recent: [website.project, intranet.project] };
     const recentList = () => screen.queryByRole("list", { name: "Recent projects" });
 
     it("lists the recent projects below the Project field while none is picked", async () => {

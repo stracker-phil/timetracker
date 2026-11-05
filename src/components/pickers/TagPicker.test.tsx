@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +7,8 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { resetStore } from "../../state/store";
-import { DEFAULT_TAGS, projectsStore, tag } from "../../test/projectFixtures";
+import { DEFAULT_TAGS, tag } from "../../test/projectFixtures";
+import { renderWithClient, seedProjects } from "../../test/queries";
 import { Toasts } from "../Toasts";
 import { TagPicker } from "./TagPicker";
 
@@ -29,8 +30,9 @@ function Harness({ initial, onChange }: { initial: string | null; onChange: (id:
 
 function renderPicker(initial: string | null = null, tags = DEFAULT_TAGS) {
   const onChange = vi.fn();
-  resetStore(projectsStore({ tags }));
-  render(
+  resetStore();
+  seedProjects({ tags });
+  renderWithClient(
     <>
       <Harness initial={initial} onChange={onChange} />
       <Toasts />

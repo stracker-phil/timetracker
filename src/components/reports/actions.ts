@@ -3,6 +3,7 @@ import { copyText } from "../../lib/clipboard";
 import { plural } from "../../lib/format";
 import { selectReportFilter } from "../../state/slices/reports";
 import { fail, useStore } from "../../state/store";
+import { savedReports } from "../../queries/reports";
 
 export async function copyReport() {
   try {
@@ -60,8 +61,8 @@ export function confirmDeleteReport(report: SavedReport) {
 }
 
 const openedReport = () => {
-  const { savedReports, openedReport: id } = useStore.getState();
-  return savedReports.find((r) => r.id === id);
+  const id = useStore.getState().openedReport;
+  return savedReports().find((r) => r.id === id);
 };
 
 export function promptRenameSavedReport() {

@@ -4,6 +4,8 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api, EMPTY_UI_STATE } from "../api";
 import { flushUiState, resetStore, useStore } from "../state/store";
+import { currentSettings } from "../queries/settings";
+import { seedQuery, SETTINGS_KEY } from "../test/queries";
 import { settings } from "../test/settings";
 import { installCommands, runCommand } from "./index";
 
@@ -13,7 +15,8 @@ const zoom = () => useStore.getState().uiState.timelineZoom;
 describe("zoom commands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resetStore({ settings: settings() });
+    resetStore();
+    seedQuery(SETTINGS_KEY, settings());
     installCommands();
   });
 
@@ -53,7 +56,7 @@ describe("zoom commands", () => {
       ["zoom.reset", "small", "medium"],
       ["zoom.reset", "large", "medium"],
     ] as const)("%s from %s saves %s", (id, from, expected) => {
-      useStore.setState({ settings: settings({ textSize: from }) });
+      seedQuery(SETTINGS_KEY, settings({ textSize: from }));
       runCommand(id);
       expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ textSize: expected }));
     });
@@ -63,17 +66,17 @@ describe("zoom commands", () => {
       ["zoom.out", "small"],
       ["zoom.reset", "medium"],
     ] as const)("%s saves nothing at %s", (id, at) => {
-      useStore.setState({ settings: settings({ textSize: at }) });
+      seedQuery(SETTINGS_KEY, settings({ textSize: at }));
       runCommand(id);
       expect(mocked.updateSettings).not.toHaveBeenCalled();
     });
 
     it("steps from the saved size twice in a row", async () => {
-      useStore.setState({ settings: settings({ textSize: "small" }) });
+      seedQuery(SETTINGS_KEY, settings({ textSize: "small" }));
       runCommand("zoom.in");
-      await vi.waitFor(() => expect(useStore.getState().settings?.textSize).toBe("medium"));
+      await vi.waitFor(() => expect(currentSettings()?.textSize).toBe("medium"));
       runCommand("zoom.in");
-      await vi.waitFor(() => expect(useStore.getState().settings?.textSize).toBe("large"));
+      await vi.waitFor(() => expect(currentSettings()?.textSize).toBe("large"));
     });
 
     it("leaves the timeline zoom alone", () => {

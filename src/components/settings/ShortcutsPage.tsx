@@ -4,6 +4,7 @@ import { allCommands, bindingFor, bindingFromEvent, bindingLabel, conflicts, sco
 import { useStore } from "../../state/store";
 import { InsetField } from "../Field";
 import { Group, Row } from "./controls";
+import { useKeybindings, useSettings } from "../../queries/settings";
 
 function ShortcutField({ value, onChange }: { value: string | null; onChange: (binding: string | null) => void }) {
   const [recording, setRecording] = useState(false);
@@ -48,7 +49,7 @@ function RemoveShortcut({ title, onRemove }: { title: string; onRemove: () => vo
 
 /** The shortcut that opens the timer picker from any app; Rust registers it with the system. */
 function GlobalShortcut() {
-  const binding = useStore((s) => s.settings?.timerShortcut ?? null);
+  const binding = useSettings()?.timerShortcut ?? null;
   const [error, setError] = useState<string | null>(null);
   const change = async (next: string | null) => setError(await useStore.getState().saveTimerShortcut(next));
   const title = "Start timer (system-wide)";
@@ -65,7 +66,7 @@ function GlobalShortcut() {
 }
 
 export function ShortcutsPage() {
-  const bindings = useStore((s) => s.keybindings);
+  const bindings = useKeybindings();
   const save = useStore((s) => s.saveKeybindings);
   const [search, setSearch] = useState("");
   const needle = search.trim().toLowerCase();

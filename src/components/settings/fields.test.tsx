@@ -6,6 +6,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { resetStore, useStore } from "../../state/store";
+import { renderWithClient, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { NumberField, TextField } from "./fields";
 import { SettingsWindow } from "./SettingsWindow";
@@ -100,10 +101,11 @@ describe("a field on a settings page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocked.updateSettings.mockImplementation(async (s) => s);
-    resetStore({ settings: settings() });
+    resetStore();
+    seedQuery(SETTINGS_KEY, settings());
   });
 
-  const renderTracker = () => render(<SettingsWindow page="tracker" onPage={() => {}} />);
+  const renderTracker = () => renderWithClient(<SettingsWindow page="tracker" onPage={() => {}} />);
 
   it("shows Rust's invalid_input message under the field, keeps the text and raises no toast", async () => {
     mocked.updateSettings.mockRejectedValue({ kind: "invalid_input", message: "Away time must be shorter than a day.", code: null });

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,6 +6,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { installCommands } from "../commands";
 import { resetStore, useStore } from "../state/store";
+import { renderWithClient as render } from "../test/queries";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 
 describe("ShortcutsDialog", () => {

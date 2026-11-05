@@ -1,7 +1,8 @@
 # Frontend
 
-`src/` holds a React 19 + TypeScript app, bundled by Vite. State lives in one zustand store. The frontend
-renders and forwards intent; [Rust owns the logic](architecture.md#design-rules).
+`src/` holds a React 19 + TypeScript app, bundled by Vite. What it reads from Rust goes through TanStack
+Query (`src/queries/`, [ADR 0040](adr/0040-reads-go-through-tanstack-query.md)); page state and the write
+actions live in one zustand store. The frontend renders and forwards intent; [Rust owns the logic](architecture.md#design-rules).
 
 ## Boot
 
@@ -19,19 +20,19 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 6. `main.tsx` assigns the store to `window.timetracker` only when `import.meta.env.VITE_DEV_HOOKS` is `"1"`
    (the debug bundle of `bun run build:app`), then renders `<ErrorBoundary><App/></ErrorBoundary>`.
 7. `App.tsx` imports the stylesheets (`styles/index.ts`: the palettes, `theme.css`, `motion.css`, then the
-   stylesheets by layer) and calls
-   `useBackendEvents()` once:
-   1. `loadUiState()` loads the window layout; the page starts on today. `loadSettings()` loads settings and keybindings; `installCommands()` runs again to apply the user's
+   stylesheets by layer), wraps the page in `QueryRoot` (`queries/QueryRoot.tsx`: the window's
+   `QueryClientProvider`), calls `useEvents()` ([Reads](#reads)) and `useBackendEvents()` once:
+   1. `loadUiState()` loads the window layout; the page starts on today. It prefetches the tracker and timer
+      statuses, the project lists and the saved reports, which commands and toasts read outside components.
+      `loadSettings()` (`queries/settings.ts`) loads settings and keybindings; `installCommands()` runs again to apply the user's
       bindings, then `drainLaunches()` pulls the queued launch events (`take_launch_events`): `error` shows an error toast,
       `notice` an info toast (a migration that dropped tags), `showDay` calls `goToDay`, `command` (a
       `command/page:<id>` link) runs the page command when it can (`runMenuCommand`).
    2. It subscribes to `launch` (drain again), `window_opened` (→ `windowOpened`), `page_command` (the menus' `page:<id>` items → `listenPageCommands`, `runMenuCommand`), `remote`
-      (→ `answerRemote`, which always replies with `remoteReply`), `data_changed` (→ `dataChanged`),
-      `tracker_status` (→ `setTracker`), `settings_changed` (→ `settingsChanged`) and `keybindings_changed`
-      (→ `keybindingsChanged`, both in `lib/useFollowSettings.ts`), so a change made in Settings shows at once; `loadTracker()` fetches the current status once.
+      (→ `answerRemote`, which always replies with `remoteReply`); the data events are `useEvents`'s.
    3. It adds a capture-phase `keydown` → `handleKeydown`, and `beforeunload` → `flushUiState`; `useErrorToasts()`
       (`lib/useErrorToasts.ts`, also in Settings) shows `error` / `unhandledrejection` as an error toast.
-8. `applyAppearance(settings, systemDark)` runs whenever settings or the OS appearance change.
+8. `applyAppearance(settings, systemDark)` runs whenever settings (`useSettings()`) or the OS appearance change.
 
 ```
 App
@@ -50,25 +51,72 @@ error's message, returning the `AppError`.
 
 | Slice | Holds |
 |---|---|
-| `settings` | `settings`, `keybindings`, `loadSettings`, `saveSettings(settings, { quiet?, returnError? })` (with `returnError` an `invalid_input` refusal is not toasted but resolved, for the field to show), `saveTimeline(patch)` (timeline settings, saved quietly), `saveKeybindings`, `setLaunchAtLogin(enabled)` (resolves whether it is on now, `null` on a toasted failure) |
+| `settings` | the writes of `useSettings`/`useKeybindings`, each storing what Rust saved into its query: `saveSettings(settings, { quiet?, returnError? })` (with `returnError` an `invalid_input` refusal is not toasted but resolved, for the field to show), `saveTimeline(patch)` (timeline settings, saved quietly), `saveKeybindings`, `saveTimerShortcut`, `setAppSetting(appKey, patch)` (the Day view refetches on the `data_changed` it causes), `setLaunchAtLogin(enabled)` (resolves whether it is on now, `null` on a toasted failure) |
 | `ui` | `toasts` (an optional `action`, e.g. Undo, with an optional `ttlMs`; an action toast stays 10 s by default), `dialog` (`shortcuts`, `confirm`, `project { id?, clientId? }`, `client { id? }`, `rule { id?, draft? }`, `deleteActivity { day, bounds, range }`, `timelineSettings`, `datePicker`), `paletteOpen`, `paletteSeed` |
 | `nav` | `view` (`day`, `week`, `month`, `reports`, `projects`, `tags`, `rules`), `setView(view, then?)` (another view first clears the selection and leaves the editor through `leaveEditor`; `then` runs once the view shows, never after Keep editing), `day` (the shown `YYYY-MM-DD`, today at start), `goToDay(day)` (also switches to the Day view; `timetracker show` uses it), `showHours` (Hours: `goToDay` today; the sidebar), `goToday` (keeps the view), `showDate(day)` (keeps the view; the date picker), `step(±1)` (a day, a week or a month by the view, through `stepThroughRust` in `lib/dayStepper.ts`: `calendarStep`, queued so quick presses add up, a failure toasts; the date picker and ⌥← ⌥→ use it too); in Reports the three move the report's period instead (`shiftReportRange`); `openings` and `windowOpened` (Hours again, and the Day view scrolls to now; the `window_opened` event) |
-| `day` | `dayView` (the shown day's `DayView`; the previous one stays while the next day loads), `dayError`, `loadDay` (drops answers for a day no longer shown), `focusedBlock`/`focusBlock`, `detailsBlock`/`toggleDetails` (the card opened by keyboard), `blockMenuRequest`/`requestBlockMenu`, `setAppSetting(appKey, patch)` (stores the returned settings; the Day view reloads on the `data_changed` it causes) |
-| `reports` | `reportFilter` (`null` follows `settings.reports` through `defaultFilter`), `setReportFilter(patch)`, `shiftReportRange(anchor, by)` (`api.reportRangeShift`: the period `by` steps of its unit away, from the period holding `anchor` when given, so `by = 0` is that period; failures toast), `savedReports`/`loadSavedReports` (boot), `saveReport(name)` (the shown filter), `renameSavedReport`, `deleteSavedReport`, `openSavedReport` (its filter, and the Reports view) |
-| `rules` | `rules` (by position), `loadRules` (the Rules view, and every `data_changed` of `rules`), `saveRule(id, input)` (rejects; toasted unless the error has a `field`), `deleteRule`, `reorderRules(ids)`, `setRuleEnabled`, `rulesToday` (`RuleDay[]`, loaded after the rules by `loadRules`; empty when it fails) |
+| `day` | `focusedBlock`/`focusBlock`, `detailsBlock`/`toggleDetails` (the card opened by keyboard), `blockMenuRequest`/`requestBlockMenu`; the day's view itself is `useDayView` |
+| `reports` | `reportFilter` (`null` follows `settings.reports` through `defaultFilter`), `setReportFilter(patch)`, `shiftReportRange(anchor, by)` (`api.reportRangeShift`: the period `by` steps of its unit away, from the period holding `anchor` when given, so `by = 0` is that period; failures toast), `openedReport`, `saveReport(name)` (the shown filter), `renameSavedReport`, `deleteSavedReport` (each writes the answer into `useSavedReports`'s query), `openSavedReport` (its filter, and the Reports view). `selectReportFilter(state)`: the shown filter, the default one from `currentSettings()` until changed |
+| `rules` | the writes of `useRules`: `saveRule(id, input)` (settles once the rules and today's rules have refetched; rejects, toasted unless the error has a `field`), `deleteRule`, `reorderRules(ids)` (shown at once, restored when the write fails), `moveRule`, `setRuleEnabled`, each writing the answer into the rules' query |
 | `suggestions` | `shownSuggestions(state)`, `focusedSuggestion`/`focusSuggestion` (one thing holds the Day view's key focus: `focusCleared` in `state/focus.ts` gives what a suggestion, a recording/block/selection, or another day clears), and on the shown day `approveSuggestion(suggestion)`, `approveRuleSuggestions(ruleId)`, `approveSuggestions(ids)` (only those with a project), `dismissSuggestions(ids)` (each toasts with Undo and moves the focus from a settled focused suggestion to the next one left), `editSuggestion(suggestion)` (focuses it and opens the editor `create` with its span, project, note, tag and `suggestion { id, by }`). `isApprovable(s)`: it has a project (ADR 0030); `approveSuggestion` on one without opens the editor instead; `NO_PROJECT` ("No project") stands in for its name |
-| `data` | `dataVersion` (every day changed), `dayVersions` (per day), `changeCount` (every event, for views over many days), `dataChanged(event)` (called on every `data_changed` event); `selectDayVersion(day)` changes when that day's data may have changed |
-| `projects` | `projects` (`ProjectListItem[]`, archived included), `clients`, `tags` (`TagListItem[]`), `recent`, `projectsLoaded`; `loadProjects` (boot, and every `data_changed` of `projects` or `tags`); `saveProject(id, input)`, `archiveProject`, `saveClient`, `archiveClient`, `saveTag`, `deleteTag`, `setTagEmoji(id, emoji)` reload after the write, settle once the lists have reloaded, and reject on failure (toasted, unless the error has a `field` for the form). Helpers: `groupProjects(projects, clients, archived)`, `projectLabel` |
-| `tracker` | `tracker` (`TrackerStatus`, or `null` while the tracker is off), `setTracker`, `loadTracker`, `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then reloads the status), `permissionDialogHidden` |
-| `recordings` | `selection` (`{ start, end, blockIds }`: a drag's on `DayView.ticks`, a block selection's with the blocks' own times), `selectionSnap` (the selection on the grid, which the band, the outline and the status bar draw: a drag's as it is, a block selection's once `api.recordingSnap` answered), `setSelection` (draws it as it is), `extendSelection(blockId)` (⇧J, ⇧K; asks `api.recordingSnap` once per key), `focusedRecording`/`focusRecording`, `hoveredRecording`/`hoverRecording` (the recording under the pointer in the timesheet or the time column), `undoStatus`/`loadUndoStatus`, `createRecording(input, suggestionId?)` (with a suggestion: `api.suggestionApproveEdited`), `updateRecording(id, patch)`, `updateSpan(id, spanId, span, moving?)` (a drag's span on ticks; with `moving`, Rust keeps the other edge's time), `nudgeSpan(id, spanId, startSteps, endSteps)` (Rust applies the snap step), `deleteRecording(id)`, `moveRecording(id, day, spanId)`/`copyRecording(id, day, spanId)` (one span, else with `null` the whole recording), `undo`, `redo`. A write runs with `overlap: cancel`; on `overlap` it asks (inside the editor while one is open, else the overlap dialog) and runs again with `replace`. One write at a time; each ends with a toast offering Undo. A field error rejects for the editor, others are toasted |
+| `projects` | the writes of `useProjectLists`: `saveProject(id, input)`, `archiveProject`, `saveClient`, `archiveClient`, `saveTag`, `deleteTag`, `setTagEmoji(id, emoji)` settle once the lists have refetched (`refreshed`), and reject on failure (toasted, unless the error has a `field` for the form). Helpers: `groupProjects(projects, clients, archived)`, `projectLabel` |
+| `tracker` | `setTracker(status)` (writes `useTracker`'s query; a status that no longer needs the permission shows the dialog again next time), `pauseTracker(until)`, `resumeTracker`, `requestPermission` (asks macOS, then fetches the status anew), `permissionDialogHidden` |
+| `timer` | `startTimer`, `updateTimer`, `stopTimer`; the status is `useTimer` |
+| `recordings` | `selection` (`{ start, end, blockIds }`: a drag's on `DayView.ticks`, a block selection's with the blocks' own times), `selectionSnap` (the selection on the grid, which the band, the outline and the status bar draw: a drag's as it is, a block selection's once `api.recordingSnap` answered), `setSelection` (draws it as it is), `extendSelection(blockId)` (⇧J, ⇧K; asks `api.recordingSnap` once per key), `focusedRecording`/`focusRecording`, `hoveredRecording`/`hoverRecording` (the recording under the pointer in the timesheet or the time column), `createRecording(input, suggestionId?)` (with a suggestion: `api.suggestionApproveEdited`), `updateRecording(id, patch)`, `updateSpan(id, spanId, span, moving?)` (a drag's span on ticks; with `moving`, Rust keeps the other edge's time), `nudgeSpan(id, spanId, startSteps, endSteps)` (Rust applies the snap step), `deleteRecording(id)`, `moveRecording(id, day, spanId)`/`copyRecording(id, day, spanId)` (one span, else with `null` the whole recording), `undo`, `redo`. A write runs with `overlap: cancel`; on `overlap` it asks (inside the editor while one is open, else the overlap dialog) and runs again with `replace`. One write at a time; each ends with a toast offering Undo. A field error rejects for the editor, others are toasted |
 | `editor` | `editor` (`create { start, end, projectId?, note?, tagId?, suggestion? }` or `edit { id, at?, spanId? }`), `draft` (`{ projectId, spans, totalMs, note, tagId }`; null until Rust has answered for its spans and an edited recording has loaded through `recordingsList`), `editing` (that recording), `editorOverlap` (the recordings a save would overlap, with `resolve`), `draftBlockIds` (the blocks clicked into the draft, marked selected on the timeline), `editorView` (the view `openEditor` ran in), `openEditor`, `closeEditor` (also clears the selection), `leaveEditor(proceed)` (no editor: `proceed` at once; a draft unchanged since it opened: closes it, then `proceed`; a changed one: the confirm dialog "Discard changes?" with Discard, which closes and proceeds, and Keep editing), `patchDraft` (project, note, tag), `setDraftSpan(i, span)` and `removeDraftSpan(i)` (shown at once, then as `recordingDraftSpans` rolls them), `draftDrag`/`setDraftDrag` (`{ index, span }` while a `DraftBlock` edge is dragged, on ticks: the block and `EditorSpans` show it; no IPC), `resizeDraftSpan(i, span, moving)` (on release: `recordingDraftResize` keeps the ticks and merges the spans the span then touches or overlaps, then clears `draftDrag`), `addDraftSpan` (`recordingDraftAdd`), `setDraftTotal(ms)` (`recordingDraftTotal`); only the latest ask's answer is kept. `recordSelection()` (snaps the selection through `api.recordingSnap`, a no-op for a drag's, stores it as `selectionSnap`, then opens a new editor on it, or adds it to the open editor's spans through `recordingDraftInclude`, which merges what touches), `toggleBlock(blockId)` (a click on a block: without an editor it opens one on the block's span; with one, `recordingDraftToggle` adds the block's span or takes it out, and taking out the last span closes the editor; not while the running timer's recording is edited), `answerOverlap(replace)` |
 | `appIcons` | `appIcons` (a PNG data URL per bundle id, `null` once known to have none), `requestAppIcon(bundleId)`: asks Rust once per id for the app's run; the asks of one task go out as one `api.appIcons` call, and a failure leaves the initials |
 | `menu` | `menu` (the open menu: `entries`, `at` (a point or the element it opens under), `label`, `opener`), `openMenu(entries, at, label?)` (replaces an open one; again on the same element closes it), `closeMenu`; `components/menu` draws it (docs/ux.md → Menus) |
 | `viewState` | `uiState` (`UiState` from Rust), `setPaneSize`, `toggleSidebar`, `rememberDay`, `setTimelineZoom` (px per minute, `TIMELINE_ZOOM` 1–8, default 2.5), `finishOnboarding`, `showWelcome`; a debounced writer saves it, `flushUiState` writes at once |
 
-Components select narrowly (`useStore((s) => s.view)`), never the whole store. `lib/useApiResult` loads a
-value from `api` keyed on its inputs (and on `selectDayVersion(day)` or `dataVersion`), so a `data_changed` event
-reloads every view showing that data.
+Components select narrowly (`useStore((s) => s.view)`), never the whole store.
+
+## Reads
+
+`src/queries/` holds every read from Rust as a TanStack Query hook, one module per domain, each with its keys and,
+where code outside components needs the value, an accessor on the same cache.
+
+- **Client.** `queryClient.ts`: `queryClient`, the window's one client (no retries, `staleTime: Infinity`,
+  no refetch on focus or reconnect, unused per-key reads dropped after 5 minutes; a query with
+  `meta.failure` shows an error toast with that context when it fails). `invalidate(keys)` refetches the shown
+  queries under the keys (a running one finishes and counts); `refreshed(...keys)` refetches and settles once
+  they have their new data, for writes whose form closes on fresh lists. `QueryRoot` provides it in every
+  window's root (`App`, `SettingsApp`, `TimerPicker`, `AwayPrompt`).
+- **Events.** `useEvents.ts`: `useEvents()` (the main window's `App`, and `useFollowSettings` in the others)
+  subscribes while mounted: `data_changed` → `dataChanged(event)`, which invalidates `DATA_INVALIDATIONS[kind](day)`;
+  `settings_changed`, `keybindings_changed` (also `setOverrides`) and `timer_status` write their payload into
+  their query; `tracker_status` goes through `setTracker`.
+
+  | `data_changed` kind | Invalidates |
+  |---|---|
+  | `recordings` | that day's view (every day's when `day` is null), week, month, mini month, period totals, reports, the project lists (hours, last used, tag counts), today's rules, data info |
+  | `activity` | that day's view (or every day's), week, month, period totals, activity sources, today's rules, rule previews, data info |
+  | `projects` | the project lists, every day, week, month, period totals (billable), reports, rules, data info |
+  | `tags` | the project lists, every day, week, month, reports, rules |
+  | `rules` | rules, today's rules, every day (suggestions) |
+  | `settings` | settings, keybindings, every day, every calendar read (`CALENDAR_KEYS`: week, month, mini month, picker, period, jumps, period totals), reports |
+
+- **Live.** `useLiveReload(live, keys)` (`components/day/`) invalidates `keys` every 30 s while `live`, and on
+  tracker statuses at most every 10 s (the tracker sends no `data_changed`); paused while
+  `document.visibilityState` is hidden, with one refetch when it shows again. The Day view passes today's
+  `["day", day]`, the status bar `["periodTotals"]`.
+- **Queries.** Placeholder data (`keepPreviousData`) keeps the last answer shown while another key loads, where
+  the views used to keep it. Reads with no event of their own (apps, apps seen, autostart, data info, today's
+  rules, the rule preview) have `staleTime: 0`, so a view asks again whenever it shows; the palette's menu
+  commands have `gcTime: 0`, asked anew per opening.
+
+  | Module | Keys | Hooks | Accessors |
+  |---|---|---|---|
+  | `day.ts` | `["day", day]` (`DAY_KEY`, `dayKey`) | `useDayView(day)` (placeholder: the previous day's view, `isPlaceholderData`) | `shownDayView()`: the shown day's view once loaded, else null (commands, the editor, recordings and suggestions slices) |
+  | `calendar.ts` | `["week", day]`, `["month", day]`, `["miniMonth", shownDay, offset, shown, today]`, `["picker", month, selected]`, `["period", unit, day, today]`, `["jumps", text]`, `["parseTime", text, on]`, `["periodTotals", range]` | `useWeekView`, `useMonthView`, `useMiniMonth`, `usePickerMonth`, `usePeriod`, `useDateJumpsQuery` (toasts "Could not look up the date"), `useParsedTimeQuery`, `usePeriodTotals` | |
+  | `reports.ts` | `["report", filter]`, `["savedReports"]` | `useReport(filter \| null)`, `useSavedReports()` | `savedReports()`, `setSavedReports(update)` |
+  | `projects.ts` | `["projectLists"]`: projects, clients, tags and recent projects in one fetch | `useProjectLists()` (`{ projects, clients, tags, recent, loaded }`), `useProjects`, `useClients`, `useTags` | `projectLists()` |
+  | `rules.ts` | `["rules"]`, `["rulesToday"]`, `["rulePreview", conditions, days]` | `useRules`, `useRulesToday` (empty when it fails), `useRulePreview(input \| null, days)` | `currentRules()`, `setRules(update)` |
+  | `status.ts` | `["timer"]`, `["tracker"]` (null while the tracker is off) | `useTimer`, `useTracker` | `currentTimer()`, `currentTracker()`, `setTimerData`, `fetchTracker()` |
+  | `settings.ts` | `["settings"]`, `["keybindings"]` (`{}` when they can't be read) | `useSettings` (null until loaded), `useKeybindings` | `currentSettings()`, `currentKeybindings()`, `setSettingsData`, `setKeybindingsData`, `loadSettings()` (both, once per window) |
+  | `system.ts` | `["apps"]`, `["appsSeen", days]`, `["autostart"]`, `["dataInfo"]`, `["activitySources"]`, `["menuCommands"]`, `["draftSpan", start, end]` | `useApps`, `useAppsSeen`, `useAutostartStatus`, `useDataInfo`, `useActivitySources`, `useMenuCommands`, `useDraftSpan` | |
+
+  The singletons read outside components (settings, keybindings, the statuses, the project lists, the saved
+  reports) are kept while nothing shows them (`gcTime: Infinity`). `installMenuSync` also follows the query
+  cache, so a loaded day's suggestions enable their menu items.
 
 Rust sends dates as text (`DayView.label`, `WeekView.label`, `ReportResult.title`, `ReportRow.dayLabel`,
 `DateJump.label`, …) in the macOS region's date order; `lib/day.ts` keeps only `today` and the order-free
@@ -236,8 +284,8 @@ Dates are changed in one place, the sidebar's calendar (with P, N, O and Go to D
   `api.calendarPeriod(unit, day)`), `useReportRange`, `useShown` (what the calendar highlights: a `Shown` of
   `period` with the view's unit and day, `report` with the range, or `none`) and `useShownDay` (the day whose
   month the calendar opens on).
-- `MiniCalendar` (top of the sidebar): `api.calendarMiniMonth(shownDay, offset, shown)`, keyed on those,
-  today and `changeCount`; Rust picks the month. Rust returns six Monday-first weeks (`MiniWeek { number, start, selected, days }`,
+- `MiniCalendar` (top of the sidebar): `useMiniMonth` (`api.calendarMiniMonth(shownDay, offset, shown)`), keyed on those
+  and today, refetched when recordings change; Rust picks the month. Rust returns six Monday-first weeks (`MiniWeek { number, start, selected, days }`,
   `MiniDay { day, dayOfMonth, inMonth, isToday, hasRecordings, selected }`), the title (`monthName`, `year`)
   and `monthSelected` (the month name short or full by `settings.calendarTitle`); the page only draws them. A day calls `goToDay`, a week number `setView("week")` and
   `showDate(start)`, the title `setView("month")` and `showDate(monthStart)`. ‹ › change a local month `offset`, which
@@ -250,8 +298,8 @@ Dates are changed in one place, the sidebar's calendar (with P, N, O and Go to D
   `showDate` and closes it.
 - `StatusBar`: the sidebar toggle, `TrackerStatus` (only while `uiState.sidebarHidden`) and the selection on the left; the running timer
   and `ShownPeriodTotals` on the right: `api.periodTotals(range)` for the shown period (the report's range in
-  Reports, the `useCalendarPeriod()` days in Day, Week and Month; nothing in Projects, Tags and Rules), keyed on
-  `changeCount` and the `useLiveReload` tick, as `This week · recorded 1:30 · Billable 67 %` (`aria-label`
+  Reports, the `useCalendarPeriod()` days in Day, Week and Month; nothing in Projects, Tags and Rules) through
+  `usePeriodTotals`, refetched on data changes and by `useLiveReload`, as `This week · recorded 1:30 · Billable 67 %` (`aria-label`
   "Shown period"; the label comes from Rust; the billable part is a `role="meter"`, left out while
   `billablePercent` is `null`).
 
@@ -283,7 +331,7 @@ Tracker components:
 
 | File | Renders |
 |---|---|
-| `DayPage` | `DayHeader`, then the `Timesheet` pane (width from `usePaneSize("timesheet")`, about a quarter of the window by default, 220–560 px, a `Splitter` beside it) and `Timeline`; a day without activity and recordings keeps the timeline (hour axis, time column, lanes: drag and + still record) and passes `Timeline` its `empty` message ("Nothing tracked on this day" with the tracker's status text on today, or "Tracking needs permission" with Allow…), drawn over the lanes in `.lanes-empty`, which lets presses through. Loads on a new day, on `selectDayVersion(day)`, and while today on `useLiveReload` (every 30 s, and on tracker statuses at most every 10 s, since the tracker sends no `data_changed`; paused while `document.visibilityState` is hidden, which WKWebView sets when the window hides, with one reload when it shows again) |
+| `DayPage` | `DayHeader`, then the `Timesheet` pane (width from `usePaneSize("timesheet")`, about a quarter of the window by default, 220–560 px, a `Splitter` beside it) and `Timeline`; a day without activity and recordings keeps the timeline (hour axis, time column, lanes: drag and + still record) and passes `Timeline` its `empty` message ("Nothing tracked on this day" with the tracker's status text on today, or "Tracking needs permission" with Allow…), drawn over the lanes in `.lanes-empty`, which lets presses through. Reads `useDayView(day)`: the body shows only the shown day's view, the toolbar keeps the last title while the next day loads, an error shows in place while there is no view; a newly arrived day clears the key focus (`focusCleared("day")`). While today, `useLiveReload` refetches it (every 30 s, and on tracker statuses at most every 10 s, since the tracker sends no `data_changed`; paused while `document.visibilityState` is hidden, which WKWebView sets when the window hides, with one refetch when it shows again) |
 | `DayHeader` | a slim bar: the date (`label`, `DayView.label` from Rust in the `dayTitle` format; the last loaded one stays while the next day loads), `RecordedMark` (a green `CircleCheck` "Recorded" once `recordedMs` > 0, else a grey dot "Nothing recorded"), totals `recorded 1h 00m · tracked 6h 12m` (`formatDuration`, parts that are zero left out, nothing when both are; `awayMs` is not shown), the View options button (dialog `viewOptions`, `[data-view-options]`; command `day.settings`, no default key), and the ⋯ menu: Delete activity for this day…, Delete activity in a range… |
 | `DeleteActivityDialog` | dialog `deleteActivity`, a `Modal` sheet: the day (its `dayView.bounds`, titled with `dayView.label`) or two `datetime-local` fields prefilled with them, the sentence "Deletes 412 activities and 3 away times. Activity and away time that cross the range are deleted entirely. Recordings are not affected." (counts and the range's `rangeLabel` from `api.activityCount`), errors inline, and Delete (`api.activityDelete`). Then a toast `Deleted activity for Wednesday, October 21, 2026` (a range: `Wed, Oct 21 09:30 – Thu, Oct 22 10:00`) whose Undo (`api.activityDeleteUndo`) lasts until `undoUntil`; the Day view reloads from `data_changed` |
 | `Timesheet` | the left pane: "Timesheet", the day's `totals.recordedMs` (`formatDuration`, `6h 05m`), + (`runCommand("recording.new")`; not rendered while an editor is open), then a `TimesheetCard` per `view.timesheet` entry in Rust's order, or an empty line. The open `RecordingEditor` sits in place of the card it edits, or for a new recording before the first card that starts after its first span (`editorSlot`), in the same keyed list as the cards so it moves without mounting again |
@@ -318,7 +366,7 @@ lane with blocks) for J/K/H/L. The status bar shows the selection as `09:00–10
 
 ### Timer
 
-The `timer` slice holds `timer` (`TimerStatus` from `timer_status` events and `loadTimer` at boot),
+`useTimer()` reads the `TimerStatus` (`timer_status` events write it, boot prefetches it); the `timer` slice holds
 `startTimer` (an `overlap` reads "A recording already covers now"), `updateTimer` (the running timer's
 project, note and tag) and `stopTimer` (a toast with Undo).
 The bus commands `timer:start` (⌘T), `timer:stop` (⌘⇧. while one runs) and `timer:toggle` run in Rust; the page
@@ -329,8 +377,9 @@ bound shortcut, global or in-app, has an X ("Remove shortcut for …") that save
 
 Secondary windows are pages of their own in `src/windows/<name>/` (`index.html`, `main.tsx`), each a
 `build.rollupOptions.input` entry in `vite.config.ts`; they import `src/styles/index.ts` and use the same
-store and `api`. `windows/timer/TimerPicker.tsx` loads the settings once and follows `settings_changed`
-(`useFollowSettings`, which also applies the look), reloads projects, the timer and the recent timers whenever
+store, query client (`QueryRoot`) and `api`. `windows/timer/TimerPicker.tsx` loads the settings once and follows
+Rust's events (`useFollowSettings`: `loadSettings`, `useEvents`, and the look), refetches the project lists and the
+timer and reloads the recent timers whenever
 the window gains focus (it is hidden, not closed, between uses), and reports its errors to the log.
 Its `TimerForm` ("Start Timer") and the away window use the editor's field order with `FormField` labels:
 Note (`NoteInput`, autofocus, `NOTE_PLACEHOLDER` "What did you work on?"), Project, Tag. While a timer runs the
@@ -340,9 +389,9 @@ it is keyed by the recording, its `updatedAt` and the window's openings, so the 
 ### Away window
 
 `windows/away/AwayPrompt.tsx`, the `away` window's page. It follows the settings like the timer picker
-(`useFollowSettings`), loads projects and `awayPromptCurrent` on mount and on focus, and refills from `away_prompt_changed` (the form is keyed by the
+(`useFollowSettings`), refetches the project lists and loads `awayPromptCurrent` on mount and on focus, and refills from `away_prompt_changed` (the form is keyed by the
 span, so a refresh of the same span keeps what was typed). The header shows `awayMs` and `endedAt`; From and
-To go through `recordingDraftSpans`, which rolls an end at or before the start to the next day and gives the
+To go through `useDraftSpan` (`recordingDraftSpans`), which rolls an end at or before the start to the next day and gives the
 length. Record sends the drafted spans with `awayPromptAnswer`; an `overlap`
 shows which recordings are in the way and keeps the form; Escape or Skip sends `awayPromptSkip`. It has no
 toasts: unexpected errors are logged and shown inline. Settings → Tracker has the away prompt's switch and
@@ -350,8 +399,8 @@ its minimum length.
 
 ### Rules screen
 
-`components/rules/`, the `rules` view (sidebar entry Rules, ⌘7). The `rules` slice holds `rules` (by
-position) and their writes; a `data_changed` of kind `rules` reloads them.
+`components/rules/`, the `rules` view (sidebar entry Rules, ⌘7). `useRules()` reads the rules (by position) and
+`useRulesToday()` today's numbers; the `rules` slice holds their writes; a `data_changed` of kind `rules` refetches them.
 
 - `RulesView` lists `RuleRow`s in order: a grip (a pointer drag by whole rows; on release `reorderRules`
   sends every id in the new order, shown at once and restored when the write fails), the enable switch
@@ -362,17 +411,17 @@ position) and their writes; a `data_changed` of kind `rules` reloads them.
   conditions as `ConditionGroups` ("Conditions": one section per field from `groupConditions`, its +
   adding a value; each value a `ConditionRow` with comparison, value and remove, "or" before all but the first;
   quiet buttons below add a field not used yet; an `app` value naming a tracked app from `appsList()` shows its
-  `AppIcon`, else the initial) and the enable switch. Save sends
+  `AppIcon`, else the initial; `useApps`) and the enable switch. Save sends
   `saveRule`; a field error shows under its field, and `conditions.<i>.value` marks that row. Beside the
-  form, `RulePreviewPanel` asks `rulePreview(input, 7)` through `useApiResult` (300 ms debounce, keeps the
-  last result) once every condition has a value, and lists the hits with the total.
+  form, `RulePreviewPanel` asks `rulePreview(input, 7)` through `useRulePreview`, on the input as it stands for
+  300 ms (`lib/useDebounced.ts`), keeping the last result, once every condition has a value, and lists the hits with the total.
 
 ### Week and Month
 
 `components/calendar/`: each view's `Toolbar` (the title, totals), `EditorSheet` (the editor as a `Modal` sheet
 around `RecordingEditor`, only while `editorView` is the shown view: the Week and Month have no timesheet) and `entry.ts` (`editEntry`: the editor on an
-entry's recording, found by its `start`/`end` as `at`; `entryName`). `WeekView` runs `weekView(day)` keyed by
-the day and `changeCount`: day heads (`DayHead`: `Mon 19`, today as "Today" in accent, and the day's recorded
+entry's recording, found by its `start`/`end` as `at`; `entryName`). `WeekView` reads `useWeekView(day)` (refetched
+when the week's data changes): day heads (`DayHead`: `Mon 19`, today as "Today" in accent, and the day's recorded
 `h:mm`, left out at zero; a click opens the day) over seven columns in one scroll box, each the day's
 `WeekCard`s in order and a "New recording" button (`openNewRecording(day)`), shown while the column is hovered
 or the button has the keyboard focus. `WeekCard` is a `Card` (project, the note when Rust's `showNote` says it fits,
@@ -391,8 +440,8 @@ The editor's `edit` request may carry `at` (a span of the recording), so views o
 
 ### Reports screen
 
-`components/reports/`: `ReportsView` (the `reports` view) runs `reportRun(filter)` keyed by the filter and
-`changeCount`: a `Toolbar` with `result.title` (Rust, in the Day title's format), Report options (the
+`components/reports/`: `ReportsView` (the `reports` view) reads `useReport(filter)` (nothing runs before the settings load,
+since the default filter follows them; refetched on data changes): a `Toolbar` with `result.title` (Rust, in the Day title's format), Report options (the
 `reportOptions` dialog: `ReportOptionsPopover`, Rounding and Include archived, anchored at `[data-report-options]`), `CopyTextButton` (a split
 button: Copy as text, `reports.copyText`, ⌘⇧C: `reportText` to the clipboard; its chevron, "Group copied text
 by", opens a menu (`openMenu`) of checked By project, tag, day, week, month that sets
@@ -414,8 +463,8 @@ lists saved reports under Reports: a click opens one, right-click renames (promp
 
 ### Projects screen
 
-`components/projects/`: `ProjectsPage` (the `projects` view; it reloads the projects on `changeCount`, so the
-hours follow every recording): a `Toolbar` (Show archived, New client, New project), then an row group per
+`components/projects/`: `ProjectsPage` (the `projects` view; `useProjectLists`, which every
+recordings change refetches, so the hours follow every recording): a `Toolbar` (Show archived, New client, New project), then an row group per
 client by name (`ClientHead` above it: its color dot, the name, which edits the client, the number of projects, the labels
 This week and This month, and a `+` that creates a project for that client, except on archived clients;
 "No projects" when empty), client-less projects under "No client" last. A
@@ -462,7 +511,7 @@ Settings is a window of its own ([ADR 0034](adr/0034-settings-is-a-window-of-its
 `windows/settings/` (`main.tsx` runs `installModules`, the look, menu guard and input modality like the main
 window; `SettingsApp.tsx` is its page). `SettingsApp` opens at `?page=` and shows the page or section of each
 `open_settings` event (`api.onOpenSettings`); `useFollowSettings(installCommands)` loads the settings and
-shortcuts, follows `settings_changed` and `keybindings_changed` and applies the look; it marks the page as the
+shortcuts, follows Rust's events (`useEvents`, so `settings_changed` and `keybindings_changed` show at once) and applies the look; it marks the page as the
 Settings window (`lib/settingsWindow.ts`), keeps `window-blurred` on `<html>` while the window is inactive
 (`lib/windowFocus.ts`, the page list dims) and shows errors as toasts. The main window's `handleKeydown` is
 not installed there: `handleSettingsKeydown` (`commands/settingsWindow.ts`) runs only the `settings` scope,
@@ -553,10 +602,16 @@ and `--on-accent` to `--on-system-accent`; `applyInitialLook` sets it before set
   ```
 
   `createApiMock()` returns every `api` member as a `vi.fn()` with harmless defaults; a new `api` member
-  needs a default there.
+  needs a default there; `emit(name, payload)` fires a Rust event at the handlers its `on…` members registered.
+- **Queries.** The tests share the module's `queryClient`, cleared before each test in `src/test-setup.ts`.
+  `renderWithClient(ui)` (`src/test/queries.tsx`) renders inside `QueryRoot`; `seedQuery(key, data)` puts a
+  read's data in place (`seedQuery(dayKey(DAY), dayView())`, `seedQuery(PROJECT_LISTS_KEY, lists)`), else the
+  mocked `api` answers. Store actions that read a query (`shownDayView`, `currentSettings`, `projectLists`) read
+  what was seeded. Tests assert what shows after a refetch (an event through `emit`, a write), not the cache.
 - **Fixtures.** `src/test/settings.ts` (`settings(patch)`, the default `Settings`), `src/test/now.ts` (a fixed
   time).
 - **Scans.** `test/boundary.test.ts` (Tauri imports only in `api` files), `styles/colors.test.ts` (no color
   literals outside palettes).
 - **Style.** Query by role or text, drive the UI with `userEvent`, and assert what is visible or which API
-  call was made. Reset with `resetStore()` in `beforeEach`.
+  call was made. Reset with `resetStore()` in `beforeEach`; the store holds page state only, so data goes in
+  through `seedQuery`, never `resetStore({ dayView })`.

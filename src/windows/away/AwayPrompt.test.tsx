@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api, type AwayPrompt as Prompt } from "../../api";
-import { resetStore, useStore } from "../../state/store";
+import { resetStore } from "../../state/store";
+import { emit } from "../../test/apiMock";
+import { seedProjects } from "../../test/queries";
 import { at } from "../../test/dayFixtures";
 import { awayPrompt } from "../../test/awayFixtures";
 import { projectItem } from "../../test/projectFixtures";
@@ -20,25 +22,25 @@ const website = projectItem({ project: { id: "p-site", name: "Website" } });
 const field = (label: string) => screen.getByLabelText(label);
 const recordButton = () => screen.getByRole("button", { name: "Record" });
 
-/** Renders the window and waits until the form and the project list are there. */
-async function renderPrompt() {
+/** Renders the window with `lists` as the project lists Rust answers (and already loaded), and waits for the form. */
+async function renderPrompt(lists: Parameters<typeof seedProjects>[0] = { projects: [website], recent: [website.project] }) {
   resetStore();
+  mocked.projectsList.mockResolvedValue(lists.projects ?? []);
+  mocked.projectsRecent.mockResolvedValue(lists.recent ?? []);
+  seedProjects(lists);
   render(<AwayPrompt />);
   await screen.findByRole("combobox", { name: "Project" });
-  await vi.waitFor(() => expect(useStore.getState().projects.length).toBeGreaterThan(0));
 }
 
 /** Delivers an `away_prompt_changed` event to the window. */
 function emitChanged(prompt: Prompt) {
-  act(() => void mocked.onAwayPromptChanged.mock.calls[0][0](prompt));
+  emit("away_prompt_changed", prompt);
 }
 
 describe("AwayPrompt", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocked.awayPromptCurrent.mockResolvedValue(awayPrompt());
-    mocked.projectsList.mockResolvedValue([website]);
-    mocked.projectsRecent.mockResolvedValue([website.project]);
   });
 
   describe("the prompt", () => {
@@ -176,8 +178,7 @@ describe("AwayPrompt", () => {
     });
 
     it("asks for a project and answers nothing while none is known", async () => {
-      mocked.projectsRecent.mockResolvedValue([]);
-      await renderPrompt();
+      await renderPrompt({ projects: [website], recent: [] });
       await userEvent.click(recordButton());
       expect(await screen.findByRole("alert")).toHaveTextContent("Pick a project");
       expect(mocked.awayPromptAnswer).not.toHaveBeenCalled();
@@ -185,8 +186,7 @@ describe("AwayPrompt", () => {
 
     it("answers with the project picked instead of the last used one", async () => {
       const docs = projectItem({ project: { id: "p-docs", name: "Docs" } });
-      mocked.projectsList.mockResolvedValue([website, docs]);
-      await renderPrompt();
+      await renderPrompt({ projects: [website, docs], recent: [website.project] });
       await userEvent.click(screen.getByRole("combobox", { name: "Project" }));
       await userEvent.keyboard("{ArrowDown}");
       await userEvent.click(screen.getAllByRole("option", { name: "Docs" })[0]);
@@ -358,7 +358,7 @@ describe("AwayPrompt", () => {
 
     it("applies the accent saved in the Settings window", async () => {
       await renderPrompt();
-      act(() => mocked.onSettingsChanged.mock.calls[0][0](settings({ accent: "teal" })));
+      emit("settings_changed", settings({ accent: "teal" }));
       await vi.waitFor(() => expect(document.documentElement.dataset.accent).toBe("teal"));
     });
   });

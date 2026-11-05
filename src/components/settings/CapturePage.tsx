@@ -1,16 +1,15 @@
 /** Settings → Capture and Tracker: what the tracker captures, what it never records, and when time counts as away. */
 import { Plus, Search, X } from "lucide-react";
 import { useState } from "react";
-import { api, SETTINGS_LIMITS, type AppSeen, type CaptureSettings } from "../../api";
+import { SETTINGS_LIMITS, type AppSeen, type CaptureSettings } from "../../api";
 import { formatDuration } from "../../lib/format";
-import { useApiResult } from "../../lib/useApiResult";
 import type { SettingsPageProps } from "../../registry/settingsPages";
-import { useStore } from "../../state/store";
 import { InsetField } from "../Field";
 import { PopUpButton } from "../menu";
 import { Modal } from "../Modal";
 import { Group, Row, Switch } from "./controls";
 import { NumberField } from "./fields";
+import { useActivitySources, useAppsSeen } from "../../queries/system";
 
 /** Look-back window, in days, for the app picker. */
 const RECENT_DAYS = 30;
@@ -58,7 +57,7 @@ function AppPicker({ apps, excluded, onPick, onClose }: { apps: AppSeen[]; exclu
 
 function ExcludedApps({ capture, setCapture }: { capture: CaptureSettings; setCapture: (patch: Partial<CaptureSettings>) => void }) {
   const [picking, setPicking] = useState(false);
-  const { data: apps } = useApiResult(`apps-seen:${RECENT_DAYS}`, () => api.appsSeen(RECENT_DAYS));
+  const { data: apps } = useAppsSeen(RECENT_DAYS);
   const nameOf = (id: string) => apps?.find((a) => appId(a) === id)?.app ?? id;
   const remove = (id: string) => setCapture({ excludedApps: capture.excludedApps.filter((a) => a !== id) });
 
@@ -127,8 +126,7 @@ function ExcludedSites({ capture, setCapture }: { capture: CaptureSettings; setC
 
 /** Read-only: other apps add activity through the CLI or `timetracker://` links, not here. */
 function ExternalSources() {
-  const dataVersion = useStore((s) => s.dataVersion);
-  const { data: sources } = useApiResult(`activity-sources:${dataVersion}`, () => api.activitySources(), { keepData: true });
+  const { data: sources } = useActivitySources();
   return (
     <Group title="External sources" section="external-sources">
       {sources?.map((name) => (

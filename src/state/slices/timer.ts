@@ -1,12 +1,8 @@
-import { api, toAppError, type TimerStatus } from "../../api";
+import { api, toAppError } from "../../api";
 import { fail } from "../requests";
 import type { Slice } from "../store";
 
 export interface TimerSlice {
-  /** `null` until the first status arrives. */
-  timer: TimerStatus | null;
-  setTimerStatus: (status: TimerStatus) => void;
-  loadTimer: () => Promise<void>;
   /** Resolves whether it started. */
   startTimer: (projectId: string, note: string, tagId: string | null) => Promise<boolean>;
   /** Gives the running timer another project, note and tag; resolves whether it saved. */
@@ -15,21 +11,7 @@ export interface TimerSlice {
 }
 
 export const timerSlice: Slice<TimerSlice> = {
-  create: (set, get) => ({
-    timer: null,
-
-    setTimerStatus(timer) {
-      set({ timer });
-    },
-
-    async loadTimer() {
-      try {
-        set({ timer: await api.timerStatus() });
-      } catch {
-        // The tray and the next event still show it.
-      }
-    },
-
+  create: (_set, get) => ({
     async startTimer(projectId, note, tagId) {
       try {
         await api.timerStart(projectId, note, tagId);

@@ -4,10 +4,11 @@ import { useStore } from "../../state/store";
 import { AccentSwatches } from "../Accent";
 import { Modal } from "../Modal";
 import { FormField } from "../Field";
+import { useClients } from "../../queries/projects";
 
 /** Create (no `id`) or edit a client; its color is its projects' hue. Archive also archives its projects. */
 export function ClientSheet({ id, onClose }: { id?: string; onClose: () => void }) {
-  const existing = useStore((s) => s.clients.find((c) => c.id === id));
+  const existing = useClients().find((c) => c.id === id);
   const { saveClient, archiveClient } = useStore.getState();
   const [name, setName] = useState(existing?.name ?? "");
   // Blank: Rust picks a color no other client has.

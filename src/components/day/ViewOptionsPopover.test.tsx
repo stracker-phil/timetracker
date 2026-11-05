@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,7 +6,8 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api, type DayView } from "../../api";
 import { resetStore } from "../../state/store";
-import { dayApp, dayView } from "../../test/dayFixtures";
+import { DAY, dayApp, dayView } from "../../test/dayFixtures";
+import { dayKey, renderWithClient, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { ViewOptionsPopover } from "./ViewOptionsPopover";
 
@@ -16,8 +17,10 @@ const mail = { appKey: "com.apple.Mail", app: "Mail" };
 const notes = { appKey: "com.apple.Notes", app: "Notes" };
 
 function renderPopover(view: Partial<DayView> = {}) {
-  resetStore({ settings: settings(), dayView: dayView(view), dialog: { type: "viewOptions" } });
-  return render(<ViewOptionsPopover />);
+  resetStore({ day: DAY, dialog: { type: "viewOptions" } });
+  seedQuery(SETTINGS_KEY, settings());
+  seedQuery(dayKey(DAY), dayView({ ...view, day: DAY }));
+  return renderWithClient(<ViewOptionsPopover />);
 }
 
 describe("ViewOptionsPopover", () => {

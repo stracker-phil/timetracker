@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +9,7 @@ import { installCommands, runCommand } from "../commands";
 import { defaultFilter } from "../state/slices/reports";
 import { resetStore, useStore, type View } from "../state/store";
 import { mondayOf } from "../test/calendarFixtures";
+import { renderWithClient as render } from "../test/queries";
 import { MiniCalendar } from "./MiniCalendar";
 import { Dialogs } from "./Dialogs";
 

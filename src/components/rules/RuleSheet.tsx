@@ -1,6 +1,5 @@
 import { useId, useState } from "react";
-import { api, toAppError, type Rule, type RuleInput } from "../../api";
-import { useApiResult } from "../../lib/useApiResult";
+import { toAppError, type Rule, type RuleInput } from "../../api";
 import { useStore } from "../../state/store";
 import { FormField } from "../Field";
 import { Modal } from "../Modal";
@@ -10,6 +9,8 @@ import { TagPicker } from "../pickers/TagPicker";
 import { ConditionGroups } from "./ConditionGroups";
 import { emptyRule } from "./conditions";
 import { RulePreviewPanel } from "./RulePreviewPanel";
+import { useApps } from "../../queries/system";
+import { useRules } from "../../queries/rules";
 
 interface Props {
   /** The rule to edit; absent creates one. */
@@ -40,13 +41,13 @@ function confirmDelete(id: string, name: string, onDeleted: () => void) {
 
 /** Create or edit a rule, with the activity its conditions match beside it. Nothing is stored before Save. */
 export function RuleSheet({ id, draft, onClose }: Props) {
-  const existing = useStore((s) => s.rules.find((r) => r.id === id));
+  const existing = useRules().find((r) => r.id === id);
   const [input, setInput] = useState<RuleInput>(() => (existing ? inputOf(existing) : (draft ?? emptyRule())));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const ids = { name: useId(), note: useId(), enabled: useId() };
   const patch = (p: Partial<RuleInput>) => setInput((current) => ({ ...current, ...p }));
-  const { data: apps } = useApiResult("apps", api.appsList);
+  const { data: apps } = useApps();
   const appKeyOf = (app: string) => apps?.find((a) => a.app.toLowerCase() === app.trim().toLowerCase())?.appKey ?? null;
 
   async function save() {

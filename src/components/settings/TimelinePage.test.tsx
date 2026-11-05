@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api, type AppOverride, type KnownApp, type Settings } from "../../api";
 import { installCommands } from "../../commands";
 import { resetStore } from "../../state/store";
+import { renderWithClient, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { SettingsWindow } from "./SettingsWindow";
 
@@ -17,9 +18,10 @@ const knownApp = (patch: Partial<KnownApp> = {}): KnownApp => ({ appKey: "com.ap
 const SAFARI = "com.apple.Safari";
 
 function renderPage(patch: Partial<Settings> = {}) {
-  resetStore({ settings: settings(patch) });
+  resetStore();
+  seedQuery(SETTINGS_KEY, settings(patch));
   installCommands();
-  return render(<SettingsWindow page="timeline" onPage={() => {}} />);
+  return renderWithClient(<SettingsWindow page="timeline" onPage={() => {}} />);
 }
 
 const timelineWith = (patch: Partial<Settings["timeline"]>) => ({ ...settings().timeline, ...patch });
@@ -36,7 +38,8 @@ describe("Settings Timeline page", () => {
     it("saves the flipped Summary lane switch and nothing else", async () => {
       renderPage();
       await userEvent.click(screen.getByRole("switch", { name: "Summary lane" }));
-      expect(saved()).toEqual(settings({ timeline: timelineWith({ summaryLane: false }) }));    });
+      expect(saved()).toEqual(settings({ timeline: timelineWith({ summaryLane: false }) }));
+    });
 
     it.each([
       ["Show all activity", "showAllActivity", false],

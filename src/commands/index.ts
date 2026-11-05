@@ -13,6 +13,8 @@ import { BUS_COMMANDS } from "./busCommands";
 import { blockedByOverlay, MODAL_ALLOWED, notePaletteRunnable, overlayOpen } from "./pageCommands";
 import { registerSettingsScope, SETTINGS_COMMANDS } from "./settingsWindow";
 import { registerSuggestionScope, SUGGESTION_COMMANDS } from "./suggestions";
+import { shownDayView } from "../queries/day";
+import { currentKeybindings, currentSettings, useKeybindings } from "../queries/settings";
 
 /** The views with a period, which P, N and O step. */
 const DATED_VIEWS: View[] = ["day", "week", "month", "reports"];
@@ -34,13 +36,13 @@ export function registerCoreScopes() {
 }
 
 function saveTextSize(textSize: TextSize) {
-  const s = useStore.getState();
-  if (s.settings && s.settings.textSize !== textSize) void s.saveSettings({ ...s.settings, textSize }, { quiet: true });
+  const settings = currentSettings();
+  if (settings && settings.textSize !== textSize) void useStore.getState().saveSettings({ ...settings, textSize }, { quiet: true });
 }
 
 /** The next text size step; past the smallest or largest it stays. */
 function zoomText(step: 1 | -1) {
-  const current = TEXT_SIZES.findIndex((t) => t.size === useStore.getState().settings?.textSize);
+  const current = TEXT_SIZES.findIndex((t) => t.size === currentSettings()?.textSize);
   const next = TEXT_SIZES[Math.min(Math.max(current + step, 0), TEXT_SIZES.length - 1)];
   saveTextSize(next.size);
 }
@@ -51,12 +53,6 @@ const onDayView = () => useStore.getState().view === "day";
 const zoomIn = () => (onDayView() ? useStore.getState().stepTimelineZoom(1) : zoomText(1));
 const zoomOut = () => (onDayView() ? useStore.getState().stepTimelineZoom(-1) : zoomText(-1));
 const resetZoom = () => (onDayView() ? useStore.getState().setTimelineZoom(TIMELINE_ZOOM.default) : resetText());
-
-/** The shown day's view, once loaded: its bounds come from Rust. */
-const shownDayView = () => {
-  const s = useStore.getState();
-  return s.dayView?.day === s.day ? s.dayView : null;
-};
 
 function openDeleteActivity(range: boolean) {
   const view = shownDayView();
@@ -72,9 +68,10 @@ function releaseControlFocus() {
 /** Moves the block focus within the shown day's view. */
 function moveFocus(step: typeof stepBlock, by: 1 | -1) {
   const s = useStore.getState();
-  if (s.dayView?.day !== s.day) return;
+  const view = shownDayView();
+  if (!view) return;
   releaseControlFocus();
-  s.focusBlock(step(s.dayView, s.focusedBlock, by));
+  s.focusBlock(step(view, s.focusedBlock, by));
 }
 
 /** Selects the focused block's span. */
@@ -90,8 +87,9 @@ function selectFocusedBlock() {
 /** Moves the block focus in time and grows the selection over it. */
 function extendToBlock(by: 1 | -1) {
   const s = useStore.getState();
-  if (s.dayView?.day !== s.day) return;
-  const next = stepBlock(s.dayView, s.focusedBlock, by);
+  const view = shownDayView();
+  if (!view) return;
+  const next = stepBlock(view, s.focusedBlock, by);
   if (next === null) return;
   releaseControlFocus();
   s.focusRecording(null);
@@ -103,8 +101,9 @@ function extendToBlock(by: 1 | -1) {
 /** Focuses the next (1) or previous (-1) timesheet entry of the shown day, a recording or a suggestion; from none, the first or last. */
 function stepEntry(by: 1 | -1) {
   const s = useStore.getState();
-  if (s.dayView?.day !== s.day) return;
-  const entries = sheetEntries(s.dayView);
+  const view = shownDayView();
+  if (!view) return;
+  const entries = sheetEntries(view);
   if (entries.length === 0) return;
   const current = s.focusedRecording ?? s.focusedSuggestion;
   const at = current === null ? -1 : entries.findIndex((e) => e.id === current);
@@ -150,7 +149,7 @@ function clearDayFocus() {
 /** Moves the start and end of the focused recording's first span of the day by whole snap steps; Rust knows the step. */
 function shiftRecording(startSteps: number, endSteps: number) {
   const s = useStore.getState();
-  const block = s.dayView?.recordings.find((r) => r.id === s.focusedRecording);
+  const block = shownDayView()?.recordings.find((r) => r.id === s.focusedRecording);
   if (!block || block.clippedStart || block.clippedEnd || block.running) return;
   void s.nudgeSpan(block.id, block.spanId, startSteps, endSteps).catch(() => {});
 }
@@ -278,12 +277,12 @@ const APP_COMMANDS: Command[] = [
 export function installCommands() {
   registerCoreScopes();
   if (allCommands().length === 0) registerCommands(APP_COMMANDS);
-  setOverrides(useStore.getState().keybindings);
+  setOverrides(currentKeybindings());
 }
 
 /** The key label of a command (`⌘K`), or "" when unbound; follows the user's rebinding. */
 export function useBindingLabel(id: string): string {
-  const custom = useStore((s) => s.keybindings);
+  const custom = useKeybindings();
   return bindingLabel(bindingFor(id, custom));
 }
 

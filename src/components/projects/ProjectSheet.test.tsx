@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,8 +7,9 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { resetStore } from "../../state/store";
-import { client, project, projectItem, projectsStore } from "../../test/projectFixtures";
+import { client, project, projectItem } from "../../test/projectFixtures";
 import { pickFromPopUp } from "../../test/menus";
+import { renderWithClient, seedProjects } from "../../test/queries";
 import { MenuHost } from "../menu";
 import { Toasts } from "../Toasts";
 import { ProjectSheet } from "./ProjectSheet";
@@ -18,10 +19,12 @@ const acme = client({ id: "c-acme", name: "Acme" });
 const fieldError = (path: string, message: string) => ({ kind: "invalid_input", message: "Invalid", code: null, field: { path, message } });
 const save = () => userEvent.click(screen.getByRole("button", { name: "Save" }));
 
-function renderSheet(props: Partial<ComponentProps<typeof ProjectSheet>> = {}, store: Parameters<typeof projectsStore>[0] = { clients: [acme] }) {
+function renderSheet(props: Partial<ComponentProps<typeof ProjectSheet>> = {}, lists: Parameters<typeof seedProjects>[0] = { clients: [acme] }) {
   const onClose = vi.fn();
-  resetStore(projectsStore(store));
-  render(
+  mocked.projectsList.mockResolvedValue(lists.projects ?? []);
+  mocked.clientsList.mockResolvedValue(lists.clients ?? []);
+  seedProjects(lists);
+  renderWithClient(
     <>
       <ProjectSheet onClose={onClose} {...props} />
       <MenuHost />
@@ -40,7 +43,10 @@ async function chosenClient() {
 }
 
 describe("ProjectSheet", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+  });
 
   describe("creating", () => {
     it("saves the typed name with the defaults and closes", async () => {
@@ -223,9 +229,9 @@ describe("ProjectSheet", () => {
       await userEvent.type(screen.getByLabelText("New client"), "Beta");
       await userEvent.click(screen.getByRole("button", { name: "Accent teal" }));
       await save();
+      await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
       expect(mocked.clientsSave).toHaveBeenCalledWith(null, { name: "Beta", color: "teal" });
       expect(mocked.projectsSave).toHaveBeenCalledWith(null, expect.objectContaining({ clientId: "client-new", name: "Website" }));
-      expect(onClose).toHaveBeenCalled();
     });
 
     it("shows a client name error under the New client field and does not save the project", async () => {

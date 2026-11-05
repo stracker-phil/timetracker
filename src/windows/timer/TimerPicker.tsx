@@ -10,6 +10,10 @@ import { formatDuration } from "../../lib/format";
 import { disposeAll } from "../../lib/disposeAll";
 import { useFollowSettings } from "../../lib/useFollowSettings";
 import { useStore } from "../../state/store";
+import { useTimer, TIMER_KEY } from "../../queries/status";
+import { invalidate } from "../../queries/queryClient";
+import { PROJECT_LISTS_KEY } from "../../queries/projects";
+import { QueryRoot } from "../../queries/QueryRoot";
 
 type Start = (projectId: string, note: string, tagId: string | null) => void;
 
@@ -21,18 +25,14 @@ function useRecentTimers(): RecentTimer[] {
   const [recent, setRecent] = useState<RecentTimer[]>([]);
   useFollowSettings();
   useEffect(() => {
-    const s = useStore.getState();
     const loadRecent = () => void api.timersRecent().then(setRecent, () => setRecent([]));
     const refresh = () => {
-      void s.loadProjects();
-      void s.loadTimer();
+      invalidate([PROJECT_LISTS_KEY, TIMER_KEY]);
       loadRecent();
     };
     refresh();
-    const subscription = api.onTimerStatus((status) => {
-      s.setTimerStatus(status);
-      loadRecent();
-    });
+    // `useEvents` writes the status itself.
+    const subscription = api.onTimerStatus(loadRecent);
     window.addEventListener("focus", refresh);
     return () => {
       window.removeEventListener("focus", refresh);
@@ -147,9 +147,9 @@ function RecentTimers({ recent, onStart }: { recent: RecentTimer[]; onStart: Sta
 }
 
 /** The small window under the tray icon: start a timer, or edit or stop the running one. */
-export function TimerPicker() {
+function TimerPickerContent() {
   const recent = useRecentTimers();
-  const running = useStore((s) => s.timer?.running);
+  const running = useTimer()?.running;
   const opened = useOpenings();
   // A new form after every start, so it opens empty next time.
   const [formKey, setFormKey] = useState(0);
@@ -185,5 +185,13 @@ export function TimerPicker() {
       )}
       {!running && recent.length > 0 && <RecentTimers recent={recent} onStart={start} />}
     </div>
+  );
+}
+
+export function TimerPicker() {
+  return (
+    <QueryRoot>
+      <TimerPickerContent />
+    </QueryRoot>
   );
 }

@@ -1,13 +1,16 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api } from "../../api";
+import { useEvents } from "../../queries/useEvents";
 import { resetStore, useStore } from "../../state/store";
+import { emit } from "../../test/apiMock";
 import { checkedInPopUp } from "../../test/menus";
-import { client, projectItem, projectsStore } from "../../test/projectFixtures";
+import { client, projectItem } from "../../test/projectFixtures";
+import { renderWithClient, seedProjects } from "../../test/queries";
 import { Dialogs } from "../Dialogs";
 import { MenuHost } from "../menu";
 import { Toasts } from "../Toasts";
@@ -15,21 +18,25 @@ import { ProjectsPage } from "./ProjectsPage";
 
 const mocked = vi.mocked(api, true);
 
+function EventfulPage() {
+  useEvents();
+  return <ProjectsPage />;
+}
+
 const acme = client({ id: "c-acme", name: "Acme" });
 const empty = client({ id: "c-empty", name: "Zeta" });
 const site = projectItem({ project: { id: "p-site", name: "Website", clientId: acme.id }, client: acme });
 const solo = projectItem({ project: { id: "p-solo", name: "Solo work" } });
 const old = projectItem({ project: { id: "p-old", name: "Legacy", clientId: acme.id, archivedAt: 5 }, client: acme });
 
-function renderPage(store: Parameters<typeof projectsStore>[0]) {
-  const patch = projectsStore(store);
-  mocked.projectsList.mockResolvedValue(patch.projects ?? []);
-  mocked.clientsList.mockResolvedValue(patch.clients ?? []);
-  mocked.tagsList.mockResolvedValue(patch.tags ?? []);
-  resetStore(patch);
-  render(
+function renderPage(lists: Parameters<typeof seedProjects>[0] = {}) {
+  const { projects = [], clients = [] } = lists;
+  mocked.projectsList.mockResolvedValue(projects);
+  mocked.clientsList.mockResolvedValue(clients);
+  seedProjects(lists);
+  renderWithClient(
     <>
-      <ProjectsPage />
+      <EventfulPage />
       <Dialogs />
       <MenuHost />
       <Toasts />
@@ -40,7 +47,10 @@ function renderPage(store: Parameters<typeof projectsStore>[0]) {
 const bands = () => screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
 
 describe("ProjectsPage", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+  });
 
   describe("grouping", () => {
     it("lists a band per client, with its projects, then No client", () => {
@@ -67,8 +77,8 @@ describe("ProjectsPage", () => {
     });
 
     it("does not claim the page is empty before the projects loaded", () => {
-      resetStore();
-      render(<ProjectsPage />);
+      mocked.projectsList.mockReturnValue(new Promise(() => {}));
+      renderWithClient(<ProjectsPage />);
       expect(screen.queryByText(/No projects yet/)).not.toBeInTheDocument();
     });
   });
@@ -112,7 +122,7 @@ describe("ProjectsPage", () => {
       renderPage({ projects: [recorded(3_600_000)] });
       expect(await screen.findByTitle("This week: 1h 00m")).toBeInTheDocument();
       mocked.projectsList.mockResolvedValue([recorded(7_200_000)]);
-      act(() => useStore.getState().dataChanged({ kind: "recordings", day: "2026-03-10" }));
+      emit("data_changed", { kind: "recordings", day: "2026-03-10" });
       expect(await screen.findByTitle("This week: 2h 00m")).toBeInTheDocument();
       expect(screen.queryByTitle("This week: 1h 00m")).not.toBeInTheDocument();
     });

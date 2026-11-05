@@ -16,10 +16,10 @@ ZOOM=1.5
 # Scrolls the timeline so 08:24 is at the top.
 SCROLL="document.querySelectorAll('*').forEach(e => { if (e.scrollHeight > 1800 && e.clientHeight > 300 && /auto|scroll/.test(getComputedStyle(e).overflowY)) e.scrollTop = 8.4 * 60 * $ZOOM; })"
 scheme() {
-  "$HERE/js.sh" "(() => { const s = window.timetracker.getState(); void s.saveSettings({ ...s.settings, lightScheme: '$1', darkScheme: '$1' }, { quiet: true }); })()"
+  "$HERE/js.sh" "(() => { const s = window.timetracker.getState(); void s.saveSettings({ ...window.timetrackerQueries.getQueryData(['settings']), lightScheme: '$1', darkScheme: '$1' }, { quiet: true }); })()"
 }
 
-"$HERE/js.sh" "(() => { const s = window.timetracker.getState(); window.__readmeBefore = { settings: s.settings, zoom: s.uiState.timelineZoom, view: s.view }; s.setTimelineZoom($ZOOM); s.goToDay('$day'); })()"
+"$HERE/js.sh" "(() => { const s = window.timetracker.getState(); window.__readmeBefore = { settings: window.timetrackerQueries.getQueryData(['settings']), zoom: s.uiState.timelineZoom, view: s.view }; s.setTimelineZoom($ZOOM); s.goToDay('$day'); })()"
 for name in default:day dark:day-dark; do
   scheme ${name%%:*}
   sleep 1.5

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { api, toAppError, type ActivityCount } from "../../api";
 import { formatClock, formatDay, plural } from "../../lib/format";
-import { useApiResult } from "../../lib/useApiResult";
 import { fail } from "../../state/requests";
 import { useStore } from "../../state/store";
 import { FormField } from "../Field";
 import { Modal } from "../Modal";
+import { useParsedTimeQuery } from "../../queries/calendar";
 
 interface Props {
   /** The day's title, from its Day view. */
@@ -23,7 +23,7 @@ const counted = (count: Pick<ActivityCount, "activities" | "away">) => `${plural
 
 /** A `datetime-local` value as Rust reads it; null while it is empty, not a time, or still being read. */
 function useParsedTime(text: string | null, on: number): number | null {
-  const { data } = useApiResult(text ? `time:${on}:${text}` : null, () => api.calendarParseTime(text ?? "", on));
+  const { data } = useParsedTimeQuery(text, on);
   return data ?? null;
 }
 

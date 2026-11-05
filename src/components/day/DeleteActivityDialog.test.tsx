@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api } from "../../api";
 import { resetStore, useStore } from "../../state/store";
 import { at, DAY, dayBounds } from "../../test/dayFixtures";
+import { renderWithClient } from "../../test/queries";
 import { Dialogs } from "../Dialogs";
 import { Toasts } from "../Toasts";
 
@@ -18,7 +19,7 @@ const rangeLabel = "Wed, Oct 21 10:00 – Wed, Oct 21 11:30";
 
 function renderDialog(range = false) {
   useStore.getState().openDialog({ type: "deleteActivity", day: DAY, label, bounds, range });
-  return render(
+  return renderWithClient(
     <>
       <Dialogs />
       <Toasts />

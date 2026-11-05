@@ -1,7 +1,7 @@
-import { api, type Period, type PeriodUnit, type Range, type Shown } from "../api";
+import { type Period, type PeriodUnit, type Range, type Shown } from "../api";
 import { today } from "../lib/day";
-import { useApiResult } from "../lib/useApiResult";
 import { useStore, type View } from "../state/store";
+import { usePeriod } from "../queries/calendar";
 
 const CALENDAR_UNITS: Partial<Record<View, PeriodUnit>> = { day: "day", week: "week", month: "month" };
 const TODAY_RANGE: Range = { kind: "today" };
@@ -15,7 +15,7 @@ export function useCalendarPeriod(): { unit: PeriodUnit; period: Period } | null
   const view = useStore((s) => s.view);
   const day = useStore((s) => s.day);
   const unit = CALENDAR_UNITS[view];
-  const { data } = useApiResult(unit ? `${unit}:${day}:${today()}` : null, () => api.calendarPeriod(unit as PeriodUnit, day), { keepData: true });
+  const { data } = usePeriod(unit ?? null, day, today());
   return unit && data ? { unit, period: data } : null;
 }
 

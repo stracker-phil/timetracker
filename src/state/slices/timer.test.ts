@@ -4,7 +4,6 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { recording } from "../../test/recordingFixtures";
-import { runningStatus } from "../../test/timerFixtures";
 import { resetStore, useStore } from "../store";
 
 const mocked = vi.mocked(api, true);
@@ -15,28 +14,6 @@ describe("timer slice", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetStore();
-  });
-
-  describe("loadTimer", () => {
-    it("stores the status the backend reports", async () => {
-      mocked.timerStatus.mockResolvedValueOnce(runningStatus());
-      await useStore.getState().loadTimer();
-      expect(useStore.getState().timer).toEqual(runningStatus());
-    });
-
-    it("keeps the status when it cannot be read", async () => {
-      resetStore({ timer: runningStatus() });
-      mocked.timerStatus.mockRejectedValueOnce({ kind: "unavailable", message: "No data store", code: null });
-      await useStore.getState().loadTimer();
-      expect(useStore.getState().timer).toEqual(runningStatus());
-    });
-  });
-
-  describe("setTimerStatus", () => {
-    it("stores a status event", () => {
-      useStore.getState().setTimerStatus(runningStatus({ projectName: "Docs" }));
-      expect(useStore.getState().timer?.running?.projectName).toBe("Docs");
-    });
   });
 
   describe("startTimer", () => {

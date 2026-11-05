@@ -1,15 +1,15 @@
 import { api, type PauseUntil, type TrackerStatus } from "../../api";
+import { queryClient } from "../../queries/queryClient";
+import { fetchTracker, TRACKER_KEY } from "../../queries/status";
 import { fail } from "../requests";
 import type { Slice } from "../store";
 
 export interface TrackerSlice {
-  /** `null` until loaded, and while the tracker is off (no data store). */
-  tracker: TrackerStatus | null;
   /** The permission dialog was closed; it shows again when asked for or when the permission is lost anew. */
   permissionDialogHidden: boolean;
   setPermissionDialogHidden: (hidden: boolean) => void;
-  setTracker: (status: TrackerStatus) => void;
-  loadTracker: () => Promise<void>;
+  /** A status from Rust (an answer or `tracker_status`), written into the tracker's query (`useTracker`). */
+  setTracker: (status: TrackerStatus | null) => void;
   pauseTracker: (until: PauseUntil) => Promise<void>;
   resumeTracker: () => Promise<void>;
   /** Asks macOS for Accessibility, then shows whether it is granted now. */
@@ -18,29 +18,20 @@ export interface TrackerSlice {
 
 export const trackerSlice: Slice<TrackerSlice> = {
   create: (set, get) => ({
-    tracker: null,
     permissionDialogHidden: false,
 
     setTracker(tracker) {
-      set((s) => ({ tracker, permissionDialogHidden: s.permissionDialogHidden && tracker.state.kind === "needsPermission" }));
+      queryClient.setQueryData(TRACKER_KEY, tracker);
+      set((s) => ({ permissionDialogHidden: s.permissionDialogHidden && tracker?.state.kind === "needsPermission" }));
     },
 
     setPermissionDialogHidden(permissionDialogHidden) {
       set({ permissionDialogHidden });
     },
 
-    async loadTracker() {
-      try {
-        get().setTracker(await api.trackerStatus());
-      } catch {
-        // The tracker is off without a data store; Settings → Data says why.
-        set({ tracker: null });
-      }
-    },
-
     async pauseTracker(until) {
       try {
-        set({ tracker: await api.trackerPause(until) });
+        queryClient.setQueryData(TRACKER_KEY, await api.trackerPause(until));
       } catch (e) {
         fail(e, "Could not pause tracking");
       }
@@ -48,7 +39,7 @@ export const trackerSlice: Slice<TrackerSlice> = {
 
     async resumeTracker() {
       try {
-        set({ tracker: await api.trackerResume() });
+        queryClient.setQueryData(TRACKER_KEY, await api.trackerResume());
       } catch (e) {
         fail(e, "Could not resume tracking");
       }
@@ -58,7 +49,7 @@ export const trackerSlice: Slice<TrackerSlice> = {
       try {
         const permission = await api.requestPermission();
         if (permission !== "granted") get().toast("info", "Accessibility is not granted yet");
-        await get().loadTracker();
+        get().setTracker(await fetchTracker());
       } catch (e) {
         fail(e, "Could not check the permission");
       }

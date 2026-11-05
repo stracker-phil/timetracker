@@ -8,7 +8,7 @@ import { registerScope } from "./scopes";
 export function focusedSuggestion(): Suggestion | null {
   const s = useStore.getState();
   if (s.view !== "day" || s.focusedSuggestion === null || s.selection !== null || s.focusedRecording !== null) return null;
-  return shownSuggestions(s).find((x) => x.id === s.focusedSuggestion) ?? null;
+  return shownSuggestions().find((x) => x.id === s.focusedSuggestion) ?? null;
 }
 
 /**
@@ -24,9 +24,9 @@ function withFocused(act: (suggestion: Suggestion) => void) {
   if (suggestion) act(suggestion);
 }
 
-const hasSuggestions = () => useStore.getState().view === "day" && shownSuggestions(useStore.getState()).length > 0;
-const allIds = () => shownSuggestions(useStore.getState()).map((s) => s.id);
-const hasApprovable = () => useStore.getState().view === "day" && shownSuggestions(useStore.getState()).some(isApprovable);
+const hasSuggestions = () => useStore.getState().view === "day" && shownSuggestions().length > 0;
+const allIds = () => shownSuggestions().map((s) => s.id);
+const hasApprovable = () => useStore.getState().view === "day" && shownSuggestions().some(isApprovable);
 const store = useStore.getState;
 
 export const SUGGESTION_COMMANDS: Command[] = [

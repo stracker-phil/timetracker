@@ -1,11 +1,12 @@
 import { api } from "../api";
 import { fail, useStore } from "../state/store";
 import { Modal } from "./Modal";
+import { useTracker } from "../queries/status";
 
 /** Shown while the tracker needs the Accessibility permission; closes itself once it is granted. The welcome
  * sheet asks for it too, so this waits until the welcome is finished. */
 export function PermissionDialog() {
-  const needsPermission = useStore((s) => s.tracker?.state.kind === "needsPermission");
+  const needsPermission = useTracker()?.state.kind === "needsPermission";
   const welcomeShown = useStore((s) => !s.uiState.onboardingDone);
   const requestPermission = useStore((s) => s.requestPermission);
   const hidden = useStore((s) => s.permissionDialogHidden);

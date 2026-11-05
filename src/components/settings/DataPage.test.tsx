@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,7 @@ import { api } from "../../api";
 import { installCommands } from "../../commands";
 import { resetStore } from "../../state/store";
 import { dataInfo } from "../../test/data";
+import { renderWithClient, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { settings } from "../../test/settings";
 import { Toasts } from "../Toasts";
 import { SettingsWindow } from "./SettingsWindow";
@@ -16,9 +17,10 @@ const mocked = vi.mocked(api, true);
 
 async function renderDataPage(patch: Parameters<typeof dataInfo>[0] = {}, settingsPatch: Parameters<typeof settings>[0] = {}) {
   mocked.dataInfo.mockResolvedValue(dataInfo(patch));
-  resetStore({ settings: settings(settingsPatch) });
+  resetStore();
+  seedQuery(SETTINGS_KEY, settings(settingsPatch));
   installCommands();
-  render(
+  renderWithClient(
     <>
       <SettingsWindow page="data" onPage={() => {}} />
       <Toasts />

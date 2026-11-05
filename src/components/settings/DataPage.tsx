@@ -4,13 +4,15 @@ import { useState } from "react";
 import { api, toAppError, type DataInfo } from "../../api";
 import { copyText } from "../../lib/clipboard";
 import { formatBytes, formatCount } from "../../lib/format";
-import { useApiResult } from "../../lib/useApiResult";
 import type { SettingsPageProps } from "../../registry/settingsPages";
 import { fail } from "../../state/requests";
 import { useStore } from "../../state/store";
 import { Modal } from "../Modal";
 import { exportBackup, revealFolder } from "./actions";
 import { Group, Row, Switch } from "./controls";
+import { invalidate } from "../../queries/queryClient";
+import { SETTINGS_KEY } from "../../queries/settings";
+import { DATA_INFO_KEY, useDataInfo } from "../../queries/system";
 
 /** Asks before copying the data into `target`; stays open, busy, while the copy runs. */
 function MoveSheet({ from, target, moving, onMove, onCancel }: { from: string; target: string; moving: boolean; onMove: () => void; onCancel: () => void }) {
@@ -41,10 +43,9 @@ type MoveOutcome = { kind: "moved" } | { kind: "refused"; reason: string } | { k
 async function moveData(from: string, target: string): Promise<MoveOutcome> {
   try {
     const moved = await api.dataMove(target);
-    const { toast, loadSettings } = useStore.getState();
-    toast("success", `Data moved to ${moved.dir}. The old files are still in ${from}.`);
-    // The store's copy of the settings still names the old folder.
-    void loadSettings();
+    useStore.getState().toast("success", `Data moved to ${moved.dir}. The old files are still in ${from}.`);
+    // The cached settings still name the old folder.
+    invalidate([SETTINGS_KEY]);
     return { kind: "moved" };
   } catch (e) {
     const err = toAppError(e);
@@ -124,8 +125,7 @@ function mcpAddCommand(binaryPath: string): string {
 }
 
 export function DataPage({ s, set }: SettingsPageProps) {
-  const dataVersion = useStore((s) => s.dataVersion);
-  const { data: info, reload } = useApiResult(`data-info:${dataVersion}`, api.dataInfo);
+  const { data: info } = useDataInfo();
   if (!info) return null;
   return (
     <>
@@ -134,7 +134,7 @@ export function DataPage({ s, set }: SettingsPageProps) {
           The data store could not be opened, so nothing is recorded: {info.error}
         </div>
       )}
-      <FolderGroup info={info} onMoved={reload} />
+      <FolderGroup info={info} onMoved={() => invalidate([DATA_INFO_KEY])} />
       {info.available && (
         <Group title="Contents" section="contents">
           <CountRow label="Activities" value={formatCount(info.activities)} />

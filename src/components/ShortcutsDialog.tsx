@@ -3,6 +3,7 @@ import { allCommands, bindingFor, bindingLabel, scopeLabel, specificity, type Ov
 import { useStore } from "../state/store";
 import { KeyCap } from "./Field";
 import { Modal } from "./Modal";
+import { useKeybindings } from "../queries/settings";
 
 interface Group {
   scope: string;
@@ -26,7 +27,7 @@ function shortcutGroups(scopes: string[], custom: Overrides): Group[] {
 
 export function ShortcutsDialog({ scopes }: { scopes: string[] }) {
   const close = useStore((s) => s.closeDialog);
-  const custom = useStore((s) => s.keybindings);
+  const custom = useKeybindings();
   return (
     <Modal onClose={close} className="shortcuts" labelledBy="shortcuts-title">
       <h2 id="shortcuts-title">Keyboard shortcuts</h2>

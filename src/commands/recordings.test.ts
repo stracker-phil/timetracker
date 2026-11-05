@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { api } from "../api";
 import { resetStore, useStore } from "../state/store";
 import { at, DAY, dayView, recordingBlock, timesheetCard } from "../test/dayFixtures";
+import { dayKey, seedQuery, SETTINGS_KEY } from "../test/queries";
 import { suggestion } from "../test/ruleFixtures";
 import { settings } from "../test/settings";
 import { conflicts, getCommand, handleKeydown, installCommands, runCommand, runMenuCommand } from "./index";
@@ -86,11 +87,8 @@ describe("recording commands", () => {
 
   describe("stepping recordings with ] and [", () => {
     beforeEach(() => {
-      resetStore({
-        view: "day",
-        day: DAY,
-        dayView: dayView({ timesheet: [timesheetCard({ id: "r1" }), timesheetCard({ id: "r2", start: at("11:00"), end: at("12:00") })] }),
-      });
+      resetStore({ view: "day", day: DAY });
+      seedQuery(dayKey(DAY), dayView({ timesheet: [timesheetCard({ id: "r1" }), timesheetCard({ id: "r2", start: at("11:00"), end: at("12:00") })] }));
     });
 
     async function press(keys: string) {
@@ -121,11 +119,7 @@ describe("recording commands", () => {
       const last = suggestion({ ruleIds: ["rule-2"], start: at("13:00"), end: at("13:30"), nextCard: null });
 
       beforeEach(() => {
-        resetStore({
-          view: "day",
-          day: DAY,
-          dayView: dayView({ timesheet: [timesheetCard({ id: "r1" }), timesheetCard({ id: "r2", start: at("11:00"), end: at("12:00") })], suggestions: [between, last] }),
-        });
+        seedQuery(dayKey(DAY), dayView({ timesheet: [timesheetCard({ id: "r1" }), timesheetCard({ id: "r2", start: at("11:00"), end: at("12:00") })], suggestions: [between, last] }));
       });
 
       it("] visits recordings and suggestions in the order of the timesheet", async () => {
@@ -197,7 +191,9 @@ describe("recording commands", () => {
 
     beforeEach(() => {
       const cards = [timesheetCard({ id: "r1", start: at("09:00"), end: at("13:30") }), timesheetCard({ id: "r2", start: at("11:00"), end: at("12:00") })];
-      resetStore({ view: "day", day: DAY, settings: settings(), dayView: dayView({ recordings: [morning, between, evening], timesheet: cards }) });
+      resetStore({ view: "day", day: DAY });
+      seedQuery(SETTINGS_KEY, settings());
+      seedQuery(dayKey(DAY), dayView({ recordings: [morning, between, evening], timesheet: cards }));
     });
 
     async function press(keys: string) {

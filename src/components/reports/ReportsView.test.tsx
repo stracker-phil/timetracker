@@ -1,15 +1,18 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, type Range, type ReportFilter, type Rounding } from "../../api";
+import { api, type Range, type ReportFilter, type Rounding, type SavedReport } from "../../api";
 import { installCommands, runCommand } from "../../commands";
+import { useEvents } from "../../queries/useEvents";
 import { defaultFilter } from "../../state/slices/reports";
 import { resetStore, useStore } from "../../state/store";
+import { emit } from "../../test/apiMock";
 import { DAY } from "../../test/dayFixtures";
-import { projectItem, projectsStore, tag } from "../../test/projectFixtures";
+import { projectItem, tag } from "../../test/projectFixtures";
+import { queryData, renderWithClient, SAVED_REPORTS_KEY, seedProjects, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { reportClient, reportResult, savedReport } from "../../test/reportFixtures";
 import { pickFromPopUp } from "../../test/menus";
 import { settings } from "../../test/settings";
@@ -21,13 +24,22 @@ import { ReportsView } from "./ReportsView";
 const mocked = vi.mocked(api, true);
 
 const lastFilter = (): ReportFilter => mocked.reportRun.mock.lastCall![0];
+const savedNames = () => queryData<SavedReport[]>(SAVED_REPORTS_KEY)?.map((r) => r.name);
 
-async function renderView(patch: Parameters<typeof resetStore>[0] = {}) {
-  resetStore({ settings: settings(), view: "reports", ...patch });
+function EventfulView() {
+  useEvents();
+  return <ReportsView />;
+}
+
+async function renderView(patch: Parameters<typeof resetStore>[0] = {}, lists: Parameters<typeof seedProjects>[0] = {}) {
+  resetStore({ view: "reports", ...patch });
+  seedQuery(SETTINGS_KEY, settings());
+  seedQuery(SAVED_REPORTS_KEY, []);
+  seedProjects(lists);
   installCommands();
-  render(
+  renderWithClient(
     <>
-      <ReportsView />
+      <EventfulView />
       <Dialogs />
       <MenuHost />
       <Toasts />
@@ -39,6 +51,7 @@ async function renderView(patch: Parameters<typeof resetStore>[0] = {}) {
 describe("ReportsView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetStore();
     mocked.reportRun.mockResolvedValue(reportResult());
   });
 
@@ -78,16 +91,18 @@ describe("ReportsView", () => {
 
     it("shows the error when the report fails", async () => {
       mocked.reportRun.mockRejectedValue({ kind: "io", message: "Database is locked", code: null });
-      resetStore({ settings: settings(), view: "reports" });
-      render(<ReportsView />);
+      resetStore({ view: "reports" });
+      seedQuery(SETTINGS_KEY, settings());
+      renderWithClient(<ReportsView />);
       expect(await screen.findByText("Database is locked")).toBeInTheDocument();
     });
   });
 
   describe("filters", () => {
     it("runs today's report grouped and rounded as the settings say until the filter is changed", async () => {
-      resetStore({ settings: settings({ reports: { rounding: "nearest15", defaultGroup: "week" } }), view: "reports" });
-      render(
+      resetStore({ view: "reports" });
+      seedQuery(SETTINGS_KEY, settings({ reports: { rounding: "nearest15", defaultGroup: "week" } }));
+      renderWithClient(
         <>
           <ReportsView />
           <MenuHost />
@@ -180,7 +195,7 @@ describe("ReportsView", () => {
     });
 
     it("narrows the report to the projects and tags picked", async () => {
-      await renderView(projectsStore({ projects: [projectItem({ project: { id: "p-site", name: "Website" } })], tags: [tag({ name: "support" })] }));
+      await renderView({}, { projects: [projectItem({ project: { id: "p-site", name: "Website" } })], tags: [tag({ name: "support" })] });
       await userEvent.type(screen.getByRole("combobox", { name: "Projects" }), "Web{Enter}");
       await userEvent.type(screen.getByRole("combobox", { name: "Tags" }), "supp{Enter}");
       await vi.waitFor(() => expect(lastFilter()).toMatchObject({ projectIds: ["p-site"], tagIds: ["tag-support"] }));
@@ -267,7 +282,7 @@ describe("ReportsView", () => {
       await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
       expect(await screen.findByText('Saved report "Monthly"')).toBeInTheDocument();
       expect(mocked.savedReportSave).toHaveBeenCalledWith("Monthly", expect.objectContaining({ range: { kind: "lastMonth" } }));
-      expect(useStore.getState().savedReports.map((r) => r.name)).toEqual(["Monthly"]);
+      expect(savedNames()).toEqual(["Monthly"]);
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
@@ -285,7 +300,7 @@ describe("ReportsView", () => {
       await userEvent.click(screen.getByRole("button", { name: "Save report…" }));
       await userEvent.type(await screen.findByRole("textbox", { name: "Name" }), "Weekly{Enter}");
       expect(await screen.findByText(/Could not save the report: Name taken/)).toBeInTheDocument();
-      expect(useStore.getState().savedReports).toEqual([]);
+      expect(savedNames()).toEqual([]);
     });
   });
 
@@ -293,7 +308,7 @@ describe("ReportsView", () => {
     it("runs the report again when data changed", async () => {
       await renderView();
       mocked.reportRun.mockResolvedValue(reportResult({ clients: [reportClient({ key: "c2", label: "Globex" })] }));
-      act(() => useStore.getState().dataChanged({ kind: "recordings", day: DAY }));
+      emit("data_changed", { kind: "recordings", day: DAY });
       expect(await screen.findByText("Globex")).toBeInTheDocument();
     });
   });

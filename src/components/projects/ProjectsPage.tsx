@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import { useEffect, useState, type MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import type { Client, ProjectListItem } from "../../api";
 import { copyText } from "../../lib/clipboard";
 import { formatDuration, plural, relativeTime } from "../../lib/format";
@@ -8,6 +8,7 @@ import { useStore } from "../../state/store";
 import { AccentDot } from "../Accent";
 import { openContextMenu, type MenuEntry } from "../menu";
 import { Toolbar } from "../Toolbar";
+import { useProjectLists } from "../../queries/projects";
 
 function Hours({ ms, label }: { ms: number; label: string }) {
   return (
@@ -82,12 +83,8 @@ function ClientHead({ client, count }: { client: Client | null; count: number })
 
 /** Projects as a card per client. */
 export function ProjectsPage() {
-  const projects = useStore((s) => s.projects);
-  const clients = useStore((s) => s.clients);
-  const loaded = useStore((s) => s.projectsLoaded);
-  const changes = useStore((s) => s.changeCount);
-  // The hours change with every recording.
-  useEffect(() => void useStore.getState().loadProjects(), [changes]);
+  // The hours change with every recording: `data_changed` refetches the lists.
+  const { projects, clients, loaded } = useProjectLists();
   const [showArchived, setShowArchived] = useState(false);
   const groups = groupProjects(projects, clients, showArchived);
   const { openDialog, archiveProject } = useStore.getState();

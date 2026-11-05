@@ -8,6 +8,7 @@ import App from "./App";
 import { api, EMPTY_UI_STATE } from "./api";
 import { today } from "./lib/day";
 import { resetStore, useStore, type View } from "./state/store";
+import { emit } from "./test/apiMock";
 import { activityRow, trackerStatus } from "./test/data";
 import { miniMonth } from "./test/calendarFixtures";
 import { dayView } from "./test/dayFixtures";
@@ -20,12 +21,12 @@ import { runningStatus } from "./test/timerFixtures";
 
 const mocked = vi.mocked(api, true);
 
-/** Renders the app and waits until the settings arrived and the commands are installed. */
+/** Renders the app (it carries its own query provider) and waits until the commands are installed. */
 async function renderApp(patch: Parameters<typeof resetStore>[0] = {}) {
   resetStore(patch);
   render(<App />);
-  await vi.waitFor(() => expect(useStore.getState().settings).not.toBeNull());
   await screen.findByRole("navigation", { name: "Views" });
+  await vi.waitFor(() => expect(mocked.onDataChanged).toHaveBeenCalled());
 }
 
 /** The Day, Week, Month and Reports views are regions, the Projects, Tags and Rules pages have a level-1 heading. */
@@ -106,7 +107,7 @@ describe("App", () => {
       mocked.getUiState.mockResolvedValueOnce({ ...EMPTY_UI_STATE, onboardingDone: false });
       await renderApp();
       await screen.findByRole("dialog", { name: "Welcome to TimeTracker" });
-      act(() => mocked.onTrackerStatus.mock.calls[0][0](trackerStatus({ state: { kind: "needsPermission" }, permission: "denied", text: "Needs permission" })));
+      emit("tracker_status", trackerStatus({ state: { kind: "needsPermission" }, permission: "denied", text: "Needs permission" }));
       expect(screen.queryByRole("dialog", { name: "Allow TimeTracker to read window titles" })).not.toBeInTheDocument();
       await userEvent.keyboard("{Escape}");
       expect(await screen.findByRole("dialog", { name: "Allow TimeTracker to read window titles" })).toBeInTheDocument();
@@ -168,7 +169,7 @@ describe("App", () => {
       await renderApp({ day });
       await screen.findByText("tracked 10m");
       mocked.dayView.mockResolvedValue(dayView({ day, totals: { recordedMs: 0, trackedMs: 1_800_000, awayMs: 0 } }));
-      act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "activity", day }));
+      emit("data_changed", { kind: "activity", day });
       expect(await screen.findByText("tracked 30m")).toBeInTheDocument();
     });
 
@@ -190,7 +191,7 @@ describe("App", () => {
     it("lists the saved reports under Reports on boot", async () => {
       mocked.savedReportsList.mockResolvedValueOnce([savedReport({ name: "Weekly" })]);
       await renderApp();
-      expect(await within(screen.getByRole("group", { name: "Saved reports" })).findByRole("button", { name: "Weekly" })).toBeInTheDocument();
+      expect(await within(await screen.findByRole("group", { name: "Saved reports" })).findByRole("button", { name: "Weekly" })).toBeInTheDocument();
     });
 
     it("shows the Reports view", async () => {
@@ -216,7 +217,7 @@ describe("App", () => {
     it("reloads the projects when projects changed", async () => {
       await renderApp({ view: "projects" });
       mocked.projectsList.mockResolvedValue([website]);
-      act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "projects", day: null }));
+      emit("data_changed", { kind: "projects", day: null });
       expect(await screen.findByRole("button", { name: "Website" })).toBeInTheDocument();
     });
 
@@ -225,7 +226,7 @@ describe("App", () => {
       await renderApp({ view: "projects" });
       expect(await screen.findByTitle("This week: 1h 00m")).toBeInTheDocument();
       mocked.projectsList.mockResolvedValue([projectItem({ project: { id: "p-site", name: "Website" }, weekMs: 7_200_000 })]);
-      act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "recordings", day: null }));
+      emit("data_changed", { kind: "recordings", day: null });
       expect(await screen.findByTitle("This week: 2h 00m")).toBeInTheDocument();
     });
 
@@ -262,7 +263,7 @@ describe("App", () => {
       mocked.tagsList.mockResolvedValue([]);
       await renderApp({ view: "tags" });
       mocked.tagsList.mockResolvedValue([tag({ name: "billing" })]);
-      act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "tags", day: null }));
+      emit("data_changed", { kind: "tags", day: null });
       expect(await screen.findByText("billing")).toBeInTheDocument();
     });
   });
@@ -290,14 +291,14 @@ describe("App", () => {
     it("lists the rules of the backend in the Rules view", async () => {
       mocked.rulesList.mockResolvedValueOnce([rule({ name: "Chat" })]);
       await renderApp({ view: "rules" });
-      expect(await within(screen.getByRole("list", { name: "Rules in order" })).findByText("Chat")).toBeInTheDocument();
+      expect(await within(await screen.findByRole("list", { name: "Rules in order" })).findByText("Chat")).toBeInTheDocument();
     });
 
     it("reloads the rules when rules changed", async () => {
       await renderApp({ view: "rules" });
       await screen.findByText("No rules yet");
       mocked.rulesList.mockResolvedValueOnce([rule({ name: "Chat" })]);
-      act(() => mocked.onDataChanged.mock.calls[0][0]({ kind: "rules", day: null }));
+      emit("data_changed", { kind: "rules", day: null });
       expect(await screen.findByText("Chat")).toBeInTheDocument();
     });
 
@@ -392,15 +393,13 @@ describe("App", () => {
 
     it("follows the tracker status events", async () => {
       await renderApp();
-      const onStatus = mocked.onTrackerStatus.mock.calls[0][0];
-      act(() => onStatus(trackerStatus({ text: "Tracking · Safari", current: activityRow() })));
-      expect(sidebar().getByText("Tracking · Safari")).toBeInTheDocument();
+      emit("tracker_status", trackerStatus({ text: "Tracking · Safari", current: activityRow() }));
+      expect(await sidebar().findByText("Tracking · Safari")).toBeInTheDocument();
     });
 
     it("asks for the permission while the tracker needs it", async () => {
       await renderApp();
-      const onStatus = mocked.onTrackerStatus.mock.calls[0][0];
-      act(() => onStatus(trackerStatus({ state: { kind: "needsPermission" }, permission: "denied", text: "Needs permission" })));
+      emit("tracker_status", trackerStatus({ state: { kind: "needsPermission" }, permission: "denied", text: "Needs permission" }));
       expect(await screen.findByRole("dialog", { name: "Allow TimeTracker to read window titles" })).toBeInTheDocument();
     });
   });
@@ -417,11 +416,11 @@ describe("App", () => {
     it("follows the timer status events and stops the timer from the status bar", async () => {
       await renderApp();
       expect(statusBar().queryByTitle("Stop timer")).not.toBeInTheDocument();
-      act(() => mocked.onTimerStatus.mock.calls[0][0](runningStatus({ projectName: "Docs" })));
-      await userEvent.click(statusBar().getByRole("button", { name: "⏱ Docs 1h 23m" }));
+      emit("timer_status", runningStatus({ projectName: "Docs" }));
+      await userEvent.click(await statusBar().findByRole("button", { name: "⏱ Docs 1h 23m" }));
       expect(mocked.timerStop).toHaveBeenCalled();
-      act(() => mocked.onTimerStatus.mock.calls[0][0]({ running: null }));
-      expect(statusBar().queryByTitle("Stop timer")).not.toBeInTheDocument();
+      emit("timer_status", { running: null });
+      await vi.waitFor(() => expect(statusBar().queryByTitle("Stop timer")).not.toBeInTheDocument());
     });
   });
 
@@ -431,7 +430,7 @@ describe("App", () => {
 
     it("reopens from the sidebar's Allow… button after it was dismissed", async () => {
       await renderApp();
-      act(() => mocked.onTrackerStatus.mock.calls[0][0](needsPermission()));
+      emit("tracker_status", needsPermission());
       await screen.findByRole("dialog", { name: dialogName });
       await userEvent.keyboard("{Escape}");
       expect(screen.queryByRole("dialog", { name: dialogName })).not.toBeInTheDocument();
@@ -442,13 +441,12 @@ describe("App", () => {
 
     it("shows again on its own when the permission is lost anew after a dismissal", async () => {
       await renderApp();
-      const onStatus = mocked.onTrackerStatus.mock.calls[0][0];
-      act(() => onStatus(needsPermission()));
+      emit("tracker_status", needsPermission());
       await screen.findByRole("dialog", { name: dialogName });
       await userEvent.keyboard("{Escape}");
 
-      act(() => onStatus(trackerStatus()));
-      act(() => onStatus(needsPermission()));
+      emit("tracker_status", trackerStatus());
+      emit("tracker_status", needsPermission());
       expect(await screen.findByRole("dialog", { name: dialogName })).toBeInTheDocument();
     });
   });
@@ -477,7 +475,7 @@ describe("App", () => {
 
     it("follows a settings change saved in the Settings window", async () => {
       await renderApp();
-      act(() => mocked.onSettingsChanged.mock.calls[0][0](settings({ accent: "teal" })));
+      emit("settings_changed", settings({ accent: "teal" }));
       await vi.waitFor(() => expect(document.documentElement.dataset.accent).toBe("teal"));
     });
   });

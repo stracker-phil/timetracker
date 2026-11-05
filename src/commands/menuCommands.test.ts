@@ -5,6 +5,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import { api, EMPTY_UI_STATE } from "../api";
 import { resetStore, useStore } from "../state/store";
 import { at, DAY, dayView } from "../test/dayFixtures";
+import { dayKey, seedQuery, SETTINGS_KEY } from "../test/queries";
 import { storedSuggestion, suggestion } from "../test/ruleFixtures";
 import { settings } from "../test/settings";
 import { allCommands, conflicts, installCommands, runCommand, runMenuCommand } from "./index";
@@ -97,7 +98,8 @@ describe("suggestion commands", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed] }) });
+    resetStore({ view: "day", day: DAY });
+    seedQuery(dayKey(DAY), dayView({ suggestions: [proposed] }));
     installCommands();
   });
 
@@ -117,7 +119,7 @@ describe("suggestion commands", () => {
 
   it("suggestion.approveRule does not run on a stored suggestion, which has no rule", () => {
     const stored = storedSuggestion({ start: at("12:00"), end: at("12:30") });
-    resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed, stored] }) });
+    seedQuery(dayKey(DAY), dayView({ suggestions: [proposed, stored] }));
     state().focusSuggestion(stored.id);
     expect(runMenuCommand("suggestion.approveRule")).toBe(false);
     expect(mocked.suggestionApproveRule).not.toHaveBeenCalled();
@@ -138,28 +140,28 @@ describe("suggestion commands", () => {
 
   it("suggestion.approveAll approves every suggestion of the shown day without a focus", async () => {
     const other = suggestion({ ruleIds: ["rule-other"], start: at("11:00"), end: at("11:30") });
-    resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed, other] }) });
+    seedQuery(dayKey(DAY), dayView({ suggestions: [proposed, other] }));
     expect(runMenuCommand("suggestion.approveAll")).toBe(true);
     await vi.waitFor(() => expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [proposed.id, other.id]));
   });
 
   it("suggestion.approveAll approves only the suggestions that have a project", async () => {
     const unassigned = suggestion({ ruleIds: ["rule-none"], projectId: null, projectName: null, color: "graphite", start: at("11:00"), end: at("11:30") });
-    resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [proposed, unassigned] }) });
+    seedQuery(dayKey(DAY), dayView({ suggestions: [proposed, unassigned] }));
     expect(runMenuCommand("suggestion.approveAll")).toBe(true);
     await vi.waitFor(() => expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [proposed.id]));
   });
 
   it("suggestion.approveAll does not run when no suggestion has a project, but suggestion.dismissAll does", () => {
     const unassigned = suggestion({ projectId: null, projectName: null, color: "graphite" });
-    resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [unassigned] }) });
+    seedQuery(dayKey(DAY), dayView({ suggestions: [unassigned] }));
     expect(runMenuCommand("suggestion.approveAll")).toBe(false);
     expect(runMenuCommand("suggestion.dismissAll")).toBe(true);
   });
 
   it("suggestion.approve on a focused suggestion without a project opens the editor", () => {
     const unassigned = suggestion({ projectId: null, projectName: null, color: "graphite" });
-    resetStore({ view: "day", day: DAY, dayView: dayView({ suggestions: [unassigned] }) });
+    seedQuery(dayKey(DAY), dayView({ suggestions: [unassigned] }));
     state().focusSuggestion(unassigned.id);
     expect(runMenuCommand("suggestion.approve")).toBe(true);
     expect(mocked.suggestionApprove).not.toHaveBeenCalled();
@@ -176,7 +178,7 @@ describe("suggestion commands", () => {
   });
 
   it.each(["suggestion.approveAll", "suggestion.dismissAll"])("%s does not run on a day without suggestions", (id) => {
-    resetStore({ view: "day", day: DAY, dayView: dayView() });
+    seedQuery(dayKey(DAY), dayView());
     expect(runMenuCommand(id)).toBe(false);
   });
 
@@ -278,14 +280,16 @@ describe("edit.undo and edit.redo", () => {
 describe("runMenuCommand", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    seedQuery(SETTINGS_KEY, settings());
+    seedQuery(dayKey(DAY), dayView());
     installCommands();
   });
 
   it.each<[string, Parameters<typeof resetStore>[0]]>([
-    ["the Day view", { view: "day", settings: settings() }],
+    ["the Day view", { view: "day" }],
     ["the Projects view", { view: "projects" }],
     ["the Reports view", { view: "reports" }],
-    ["a Day view with a focused recording", { view: "day", focusedRecording: "r1", dayView: dayView(), day: DAY }],
+    ["a Day view with a focused recording", { view: "day", focusedRecording: "r1", day: DAY }],
     ["an open dialog", { view: "day", dialog: { type: "shortcuts", scopes: ["global"] } }],
     ["an open recording editor", { view: "day", editor: { mode: "create", start: at("09:00"), end: at("10:00") } }],
   ])("runs exactly the items the menu enables in %s", (_, patch) => {
