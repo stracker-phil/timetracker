@@ -146,12 +146,16 @@ function clearDayFocus() {
   s.focusSuggestion(null);
 }
 
-/** Moves the start and end of the focused recording's first span of the day by whole snap steps; Rust knows the step. */
+/**
+ * Moves the start and end of the focused recording's first span of the day by whole snap steps; Rust knows the
+ * step. The running timer's span moves only its start: its end moves when the timer stops.
+ */
 function shiftRecording(startSteps: number, endSteps: number) {
   const s = useStore.getState();
   const block = shownDayView()?.recordings.find((r) => r.id === s.focusedRecording);
-  if (!block || block.clippedStart || block.clippedEnd || block.running) return;
-  void s.nudgeSpan(block.id, block.spanId, startSteps, endSteps).catch(() => {});
+  if (!block || block.clippedStart || block.clippedEnd) return;
+  if (block.running && startSteps === 0) return;
+  void s.nudgeSpan(block.id, block.spanId, startSteps, block.running ? 0 : endSteps).catch(() => {});
 }
 
 /** Moves (or copies) the focused recording to the day before (-1) or after (1), at the same time of day. */

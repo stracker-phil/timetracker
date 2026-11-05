@@ -3,7 +3,7 @@ import { findBlock } from "../../lib/blockFocus";
 import { fail } from "../requests";
 import type { Slice, View } from "../store";
 import { shownDayView } from "../../queries/day";
-import { closedSpans, runningEdited, spanWrites } from "./editorSpanWrites";
+import { closedSpans, openStartOf, spanWrites } from "./editorSpanWrites";
 
 /** The suggestion a new recording approves once saved. */
 export interface EditedSuggestion {
@@ -26,6 +26,8 @@ export interface Draft {
   spans: Span[];
   /** The spans' sum, from Rust. */
   totalMs: number;
+  /** The running timer's open span's start (its end is Rust's, at stop); null for any other recording. */
+  openStart: number | null;
   note: string;
   tagId: string | null;
 }
@@ -76,6 +78,8 @@ export interface EditorSlice {
    * spans (and, editing a recording, once they are saved).
    */
   setDraftSpan: (index: number, span: Span) => Promise<void>;
+  /** A new start for the running timer's open span, shown at once and saved; resolves once saved. */
+  setOpenStart: (start: number) => Promise<void>;
   removeDraftSpan: (index: number) => void;
   /**
    * The span at `index` as a drag of its `moving` edge left it on the timeline (on ticks; the other edge as it
@@ -113,7 +117,8 @@ function spansOfBlocks(view: DayView, ids: string[]): Span[] {
   });
 }
 
-const sameSpans = (a: Span[], b: Span[]) => a.length === b.length && a.every((s, i) => s.start === b[i].start && s.end === b[i].end);
+type Times = { start: number; end: number | null };
+const sameSpans = (a: Times[], b: Times[]) => a.length === b.length && a.every((s, i) => s.start === b[i].start && s.end === b[i].end);
 
 /** Whether a save of `a` would write what `b` holds; `withSpans` false when the times save at once. */
 const sameFields = (a: Draft, b: Draft, withSpans: boolean) =>
@@ -155,7 +160,7 @@ export const editorSlice: Slice<EditorSlice> = {
         const current = get().draft;
         if (current) set({ draft: { ...current, ...answer } });
         // Saved also when the editor has closed meanwhile.
-        if (id) await writes.save(id, answer.spans, ticket);
+        if (id) await writes.save(id, { spans: answer.spans }, ticket);
       } catch (e) {
         fail(e, "Could not change the times");
         if (id && ticket === asked) writes.revert();
@@ -163,7 +168,7 @@ export const editorSlice: Slice<EditorSlice> = {
     }
 
     /** The draft once Rust has answered for its spans, if the editor is still `editor`. */
-    async function fill(editor: Editor, fields: Pick<Draft, "projectId" | "note" | "tagId">, spans: Span[]) {
+    async function fill(editor: Editor, fields: Pick<Draft, "projectId" | "note" | "tagId" | "openStart">, spans: Span[]) {
       const ticket = ++asked;
       const answer = await api.recordingDraftSpans(spans);
       if (get().editor !== editor || ticket !== asked) return;
@@ -180,14 +185,14 @@ export const editorSlice: Slice<EditorSlice> = {
       const recording = (await api.recordingsList(block.start, block.end)).find((r) => r.id === editor.id);
       if (!recording || get().editor !== editor) return;
       set({ editing: recording });
-      await fill(editor, { projectId: recording.projectId, note: recording.note, tagId: recording.tagId }, closedSpans(recording));
+      await fill(editor, { projectId: recording.projectId, note: recording.note, tagId: recording.tagId, openStart: openStartOf(recording) }, closedSpans(recording));
     }
 
     const spansNow = () => get().draft?.spans ?? [];
 
     /** A click on an activity block (`toggleBlock`). */
     async function toggle(blockId: string): Promise<void> {
-      const { editor, draft, editing, draftBlockIds, setSelection } = get();
+      const { editor, draft, draftBlockIds, setSelection } = get();
       const dayView = shownDayView();
       const found = dayView && findBlock(dayView, blockId);
       if (!dayView || !found) return;
@@ -197,7 +202,7 @@ export const editorSlice: Slice<EditorSlice> = {
         setSelection({ ...block, blockIds: [blockId] });
         return get().recordSelection();
       }
-      if (!draft || runningEdited(editing)) return;
+      if (!draft) return;
       const kept = draftBlockIds.filter((id) => id !== blockId);
       const ticket = ++asked;
       try {
@@ -211,7 +216,7 @@ export const editorSlice: Slice<EditorSlice> = {
         }
         // The blocks' spans now show as the draft's; a selection would stand for one of them only.
         set({ draft: { ...current, ...answer }, draftBlockIds: included ? [...kept, blockId] : kept, selection: null, selectionSnap: null });
-        if (savedId) await writes.save(savedId, answer.spans, ticket);
+        if (savedId) await writes.save(savedId, { spans: answer.spans }, ticket);
       } catch (e) {
         fail(e, "Could not change the times");
       }
@@ -232,7 +237,7 @@ export const editorSlice: Slice<EditorSlice> = {
         set({ editor, editorView: get().view, draft: null, editing: null, editorOverlap: null, draftBlockIds: [], draftDrag: null });
         const opened =
           editor.mode === "create"
-            ? fill(editor, { projectId: editor.projectId ?? null, note: editor.note ?? "", tagId: editor.tagId ?? null }, [{ start: editor.start, end: editor.end }])
+            ? fill(editor, { projectId: editor.projectId ?? null, note: editor.note ?? "", tagId: editor.tagId ?? null, openStart: null }, [{ start: editor.start, end: editor.end }])
             : load(editor);
         opened.catch((e: unknown) => fail(e, "Could not open the recording"));
       },
@@ -290,6 +295,15 @@ export const editorSlice: Slice<EditorSlice> = {
         return respan(spans, () => api.recordingDraftSpans(spans));
       },
 
+      setOpenStart(start) {
+        const { draft } = get();
+        const id = writes.savingAtOnce();
+        if (!draft || draft.openStart === null || !id) return Promise.resolve();
+        set({ draft: { ...draft, openStart: start } });
+        // No new ask: a span change still waiting for Rust keeps its answer.
+        return writes.tracked(writes.save(id, { openStart: start }, asked));
+      },
+
       removeDraftSpan(index) {
         const spans = spansNow().filter((_, i) => i !== index);
         void respan(spans, () => api.recordingDraftSpans(spans));
@@ -320,9 +334,8 @@ export const editorSlice: Slice<EditorSlice> = {
         if (!selection) return;
         const span = await get().snapSelection("Could not open the editor");
         if (!span) return;
-        const { editor, draft, editing } = get();
+        const { editor, draft } = get();
         if (editor && draft) {
-          if (runningEdited(editing)) return;
           const spans = draft.spans;
           set({ selection: null, selectionSnap: null });
           return respan(null, () => api.recordingDraftInclude(spans, span));
@@ -344,7 +357,7 @@ export const editorSlice: Slice<EditorSlice> = {
         try {
           const fresh = (await api.recordingsList(start, end)).find((r) => r.id === editing.id);
           if (!fresh || ticket !== asked || writes.busy() || get().editing !== editing) return;
-          if (fresh.spans.length === editing.spans.length && sameSpans(closedSpans(fresh), closedSpans(editing))) return;
+          if (sameSpans(fresh.spans, editing.spans)) return;
           await writes.adopt(editor, fresh);
         } catch (e) {
           fail(e, "Could not refresh the recording");

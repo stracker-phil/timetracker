@@ -3,7 +3,7 @@ import { toAppError } from "../../api";
 import { useStore } from "../../state/store";
 import { typedTimesSettled } from "./TimeField";
 
-/** The editor's Save and Delete, with the field errors a save brought back. */
+/** The editor's Save, Delete and Stop Timer, with the field errors a save brought back. */
 export function useEditorSave() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -11,7 +11,7 @@ export function useEditorSave() {
     await typedTimesSettled();
     // Save writes after the edited recording's pending time saves.
     await useStore.getState().spansSettled();
-    const { editor, draft, editing, createRecording, updateRecording, stopTimer, closeEditor } = useStore.getState();
+    const { editor, draft, editing, createRecording, updateRecording, closeEditor } = useStore.getState();
     if (!draft) return;
     if (!draft.projectId) {
       setErrors({ projectId: "Pick a project" });
@@ -19,18 +19,23 @@ export function useEditorSave() {
     }
     setErrors({});
     const fields = { projectId: draft.projectId, note: draft.note, tagId: draft.tagId };
-    // A recording's times saved as they changed; the running timer's are Rust's to end.
-    const running = !!editing?.spans.some((s) => s.end === null);
+    // An existing recording's times were saved as they changed.
     try {
       const suggestionId = editor?.mode === "create" ? editor.suggestion?.id : undefined;
       const saved = editing ? await updateRecording(editing.id, fields) : await createRecording({ ...fields, spans: draft.spans }, suggestionId);
       if (!saved) return;
-      if (running) await stopTimer();
       closeEditor();
     } catch (e) {
       const field = toAppError(e).field;
       if (field) setErrors({ [field.path]: field.message });
     }
+  }
+
+  /** Stops the running timer once the times asked so far are saved; the editor stays open on the recording. */
+  async function stop() {
+    await typedTimesSettled();
+    await useStore.getState().spansSettled();
+    await useStore.getState().stopTimer();
   }
 
   function remove() {
@@ -40,5 +45,5 @@ export function useEditorSave() {
     void deleteRecording(editing.id);
   }
 
-  return { errors, save, remove };
+  return { errors, save, remove, stop };
 }

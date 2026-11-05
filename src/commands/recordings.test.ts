@@ -241,6 +241,44 @@ describe("recording commands", () => {
     });
   });
 
+  describe("the recording the timer runs on", () => {
+    const running = recordingBlock({ id: "r1", spanId: "r1-s1", running: true, start: at("11:00"), end: at("11:45") });
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+    function show(block = running) {
+      resetStore({ view: "day", day: DAY });
+      seedQuery(SETTINGS_KEY, settings());
+      seedQuery(dayKey(DAY), dayView({ recordings: [block] }));
+      state().focusRecording("r1");
+    }
+
+    it.each([
+      ["recording.nudgeEarlier", -1],
+      ["recording.nudgeLater", 1],
+    ] as const)("%s moves only its start by %i step", async (id, startSteps) => {
+      show();
+      expect(runCommand(id)).toBe(true);
+      await vi.waitFor(() => expect(mocked.recordingNudge).toHaveBeenCalledWith("r1", "r1-s1", startSteps, 0, "cancel"));
+    });
+
+    it("changes nothing when its end is extended or shortened", async () => {
+      show();
+      runCommand("recording.extend");
+      runCommand("recording.shrink");
+      runCommand("recording.nudgeLater");
+      await vi.waitFor(() => expect(mocked.recordingNudge).toHaveBeenCalled());
+      await settle();
+      expect(mocked.recordingNudge.mock.calls).toEqual([["r1", "r1-s1", 1, 0, "cancel"]]);
+    });
+
+    it("does not move it when it began on another day", async () => {
+      show({ ...running, clippedStart: true });
+      runCommand("recording.nudgeLater");
+      await settle();
+      expect(mocked.recordingNudge).not.toHaveBeenCalled();
+    });
+  });
+
   describe("edit.undo and edit.redo", () => {
     it("undo calls the api", () => {
       expect(runCommand("edit.undo")).toBe(true);

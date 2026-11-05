@@ -543,8 +543,8 @@ timeline's for every app.
   between them unrecorded; spans that touch or overlap once snapped merge into one. Taking out the last span
   of a new recording closes the editor without saving, as Escape does; a recording keeps its last span. A drag
   while the editor is open adds its span the same way (merged with the spans it touches). Both work alike on a
-  new recording and on the recording being edited, where the change saves at once (not on the running timer's,
-  whose spans Rust ends). ⌥ on a block without an open editor drags it onto a
+  new recording and on the recording being edited, where the change saves at once (also on the running timer's,
+  whose open span Rust refuses to cover with an added span). ⌥ on a block without an open editor drags it onto a
   project for a rule.
 - **Snapping** (the Time snapping setting, 5 min by default) applies to every selection, drag and resize,
   and Rust computes the grid ([ADR 0026](adr/0026-timeline-pointer-input-snaps-to-ticks.md)): a selection over
@@ -586,7 +586,7 @@ timeline's for every app.
   moving the last span's end; 15m, 30m and 1h buttons set it, the current one pressed; on the running timer's
   recording it counts up to now, read-only), the spans as
   `[10:00] – [10:20]` lines behind a clock icon (✕ removes one while there are several; "Add time" adds one
-  after the last), then Save (on the running timer's recording "Stop and save": it saves and stops the timer) and Cancel at the leading end and a trash icon for Delete at the trailing end.
+  after the last), then Save and Cancel at the leading end and a trash icon for Delete at the trailing end; on the running timer's recording Stop Timer sits before Delete (its slot is empty otherwise, so Save and Cancel never move) and stops it, leaving the editor open on the stopped recording.
   **Times save at once on a recording**: while the editor is open on an existing recording, every change of
   its times (dragging or resizing its blocks, the From and To fields, Logged, Add time, ✕, a selection or a
   clicked block taken in) is saved straight away with a toast offering Undo, and the fields follow what Rust
@@ -607,7 +607,7 @@ timeline's for every app.
   leaves the draft). An existing recording being edited keeps its own blocks, ringed inside their edge in the
   project's text color, which drag and resize as they always do (and save at once). A new recording's project is proposed (only offered, never filled in): the project of the latest recording (two weeks back) that
   covered the same main app, else the rule matching most of the activity. Field errors show under their
-  field. A running recording's spans are shown, not edited.
+  field. **The running timer's recording is edited like any other while it runs**: its closed spans and its open span's start save at once, Save writes project, note and tag and leaves it running; the open span shows last, its start a field and its end "running": the end moves only when the timer stops.
 - **Leaving the view** with the editor open (the sidebar, the calendar, ⌘1…⌘7, the palette), or opening
   another recording or suggestion: an unchanged editor closes; a changed one (on a recording only project,
   note or tag count, its times are saved) asks "Discard changes?" with Keep editing and Discard, and the view
@@ -688,7 +688,7 @@ timeline's for every app.
 ## Timer
 
 - A running recording's open span grows to now in the Day view, with a pulsing accent dot at its top right
-  (still with reduced motion); it has no grips. Starting the timer for a project, note and tag already
+  (still with reduced motion); only its start has a grip (its end moves when the timer stops), and a press on its body opens the editor; ⌥↑ ⌥↓ move only its start, ⌥⇧↑ ⌥⇧↓ do nothing. Starting the timer for a project, note and tag already
   recorded today continues that recording with a new span. The menu bar item's title reads `⏱ 1h 23m Acme` while it runs, and the
   status bar shows `⏱ Acme 1:23` (a click stops it).
 - The picker (⌃⌥⌘T from any app, ⌘T in the window, Start Timer… in the tray) is a small floating panel on

@@ -188,7 +188,6 @@
 .editor-line-icon { display: flex; align-items: center; justify-content: center; height: var(--control-h); color: var(--o2); }
 .editor-spans { display: flex; flex-direction: column; gap: var(--space-1); }
 .editor-span { display: flex; align-items: center; gap: var(--space-2); height: var(--control-h); }
-.editor-span-time { padding: 0 var(--space-2); }
 .editor-span-sep { color: var(--o2); }
 .editor-span-remove { margin-left: auto; }
 .editor-span-add { align-self: flex-start; padding: 0 var(--space-2); margin-left: calc(-1 * var(--space-2)); }
@@ -200,6 +199,9 @@
 .editor-actions { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); }
 .editor-actions .btn-primary { min-width: 5.385rem; }
 .editor-delete { margin-left: auto; }
+/* Stop Timer sits beside Delete at the trailing end, so Save and Cancel keep their places with and without it. */
+.editor-stop { margin-left: auto; }
+.editor-stop + .editor-delete { margin-left: 0; }
 
 /* A new recording's or suggestion's draft spans in the time column: the project's fill under a strong outline in
    its color (neutral without a project). */

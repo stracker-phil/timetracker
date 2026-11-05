@@ -23,7 +23,7 @@ const RUNNING_TICK_MS = 10_000;
  * duration and spans; Save (↵ or ⌘↵), Cancel (Escape), Delete (⌘⌫). Rust snaps the times. On an existing
  * recording the times save as they change and Save writes project, note and tag. Opened on a suggestion, it is
  * prefilled with it and Save (Approve) approves it as edited. On the running timer's recording the logged time
- * counts up to now and Save is "Stop and save".
+ * counts up to now, Save leaves it running and Stop Timer stops it.
  */
 export function RecordingEditor({ id }: { id?: string }) {
   const editor = useStore((s) => s.editor);
@@ -33,12 +33,13 @@ export function RecordingEditor({ id }: { id?: string }) {
   const color = useDraftColor();
   const step = (useSettings()?.timeline.snapMinutes ?? 5) * MINUTE_MS;
   const { closeEditor, patchDraft, setDraftTotal } = useStore.getState();
-  const { errors, save, remove } = useEditorSave();
+  const { errors, save, remove, stop } = useEditorSave();
   const ref = useRef<HTMLFormElement>(null);
   const proposed = useProposal(draft?.spans ?? null);
   const autofill = useAutofill(draft?.note ?? "");
-  const open = editing?.spans.find((s) => s.end === null) ?? null;
-  const now = useNow(open !== null, RUNNING_TICK_MS);
+  const openStart = draft?.openStart ?? null;
+  const running = openStart !== null;
+  const now = useNow(running, RUNNING_TICK_MS);
   useEditedSync(editor?.mode === "edit");
 
   useEffect(() => {
@@ -58,8 +59,8 @@ export function RecordingEditor({ id }: { id?: string }) {
   const suggestion = editor.mode === "create" ? editor.suggestion : undefined;
   const showTag = draft.projectId !== null || draft.tagId !== null;
   const ring = color ? ({ "--editor-ring": color } as CSSProperties) : undefined;
-  const total = open ? draft.totalMs + Math.max(0, now - open.start) : draft.totalMs;
-  const saveLabel = suggestion ? "Approve" : open ? "Stop and save" : "Save";
+  const total = running ? draft.totalMs + Math.max(0, now - openStart) : draft.totalMs;
+  const saveLabel = suggestion ? "Approve" : "Save";
   const canAutofill = autofill !== null && (autofill.projectId !== draft.projectId || autofill.tagId !== draft.tagId);
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -118,9 +119,9 @@ export function RecordingEditor({ id }: { id?: string }) {
           </EditorField>
         )}
       </div>
-      <LoggedTime total={total} readOnly={open !== null || draft.spans.length === 0} onChange={setDraftTotal} />
+      <LoggedTime total={total} readOnly={running || draft.spans.length === 0} onChange={setDraftTotal} />
       <div className="editor-section">
-        <EditorSpans spans={draft.spans} step={step} runningSince={open?.start ?? null} error={errors.end ?? errors.start ?? errors.spans} />
+        <EditorSpans spans={draft.spans} step={step} openStart={openStart} error={errors.end ?? errors.start ?? errors.spans} />
         {overlap && <OverlapNotice overlap={overlap} />}
       </div>
       <div className="editor-actions">
@@ -130,6 +131,11 @@ export function RecordingEditor({ id }: { id?: string }) {
         <button type="button" className="btn btn-quiet" title="Cancel (Escape)" onClick={closeEditor}>
           Cancel
         </button>
+        {running && (
+          <button type="button" className="btn btn-quiet editor-stop" onClick={() => void stop()}>
+            Stop Timer
+          </button>
+        )}
         {editing && (
           <button type="button" className="btn btn-quiet editor-delete" aria-label="Delete" title="Delete (⌘⌫)" onClick={remove}>
             <Trash2 size="1rem" aria-hidden="true" />

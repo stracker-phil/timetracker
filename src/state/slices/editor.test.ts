@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
@@ -43,7 +43,7 @@ describe("editor slice", () => {
       state().openEditor({ mode: "create", ...morning });
       expect(state().editor).toEqual({ mode: "create", ...morning });
       expect(state().draft).toBeNull();
-      await vi.waitFor(() => expect(state().draft).toEqual({ projectId: null, spans: [morning], totalMs: 30 * MINUTE_MS, note: "", tagId: null }));
+      await vi.waitFor(() => expect(state().draft).toEqual({ projectId: null, spans: [morning], totalMs: 30 * MINUTE_MS, openStart: null, note: "", tagId: null }));
       expect(mocked.recordingDraftSpans).toHaveBeenCalledWith([morning]);
       expect(state().editing).toBeNull();
     });
@@ -85,7 +85,7 @@ describe("editor slice", () => {
         state().openEditor({ mode: "edit", id: "r1" });
         expect(state().draft).toBeNull();
         await vi.waitFor(() =>
-          expect(state().draft).toEqual({ projectId: "p-site", spans: [morning, evening], totalMs: 90 * MINUTE_MS, note: "standup", tagId: "tag-research" }),
+          expect(state().draft).toEqual({ projectId: "p-site", spans: [morning, evening], totalMs: 90 * MINUTE_MS, openStart: at("18:00"), note: "standup", tagId: "tag-research" }),
         );
         expect(state().editing).toEqual(stored);
         expect(mocked.recordingsList).toHaveBeenCalledWith(morning.start, morning.end);
@@ -168,7 +168,7 @@ describe("editor slice", () => {
 
     it("patchDraft changes only the given fields", () => {
       state().patchDraft({ note: "fix", tagId: "tag-research" });
-      expect(state().draft).toEqual({ projectId: null, spans: [noon], totalMs: 45 * MINUTE_MS, note: "fix", tagId: "tag-research" });
+      expect(state().draft).toEqual({ projectId: null, spans: [noon], totalMs: 45 * MINUTE_MS, openStart: null, note: "fix", tagId: "tag-research" });
     });
 
     it("patchDraft does nothing without an editor", () => {
@@ -445,6 +445,140 @@ describe("editor slice", () => {
       });
     });
 
+    it("ignores a new open start for a recording the timer does not run on", async () => {
+      await openEdited();
+      await state().setOpenStart(at("09:10"));
+      expect(state().draft?.openStart).toBeNull();
+      expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+    });
+
+    describe("while the timer runs on it", () => {
+      const started = at("18:00");
+      const running = (closed: Span[], openStart = started) =>
+        recording({ ...stored, spans: [...closed.map((s, i) => ({ id: `r1-s${i + 1}`, ...s })), { id: `r1-s${closed.length + 1}`, start: openStart, end: null }] });
+      const original = mocked.recordingUpdate.getMockImplementation();
+
+      // Rust keeps the times a patch leaves out, and the timer running.
+      beforeEach(() => {
+        let closed = [morning, noon];
+        let openStart = started;
+        mocked.recordingUpdate.mockImplementation(async (_id, patch) => {
+          closed = patch.spans ?? closed;
+          openStart = patch.openStart ?? openStart;
+          return running(closed, openStart);
+        });
+      });
+
+      afterEach(() => void (original && mocked.recordingUpdate.mockImplementation(original)));
+
+      it("loads the open span's start into the draft apart from the closed spans", async () => {
+        await openEdited(running([morning, noon]));
+        expect(state().draft).toMatchObject({ spans: [morning, noon], openStart: started });
+      });
+
+      it("writes only the closed spans for a change of them", async () => {
+        await openEdited(running([morning, noon]));
+        await state().setDraftSpan(0, longer);
+        await state().spansSettled();
+        expect(mocked.recordingUpdate).toHaveBeenLastCalledWith("r1", { spans: [longer, noon] }, "cancel");
+        expect(mocked.recordingUpdate.mock.lastCall?.[1]).not.toHaveProperty("openStart");
+        expect(state().draft).toMatchObject({ spans: [longer, noon], openStart: started });
+      });
+
+      it("shows a new open start at once and writes only it", async () => {
+        await openEdited(running([morning, noon]));
+        const done = state().setOpenStart(at("18:10"));
+        expect(state().draft?.openStart).toBe(at("18:10"));
+        await done;
+        expect(mocked.recordingUpdate).toHaveBeenLastCalledWith("r1", { openStart: at("18:10") }, "cancel");
+        expect(mocked.recordingUpdate.mock.lastCall?.[1]).not.toHaveProperty("spans");
+      });
+
+      it("shows the open start Rust saved", async () => {
+        await openEdited(running([morning, noon]));
+        mocked.recordingUpdate.mockResolvedValueOnce(running([morning, noon], at("18:15")));
+        await state().setOpenStart(at("18:12"));
+        expect(state().draft?.openStart).toBe(at("18:15"));
+        expect(state().editing?.spans.at(-1)?.start).toBe(at("18:15"));
+      });
+
+      it("shows the saved open start again and toasts when the write fails", async () => {
+        await openEdited(running([morning, noon]));
+        mocked.recordingUpdate.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
+        await state().setOpenStart(at("18:10"));
+        expect(state().draft?.openStart).toBe(started);
+        expect(toastMessages()).toEqual(["Could not change the recording: Disk full"]);
+      });
+
+      it("merges changes asked during a write into one later write of the spans and the open start", async () => {
+        await openEdited(running([morning, noon]));
+        let finish!: (saved: ReturnType<typeof recording>) => void;
+        mocked.recordingUpdate.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+        void state().setDraftSpan(0, longer);
+        await vi.waitFor(() => expect(mocked.recordingUpdate).toHaveBeenLastCalledWith("r1", { spans: [longer, noon] }, "cancel"));
+        const shorter = { start: noon.start, end: at("11:30") };
+        void state().setOpenStart(at("18:10"));
+        void state().setDraftSpan(1, shorter);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        finish(running([longer, noon]));
+        await state().spansSettled();
+        expect(mocked.recordingUpdate).toHaveBeenLastCalledWith("r1", { spans: [longer, shorter], openStart: at("18:10") }, "cancel");
+        expect(state().draft).toMatchObject({ spans: [longer, shorter], openStart: at("18:10") });
+      });
+
+      it("saves the span of a clicked activity block and keeps the timer running", async () => {
+        await openEdited(running([morning, noon]));
+        await state().toggleBlock("a3");
+        expect(mocked.recordingUpdate).toHaveBeenLastCalledWith("r1", { spans: [morning, noon, evening] }, "cancel");
+        expect(state().draft).toMatchObject({ spans: [morning, noon, evening], openStart: started });
+        expect(state().draftBlockIds).toEqual(["a3"]);
+      });
+
+      it("saves an included selection as another closed span", async () => {
+        await openEdited(running([morning, noon]));
+        state().setSelection({ ...evening, blockIds: [] });
+        await state().recordSelection();
+        expect(mocked.recordingUpdate).toHaveBeenLastCalledWith("r1", { spans: [morning, noon, evening] }, "cancel");
+        expect(state().draft?.openStart).toBe(started);
+      });
+
+      it("toasts and keeps the saved spans when Rust refuses a clicked block", async () => {
+        await openEdited(running([morning, noon]));
+        mocked.recordingDraftToggle.mockRejectedValueOnce({ kind: "io", message: "no answer", code: null });
+        await state().toggleBlock("a3");
+        expect(toastMessages()).toEqual(["Could not change the times: no answer"]);
+        expect(state().draft?.spans).toEqual([morning, noon]);
+        expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+      });
+
+      it("toasts and keeps the saved spans when Rust refuses a selection", async () => {
+        await openEdited(running([morning, noon]));
+        mocked.recordingDraftInclude.mockRejectedValueOnce({ kind: "io", message: "no answer", code: null });
+        state().setSelection({ ...evening, blockIds: [] });
+        await state().recordSelection();
+        expect(toastMessages()).toEqual(["Could not change the times: no answer"]);
+        expect(state().draft?.spans).toEqual([morning, noon]);
+        expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+      });
+
+      describe("syncEdited", () => {
+        it("takes an open start that moved alone", async () => {
+          await openEdited(running([morning, noon]));
+          mocked.recordingsList.mockResolvedValue([running([morning, noon], at("18:05"))]);
+          await state().syncEdited();
+          expect(state().draft).toMatchObject({ spans: [morning, noon], openStart: at("18:05") });
+        });
+
+        it("takes a stop: the open span becomes a closed one and no open start is left", async () => {
+          await openEdited(running([morning, noon]));
+          const stopped = { start: started, end: at("18:40") };
+          mocked.recordingsList.mockResolvedValue([recording({ ...stored, spans: [{ id: "r1-s1", ...morning }, { id: "r1-s2", ...noon }, { id: "r1-s3", ...stopped }] })]);
+          await state().syncEdited();
+          expect(state().draft).toMatchObject({ spans: [morning, noon, stopped], openStart: null });
+        });
+      });
+    });
+
     describe("spansSettled", () => {
       it("resolves only once the span write has finished", async () => {
         await openEdited();
@@ -529,7 +663,7 @@ describe("editor slice", () => {
       state().patchDraft({ note: "keep me", projectId: "p-site" });
       state().setSelection({ ...morning, blockIds: [] });
       await state().recordSelection();
-      await vi.waitFor(() => expect(state().draft).toEqual({ projectId: "p-site", spans: [morning, noon], totalMs: 75 * MINUTE_MS, note: "keep me", tagId: null }));
+      await vi.waitFor(() => expect(state().draft).toEqual({ projectId: "p-site", spans: [morning, noon], totalMs: 75 * MINUTE_MS, openStart: null, note: "keep me", tagId: null }));
       expect(mocked.recordingDraftInclude).toHaveBeenCalledWith([noon], morning);
       expect(state().editor).toEqual({ mode: "create", ...noon });
     });
@@ -593,17 +727,6 @@ describe("editor slice", () => {
     it("ignores a block that is not in the view", async () => {
       await state().toggleBlock("missing");
       expect(state().editor).toBeNull();
-    });
-
-    it("does nothing while the running timer's recording is edited", async () => {
-      const running = recording({ id: "r1", spans: [{ id: "r1-s1", ...evening }, { id: "r1-s2", start: at("18:00"), end: null }] });
-      mocked.recordingsList.mockResolvedValue([running]);
-      seedQuery(dayKey(DAY), dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [recordingBlock({ id: "r1", ...evening })] }));
-      state().openEditor({ mode: "edit", id: "r1" });
-      await vi.waitFor(() => expect(state().draft).not.toBeNull());
-      await state().toggleBlock("a1");
-      expect(state().draft?.spans).toEqual([evening]);
-      expect(state().draftBlockIds).toEqual([]);
     });
   });
 

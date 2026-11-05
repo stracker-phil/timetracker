@@ -1027,35 +1027,160 @@ describe("RecordingEditor", () => {
       const morning = { id: "r1-s1", start: at("09:00"), end: at("09:30") };
       const running = recording({ ...standupRow, spans: [morning, { id: "r1-s2", start: at("11:00"), end: null }] });
 
-      beforeEach(() => mocked.recordingsList.mockResolvedValue([running]));
+      const openSince = at("11:00");
+      /** The recording as Rust saves it: closed spans and the timer's open span from `openStart`. */
+      const savedRunning = (closed: { start: number; end: number }[], openStart: number) =>
+        recording({ ...standupRow, spans: [...closed.map((s, i) => ({ id: `r1-s${i + 1}`, ...s })), { id: `r1-s${closed.length + 1}`, start: openStart, end: null }] });
+      const original = mocked.recordingUpdate.getMockImplementation();
 
-      it("shows the spans without fields to edit them and without Add time", async () => {
-        renderEditor({ mode: "edit", id: "r1" });
+      beforeEach(() => {
+        mocked.recordingsList.mockResolvedValue([running]);
+        // Rust keeps the times a patch leaves out, and the timer running.
+        let closed = [{ start: morning.start, end: morning.end }];
+        let openStart = openSince;
+        mocked.recordingUpdate.mockImplementation(async (_id, patch) => {
+          closed = patch.spans ?? closed;
+          openStart = patch.openStart ?? openStart;
+          return savedRunning(closed, openStart);
+        });
+      });
+
+      afterEach(() => void (original && mocked.recordingUpdate.mockImplementation(original)));
+
+      async function openRunning(setup: EditorSetup = {}) {
+        renderEditor({ mode: "edit", id: "r1" }, setup);
         await editorForm("Edit recording");
-        expect(screen.queryByLabelText("Time 1 from")).not.toBeInTheDocument();
-        expect(screen.getByText("09:00")).toBeInTheDocument();
-        expect(screen.getByText("11:00")).toBeInTheDocument();
+      }
+
+      it("shows the closed spans as rows and the open span last with its start as a field and a running end", async () => {
+        await openRunning();
+        expect(field("Time 1 from")).toHaveValue("09:00");
+        expect(field("Time 1 to")).toHaveValue("09:30");
+        expect(field("Time 2 from")).toHaveValue("11:00");
+        expect(screen.queryByLabelText("Time 2 to")).not.toBeInTheDocument();
         expect(screen.getByText("– running")).toBeInTheDocument();
-        expect(screen.getByText("–")).toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: "Add time" })).not.toBeInTheDocument();
+        expect(button("Add time")).toBeInTheDocument();
         expect(field("Hours")).toHaveAttribute("readonly");
       });
 
-      it("offers Stop and save instead of Save", async () => {
-        renderEditor({ mode: "edit", id: "r1" });
-        await editorForm("Edit recording");
-        expect(button("Stop and save")).toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+      it("shows the open span alone without a ✕", async () => {
+        mocked.recordingsList.mockResolvedValue([recording({ ...standupRow, spans: [{ id: "r1-s1", start: openSince, end: null }] })]);
+        await openRunning();
+        expect(field("Time 1 from")).toHaveValue("11:00");
+        expect(screen.getByText("– running")).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /^Remove time/ })).not.toBeInTheDocument();
       });
 
-      it("saves the fields without spans, stops the timer and closes the editor", async () => {
-        renderEditor({ mode: "edit", id: "r1" });
-        await editorForm("Edit recording");
+      it("offers Save and Stop Timer, and no Stop and save", async () => {
+        await openRunning();
+        expect(button("Save")).toBeInTheDocument();
+        expect(button("Stop Timer")).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Stop and save" })).not.toBeInTheDocument();
+      });
+
+      it("saves the fields without spans, closes the editor and leaves the timer running", async () => {
+        await openRunning();
         await userEvent.type(field("Note"), "!");
-        await userEvent.click(button("Stop and save"));
+        await userEvent.click(button("Save"));
         await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { projectId: "p-site", note: "standup!", tagId: "tag-research" }, "cancel"));
-        await waitFor(() => expect(mocked.timerStop).toHaveBeenCalled());
         await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
+        expect(mocked.timerStop).not.toHaveBeenCalled();
+      });
+
+      it("stops the timer with Stop Timer and keeps the editor open", async () => {
+        await openRunning();
+        await userEvent.click(button("Stop Timer"));
+        await waitFor(() => expect(mocked.timerStop).toHaveBeenCalled());
+        expect(screen.getByRole("form", { name: "Edit recording" })).toBeInTheDocument();
+      });
+
+      it("stops the timer only after a time still being written is saved", async () => {
+        const write: { finish?: (saved: Recording) => void } = {};
+        mocked.recordingUpdate.mockImplementationOnce(() => new Promise((resolve) => (write.finish = resolve)));
+        await openRunning();
+        await userEvent.clear(field("Time 1 to"));
+        await userEvent.type(field("Time 1 to"), "09:40");
+        await waitFor(() => expect(write.finish).toBeDefined());
+        await userEvent.click(button("Stop Timer"));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(mocked.timerStop).not.toHaveBeenCalled();
+        write.finish?.(savedRunning([{ start: morning.start, end: at("09:40") }], openSince));
+        await waitFor(() => expect(mocked.timerStop).toHaveBeenCalled());
+      });
+
+      it("shows the recording as stopped once the day shows its span closed", async () => {
+        await openRunning();
+        mocked.recordingsList.mockResolvedValue([recording({ ...standupRow, spans: [morning, { id: "r1-s2", start: openSince, end: at("11:50") }] })]);
+        act(() => seedQuery(dayKey(DAY), dayView({ recordings: [{ ...standupBlock, end: at("11:50") }] })));
+        await waitFor(() => expect(field("Time 2 to")).toHaveValue("11:50"));
+        expect(screen.queryByRole("button", { name: "Stop Timer" })).not.toBeInTheDocument();
+        expect(screen.queryByText("– running")).not.toBeInTheDocument();
+      });
+
+      describe("the open start", () => {
+        it("is written alone when a valid time is typed, and shows the start Rust saved", async () => {
+          await openRunning();
+          mocked.recordingUpdate.mockResolvedValueOnce(savedRunning([{ start: morning.start, end: morning.end }], at("11:15")));
+          await userEvent.clear(field("Time 2 from"));
+          await userEvent.type(field("Time 2 from"), "11:10");
+          await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { openStart: at("11:10") }, "cancel"));
+          await waitFor(() => expect(field("Time 2 from")).toHaveValue("11:15"));
+          expect(mocked.recordingUpdate.mock.lastCall?.[1]).not.toHaveProperty("spans");
+        });
+
+        it("steps by the snap interval with the arrow keys", async () => {
+          await openRunning({ settings: settings({ timeline: { ...settings().timeline, snapMinutes: 15 } }) });
+          await userEvent.type(field("Time 2 from"), "{ArrowUp}");
+          await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { openStart: at("11:15") }, "cancel"));
+          await waitFor(() => expect(field("Time 2 from")).toHaveValue("11:15"));
+          await userEvent.type(field("Time 2 from"), "{ArrowDown}{ArrowDown}");
+          await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenLastCalledWith("r1", { openStart: at("10:45") }, "cancel"));
+        });
+
+        it("shows the previous start again and toasts when the write fails", async () => {
+          await openRunning();
+          mocked.recordingUpdate.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
+          await userEvent.clear(field("Time 2 from"));
+          await userEvent.type(field("Time 2 from"), "11:10");
+          expect(await screen.findByText("Could not change the recording: Disk full")).toBeInTheDocument();
+          await waitFor(() => expect(field("Time 2 from")).toHaveValue("11:00"));
+        });
+      });
+
+      describe("the closed spans", () => {
+        it("are written without the open start when a time is typed", async () => {
+          await openRunning();
+          await userEvent.clear(field("Time 1 to"));
+          await userEvent.type(field("Time 1 to"), "09:40");
+          await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { spans: [{ start: morning.start, end: at("09:40") }] }, "cancel"));
+          expect(mocked.recordingUpdate.mock.lastCall?.[1]).not.toHaveProperty("openStart");
+          expect(field("Time 2 from")).toHaveValue("11:00");
+        });
+
+        it("get another row from Add time while the open span stays last", async () => {
+          await openRunning();
+          await userEvent.click(button("Add time"));
+          await waitFor(() =>
+            expect(mocked.recordingUpdate).toHaveBeenCalledWith(
+              "r1",
+              {
+                spans: [
+                  { start: morning.start, end: morning.end },
+                  { start: morning.end, end: morning.end + 30 * MINUTE_MS },
+                ],
+              },
+              "cancel",
+            ),
+          );
+          expect(mocked.recordingUpdate.mock.lastCall?.[1]).not.toHaveProperty("openStart");
+          expect(await screen.findByLabelText("Time 3 from")).toHaveValue("11:00");
+          expect(field("Time 2 from")).toHaveValue("09:30");
+        });
+
+        it("show a ✕ on a single closed span, as the open span makes two", async () => {
+          await openRunning();
+          expect(button("Remove time 09:00–09:30")).toBeInTheDocument();
+        });
       });
 
       describe("logged time", () => {
@@ -1072,10 +1197,11 @@ describe("RecordingEditor", () => {
       });
     });
 
-    it("keeps Save for a recording without a running span and does not stop the timer", async () => {
+    it("keeps Save for a recording without a running span, offers no Stop Timer and does not stop the timer", async () => {
       mocked.recordingsList.mockResolvedValue([standupRow]);
       renderEditor({ mode: "edit", id: "r1" });
       await editorForm("Edit recording");
+      expect(screen.queryByRole("button", { name: "Stop Timer" })).not.toBeInTheDocument();
       await userEvent.click(button("Save"));
       await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalled());
       await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());

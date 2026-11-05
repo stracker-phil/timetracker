@@ -31,7 +31,8 @@ interface Drag {
 /**
  * One span of a recording in the Day view's time column, filled in its project's color and showing its start and end:
  * a click focuses and edits it; drag the body to move it, an edge to resize it, both from tick to tick (an edge
- * drag leaves the other edge where it was).
+ * drag leaves the other edge where it was). The running timer's span moves only its start: its end is Rust's
+ * until the timer stops.
  */
 export const RecordingBlock = memo(function RecordingBlock({ block, grid, focused, hovered = false, editing = false }: Props) {
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -49,7 +50,9 @@ export const RecordingBlock = memo(function RecordingBlock({ block, grid, focuse
   const top = grid.y(shown.start);
   const height = Math.max(2, grid.y(shown.end) - top);
   // A clipped edge belongs to another day: it does not move here.
-  const movable = !block.running && !block.clippedStart && !block.clippedEnd && grid.ticks.length > 1;
+  const hasTicks = grid.ticks.length > 1;
+  const movable = !block.running && !block.clippedStart && !block.clippedEnd && hasTicks;
+  const startMovable = movable || (block.running && !block.clippedStart && hasTicks);
 
   const edit = () => useStore.getState().switchEditor({ mode: "edit", id: block.id, at: { start: block.start, end: block.end }, spanId: block.spanId });
 
@@ -70,7 +73,7 @@ export const RecordingBlock = memo(function RecordingBlock({ block, grid, focuse
     if (e.button !== 0) return;
     e.stopPropagation();
     useStore.getState().focusRecording(block.id);
-    if (!movable) {
+    if (!(grip === "start" ? startMovable : movable)) {
       edit();
       return;
     }
@@ -111,7 +114,7 @@ export const RecordingBlock = memo(function RecordingBlock({ block, grid, focuse
       onPointerEnter={() => useStore.getState().hoverRecording(block.id)}
       onPointerLeave={() => useStore.getState().hoverRecording(null)}
     >
-      {movable && <span className="grip start" aria-label="Drag to change the start" onPointerDown={press("start")} />}
+      {startMovable && <span className="grip start" aria-label="Drag to change the start" onPointerDown={press("start")} />}
       {movable && <span className="grip end" aria-label="Drag to change the end" onPointerDown={press("end")} />}
     </Card>
   );

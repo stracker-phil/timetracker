@@ -1189,11 +1189,36 @@ describe("DayPage", () => {
       expect(screen.getByLabelText("Safari: Docs")).not.toHaveClass("dimmed");
     });
 
-    it("marks a running recording and gives it no grips", async () => {
-      renderDay(dayView({ recordings: [{ ...meeting, running: true }] }));
-      const el = await recordingEl();
-      expect(el).toHaveClass("running");
-      expect(within(el).queryByLabelText(/^Drag to change/)).not.toBeInTheDocument();
+    describe("while the timer runs on it", () => {
+      const running = { ...meeting, running: true };
+
+      it("marks it as running and gives it only the start grip", async () => {
+        renderDay(dayView({ recordings: [running] }));
+        const el = await recordingEl();
+        expect(el).toHaveClass("running");
+        expect(within(el).getByLabelText("Drag to change the start")).toBeInTheDocument();
+        expect(within(el).queryByLabelText("Drag to change the end")).not.toBeInTheDocument();
+      });
+
+      it("writes the span with its start moved when the start grip is dragged", async () => {
+        renderDay(dayView({ recordings: [running] }), withProject);
+        dragPath(grip(await recordingEl(), "start"), px("11:00"), px("10:50") + FRACTION_PX);
+        await vi.waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at("10:50"), end: at("11:45") }, "start", "cancel"));
+      });
+
+      it("opens the editor instead of moving it when the body is dragged", async () => {
+        mocked.recordingsList.mockResolvedValue([recording({ ...meetingRow, start: at("11:00"), end: null })]);
+        renderDay(dayView({ recordings: [running] }), withProject);
+        dragPath(await recordingEl(), px("11:20"), px("11:30"));
+        const form = await editorForm("Edit recording");
+        expect(within(form).getByLabelText("Time 1 from")).toHaveValue("11:00");
+        expect(mocked.recordingUpdateSpan).not.toHaveBeenCalled();
+      });
+
+      it("shows no start grip when it began on another day", async () => {
+        renderDay(dayView({ recordings: [{ ...running, clippedStart: true }] }));
+        expect(within(await recordingEl()).queryByLabelText(/^Drag to change/)).not.toBeInTheDocument();
+      });
     });
 
     it("does not mark a finished recording as running", async () => {
