@@ -7,6 +7,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api } from "../../api";
 import { Dialogs } from "../../components/Dialogs";
 import { at } from "../../test/dayFixtures";
+import { recording } from "../../test/recordingFixtures";
 import { resetStore, useStore } from "../store";
 
 const mocked = vi.mocked(api, true);
@@ -24,6 +25,17 @@ async function openEditor() {
   await vi.waitFor(() => expect(state().draft).not.toBeNull());
 }
 
+/** Opens the editor on the existing recording "r1" (the selection's span) in the Week view and waits for its draft. */
+async function openEdited() {
+  mocked.recordingsList.mockResolvedValue([recording({ id: "r1", note: "standup", start: selection.start, end: selection.end })]);
+  resetStore({ view: "week", day: "2026-03-10" });
+  render(<Dialogs />);
+  act(() => state().openEditor({ mode: "edit", id: "r1", at: { start: selection.start, end: selection.end } }));
+  await vi.waitFor(() => expect(state().draft).not.toBeNull());
+}
+
+const longer = { start: selection.start, end: at("09:45") };
+const otherRecording = { mode: "edit", id: "r2", at: { start: at("11:00"), end: at("11:45") } } as const;
 const discardDialog = () => screen.queryByRole("heading", { name: "Discard changes?" });
 
 describe("leaving a view with the recording editor open", () => {
@@ -80,6 +92,107 @@ describe("leaving a view with the recording editor open", () => {
       act(() => state().patchDraft({ projectId: "p-web" }));
       act(() => state().setView("month"));
       expect(screen.getByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();
+    });
+
+    it("counts a new recording's changed times as a change", async () => {
+      await openEditor();
+      await act(() => state().setDraftSpan(0, longer));
+      act(() => state().setView("month"));
+      expect(screen.getByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();
+    });
+  });
+
+  describe("with an edited recording", () => {
+    it("switches without asking after a time change, which is saved already", async () => {
+      await openEdited();
+      await act(() => state().setDraftSpan(0, longer));
+      act(() => state().setView("month"));
+      expect(discardDialog()).not.toBeInTheDocument();
+      expect([state().view, state().editor]).toEqual(["month", null]);
+    });
+
+    it("asks when the note changed", async () => {
+      await openEdited();
+      act(() => state().patchDraft({ note: "standup, moved" }));
+      act(() => state().setView("month"));
+      expect(screen.getByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();
+      expect(state().view).toBe("week");
+    });
+  });
+
+  describe("switching to another recording", () => {
+    it("opens it at once when the open editor is unchanged", async () => {
+      await openEditor();
+      act(() => state().switchEditor(otherRecording));
+      expect(discardDialog()).not.toBeInTheDocument();
+      expect(state().editor).toEqual(otherRecording);
+    });
+
+    it("opens it at once after a time change of an edited recording", async () => {
+      await openEdited();
+      await act(() => state().setDraftSpan(0, longer));
+      act(() => state().switchEditor(otherRecording));
+      expect(discardDialog()).not.toBeInTheDocument();
+      expect(state().editor).toEqual(otherRecording);
+    });
+
+    it.each([
+      ["a new recording's draft", openEditor],
+      ["an edited recording's fields", openEdited],
+    ])("asks first when %s has unsaved changes, and Keep editing stays", async (_name, open) => {
+      await open();
+      act(() => state().patchDraft({ note: "half written" }));
+      act(() => state().switchEditor(otherRecording));
+      expect(screen.getByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+      expect(state().editor).not.toEqual(otherRecording);
+      expect(state().draft?.note).toBe("half written");
+    });
+
+    it.each([
+      ["a new recording's draft", openEditor],
+      ["an edited recording's fields", openEdited],
+    ])("opens it after Discard of %s", async (_name, open) => {
+      await open();
+      act(() => state().patchDraft({ note: "half written" }));
+      act(() => state().switchEditor(otherRecording));
+      await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+      expect(state().editor).toEqual(otherRecording);
+    });
+
+    it("keeps the recording that is already open with its typed note", async () => {
+      await openEdited();
+      act(() => state().patchDraft({ note: "typed" }));
+      act(() => state().switchEditor({ mode: "edit", id: "r1" }));
+      expect(discardDialog()).not.toBeInTheDocument();
+      expect(state().editor).toEqual({ mode: "edit", id: "r1", at: { start: selection.start, end: selection.end } });
+      expect(state().draft?.note).toBe("typed");
+    });
+
+    describe("from a suggestion", () => {
+      const suggested = { mode: "create", start: selection.start, end: selection.end, suggestion: { id: "s1", by: "Planner" } } as const;
+
+      async function openSuggestion() {
+        resetStore({ view: "day", day: "2026-03-10" });
+        render(<Dialogs />);
+        act(() => state().openEditor(suggested));
+        await vi.waitFor(() => expect(state().draft).not.toBeNull());
+        act(() => state().patchDraft({ note: "typed" }));
+      }
+
+      it("keeps the same suggestion open with its typed note", async () => {
+        await openSuggestion();
+        act(() => state().switchEditor(suggested));
+        expect(discardDialog()).not.toBeInTheDocument();
+        expect(state().draft?.note).toBe("typed");
+      });
+
+      it("asks before opening another suggestion", async () => {
+        await openSuggestion();
+        act(() => state().switchEditor({ ...suggested, suggestion: { id: "s2", by: "Planner" } }));
+        expect(screen.getByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();
+        expect(state().editor).toEqual(suggested);
+      });
     });
   });
 

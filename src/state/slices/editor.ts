@@ -3,6 +3,7 @@ import { findBlock } from "../../lib/blockFocus";
 import { fail } from "../requests";
 import type { Slice, View } from "../store";
 import { shownDayView } from "../../queries/day";
+import { closedSpans, runningEdited, spanWrites } from "./editorSpanWrites";
 
 /** The suggestion a new recording approves once saved. */
 export interface EditedSuggestion {
@@ -35,6 +36,11 @@ export interface EditorOverlap {
   resolve: (replace: boolean) => void;
 }
 
+/**
+ * An existing recording's time changes (the fields, the timeline, a selection or block taken in) save at once and
+ * its Save writes only project, note and tag; a new recording or a suggestion keeps its times in the draft until
+ * Save or Approve.
+ */
 export interface EditorSlice {
   editor: Editor | null;
   /** The view the editor was opened in; the Week and Month views show only their own editor as a sheet. */
@@ -50,6 +56,11 @@ export interface EditorSlice {
   draftDrag: { index: number; span: Span } | null;
   setDraftDrag: (drag: { index: number; span: Span } | null) => void;
   openEditor: (editor: Editor) => void;
+  /**
+   * Opens `editor` through `leaveEditor`, so changes of the open one are confirmed first; the recording or
+   * suggestion already open stays as it is.
+   */
+  switchEditor: (editor: Editor) => void;
   /** A new recording on Rust's default span: the half hour up to now, on another `day` at the same clock times. */
   openNewRecording: (day?: string) => Promise<void>;
   /** Closes the editor and drops its draft and the selection. */
@@ -60,14 +71,18 @@ export interface EditorSlice {
    * and for a changed one only after "Discard changes?" is answered with Discard (Keep editing stays).
    */
   leaveEditor: (proceed: () => void) => void;
-  /** New times for one span; shown at once, then as Rust rolls them. Resolves once Rust has answered for the new spans. */
+  /**
+   * New times for one span; shown at once, then as Rust rolls them. Resolves once Rust has answered for the new
+   * spans (and, editing a recording, once they are saved).
+   */
   setDraftSpan: (index: number, span: Span) => Promise<void>;
   removeDraftSpan: (index: number) => void;
   /**
    * The span at `index` as a drag of its `moving` edge left it on the timeline (on ticks; the other edge as it
-   * was): Rust merges it with the spans it then touches or overlaps. Ends the drag once Rust has answered.
+   * was; null when moved whole): Rust merges it with the spans it then touches or overlaps. Ends the drag once
+   * Rust has answered.
    */
-  resizeDraftSpan: (index: number, span: Span, moving: SnapEdge) => Promise<void>;
+  resizeDraftSpan: (index: number, span: Span, moving: SnapEdge | null) => Promise<void>;
   /** A span after the last (Add span), placed by Rust. */
   addDraftSpan: () => void;
   /** Moves the last span's end so the spans add up to `totalMs` (Rust's call). */
@@ -80,14 +95,15 @@ export interface EditorSlice {
   /**
    * A click on an activity block: without an editor, a new one opens on the block's span; with one, the
    * block's span joins its spans, or leaves them when they already cover it (Rust decides and snaps). Removing
-   * the last span closes the editor without saving.
+   * the last span closes a new recording's editor without saving; a recording keeps its last span.
    */
   toggleBlock: (blockId: string) => Promise<void>;
+  /** Settles once the edited recording's span writes asked so far are done (Save waits for them). */
+  spansSettled: () => Promise<void>;
+  /** Takes the edited recording's spans as Rust now holds them (an undo, a drag, a nudge), keeping the typed fields. */
+  syncEdited: () => Promise<void>;
   answerOverlap: (replace: boolean) => void;
 }
-
-/** The running timer's spans are Rust's to end; its editor takes no spans from the timeline. */
-const runningEdited = (editing: Recording | null) => !!editing?.spans.some((s) => s.end === null);
 
 /** The spans of the blocks `ids` that the day shows. */
 function spansOfBlocks(view: DayView, ids: string[]): Span[] {
@@ -99,33 +115,50 @@ function spansOfBlocks(view: DayView, ids: string[]): Span[] {
 
 const sameSpans = (a: Span[], b: Span[]) => a.length === b.length && a.every((s, i) => s.start === b[i].start && s.end === b[i].end);
 
-/** Whether a save of `a` would write what `b` holds. */
-const sameFields = (a: Draft, b: Draft) => a.projectId === b.projectId && a.note === b.note && a.tagId === b.tagId && sameSpans(a.spans, b.spans);
-
-const closedSpans = (recording: Recording): Span[] => recording.spans.flatMap((s) => (s.end === null ? [] : [{ start: s.start, end: s.end }]));
+/** Whether a save of `a` would write what `b` holds; `withSpans` false when the times save at once. */
+const sameFields = (a: Draft, b: Draft, withSpans: boolean) =>
+  a.projectId === b.projectId && a.note === b.note && a.tagId === b.tagId && (!withSpans || sameSpans(a.spans, b.spans));
 
 export const editorSlice: Slice<EditorSlice> = {
   create: (set, get) => {
     // Answers about the spans arrive in any order; only the latest ask counts.
     let asked = 0;
-    // The draft as the editor opened it.
+    // The draft as the editor opened it; an edited recording's spans as last saved.
     let openedDraft: Draft | null = null;
+    const writes = spanWrites({
+      set,
+      get,
+      isLatest: (ticket) => ticket === asked,
+      opened: { get: () => openedDraft, set: (draft) => (openedDraft = draft) },
+    });
     const changed = () => {
-      const draft = get().draft;
-      return draft !== null && openedDraft !== null && !sameFields(draft, openedDraft);
+      const { draft, editor } = get();
+      return draft !== null && openedDraft !== null && !sameFields(draft, openedDraft, editor?.mode !== "edit");
     };
 
-    /** Shows `spans` at once (when given), then Rust's answer for them unless a later ask came first. */
-    async function respan(spans: Span[] | null, ask: () => Promise<DraftSpans>) {
+    /**
+     * Shows `spans` at once (when given), then Rust's answer for them unless a later ask came first; an edited
+     * recording then saves them.
+     */
+    function respan(spans: Span[] | null, ask: () => Promise<DraftSpans>): Promise<void> {
+      return writes.tracked(respanNow(spans, ask));
+    }
+
+    async function respanNow(spans: Span[] | null, ask: () => Promise<DraftSpans>) {
       const ticket = ++asked;
       const draft = get().draft;
       if (draft && spans) set({ draft: { ...draft, spans } });
+      const id = writes.savingAtOnce();
       try {
         const answer = await ask();
+        if (ticket !== asked) return;
         const current = get().draft;
-        if (current && ticket === asked) set({ draft: { ...current, ...answer } });
+        if (current) set({ draft: { ...current, ...answer } });
+        // Saved also when the editor has closed meanwhile.
+        if (id) await writes.save(id, answer.spans, ticket);
       } catch (e) {
         fail(e, "Could not change the times");
+        if (id && ticket === asked) writes.revert();
       }
     }
 
@@ -152,6 +185,38 @@ export const editorSlice: Slice<EditorSlice> = {
 
     const spansNow = () => get().draft?.spans ?? [];
 
+    /** A click on an activity block (`toggleBlock`). */
+    async function toggle(blockId: string): Promise<void> {
+      const { editor, draft, editing, draftBlockIds, setSelection } = get();
+      const dayView = shownDayView();
+      const found = dayView && findBlock(dayView, blockId);
+      if (!dayView || !found) return;
+      const block = { start: found.block.start, end: found.block.end };
+      const savedId = writes.savingAtOnce();
+      if (!editor) {
+        setSelection({ ...block, blockIds: [blockId] });
+        return get().recordSelection();
+      }
+      if (!draft || runningEdited(editing)) return;
+      const kept = draftBlockIds.filter((id) => id !== blockId);
+      const ticket = ++asked;
+      try {
+        const { included, ...answer } = await api.recordingDraftToggle(draft.spans, block, spansOfBlocks(dayView, kept));
+        const current = get().draft;
+        if (!current || ticket !== asked) return;
+        if (answer.spans.length === 0) {
+          // A recording keeps a span; a new one without any closes.
+          if (!savedId) get().closeEditor();
+          return;
+        }
+        // The blocks' spans now show as the draft's; a selection would stand for one of them only.
+        set({ draft: { ...current, ...answer }, draftBlockIds: included ? [...kept, blockId] : kept, selection: null, selectionSnap: null });
+        if (savedId) await writes.save(savedId, answer.spans, ticket);
+      } catch (e) {
+        fail(e, "Could not change the times");
+      }
+    }
+
     return {
       editor: null,
       editorView: null,
@@ -170,6 +235,15 @@ export const editorSlice: Slice<EditorSlice> = {
             ? fill(editor, { projectId: editor.projectId ?? null, note: editor.note ?? "", tagId: editor.tagId ?? null }, [{ start: editor.start, end: editor.end }])
             : load(editor);
         opened.catch((e: unknown) => fail(e, "Could not open the recording"));
+      },
+
+      switchEditor(editor) {
+        const open = get().editor;
+        const same =
+          editor.mode === "edit"
+            ? open?.mode === "edit" && open.id === editor.id
+            : !!editor.suggestion && open?.mode === "create" && open.suggestion?.id === editor.suggestion.id;
+        if (!same) get().leaveEditor(() => get().openEditor(editor));
       },
 
       async openNewRecording(day) {
@@ -257,28 +331,23 @@ export const editorSlice: Slice<EditorSlice> = {
         set({ draftBlockIds: selection.blockIds });
       },
 
-      async toggleBlock(blockId) {
-        const { editor, draft, editing, draftBlockIds, setSelection } = get();
-        const dayView = shownDayView();
-        const found = dayView && findBlock(dayView, blockId);
-        if (!dayView || !found) return;
-        const block = { start: found.block.start, end: found.block.end };
-        if (!editor) {
-          setSelection({ ...block, blockIds: [blockId] });
-          return get().recordSelection();
-        }
-        if (!draft || runningEdited(editing)) return;
-        const kept = draftBlockIds.filter((id) => id !== blockId);
-        const ticket = ++asked;
+      toggleBlock: (blockId) => writes.tracked(toggle(blockId)),
+
+      spansSettled: () => writes.settled(),
+
+      async syncEdited() {
+        const { editor, editing } = get();
+        if (editor?.mode !== "edit" || !editing?.spans.length || writes.busy()) return;
+        const ticket = asked;
+        const start = Math.min(...editing.spans.map((s) => s.start));
+        const end = Math.max(...editing.spans.map((s) => s.end ?? Date.now()));
         try {
-          const { included, ...answer } = await api.recordingDraftToggle(draft.spans, block, spansOfBlocks(dayView, kept));
-          const current = get().draft;
-          if (!current || ticket !== asked) return;
-          if (answer.spans.length === 0) return get().closeEditor();
-          // The blocks' spans now show as the draft's; a selection would stand for one of them only.
-          set({ draft: { ...current, ...answer }, draftBlockIds: included ? [...kept, blockId] : kept, selection: null, selectionSnap: null });
+          const fresh = (await api.recordingsList(start, end)).find((r) => r.id === editing.id);
+          if (!fresh || ticket !== asked || writes.busy() || get().editing !== editing) return;
+          if (fresh.spans.length === editing.spans.length && sameSpans(closedSpans(fresh), closedSpans(editing))) return;
+          await writes.adopt(editor, fresh);
         } catch (e) {
-          fail(e, "Could not change the times");
+          fail(e, "Could not refresh the recording");
         }
       },
 

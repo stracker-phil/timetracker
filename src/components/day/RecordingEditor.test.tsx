@@ -4,10 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, type DayView, type Project, type Settings } from "../../api";
+import { api, type DayView, type Project, type Recording, type Settings } from "../../api";
 import type { Editor } from "../../state/slices/editor";
 import { resetStore, useStore, type Store } from "../../state/store";
-import { at, dayView, recordingBlock } from "../../test/dayFixtures";
+import { at, DAY, dayView, recordingBlock } from "../../test/dayFixtures";
 import { client, projectItem } from "../../test/projectFixtures";
 import { dayKey, renderWithClient, seedProjects, seedQuery, SETTINGS_KEY } from "../../test/queries";
 import { recording } from "../../test/recordingFixtures";
@@ -46,7 +46,7 @@ function renderEditor(editor: Editor, { recent = [], settings: shownSettings = s
 }
 
 const renderCreate = (patch: EditorSetup = {}) => renderEditor({ mode: "create", start: START, end: END }, patch);
-const editorForm = (name: "New recording" | "Edit recording") => screen.findByRole("form", { name });
+const editorForm = (name: "New recording" | "Edit recording" | "Edit suggestion") => screen.findByRole("form", { name });
 const field = (label: string) => screen.getByLabelText(label);
 const projectField = () => screen.getByRole("combobox", { name: "Project" });
 const tagField = () => screen.getByRole("combobox", { name: "Tag" });
@@ -456,6 +456,35 @@ describe("RecordingEditor", () => {
     });
   });
 
+  describe("a new recording's times", () => {
+    it("write nothing until Save sends them", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      await chooseWebsite();
+      await userEvent.clear(field("Time 1 to"));
+      await userEvent.type(field("Time 1 to"), "11:15");
+      await waitFor(() => expect(field("Hours")).toHaveValue("2"));
+      expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+      expect(mocked.recordingCreate).not.toHaveBeenCalled();
+      await userEvent.click(button("Save"));
+      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith(expect.objectContaining({ spans: [{ start: START, end: at("11:15") }] }), "cancel"));
+    });
+
+    it("stay in a suggestion's draft until Approve sends them", async () => {
+      renderEditor({ mode: "create", start: START, end: END, projectId: "p-site", suggestion: { id: "s1", by: "Planner" } });
+      await editorForm("Edit suggestion");
+      await userEvent.clear(field("Time 1 to"));
+      await userEvent.type(field("Time 1 to"), "11:15");
+      await waitFor(() => expect(field("Hours")).toHaveValue("2"));
+      expect(mocked.suggestionApproveEdited).not.toHaveBeenCalled();
+      expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+      await userEvent.click(button("Approve"));
+      await waitFor(() =>
+        expect(mocked.suggestionApproveEdited).toHaveBeenCalledWith(DAY, "s1", { projectId: "p-site", spans: [{ start: START, end: at("11:15") }], note: "", tagId: null }, "cancel"),
+      );
+    });
+  });
+
   describe("saving while Rust is still answering for a typed time", () => {
     afterEach(() => void mocked.calendarParseTime.mockReset());
 
@@ -489,7 +518,7 @@ describe("RecordingEditor", () => {
       await userEvent.type(field("Time 1 from"), "1{Enter}");
       expect(mocked.recordingUpdate).not.toHaveBeenCalled();
       act(() => readings.forEach((read) => read(at("10:45"))));
-      await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", expect.objectContaining({ spans: [{ start: at("10:45"), end: standupBlock.end }] }), "cancel"));
+      await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { spans: [{ start: at("10:45"), end: standupBlock.end }] }, "cancel"));
     });
 
     it("waits for Rust's answer about the spans and saves what it answered", async () => {
@@ -751,20 +780,169 @@ describe("RecordingEditor", () => {
       expect(field("Time 1 from")).toHaveValue("11:00");
     });
 
-    it("saves the changes to the recording with overlap cancel", async () => {
+    it("saves the project, note and tag only, with overlap cancel", async () => {
       renderEditor({ mode: "edit", id: "r1" });
       await editorForm("Edit recording");
       await userEvent.type(field("Note"), " notes");
       await userEvent.click(button("Save"));
-      await waitFor(() =>
-        expect(mocked.recordingUpdate).toHaveBeenCalledWith(
-          "r1",
-          { projectId: "p-site", spans: [{ start: standupBlock.start, end: standupBlock.end }], note: "standup notes", tagId: "tag-research" },
-          "cancel",
-        ),
-      );
+      await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { projectId: "p-site", note: "standup notes", tagId: "tag-research" }, "cancel"));
       expect(await screen.findByText("Recording changed")).toBeInTheDocument();
       expect(screen.queryByRole("form")).not.toBeInTheDocument();
+    });
+
+    describe("times", () => {
+      const quick = () => within(screen.getByRole("group", { name: "Set duration" }));
+      const inTheWay = recording({ id: "r9", projectId: "p-site", note: "fix login", start: at("11:20"), end: at("11:50") });
+
+      async function openEdited() {
+        renderEditor({ mode: "edit", id: "r1" });
+        await editorForm("Edit recording");
+      }
+
+      async function typeStart(time: string) {
+        await userEvent.clear(field("Time 1 from"));
+        await userEvent.type(field("Time 1 from"), time);
+      }
+
+      it("writes a typed time without Save and shows the times Rust returned with a Recording changed toast", async () => {
+        mocked.recordingUpdate.mockResolvedValueOnce(recording({ ...standupRow, spans: [{ id: "r1-s1", start: at("11:15"), end: standupBlock.end }] }));
+        await openEdited();
+        await typeStart("11:10");
+        await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { spans: [{ start: at("11:10"), end: standupBlock.end }] }, "cancel"));
+        await waitFor(() => expect(field("Time 1 from")).toHaveValue("11:15"));
+        expect(await screen.findByText("Recording changed")).toBeInTheDocument();
+        expect(button("Undo")).toBeInTheDocument();
+        expect(screen.getByRole("form", { name: "Edit recording" })).toBeInTheDocument();
+      });
+
+      it("writes the spans Rust added at once with Add time", async () => {
+        await openEdited();
+        await userEvent.click(button("Add time"));
+        await waitFor(() =>
+          expect(mocked.recordingUpdate).toHaveBeenCalledWith(
+            "r1",
+            {
+              spans: [
+                { start: standupBlock.start, end: standupBlock.end },
+                { start: standupBlock.end, end: standupBlock.end + 30 * MINUTE_MS },
+              ],
+            },
+            "cancel",
+          ),
+        );
+        expect(await screen.findByLabelText("Time 2 from")).toHaveValue("11:45");
+      });
+
+      it.each([
+        ["15m", "11:15"],
+        ["30m", "11:30"],
+        ["1h", "12:00"],
+      ])("writes the length chosen with %s at once", async (label, end) => {
+        await openEdited();
+        await userEvent.click(quick().getByRole("button", { name: label }));
+        await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { spans: [{ start: standupBlock.start, end: at(end) }] }, "cancel"));
+        await waitFor(() => expect(field("Time 1 to")).toHaveValue(end));
+      });
+
+      it("writes a typed length at once", async () => {
+        await openEdited();
+        fireEvent.change(field("Hours"), { target: { value: "2" } });
+        await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalledWith("r1", { spans: [{ start: standupBlock.start, end: at("13:45") }] }, "cancel"));
+        await waitFor(() => expect(field("Time 1 to")).toHaveValue("13:45"));
+      });
+
+      it("still saves only project, note and tag after the times changed", async () => {
+        await openEdited();
+        await typeStart("11:10");
+        await screen.findByText("Recording changed");
+        await userEvent.type(field("Note"), " notes");
+        await userEvent.click(button("Save"));
+        await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenLastCalledWith("r1", { projectId: "p-site", note: "standup notes", tagId: "tag-research" }, "cancel"));
+        await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
+      });
+
+      it("waits for a time still being written before Save writes the fields, then closes", async () => {
+        const write: { finish?: (saved: Recording) => void } = {};
+        mocked.recordingUpdate.mockImplementationOnce(() => new Promise((resolve) => (write.finish = resolve)));
+        await openEdited();
+        await typeStart("11:10");
+        await waitFor(() => expect(write.finish).toBeDefined());
+        await userEvent.click(button("Save"));
+        expect(screen.getByRole("form", { name: "Edit recording" })).toBeInTheDocument();
+        write.finish?.(recording({ ...standupRow, spans: [{ id: "r1-s1", start: at("11:10"), end: standupBlock.end }] }));
+        await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenLastCalledWith("r1", { projectId: "p-site", note: "standup", tagId: "tag-research" }, "cancel"));
+        await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
+      });
+
+      it("leaves without asking after a time change", async () => {
+        await openEdited();
+        await typeStart("11:10");
+        await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenCalled());
+        await screen.findByText("Recording changed");
+        act(() => useStore.getState().setView("week"));
+        expect(screen.queryByRole("heading", { name: "Discard changes?" })).not.toBeInTheDocument();
+        expect(useStore.getState().view).toBe("week");
+        expect(screen.queryByRole("form")).not.toBeInTheDocument();
+      });
+
+      it("still asks before leaving with a changed note", async () => {
+        await openEdited();
+        await typeStart("11:10");
+        await screen.findByText("Recording changed");
+        await userEvent.type(field("Note"), " notes");
+        act(() => useStore.getState().setView("week"));
+        expect(screen.getByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();
+        expect(useStore.getState().view).toBe("day");
+      });
+
+      it("closes with Cancel after a time change without asking", async () => {
+        await openEdited();
+        await typeStart("11:10");
+        await screen.findByText("Recording changed");
+        await userEvent.click(button("Cancel"));
+        expect(screen.queryByRole("form")).not.toBeInTheDocument();
+        expect(screen.queryByRole("heading", { name: "Discard changes?" })).not.toBeInTheDocument();
+      });
+
+      it("shows the previous times again and toasts when the write fails", async () => {
+        mocked.recordingUpdate.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
+        await openEdited();
+        await typeStart("11:10");
+        expect(await screen.findByText("Could not change the recording: Disk full")).toBeInTheDocument();
+        await waitFor(() => expect(field("Time 1 from")).toHaveValue("11:00"));
+        expect(screen.getByRole("form", { name: "Edit recording" })).toBeInTheDocument();
+      });
+
+      it("shows the previous times again when the overlap question is answered with Back", async () => {
+        mocked.recordingUpdate.mockRejectedValueOnce({ kind: "overlap", message: "Overlaps a recording", code: null, details: [inTheWay] });
+        await openEdited();
+        await typeStart("11:10");
+        const notice = within(await screen.findByRole("alert"));
+        expect(notice.getByRole("listitem")).toHaveTextContent("11:20–11:50 Website · fix login");
+        await userEvent.click(notice.getByRole("button", { name: "Back" }));
+        await waitFor(() => expect(field("Time 1 from")).toHaveValue("11:00"));
+        expect(screen.queryByText("This overlaps a recording")).not.toBeInTheDocument();
+      });
+
+      it("takes the times Rust holds when the day refetched, keeping the typed note", async () => {
+        await openEdited();
+        await userEvent.type(field("Note"), " notes");
+        mocked.recordingsList.mockResolvedValue([recording({ ...standupRow, spans: [{ id: "r1-s1", start: at("11:05"), end: at("11:50") }] })]);
+        act(() => seedQuery(dayKey(DAY), dayView({ recordings: [{ ...standupBlock, start: at("11:05"), end: at("11:50") }] })));
+        await waitFor(() => expect(field("Time 1 from")).toHaveValue("11:05"));
+        expect(field("Time 1 to")).toHaveValue("11:50");
+        expect(field("Note")).toHaveValue("standup notes");
+      });
+
+      it("leaves without asking after such a sync", async () => {
+        await openEdited();
+        mocked.recordingsList.mockResolvedValue([recording({ ...standupRow, spans: [{ id: "r1-s1", start: at("11:05"), end: at("11:50") }] })]);
+        act(() => seedQuery(dayKey(DAY), dayView({ recordings: [{ ...standupBlock, start: at("11:05"), end: at("11:50") }] })));
+        await waitFor(() => expect(field("Time 1 from")).toHaveValue("11:05"));
+        act(() => useStore.getState().setView("week"));
+        expect(screen.queryByRole("heading", { name: "Discard changes?" })).not.toBeInTheDocument();
+        expect(useStore.getState().view).toBe("week");
+      });
     });
 
     it("deletes the recording with Delete and closes", async () => {
@@ -799,41 +977,39 @@ describe("RecordingEditor", () => {
         expect(screen.queryByText(/^Also /)).not.toBeInTheDocument();
       });
 
-      it("saves all spans with only the edited one changed", async () => {
+      it("writes all spans at once with only the edited one changed", async () => {
         renderEditor({ mode: "edit", id: "r1" });
         await editorForm("Edit recording");
         await userEvent.clear(field("Time 2 to"));
         await userEvent.type(field("Time 2 to"), "12:00");
-        await userEvent.click(button("Save"));
         await waitFor(() =>
           expect(mocked.recordingUpdate).toHaveBeenCalledWith(
             "r1",
-            expect.objectContaining({
+            {
               spans: [
                 { start: morning.start, end: morning.end },
                 { start: noon.start, end: at("12:00") },
                 { start: evening.start, end: evening.end },
               ],
-            }),
+            },
             "cancel",
           ),
         );
       });
 
-      it("drops a span removed with its ✕ from the save", async () => {
+      it("writes the other spans at once when a ✕ removes one", async () => {
         renderEditor({ mode: "edit", id: "r1" });
         await editorForm("Edit recording");
         await userEvent.click(button("Remove time 09:00–09:30"));
-        await userEvent.click(button("Save"));
         await waitFor(() =>
           expect(mocked.recordingUpdate).toHaveBeenCalledWith(
             "r1",
-            expect.objectContaining({
+            {
               spans: [
                 { start: noon.start, end: noon.end },
                 { start: evening.start, end: evening.end },
               ],
-            }),
+            },
             "cancel",
           ),
         );

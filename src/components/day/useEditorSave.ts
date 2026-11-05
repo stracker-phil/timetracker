@@ -9,6 +9,8 @@ export function useEditorSave() {
 
   async function save() {
     await typedTimesSettled();
+    // Save writes after the edited recording's pending time saves.
+    await useStore.getState().spansSettled();
     const { editor, draft, editing, createRecording, updateRecording, stopTimer, closeEditor } = useStore.getState();
     if (!draft) return;
     if (!draft.projectId) {
@@ -17,11 +19,11 @@ export function useEditorSave() {
     }
     setErrors({});
     const fields = { projectId: draft.projectId, note: draft.note, tagId: draft.tagId };
-    // The running timer's spans are Rust's to end.
+    // A recording's times saved as they changed; the running timer's are Rust's to end.
     const running = !!editing?.spans.some((s) => s.end === null);
     try {
       const suggestionId = editor?.mode === "create" ? editor.suggestion?.id : undefined;
-      const saved = editing ? await updateRecording(editing.id, running ? fields : { ...fields, spans: draft.spans }) : await createRecording({ ...fields, spans: draft.spans }, suggestionId);
+      const saved = editing ? await updateRecording(editing.id, fields) : await createRecording({ ...fields, spans: draft.spans }, suggestionId);
       if (!saved) return;
       if (running) await stopTimer();
       closeEditor();

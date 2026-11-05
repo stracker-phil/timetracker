@@ -6,6 +6,7 @@ import { ProjectPicker } from "../pickers/ProjectPicker";
 import { TagPicker } from "../pickers/TagPicker";
 import { EditorField, LoggedTime, OverlapNotice } from "./EditorParts";
 import { EditorSpans } from "./EditorSpans";
+import { useEditedSync } from "./useEditedSync";
 import { useEditorSave } from "./useEditorSave";
 import { useAutofill } from "./useAutofill";
 import { useDraftColor } from "./useDraftColor";
@@ -19,9 +20,10 @@ const RUNNING_TICK_MS = 10_000;
 
 /**
  * The recording editor, inline in the timesheet (a sheet in the Week view, labelled by `id`): note, project, tag,
- * duration and spans; Save (↵ or ⌘↵), Cancel (Escape), Delete (⌘⌫). Rust snaps the
- * times on save. Opened on a suggestion, it is prefilled with it and Save (Approve) approves it as edited. On the
- * running timer's recording the logged time counts up to now and Save is "Stop and save".
+ * duration and spans; Save (↵ or ⌘↵), Cancel (Escape), Delete (⌘⌫). Rust snaps the times. On an existing
+ * recording the times save as they change and Save writes project, note and tag. Opened on a suggestion, it is
+ * prefilled with it and Save (Approve) approves it as edited. On the running timer's recording the logged time
+ * counts up to now and Save is "Stop and save".
  */
 export function RecordingEditor({ id }: { id?: string }) {
   const editor = useStore((s) => s.editor);
@@ -37,6 +39,7 @@ export function RecordingEditor({ id }: { id?: string }) {
   const autofill = useAutofill(draft?.note ?? "");
   const open = editing?.spans.find((s) => s.end === null) ?? null;
   const now = useNow(open !== null, RUNNING_TICK_MS);
+  useEditedSync(editor?.mode === "edit");
 
   useEffect(() => {
     ref.current?.scrollIntoView?.({ block: "nearest" });

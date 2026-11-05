@@ -18,6 +18,8 @@ interface Props {
   focused: boolean;
   /** Its recording is hovered here or in the timesheet. */
   hovered?: boolean;
+  /** Its recording is open in the editor. */
+  editing?: boolean;
 }
 
 /** A drag's span; once released, it shows until the block's times differ from those it had before (`from`). */
@@ -31,7 +33,7 @@ interface Drag {
  * a click focuses and edits it; drag the body to move it, an edge to resize it, both from tick to tick (an edge
  * drag leaves the other edge where it was).
  */
-export const RecordingBlock = memo(function RecordingBlock({ block, grid, focused, hovered = false }: Props) {
+export const RecordingBlock = memo(function RecordingBlock({ block, grid, focused, hovered = false, editing = false }: Props) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -49,7 +51,7 @@ export const RecordingBlock = memo(function RecordingBlock({ block, grid, focuse
   // A clipped edge belongs to another day: it does not move here.
   const movable = !block.running && !block.clippedStart && !block.clippedEnd && grid.ticks.length > 1;
 
-  const edit = () => useStore.getState().openEditor({ mode: "edit", id: block.id, at: { start: block.start, end: block.end }, spanId: block.spanId });
+  const edit = () => useStore.getState().switchEditor({ mode: "edit", id: block.id, at: { start: block.start, end: block.end }, spanId: block.spanId });
 
   /** Rust saves the dragged span as it is; other failures were toasted by the store. */
   async function save(span: Span, grip: Grip) {
@@ -92,7 +94,7 @@ export const RecordingBlock = memo(function RecordingBlock({ block, grid, focuse
     });
   };
 
-  const classes = ["recording", focused && "focused", hovered && "hovered", ghost && "dragging", block.clippedStart && "clipped-start", block.clippedEnd && "clipped-end", block.running && "running"];
+  const classes = ["recording", focused && "focused", hovered && "hovered", editing && "editing", ghost && "dragging", block.clippedStart && "clipped-start", block.clippedEnd && "clipped-end", block.running && "running"];
   const label = `${block.projectName}${block.note ? `: ${block.note}` : ""}`;
   return (
     <Card

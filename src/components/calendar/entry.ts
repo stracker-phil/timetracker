@@ -5,7 +5,7 @@ import { useStore } from "../../state/store";
 export function editEntry(entry: CalendarEntry) {
   const s = useStore.getState();
   s.focusRecording(entry.id);
-  s.openEditor({ mode: "edit", id: entry.id, at: { start: entry.start, end: entry.end }, spanId: entry.spanIds[0] });
+  s.switchEditor({ mode: "edit", id: entry.id, at: { start: entry.start, end: entry.end }, spanId: entry.spanIds[0] });
 }
 
 /** `Website: Landing page`, or the project alone without a note. */

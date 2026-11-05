@@ -541,9 +541,10 @@ timeline's for every app.
   span is not in them adds it as another span, a click on one whose span they cover takes that time out
   again (a span that sticks out on both sides becomes two). Two clicked blocks give two spans with the time
   between them unrecorded; spans that touch or overlap once snapped merge into one. Taking out the last span
-  closes the editor without saving, as Escape does. A drag while the editor is open adds its span the same way
-  (merged with the spans it touches). Both work alike on a new recording and on the recording being edited
-  (not on the running timer's, whose spans Rust ends). ⌥ on a block without an open editor drags it onto a
+  of a new recording closes the editor without saving, as Escape does; a recording keeps its last span. A drag
+  while the editor is open adds its span the same way (merged with the spans it touches). Both work alike on a
+  new recording and on the recording being edited, where the change saves at once (not on the running timer's,
+  whose spans Rust ends). ⌥ on a block without an open editor drags it onto a
   project for a rule.
 - **Snapping** (the Time snapping setting, 5 min by default) applies to every selection, drag and resize,
   and Rust computes the grid ([ADR 0026](adr/0026-timeline-pointer-input-snaps-to-ticks.md)): a selection over
@@ -559,7 +560,7 @@ timeline's for every app.
   the editor, or adds the span to an open one): a `--sel` band with accent hairlines over the lanes, with no
   time in it (the time column shows the times); the status bar shows the snapped span with the duration. A
   dashed accent outline in the time column shows where the recording goes. While the editor is open, each of
-  its spans has its own band over the lanes and its draft block in the time column with its start and end, and
+  its spans has its own band over the lanes and its block in the time column with its start and end, and
   every clicked block whose span is in them is marked selected (an accent edge on a summary block, an accent
   bar and title on an activity block) until a second click takes it out.
 - **Recording blocks** sit in the time column, one per span: a recording can hold several separate
@@ -586,22 +587,31 @@ timeline's for every app.
   recording it counts up to now, read-only), the spans as
   `[10:00] – [10:20]` lines behind a clock icon (✕ removes one while there are several; "Add time" adds one
   after the last), then Save (on the running timer's recording "Stop and save": it saves and stops the timer) and Cancel at the leading end and a trash icon for Delete at the trailing end.
+  **Times save at once on a recording**: while the editor is open on an existing recording, every change of
+  its times (dragging or resizing its blocks, the From and To fields, Logged, Add time, ✕, a selection or a
+  clicked block taken in) is saved straight away with a toast offering Undo, and the fields follow what Rust
+  saved (also after an undo or a nudge elsewhere). Save then writes project, note and tag, and Cancel drops only
+  those. A new recording and a suggestion keep their times in the draft until Save or Approve.
   Like Timely's, the card is sections split by hairlines, with no labels and no field frames: the note is
   one input styled as a 15px semibold title (focus only adds the field's surface, frame and ring, so nothing
   moves), the pickers are full-width semibold rows that light up on hover and focus, so a long project name
   fits, and the times sit on soft fills. Project colors show as small rounded squares in the editor and the
   picker lists.
-  The editor shows no activity: activity is only a signal for recording, never linked to a recording. The draft's spans show in the time column filled like a recording of the picked
+  The editor shows no activity: activity is only a signal for recording, never linked to a recording. A new
+  recording's or suggestion's draft spans show in the time column filled like a recording of the picked
   project (neutral without one) under a strong 2px outline in its color, with their times and a short bar
   in that color on the top and bottom edge (an edge in another day has none): dragging an edge
-  moves that end from mark to mark while the block and the From and To fields follow; on release Rust merges
+  moves that end from mark to mark while the block and the From and To fields follow, and dragging the body
+  moves the span (a press on it never starts a selection); on release Rust merges
   spans that now touch or overlap into one. A click on a block can split them again (its span
-  leaves the draft). Editing an existing recording draws its spans the same way. A new recording's project is proposed (only offered, never filled in): the project of the latest recording (two weeks back) that
+  leaves the draft). An existing recording being edited keeps its own blocks, ringed inside their edge in the
+  project's text color, which drag and resize as they always do (and save at once). A new recording's project is proposed (only offered, never filled in): the project of the latest recording (two weeks back) that
   covered the same main app, else the rule matching most of the activity. Field errors show under their
   field. A running recording's spans are shown, not edited.
-- **Leaving the view** with the editor open (the sidebar, the calendar, ⌘1…⌘7, the palette): an unchanged
-  editor closes; a changed one asks "Discard changes?" with Keep editing and Discard, and the view changes only
-  on Discard. Any change of view clears the selection, and the Week and Month views show only an editor opened
+- **Leaving the view** with the editor open (the sidebar, the calendar, ⌘1…⌘7, the palette), or opening
+  another recording or suggestion: an unchanged editor closes; a changed one (on a recording only project,
+  note or tag count, its times are saved) asks "Discard changes?" with Keep editing and Discard, and the view
+  changes or the other one opens only on Discard; the one already open stays as it is. Any change of view clears the selection, and the Week and Month views show only an editor opened
   in them.
 - **Overlap**: asked inside the editor (outside it, a confirm sheet) listing the recordings in the way, each
   with its spans; "Replace overlapped part" trims or cuts their spans, and deletes a recording left without

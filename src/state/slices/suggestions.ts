@@ -104,7 +104,7 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
       editSuggestion(suggestion) {
         const s = get();
         s.focusSuggestion(suggestion.id);
-        s.openEditor({
+        s.switchEditor({
           mode: "create",
           start: suggestion.start,
           end: suggestion.end,

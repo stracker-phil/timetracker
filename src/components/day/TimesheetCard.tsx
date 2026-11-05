@@ -26,7 +26,7 @@ export const TimesheetCard = memo(function TimesheetCard({ card, focused, hovere
   const edit = () => {
     const s = useStore.getState();
     s.focusRecording(card.id);
-    s.openEditor({ mode: "edit", id: card.id, spanId: card.spanIds[0] });
+    s.switchEditor({ mode: "edit", id: card.id, spanId: card.spanIds[0] });
   };
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key !== "Enter") return;

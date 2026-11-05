@@ -201,24 +201,22 @@
 .editor-actions .btn-primary { min-width: 5.385rem; }
 .editor-delete { margin-left: auto; }
 
-/* The open editor's spans in the time column: the project's fill under a strong outline in its color (neutral
-   without a project). */
+/* A new recording's or suggestion's draft spans in the time column: the project's fill under a strong outline in
+   its color (neutral without a project). */
 .recording-draft {
   --draft-line: var(--rec, var(--o2));
   position: absolute; left: 4px; right: 4px; z-index: 2; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;
   padding: 2px var(--space-1) 1px; border-radius: var(--radius-card); background: var(--block-fill, var(--activity-fill));
-  border: 2px solid var(--draft-line); pointer-events: none;
+  border: 2px solid var(--draft-line); cursor: grab; touch-action: none;
 }
 .recording-draft-time { font-size: var(--fs-caption); font-weight: 600; color: var(--block-text, var(--text)); }
 .recording-draft-time + .recording-draft-time { align-self: flex-end; }
-/* Presses on the draft fall through to the column (a drag there adds a span); only its edges are its own. */
-.recording-draft .grip { pointer-events: auto; }
 .recording-draft .grip::after {
   content: ""; position: absolute; left: 50%; width: 1.231rem; height: 3px; border-radius: 2px; background: var(--draft-line); transform: translateX(-50%);
 }
 .recording-draft .grip.start::after { top: 0; }
 .recording-draft .grip.end::after { bottom: 0; }
-.recording-draft.dragging { z-index: 3; }
+.recording-draft.dragging { z-index: 3; cursor: grabbing; }
 .overlap-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-1); }
 
 /* The day header's mark beside the title: whether the day has recorded time. */

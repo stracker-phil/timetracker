@@ -251,6 +251,24 @@ describe("suggestions slice", () => {
       });
       await vi.waitFor(() => expect(state().draft).toMatchObject({ projectId: "p-site", note: "standup", tagId: "tag-1", spans: [{ start: at("09:00"), end: at("09:30") }] }));
     });
+
+    it("asks before replacing an editor with unsaved changes and opens nothing yet", async () => {
+      state().openEditor({ mode: "create", start: at("13:00"), end: at("13:30") });
+      await vi.waitFor(() => expect(state().draft).not.toBeNull());
+      state().patchDraft({ note: "half written" });
+      state().editSuggestion(first);
+      expect(state().dialog).toMatchObject({ type: "confirm", title: "Discard changes?" });
+      expect(state().editor).toEqual({ mode: "create", start: at("13:00"), end: at("13:30") });
+    });
+
+    it("keeps the editor of the same suggestion with its typed note", async () => {
+      state().editSuggestion(first);
+      await vi.waitFor(() => expect(state().draft).not.toBeNull());
+      state().patchDraft({ note: "typed" });
+      state().editSuggestion(first);
+      expect(state().dialog).toBeNull();
+      expect(state().draft?.note).toBe("typed");
+    });
   });
 
   describe("approving an edited suggestion", () => {

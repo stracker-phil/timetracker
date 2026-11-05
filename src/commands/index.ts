@@ -134,7 +134,7 @@ function newRecording() {
 /** Edits the focused recording, else opens the editor for the selection. */
 function openRecording() {
   const s = useStore.getState();
-  if (s.focusedRecording) return s.openEditor({ mode: "edit", id: s.focusedRecording });
+  if (s.focusedRecording) return s.switchEditor({ mode: "edit", id: s.focusedRecording });
   void s.recordSelection();
 }
 

@@ -320,6 +320,16 @@ describe("recording commands", () => {
       expect(runCommand("recording.edit")).toBe(true);
       expect(state().editor).toEqual({ mode: "edit", id: "r1" });
     });
+
+    it("asks before replacing an editor with unsaved changes and keeps it until Discard", async () => {
+      state().openEditor({ mode: "create", start: at("13:00"), end: at("13:30") });
+      await vi.waitFor(() => expect(state().draft).not.toBeNull());
+      state().patchDraft({ note: "half written" });
+      state().focusRecording("r1");
+      runCommand("recording.edit");
+      expect(state().dialog).toMatchObject({ type: "confirm", title: "Discard changes?" });
+      expect(state().editor).toEqual({ mode: "create", start: at("13:00"), end: at("13:30") });
+    });
   });
 
   describe("day.clearFocus", () => {

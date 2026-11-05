@@ -1106,16 +1106,23 @@ describe("DayPage", () => {
         expectSpan(form, "09:00", "10:30");
       });
 
-      it("resizes the draft of an existing recording the same way", async () => {
-        mocked.recordingsList.mockResolvedValue([meetingRow]);
-        renderDay(recordedDay(), withProject);
-        await userEvent.click(await screen.findByLabelText("Website: standup"));
-        const form = await editorForm("Edit recording");
-        await screen.findByLabelText("Draft 11:00–11:45");
-        dragPath(gripOf("Draft 11:00–11:45", "end"), px("11:45"), px("11:55"));
-        await waitFor(() => expect(mocked.recordingDraftResize).toHaveBeenCalledWith([{ start: at("11:00"), end: at("11:45") }], 0, { start: at("11:00"), end: at("11:55") }, "end"));
-        expect(await screen.findByLabelText("Draft 11:00–11:55")).toBeInTheDocument();
-        await waitFor(() => expectSpan(form, "11:00", "11:55"));
+      it("moves the whole box when its body is dragged, sending the moved span to Rust on release", async () => {
+        const form = await openDraft();
+        const release = holdAt(screen.getByLabelText("Draft 09:00–09:30"), px("09:15"), px("09:45"));
+        expect(screen.getByLabelText("Draft 09:30–10:00")).toBeInTheDocument();
+        expect(mocked.recordingDraftResize).not.toHaveBeenCalled();
+        release();
+        await waitFor(() => expect(mocked.recordingDraftResize).toHaveBeenCalledWith([docsSpan], 0, { start: at("09:30"), end: at("10:00") }, null));
+        await waitFor(() => expectSpan(form, "09:30", "10:00"));
+      });
+
+      it("starts no selection when the body of a box is pressed and moved", async () => {
+        await openDraft();
+        const release = holdAt(screen.getByLabelText("Draft 09:00–09:30"), px("09:15"), px("09:45"));
+        expect(screen.queryByLabelText(/^Selection/)).not.toBeInTheDocument();
+        release();
+        await waitFor(() => expect(mocked.recordingDraftResize).toHaveBeenCalled());
+        expect(mocked.recordingDraftInclude).not.toHaveBeenCalled();
       });
     });
   });
@@ -1194,14 +1201,14 @@ describe("DayPage", () => {
       expect(await recordingEl()).not.toHaveClass("running");
     });
 
-    it("opens the editor on the recording with a single click and draws its draft instead of the block", async () => {
+    it("opens the editor on the recording with a single click and keeps its block, marked as edited, without a draft", async () => {
       mocked.recordingsList.mockResolvedValue([meetingRow]);
       renderDay(recordedDay(), withProject);
       await userEvent.click(await recordingEl());
       const form = await editorForm("Edit recording");
       expectSpan(form, "11:00", "11:45");
-      expect(screen.getByLabelText("Draft 11:00–11:45")).toBeInTheDocument();
-      expect(screen.queryByLabelText("Website: standup")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Website: standup")).toHaveClass("editing");
+      expect(screen.queryByLabelText(/^Draft /)).not.toBeInTheDocument();
     });
 
     it("opens the editor with every span of a recording that has several as a row", async () => {
@@ -1213,8 +1220,176 @@ describe("DayPage", () => {
       const form = await editorForm("Edit recording");
       expectSpan(form, "09:00", "09:30");
       expectSpan(form, "11:00", "11:45", 2);
-      expect(screen.getByLabelText("Draft 09:00–09:30")).toBeInTheDocument();
-      expect(screen.getByLabelText("Draft 11:00–11:45")).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Draft /)).not.toBeInTheDocument();
+    });
+
+    it("marks only the blocks of the edited recording as edited", async () => {
+      const review = recordingBlock({ id: "r2", projectId: "p-site", projectName: "Website", note: "review", start: at("14:00"), end: at("14:30") });
+      mocked.recordingsList.mockResolvedValue([meetingRow]);
+      renderDay(dayView({ recordings: [meeting, review] }), withProject);
+      await userEvent.click(await recordingEl());
+      await editorForm("Edit recording");
+      expect(screen.getByLabelText("Website: standup")).toHaveClass("editing");
+      expect(screen.getByLabelText("Website: review")).not.toHaveClass("editing");
+    });
+
+    describe("while its editor is open", () => {
+      const editedDay = () => withTimesheet(dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [meeting] }));
+
+      async function openEdited() {
+        mocked.recordingsList.mockResolvedValue([meetingRow]);
+        renderDay(editedDay(), withProject);
+        await userEvent.click(await recordingEl());
+        return editorForm("Edit recording");
+      }
+
+      it("writes the span of the dragged block by its grip and shows the new times in the fields once the day refetched", async () => {
+        const form = await openEdited();
+        dragPath(grip(screen.getByLabelText("Website: standup"), "end"), px("11:45"), px("11:55"));
+        await waitFor(() => expect(mocked.recordingUpdateSpan).toHaveBeenCalledWith("r1", "r1-s1", { start: at("11:00"), end: at("11:55") }, "end", "cancel"));
+        expect(mocked.recordingDraftResize).not.toHaveBeenCalled();
+        mocked.recordingsList.mockResolvedValue([recording({ ...meetingRow, start: at("11:00"), end: at("11:55") })]);
+        mocked.dayView.mockResolvedValue(withTimesheet(dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [{ ...meeting, end: at("11:55") }] })));
+        emit("data_changed", { kind: "recordings", day: DAY });
+        await waitFor(() => expectSpan(form, "11:00", "11:55"));
+      });
+
+      it("keeps a typed note when the day refetched with new times", async () => {
+        const form = await openEdited();
+        await userEvent.type(within(form).getByLabelText("Note"), " notes");
+        mocked.recordingsList.mockResolvedValue([recording({ ...meetingRow, start: at("11:05"), end: at("11:45") })]);
+        mocked.dayView.mockResolvedValue(withTimesheet(dayView({ lanes: [lane({ blocks: [docs, todo] })], recordings: [{ ...meeting, start: at("11:05") }] })));
+        emit("data_changed", { kind: "recordings", day: DAY });
+        await waitFor(() => expectSpan(form, "11:05", "11:45"));
+        expect(within(form).getByLabelText("Note")).toHaveValue("standup notes");
+      });
+
+      it("writes the span of a clicked activity block at once", async () => {
+        const form = await openEdited();
+        await userEvent.click(screen.getByLabelText("Notes: Todo"));
+        await waitFor(() =>
+          expect(mocked.recordingUpdate).toHaveBeenCalledWith(
+            "r1",
+            {
+              spans: [
+                { start: at("10:00"), end: at("10:30") },
+                { start: at("11:00"), end: at("11:45") },
+              ],
+            },
+            "cancel",
+          ),
+        );
+        await waitFor(() => expectSpan(form, "10:00", "10:30"));
+        expectSpan(form, "11:00", "11:45", 2);
+        expect(await screen.findByText("Recording changed")).toBeInTheDocument();
+      });
+
+      it("writes the span of a selection dragged on the timeline at once", async () => {
+        const form = await openEdited();
+        dragPath(lanesEl(), px("13:00"), px("13:30"));
+        await waitFor(() =>
+          expect(mocked.recordingUpdate).toHaveBeenCalledWith(
+            "r1",
+            {
+              spans: [
+                { start: at("11:00"), end: at("11:45") },
+                { start: at("13:00"), end: at("13:30") },
+              ],
+            },
+            "cancel",
+          ),
+        );
+        await waitFor(() => expectSpan(form, "13:00", "13:30", 2));
+      });
+
+      it("keeps the editor and writes nothing when the block covering its only span is clicked", async () => {
+        const covering = block({ id: "a4", app: "Notes", title: "Standup notes", start: at("11:00"), end: at("11:45") });
+        mocked.recordingsList.mockResolvedValue([meetingRow]);
+        renderDay(withTimesheet(dayView({ lanes: [lane({ blocks: [docs, covering] })], recordings: [meeting] })), withProject);
+        await userEvent.click(await recordingEl());
+        const form = await editorForm("Edit recording");
+        await userEvent.click(screen.getByLabelText("Notes: Standup notes"));
+        await act(async () => {});
+        expect(screen.getByRole("form", { name: "Edit recording" })).toBe(form);
+        expectSpan(form, "11:00", "11:45");
+        expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+      });
+
+      it("saves the fields after a block's span write is done, then closes", async () => {
+        const write: { finish?: (saved: ReturnType<typeof recording>) => void } = {};
+        mocked.recordingUpdate.mockImplementationOnce(() => new Promise((resolve) => (write.finish = resolve)));
+        const form = await openEdited();
+        await userEvent.click(screen.getByLabelText("Notes: Todo"));
+        await waitFor(() => expect(write.finish).toBeDefined());
+        await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+        expect(screen.getByRole("form", { name: "Edit recording" })).toBeInTheDocument();
+        write.finish?.(recording({ ...meetingRow, spans: [{ id: "r1-s1", start: at("10:00"), end: at("10:30") }, { id: "r1-s2", start: at("11:00"), end: at("11:45") }] }));
+        await waitFor(() => expect(mocked.recordingUpdate).toHaveBeenLastCalledWith("r1", { projectId: "p-site", note: "standup", tagId: null }, "cancel"));
+        await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
+      });
+
+      it("keeps the editor and its typed note when the block of the open recording is clicked", async () => {
+        const form = await openEdited();
+        await userEvent.type(within(form).getByLabelText("Note"), " notes");
+        await userEvent.click(screen.getByLabelText("Website: standup"));
+        expect(screen.queryByRole("heading", { name: "Discard changes?" })).not.toBeInTheDocument();
+        expect(screen.getByRole("form", { name: "Edit recording" })).toBe(form);
+        expect(within(form).getByLabelText("Note")).toHaveValue("standup notes");
+      });
+    });
+
+    describe("opening another one with unsaved changes", () => {
+      const review = recordingBlock({ id: "r2", projectId: "p-site", projectName: "Website", note: "review", start: at("14:00"), end: at("14:30") });
+      const reviewRow = recording({ id: "r2", projectId: "p-site", note: "review", start: at("14:00"), end: at("14:30") });
+      const twoRecordings = () => dayView({ lanes: [lane({ blocks: [docs] })], recordings: [meeting, review] });
+      const discardDialog = () => screen.queryByRole("heading", { name: "Discard changes?" });
+
+      beforeEach(() => mocked.recordingsList.mockResolvedValue([meetingRow, reviewRow]));
+
+      it("asks before replacing a new recording's draft and keeps it with Keep editing", async () => {
+        renderDay(twoRecordings(), withProject);
+        await userEvent.click(await blockEl("Safari: Docs"));
+        const form = await editorForm("New recording");
+        await userEvent.type(within(form).getByLabelText("Note"), "read the docs");
+        await userEvent.click(screen.getByLabelText("Website: review"));
+        expect(await screen.findByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();
+        await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+        expect(discardDialog()).not.toBeInTheDocument();
+        expect(screen.getByRole("form", { name: "New recording" })).toBe(form);
+        expect(within(form).getByLabelText("Note")).toHaveValue("read the docs");
+      });
+
+      it("opens the clicked recording after Discard of a new recording's draft", async () => {
+        renderDay(twoRecordings(), withProject);
+        await userEvent.click(await blockEl("Safari: Docs"));
+        await userEvent.type(within(await editorForm("New recording")).getByLabelText("Note"), "read the docs");
+        await userEvent.click(screen.getByLabelText("Website: review"));
+        await userEvent.click(await screen.findByRole("button", { name: "Discard" }));
+        const form = await editorForm("Edit recording");
+        expectSpan(form, "14:00", "14:30");
+        expect(within(form).getByLabelText("Note")).toHaveValue("review");
+      });
+
+      it("asks before replacing an edited recording whose note changed, then opens the other with Discard", async () => {
+        renderDay(twoRecordings(), withProject);
+        await userEvent.click(await recordingEl());
+        const form = await editorForm("Edit recording");
+        await userEvent.type(within(form).getByLabelText("Note"), " notes");
+        await userEvent.click(screen.getByLabelText("Website: review"));
+        await userEvent.click(await screen.findByRole("button", { name: "Discard" }));
+        await waitFor(() => expectSpan(screen.getByRole("form", { name: "Edit recording" }), "14:00", "14:30"));
+      });
+
+      it("opens the clicked recording at once after a time change of the edited one", async () => {
+        renderDay(twoRecordings(), withProject);
+        await userEvent.click(await recordingEl());
+        const form = await editorForm("Edit recording");
+        await userEvent.click(within(form).getByRole("button", { name: "Add time" }));
+        await screen.findByText("Recording changed");
+        await userEvent.click(screen.getByLabelText("Website: review"));
+        expect(discardDialog()).not.toBeInTheDocument();
+        await waitFor(() => expectSpan(screen.getByRole("form", { name: "Edit recording" }), "14:00", "14:30"));
+      });
     });
 
     describe("dragging", () => {
@@ -1454,6 +1629,19 @@ describe("DayPage", () => {
         const form = await editorForm("Edit recording");
         expectSpan(form, "09:00", "09:30");
         expectSpan(form, "11:00", "11:45", 2);
+      });
+
+      it("asks before replacing the editor of another recording that has a changed note, and Keep editing stays", async () => {
+        const planningRow = recording({ id: "r0", projectId: "p-site", note: "planning", start: at("09:00"), end: at("09:30") });
+        mocked.recordingsList.mockResolvedValue([meetingRow, planningRow]);
+        renderDay(sheetDay(), withProject);
+        await userEvent.click(await screen.findByRole("button", { name: "standup, Website | Acme, 45m" }));
+        const form = await editorForm("Edit recording");
+        await userEvent.type(within(form).getByLabelText("Note"), " notes");
+        await userEvent.click(cardOf("planning, Website, 30m"));
+        expect(await screen.findByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();
+        await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+        expect(within(screen.getByRole("form", { name: "Edit recording" })).getByLabelText("Note")).toHaveValue("standup notes");
       });
 
       it("opens the editor with Enter on the focused card", async () => {

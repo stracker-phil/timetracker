@@ -20,18 +20,18 @@ interface Props {
   onPress: (e: PointerEvent<HTMLDivElement>) => void;
 }
 
-/** The recording or suggestion the open editor edits, whose own blocks give way to its draft spans. */
-function editedEntryId(draft: Draft | null, editor: Editor | null): string | null {
-  if (!draft || !editor) return null;
-  return editor.mode === "edit" ? editor.id : (editor.suggestion?.id ?? null);
+/** The suggestion the open editor edits, whose block gives way to the draft's spans. */
+function editedSuggestionId(draft: Draft | null, editor: Editor | null): string | null {
+  return draft && editor?.mode === "create" ? (editor.suggestion?.id ?? null) : null;
 }
 
 /** A press on a recording or a suggestion is theirs. */
 const onEmptyTime = (target: EventTarget) => target instanceof Element && !target.closest(".recording, [data-suggestion-id], button");
 
 /**
- * The time column: a block per recording span, the suggestions and the open editor's spans (their edges drag);
- * a drag over empty time selects it and opens the editor.
+ * The time column: a block per recording span, the suggestions and a new recording's or suggestion's draft spans
+ * (an edited recording keeps its own blocks, which save as they are dragged); a drag over empty time selects it
+ * and opens the editor.
  */
 export function RecordingsColumn({ ref, recordings, suggestions, grid, bounds, selection, onPress }: Props) {
   const { y } = grid;
@@ -40,7 +40,8 @@ export function RecordingsColumn({ ref, recordings, suggestions, grid, bounds, s
   const hovered = useStore((s) => s.hoveredRecording);
   const draft = useStore((s) => s.draft);
   const editor = useStore((s) => s.editor);
-  const edited = editedEntryId(draft, editor);
+  const suggestion = editedSuggestionId(draft, editor);
+  const recording = editor?.mode === "edit" ? editor.id : null;
   const press = (e: PointerEvent<HTMLDivElement>) => {
     if (onEmptyTime(e.target)) onPress(e);
   };
@@ -48,18 +49,14 @@ export function RecordingsColumn({ ref, recordings, suggestions, grid, bounds, s
     <div ref={ref} className="recordings-col" aria-label="Recordings" onPointerDown={press}>
       {selection && <div className="recording-drop" style={{ top: y(selection.start), height: y(selection.end) - y(selection.start) }} aria-hidden="true" />}
       {suggestions
-        .filter((s) => s.id !== edited)
+        .filter((s) => s.id !== suggestion)
         .map((s) => (
           <SuggestionBlock key={s.id} suggestion={s} y={y} focused={s.id === focusedSuggestion} />
         ))}
-      {recordings
-        .filter((r) => r.id !== edited || r.running)
-        .map((r) => (
-          <RecordingBlock key={r.spanId} block={r} grid={grid} focused={r.id === focused} hovered={r.id === hovered} />
-        ))}
-      {draft?.spans.map((s, i) => (
-        <DraftBlock key={i} span={s} index={i} grid={grid} bounds={bounds} />
+      {recordings.map((r) => (
+        <RecordingBlock key={r.spanId} block={r} grid={grid} focused={r.id === focused} hovered={r.id === hovered} editing={r.id === recording} />
       ))}
+      {editor?.mode === "create" && draft?.spans.map((s, i) => <DraftBlock key={i} span={s} index={i} grid={grid} bounds={bounds} />)}
     </div>
   );
 }
