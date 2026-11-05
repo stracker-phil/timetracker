@@ -123,6 +123,35 @@ impl World {
     }
 }
 
+/// Saves a running recording of `project`: `closed` spans and an open span from `open_start`.
+pub async fn running_with(w: &World, closed: &[(Ms, Ms)], open_start: Ms) -> Recording {
+    let spans = closed
+        .iter()
+        .map(|&(start, end)| (start, Some(end)))
+        .chain(std::iter::once((open_start, None)))
+        .collect();
+    recordings::insert(
+        &w.db,
+        recordings::NewRecording {
+            id: crate::db::new_id(),
+            project_id: w.project.id.clone(),
+            spans,
+            note: String::new(),
+            tag_id: None,
+        },
+    )
+    .await
+    .expect("insert running recording")
+}
+
+/// Today's local midnight, and a snapped start between it and now: both are valid starts for a timer
+/// that runs today.
+pub fn today_starts() -> (Ms, Ms) {
+    let midnight = Day::of(crate::db::time::now_ms()).bounds().0;
+    let halfway = midnight + (crate::db::time::now_ms() - midnight) / 2;
+    (midnight, super::snap(halfway, 5))
+}
+
 /// The closed spans of one recording, by start.
 pub fn times(recording: &Recording) -> Vec<(Ms, Ms)> {
     spans(std::slice::from_ref(recording))

@@ -1,26 +1,45 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
-use super::{RECENT, RecentTimer, TimerStatus, picker, publish, recent, runs, status};
+use super::origin::{TimerOrigin, repeats};
+use super::{RECENT, RecentTimer, TimerStatus, picker, recent, runs, status};
 use crate::bus::{Command, CommandBus};
 use crate::db::recordings::{self, Recording};
 use crate::db::time::now_ms;
 use crate::db::{projects, tags};
 use crate::error::{AppError, AppResult};
+use crate::lock::MutexExt;
 use crate::recordings::commands::changing;
 use crate::recordings::timer::TimerInput;
 use crate::state::AppState;
 
+/// Starts timing `input`; repeating the start of the running timer leaves it as it is, edits included.
 pub async fn start(app: &AppHandle, input: TimerInput) -> AppResult<Recording> {
-    let started = changing(app, async |s| s.start_timer(input, now_ms()).await).await?;
-    publish(app).await;
+    if let Some(running) = repeated(app, &input).await? {
+        return Ok(running);
+    }
+    let started = changing(app, async |s| s.start_timer(input.clone(), now_ms()).await).await?;
+    remember_origin(app, &started, input);
     Ok(started)
 }
 
+fn remember_origin(app: &AppHandle, running: &Recording, input: TimerInput) {
+    *app.state::<AppState>().timer_origin.lock_unpoisoned() = Some(TimerOrigin {
+        recording_id: running.id.clone(),
+        input,
+    });
+}
+
+/// The running timer when starting `input` repeats the start that made it.
+async fn repeated(app: &AppHandle, input: &TimerInput) -> AppResult<Option<Recording>> {
+    let state = app.state::<AppState>();
+    let running = recordings::running(&state.data.db()?).await?;
+    let origin = state.timer_origin.lock_unpoisoned().clone();
+    Ok(running.filter(|r| repeats(origin.as_ref(), Some(&r.id), input)))
+}
+
 pub async fn stop(app: &AppHandle) -> AppResult<Option<Recording>> {
-    let stopped = changing(app, async |s| s.stop_timer(now_ms()).await).await?;
-    publish(app).await;
-    Ok(stopped)
+    changing(app, async |s| s.stop_timer(now_ms()).await).await
 }
 
 /// Start Timer… opens the picker; Stop Timer works while a timer runs.
@@ -56,9 +75,12 @@ pub fn register(bus: &mut CommandBus<AppHandle>) {
     );
 }
 
+/// Gives the running timer new fields; they become its origin, so starting the old ones switches timers.
 pub async fn update(app: &AppHandle, input: TimerInput) -> AppResult<Option<Recording>> {
-    let updated = changing(app, async |s| s.update_timer(input, now_ms()).await).await?;
-    publish(app).await;
+    let updated = changing(app, async |s| s.update_timer(input.clone(), now_ms()).await).await?;
+    if let Some(running) = &updated {
+        remember_origin(app, running, input);
+    }
     Ok(updated)
 }
 

@@ -194,6 +194,7 @@ async fn patch_of(db: &Db, request: EditRequest) -> AppResult<RecordingPatch> {
     Ok(RecordingPatch {
         project_id,
         spans: request.spans,
+        open_start: None,
         note: request.note,
         tag_id,
     })

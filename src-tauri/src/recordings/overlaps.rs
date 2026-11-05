@@ -23,16 +23,41 @@ fn without(start: Ms, end: Ms, cut: Span) -> Vec<(Ms, Ms)> {
     pieces
 }
 
+/// The running timer's open span without `cut`: a cut over its start moves the start to the cut's end, one
+/// inside it also leaves a closed piece before the cut. The open span keeps its id; a cut reaching `now` is
+/// refused, the timer runs there.
+fn open_without(open: &RecordingSpan, cut: &[Span], now: Ms) -> AppResult<Vec<RecordingSpan>> {
+    let mut cut = cut.to_vec();
+    cut.sort_by_key(|c| c.start);
+    let mut pieces = Vec::new();
+    let mut start = open.start;
+    for c in cut {
+        if c.end <= start {
+            continue;
+        }
+        if c.end >= now {
+            return Err(timer_running());
+        }
+        if c.start > start {
+            pieces.push(RecordingSpan::new(start, Some(c.start)));
+        }
+        start = c.end;
+    }
+    pieces.push(RecordingSpan {
+        start,
+        ..open.clone()
+    });
+    Ok(pieces)
+}
+
 /// What clears `cut` of `other`'s spans: a span inside it goes, one sticking out is trimmed, one around it
-/// is cut in two (both stay spans of `other`). Without spans left, `other` is deleted.
+/// is cut in two (both stay spans of `other`), the open span as `open_without` says. Without spans left,
+/// `other` is deleted.
 fn clear_op(other: Recording, cut: &[Span], now: Ms) -> AppResult<Op> {
     let mut rest = Vec::new();
     for span in &other.spans {
         let Some(end) = span.end else {
-            if cut.iter().any(|c| c.end > span.start) {
-                return Err(timer_running());
-            }
-            rest.push(span.clone());
+            rest.extend(open_without(span, cut, now)?);
             continue;
         };
         let mut pieces = vec![(span.start, end)];
@@ -124,7 +149,7 @@ pub(super) async fn clearing(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::ErrorKind;
+    use crate::error::{AppError, ErrorKind};
     use crate::recordings::RecordingInput;
     use crate::recordings::testing::*;
     use crate::test_support;
@@ -447,23 +472,89 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_running_recording_in_the_way_cannot_be_replaced() {
+    async fn replacing_over_the_start_of_a_running_timer_moves_it_to_the_cuts_end() {
         let w = World::new().await;
         let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
 
-        let replace = w
-            .service()
+        w.service()
             .create(w.input(at(9, 0), at(10, 30)), Overlap::Replace)
             .await
+            .unwrap();
+
+        let rows = w.rows().await;
+        assert_eq!(rows.len(), 2);
+        assert_eq!(times(&rows[0]), [(at(9, 0), at(10, 30))]);
+        assert_eq!(rows[1].id, timer.id);
+        assert_eq!(
+            rows[1].spans,
+            [RecordingSpan {
+                id: timer.spans[0].id.clone(),
+                start: at(10, 30),
+                end: None,
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn replacing_inside_a_running_timer_leaves_a_closed_piece_and_the_open_span() {
+        let w = World::new().await;
+        let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
+
+        w.service()
+            .create(w.input(at(11, 0), at(11, 30)), Overlap::Replace)
+            .await
+            .unwrap();
+
+        let rows = w.rows().await;
+        let running = rows.iter().find(|r| r.id == timer.id).unwrap();
+        assert_eq!(running.spans.len(), 2);
+        assert_eq!(
+            (running.spans[0].start, running.spans[0].end),
+            (at(10, 0), Some(at(11, 0)))
+        );
+        assert_ne!(running.spans[0].id, timer.spans[0].id);
+        assert_eq!(
+            running.spans[1],
+            RecordingSpan {
+                id: timer.spans[0].id.clone(),
+                start: at(11, 30),
+                end: None,
+            }
+        );
+        assert!(no_two_overlap(&rows));
+    }
+
+    #[tokio::test]
+    async fn a_cut_reaching_now_cannot_replace_over_a_running_timer() {
+        let w = World::new().await;
+        let (midnight, _) = today_starts();
+        let timer = test_support::recording(&w.db, &w.project.id, midnight, None).await;
+        let now = crate::db::time::now_ms();
+
+        let err = w
+            .service()
+            .create(w.input(midnight + MIN, now + HOUR), Overlap::Replace)
+            .await
             .unwrap_err();
-        let cancel = w
+
+        assert!(matches!(&err, AppError::InvalidInput(m) if m == "Stop the timer first"));
+        assert_eq!(w.rows().await, [timer]);
+        assert_eq!(w.status().await, no_status());
+    }
+
+    #[tokio::test]
+    async fn a_running_timer_in_the_way_is_refused_when_cancelling() {
+        let w = World::new().await;
+        let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
+
+        let err = w
             .service()
             .create(w.input(at(9, 0), at(10, 30)), Overlap::Cancel)
             .await
             .unwrap_err();
 
-        assert_eq!(replace.kind(), ErrorKind::InvalidInput);
-        assert_eq!(cancel.kind(), ErrorKind::Overlap);
+        assert_eq!(err.kind(), ErrorKind::Overlap);
+        assert_eq!(overlap_ids(&err), [timer.id.clone()]);
         assert_eq!(w.rows().await, [timer]);
         assert_eq!(w.status().await, no_status());
     }

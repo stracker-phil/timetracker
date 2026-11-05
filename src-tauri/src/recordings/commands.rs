@@ -13,8 +13,10 @@ use crate::db::time::{Day, Ms, now_ms};
 use crate::error::AppResult;
 use crate::events::{self, DataKind};
 use crate::state::AppState;
+use crate::timers;
 
-/// Runs `write` with the service, then tells the page about every day it changed.
+/// Runs `write` with the service, then announces every day it changed and, after a change, the timer (an edit
+/// or an undo may start, stop or move it).
 pub async fn changing<T, F>(app: &AppHandle, write: F) -> AppResult<T>
 where
     F: AsyncFnOnce(&Recordings<'_>) -> AppResult<Change<T>>,
@@ -27,8 +29,11 @@ where
         snap_minutes: snap_minutes(&state),
     };
     let change = write(&service).await?;
-    for day in change.days {
-        events::data_changed(app, DataKind::Recordings, Some(day));
+    if !change.days.is_empty() {
+        for day in change.days {
+            events::data_changed(app, DataKind::Recordings, Some(day));
+        }
+        timers::publish(app).await;
     }
     Ok(change.value)
 }

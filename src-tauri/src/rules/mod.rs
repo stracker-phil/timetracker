@@ -1490,6 +1490,7 @@ mod tests {
                 start: on(today, 9, 0),
                 end: on(today, 9, 30),
             }]),
+            open_start: None,
             note: Some(String::new()),
             tag_id: Some(None),
         };

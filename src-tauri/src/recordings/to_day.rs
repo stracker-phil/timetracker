@@ -114,6 +114,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_running_recording_is_neither_moved_nor_copied_to_another_day() {
+        let w = World::new().await;
+        let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
+
+        let moved = w
+            .service()
+            .move_to_day(&timer.id, None, next_day(), Overlap::Cancel)
+            .await
+            .unwrap_err();
+        let copied = w
+            .service()
+            .copy_to_day(&timer.id, None, next_day(), Overlap::Cancel)
+            .await
+            .unwrap_err();
+
+        for err in [moved, copied] {
+            assert!(matches!(&err, AppError::InvalidInput(m) if m == "Stop the timer first"));
+        }
+        assert_eq!(w.rows().await, [timer]);
+    }
+
+    #[tokio::test]
     async fn move_to_day_keeps_the_local_time_and_length_and_reports_both_days() {
         let w = World::new().await;
         let saved = w.create(at(12, 0), at(13, 30)).await;

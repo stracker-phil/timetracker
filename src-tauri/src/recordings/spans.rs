@@ -2,6 +2,7 @@
 
 use super::checks::{checked_span, closed_span, invalid, require_finished, snapped_span};
 use super::ops::Op;
+use super::running::{checked_open_start, open_end_fixed};
 use super::{
     Change, Overlap, Recordings, SnapEdge, Span, grid_step, snap, snap_moving, snap_span,
     update_label,
@@ -50,7 +51,6 @@ impl Recordings<'_> {
     ) -> AppResult<Change<Recording>> {
         let mut undo = self.undo.lock().await;
         let current = recordings::get(self.db, id).await?;
-        require_finished(&current)?;
         let span = snapped_span(span, self.snap_minutes)?;
         let mut spans = current.spans.clone();
         spans.push(RecordingSpan::new(span.start, Some(span.end)));
@@ -81,13 +81,50 @@ impl Recordings<'_> {
     ) -> AppResult<Change<Recording>> {
         let mut undo = self.undo.lock().await;
         let current = recordings::get(self.db, id).await?;
-        require_finished(&current)?;
-        current.span(span_id)?;
+        if current.span(span_id)?.end.is_none() {
+            return Err(open_end_fixed());
+        }
         let spans = with_span_set(&current.spans, span_id, span.start, span.end);
         let after = with_spans(&current, spans)?;
         let label = update_label(&current, &after);
         self.replace(&mut undo, current, after, Some(overlap), label)
             .await
+    }
+
+    /// Moves the start of the running timer's open span `span_id` to `start` (see `checked_open_start`); the
+    /// span stays open.
+    async fn set_open_start(
+        &self,
+        id: &str,
+        span_id: &str,
+        start: Ms,
+        overlap: Overlap,
+    ) -> AppResult<Change<Recording>> {
+        let mut undo = self.undo.lock().await;
+        let current = recordings::get(self.db, id).await?;
+        let open = current.span(span_id)?;
+        if open.end.is_some() {
+            return Err(invalid("spanId", "is not the running timer's"));
+        }
+        let start = checked_open_start(start, now_ms(), self.snap_minutes)?;
+        let spans = current
+            .spans
+            .iter()
+            .map(|s| RecordingSpan {
+                start: if s.id == span_id { start } else { s.start },
+                ..s.clone()
+            })
+            .collect();
+        let after = with_spans(&current, spans)?;
+        let label = update_label(&current, &after);
+        self.replace(&mut undo, current, after, Some(overlap), label)
+            .await
+    }
+
+    /// Whether `span_id` is the open span of the running timer `id`.
+    async fn is_open(&self, id: &str, span_id: &str) -> AppResult<bool> {
+        let current = recordings::get(self.db, id).await?;
+        Ok(current.span(span_id)?.end.is_none())
     }
 
     /// Gives the span `span_id` the times a drag left it at, snapped by `snap_moving` with `moving` as the
@@ -100,6 +137,12 @@ impl Recordings<'_> {
         moving: Option<SnapEdge>,
         overlap: Overlap,
     ) -> AppResult<Change<Recording>> {
+        if self.is_open(id, span_id).await? {
+            if moving != Some(SnapEdge::Start) {
+                return Err(open_end_fixed());
+            }
+            return self.set_open_start(id, span_id, span.start, overlap).await;
+        }
         let span = checked_span(snap_moving(span.start, span.end, self.snap_minutes, moving))?;
         self.set_span(id, span_id, span, overlap).await
     }
@@ -115,9 +158,17 @@ impl Recordings<'_> {
         overlap: Overlap,
     ) -> AppResult<Change<Recording>> {
         let current = recordings::get(self.db, id).await?;
-        let span = closed_span(current.span(span_id)?)?;
-        let span = snap_span(span.start, span.end, self.snap_minutes);
         let step = grid_step(self.snap_minutes);
+        let target = current.span(span_id)?;
+        if target.end.is_none() {
+            if end_steps != 0 {
+                return Err(open_end_fixed());
+            }
+            let start = snap(target.start, self.snap_minutes) + i64::from(start_steps) * step;
+            return self.set_open_start(id, span_id, start, overlap).await;
+        }
+        let span = closed_span(target)?;
+        let span = snap_span(span.start, span.end, self.snap_minutes);
         let moving = match (start_steps, end_steps) {
             (0, _) => Some(SnapEdge::End),
             (_, 0) => Some(SnapEdge::Start),
@@ -140,8 +191,7 @@ impl Recordings<'_> {
     ) -> AppResult<Change<Option<Recording>>> {
         let mut undo = self.undo.lock().await;
         let current = recordings::get(self.db, id).await?;
-        require_finished(&current)?;
-        current.span(span_id)?;
+        closed_span(current.span(span_id)?)?;
         if current.spans.len() == 1 {
             let op = Op::Delete { recording: current };
             let days = self
@@ -175,14 +225,13 @@ impl Recordings<'_> {
     ) -> AppResult<Change<Recording>> {
         let mut undo = self.undo.lock().await;
         let current = recordings::get(self.db, id).await?;
-        require_finished(&current)?;
-        let span = current.span(span_id)?.clone();
+        let span = closed_span(current.span(span_id)?)?;
         let at = snap(at, self.snap_minutes);
-        if at <= span.start || span.end.is_none_or(|end| at >= end) {
+        if at <= span.start || at >= span.end {
             return Err(invalid("at", "must lie inside the span"));
         }
         let mut spans = with_span_set(&current.spans, span_id, span.start, at);
-        spans.push(RecordingSpan::new(at, span.end));
+        spans.push(RecordingSpan::new(at, Some(span.end)));
         let after = with_spans(&current, spans)?;
         let op = Op::Update {
             before: current,
@@ -735,22 +784,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn nudge_span_refuses_the_open_span_of_a_running_recording() {
-        let w = World::new().await;
-        let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
-
-        let err = w
-            .service()
-            .nudge_span(&timer.id, &timer.spans[0].id, 1, 1, Overlap::Cancel)
-            .await
-            .unwrap_err();
-
-        assert!(matches!(&err, AppError::InvalidInput(m) if m == "Stop the timer first"));
-        assert_eq!(w.rows().await, [timer]);
-        assert_eq!(w.status().await, no_status());
-    }
-
-    #[tokio::test]
     async fn nudge_span_of_unknown_ids_is_not_found() {
         let w = World::new().await;
         let saved = w.create(at(10, 0), at(11, 0)).await;
@@ -1012,7 +1045,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn span_operations_on_a_running_recording_ask_to_stop_the_timer() {
+    async fn span_operations_that_need_a_finished_recording_ask_to_stop_the_timer() {
         let w = World::new().await;
         let other = w.create(at(7, 0), at(8, 0)).await;
         let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
@@ -1021,14 +1054,6 @@ mod tests {
         let service = w.service();
 
         let errors = [
-            service
-                .add_span(id, span(at(12, 0), at(13, 0)), Overlap::Cancel)
-                .await
-                .unwrap_err(),
-            service
-                .update_span(id, span_id, span(at(12, 0), at(13, 0)), Overlap::Cancel)
-                .await
-                .unwrap_err(),
             service.remove_span(id, span_id).await.unwrap_err(),
             service
                 .split_span(id, span_id, at(10, 30))

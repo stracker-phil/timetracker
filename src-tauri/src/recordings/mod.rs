@@ -11,6 +11,7 @@ pub mod ops;
 mod overlaps;
 mod proposal;
 mod review;
+mod running;
 mod snap;
 mod spans;
 mod stored;
@@ -30,10 +31,11 @@ use crate::db::recordings::{self, Recording, RecordingPatch, RecordingSpan, resp
 use crate::db::time::{Day, Ms, format_duration, now_ms};
 use crate::db::{Db, new_id};
 use crate::error::AppResult;
-use checks::{check_tag, checked_note, require_finished, snapped_spans, usable_project};
+use checks::{check_tag, checked_note, invalid, snapped_spans, usable_project};
 use ops::Op;
 use overlaps::{claimed, clearing, in_the_way};
 pub use review::suggestions_label;
+use running::running_spans;
 pub use snap::{
     NEW_RECORDING_MINUTES, SnapEdge, default_span, default_span_on, grid_step, snap, snap_moving,
     snap_span, ticks,
@@ -122,15 +124,23 @@ fn days_touched(op: &Op, now: Ms) -> Vec<Day> {
     days
 }
 
-/// `current` with `patch` applied: changed spans snapped, the rest validated. A running recording's
-/// spans are the timer's to end.
-fn patched(current: &Recording, patch: RecordingPatch, snap_minutes: u32) -> AppResult<Recording> {
-    let spans = match &patch.spans {
-        Some(spans) => {
-            require_finished(current)?;
-            respanned(&current.spans, &snapped_spans(spans, snap_minutes)?)
+/// `current` with `patch` applied: changed spans snapped, the rest validated. On a running recording
+/// `spans` are its closed spans and `open_start` moves its open span, which keeps its id and stays open.
+fn patched(
+    current: &Recording,
+    patch: RecordingPatch,
+    snap_minutes: u32,
+    now: Ms,
+) -> AppResult<Recording> {
+    let spans = match current.open_span() {
+        Some(open) => running_spans(current, open, &patch, snap_minutes, now)?,
+        None if patch.open_start.is_some() => {
+            return Err(invalid("openStart", "is only for a running timer"));
         }
-        None => current.spans.clone(),
+        None => match &patch.spans {
+            Some(spans) => respanned(&current.spans, &snapped_spans(spans, snap_minutes)?),
+            None => current.spans.clone(),
+        },
     };
     recordings::check_spans(&spans)?;
     let note = match &patch.note {
@@ -144,7 +154,7 @@ fn patched(current: &Recording, patch: RecordingPatch, snap_minutes: u32) -> App
         spans,
         note,
         tag_id: patch.tag_id.unwrap_or_else(|| current.tag_id.clone()),
-        updated_at: now_ms(),
+        updated_at: now,
         ..current.clone()
     })
 }
@@ -152,10 +162,11 @@ fn patched(current: &Recording, patch: RecordingPatch, snap_minutes: u32) -> App
 /// The undo label of an update: moved (same lengths), resized, or edited (same times).
 fn update_label(before: &Recording, after: &Recording) -> &'static str {
     let times = |r: &Recording| r.spans.iter().map(|s| (s.start, s.end)).collect::<Vec<_>>();
+    // An open span runs on, so moving its start resizes it.
     let lengths = |r: &Recording| {
         r.spans
             .iter()
-            .map(|s| s.end.map(|end| end - s.start))
+            .map(|s| s.end.unwrap_or(Ms::MAX) - s.start)
             .collect::<Vec<_>>()
     };
     if times(after) == times(before) {
@@ -291,14 +302,14 @@ impl Recordings<'_> {
         let mut undo = self.undo.lock().await;
         let current = recordings::get(self.db, id).await?;
         let tag_changed = patch.tag_id.is_some();
-        let spans_changed = patch.spans.is_some();
-        let after = patched(&current, patch, self.snap_minutes)?;
+        let spans_changed = patch.spans.is_some() || patch.open_start.is_some();
+        let after = patched(&current, patch, self.snap_minutes, now_ms())?;
         usable_project(self.db, &after.project_id, Some(&current.project_id)).await?;
         if tag_changed {
             check_tag(self.db, after.tag_id.as_deref()).await?;
         }
         let label = update_label(&current, &after);
-        // Same spans clear nothing; a running recording's open span would claim all later time.
+        // Same spans clear nothing; an unchanged open span would claim all later time again.
         let overlap = spans_changed.then_some(overlap);
         self.replace(&mut undo, current, after, overlap, label)
             .await
@@ -952,21 +963,6 @@ mod tests {
         assert_eq!(rows[0].project_id, w.other.id);
         assert_eq!(rows[0].tag_id.as_deref(), Some(w.alpha.id.as_str()));
         assert_eq!(rows[0].spans, timer.spans);
-    }
-
-    #[tokio::test]
-    async fn the_running_recordings_spans_cannot_be_edited_here() {
-        let w = World::new().await;
-        let timer = test_support::recording(&w.db, &w.project.id, at(10, 0), None).await;
-
-        let err = w
-            .service()
-            .update(&timer.id, respan(at(9, 0), at(9, 30)), Overlap::Cancel)
-            .await
-            .unwrap_err();
-
-        assert_eq!(err.kind(), ErrorKind::InvalidInput);
-        assert_eq!(w.rows().await, [timer]);
     }
 
     #[tokio::test]

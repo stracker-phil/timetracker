@@ -101,7 +101,8 @@ pub struct NewRecording {
     pub tag_id: Option<String>,
 }
 
-/// Absent fields stay as they are; `spans` replaces every span, `tagId: null` removes the tag.
+/// Absent fields stay as they are; `spans` replaces every span (a running recording's closed ones), `openStart`
+/// moves a running recording's open span, `tagId: null` removes the tag.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -110,6 +111,8 @@ pub struct RecordingPatch {
     pub project_id: Option<String>,
     #[ts(optional)]
     pub spans: Option<Vec<Span>>,
+    #[ts(optional)]
+    pub open_start: Option<Ms>,
     #[ts(optional)]
     pub note: Option<String>,
     #[serde(default, deserialize_with = "present")]

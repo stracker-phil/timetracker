@@ -187,14 +187,14 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `app_settings_set` (`commands.rs`) | `bundleId: String` (the app key: bundle id, else the app name), `patch: AppSettingPatch { ownLane?, hidden? }` | `Settings`; applied under the settings store's lock (`SettingsStore::update_app`), so concurrent changes never undo each other; an override that ends up default is removed (`Settings::with_app`) | `invalid_input` (blank key), `io` |
 | `apps_list` (`day/commands.rs`) | – | `KnownApp[] { appKey, app, totalMs, lastSeen }` (`day::apps::known_apps`): every tracker app and every app with an override, by name | `db` |
 | `recording_create` (`recordings/commands.rs`) | `input: RecordingInput { projectId, spans: Span[], note, tagId }, overlap: Overlap` | `Recording` (snapped) | `invalid_input` (`field`: `spans` empty or overlapping each other, `end`, `note`, …), `overlap` (`details`: the recordings in the way), `not_found`, `db` |
-| `recording_update` | `id, patch: RecordingPatch, overlap` | `Recording` | the same |
+| `recording_update` | `id, patch: RecordingPatch { projectId?, spans?, openStart?, note?, tagId? }, overlap` | `Recording`; on the running timer `spans` are its closed spans and `openStart` moves its open span (see [Recordings](#recordings)) | the same; `invalid_input` (`start`: an open start in the future or before midnight; `openStart` on a finished recording) |
 | `recording_delete` | `id` | – | `not_found`, `db` |
-| `recording_add_span` | `id, span: Span, overlap` | `Recording` with the span added (snapped) | the same, `invalid_input` for the running timer |
-| `recording_update_span` | `id, spanId, span: Span, moving: SnapEdge \| null, overlap` | `Recording` with the span's new times as a drag left them (on `DayView.ticks`), through `Recordings::drag_span`: `snap_moving` with `moving` as the dragged end, which keeps the other edge's time (`null` when the span moved whole: both snapped), checked but not snapped again | the same; `not_found` for an unknown span |
-| `recording_remove_span` | `id, spanId` | `Recording`, or `null` when it was the last span and the recording was deleted | `invalid_input` (the running timer), `not_found`, `db` |
-| `recording_split_span` | `id, spanId, at: Ms` | `Recording` whose span is cut in two at the snapped `at`; both halves stay in it | `invalid_input` (`field`: `at` not inside the span; the running timer), `not_found`, `db` |
+| `recording_add_span` | `id, span: Span, overlap` | `Recording` with the span added (snapped); on the running timer it must end by the open start | the same |
+| `recording_update_span` | `id, spanId, span: Span, moving: SnapEdge \| null, overlap` | `Recording` with the span's new times as a drag left them (on `DayView.ticks`), through `Recordings::drag_span`: `snap_moving` with `moving` as the dragged end, which keeps the other edge's time (`null` when the span moved whole: both snapped), checked but not snapped again; the running timer's open span takes only `moving: start` (its start, through `checked_open_start`) | the same; `invalid_input` for any other change of the open span; `not_found` for an unknown span |
+| `recording_remove_span` | `id, spanId` | `Recording`, or `null` when it was the last span and the recording was deleted | `invalid_input` (the running timer's open span), `not_found`, `db` |
+| `recording_split_span` | `id, spanId, at: Ms` | `Recording` whose span is cut in two at the snapped `at`; both halves stay in it | `invalid_input` (`field`: `at` not inside the span; the running timer's open span), `not_found`, `db` |
 | `recording_merge` | `into, from` | `Recording` `into` with the spans of `from` (which keeps its project, note and tag); `from` is deleted | `invalid_input` (`field`: `from` the same recording; a running one), `not_found`, `db` |
-| `recording_nudge` | `id, spanId, startSteps: i32, endSteps: i32, overlap` | `Recording` whose span's start and end moved by that many snap steps (`timeline.snapMinutes`; ⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓) from their nearest grid marks; an end moved alone stays a step from the other (`snap_moving`), through `update_span` | as `recording_update_span` |
+| `recording_nudge` | `id, spanId, startSteps: i32, endSteps: i32, overlap` | `Recording` whose span's start and end moved by that many snap steps (`timeline.snapMinutes`; ⌥↑ ⌥↓ ⌥⇧↑ ⌥⇧↓) from their nearest grid marks; an end moved alone stays a step from the other (`snap_moving`), through `update_span`; on the running timer's open span only the start moves (`endSteps` 0) | as `recording_update_span` |
 | `recording_move` / `recording_copy` | `id, from: Day \| null, day: Day, overlap` | `Recording`: moved, or a new copy, to `day` at the same local time (`same_time_on`, DST-safe) with the same lengths (undoable). With `from` the spans touching that day (the Week card's drag; the copy is a new recording of them), shifted by the days between `from` and `day`; without, every span, shifted by the days between the first span's day and `day` | `invalid_input` (the running timer), `overlap`, `not_found`, `db` |
 | `week_view` (`calendar/commands.rs`) | `day: Day` | `WeekView { weekStart, label, days: DayColumn[], totalMs, trackedMs }`; `DayColumn { day, weekday, dayOfMonth, isToday, isWeekend, entries: CalendarEntry[], totalMs, trackedMs }`; `CalendarEntry` is a `TimesheetCard` (one per recording, the day's parts of its spans added up, by start) plus `heightUnits` (the Week card's height, see Week and month) and `showNote` (whether the card fits its note) | `invalid_input`, `db` |
 | `month_view` | `day: Day` | `MonthView { monthStart, label, weeks: MonthDay[][], totalMs }` (whole weeks Monday to Sunday; `totalMs` counts the month's own days); `MonthDay { day, weekday, dayOfMonth, inMonth, isToday, isWeekend, recordedMs, entries: CalendarEntry[] }` (every recording of the day, by start) | `invalid_input`, `db` |
@@ -350,7 +350,8 @@ the `AppState.undo` lock for its whole run, so writes never interleave. `create`
 `add_span`, `update_span`, `drag_span`, `nudge_span`, `remove_span`, `split_span`, `merge`, `move_to_day` and `copy_to_day` validate, snap,
 clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `commands.rs` then emits
 `data_changed { kind: recordings, day }` for every day a span of the op touched, before and after
-(`Change.days`).
+(`Change.days`), and after any change publishes the timer (`timers::publish`), so an edit or an undo of the
+running recording shows in the status bar and the tray at once.
 
 - **Snapping** (`snap.rs`: `snap`, `snap_span`, `snap_moving`, `ticks`, `grid_step`): to the nearest multiple of
   `timeline.snapMinutes` counted from local midnight, read at call time; an end that snaps onto or before the
@@ -365,17 +366,28 @@ clear the spans, build an `ops::Op`, apply it and push it on the undo stack; `co
   later, none overlapping another of the recording (`spans`, checked by `db::recordings::check_spans` for both layers; touching is fine); `note` one line, at most 500
   characters, trimmed; `projectId` not archived (unless the recording already belongs to it); `tagId` (one
   tag or `null`, [ADR 0019](adr/0019-one-tag-per-recording.md)) known.
-  A missing project is `not_found`; on a running recording `update` changes only the
-  note, project and tag (the editor's "Stop and save" saves them, then stops the timer); a patch with `spans` is
-  refused ("Stop the timer first").
+  A missing project is `not_found`.
+- **The running recording** (`running.rs`) is editable while it runs: on it `update`'s `spans` are its closed
+  spans (they replace those; an empty list leaves only the open span) and `openStart` moves the open span's
+  start, which keeps its id and stays open; the closed spans must end by the open start (`check_spans`).
+  `checked_open_start(start, now, snap)` snaps the start and refuses one after `now` ("A timer can't start
+  in the future") or before today's local midnight ("A timer can't start before midnight"), both on
+  `start`. `openStart` on a finished recording is `invalid_input` (`openStart`). The open span's end is
+  the timer's: a write that would set it is refused ("The timer's end moves when it stops").
 - **Overlap** (`overlaps.rs`, `Overlap::Cancel | Replace`), per span: with `Cancel` a recording whose spans share time with
   another's is refused with `overlap` and those recordings in `details`; with `Replace` each span in the way
   is removed (inside), trimmed (one side out) or cut in two (both sides out; both pieces stay spans of the same
   recording), and a recording left without spans is deleted (`clear_op`), all in one `Op::Batch` with the
-  written recording last. A running timer's open span in the way is `invalid_input`.
+  written recording last. A running timer's open span in the way (`open_without`) starts at the cut's end
+  when the cut covers its start, or keeps a closed piece before a cut inside it and runs on from the cut's
+  end; a cut reaching now or later is `invalid_input` ("Stop the timer first").
 - **Spans** (`spans.rs`): `add_span`, `update_span` (by span id), `remove_span` (removing the last one deletes the
   recording), `split_span(at)` (two touching spans), `merge(into, from)` (the spans of `from` join `into`,
-  `from` is deleted first so its span ids carry over). None of them edits the running timer.
+  `from` is deleted first so its span ids carry over). On a running recording the closed spans take all of
+  them but `merge`; the open span takes only a start change: `drag_span` with `moving: start`, `nudge_span`
+  with `endSteps` 0 (both through `checked_open_start`); `update_span`, another drag or nudge of it, and
+  removing or splitting it are refused. `merge` with a running recording is refused ("Stop the timer
+  first", `require_finished`), and so are `move_to_day` and `copy_to_day`.
 - **Move and copy** (`to_day.rs`: `move_to_day`, `copy_to_day`, through `placed_on_day`): the spans touching a
   `from` day (the Week card's drag: the recording's part on that day), or the whole recording (the Day view's
   menu commands); each moves by the days between `from` (else its first span's day) and the target day, at its
@@ -933,12 +945,18 @@ A timer is a recording with an open span, so the overlap rule, undo and reports 
   ("Start timer for Acme"). A finished recording of today with the same project, note and tag whose spans
   all end by then continues: it gets the open span instead of a new recording being made (the latest such
   one). When the running timer already is that project, note and tag, nothing changes. `stop_timer(now)`
-  closes the open span at `stop_time(start, now, snap)`: on the grid, and at least a minute long. Both go through `apply`'s overlap check and onto the undo stack; undoing a stop makes
+  closes the open span at `stop_time(start, now, snap)`: on the grid, and at least a minute long; it
+  changes nothing else, so edits made while the timer ran stay. Both go through `apply`'s overlap check and onto the undo stack; undoing a stop makes
   the timer run again.
 - `timers/mod.rs`: `status(db, now) -> TimerStatus { running: Option<RunningTimer { recording, projectName,
   color, shade, elapsedMs }> }` (`elapsedMs` since the open span started, `open_start`), `recent(db, 8) -> RecentTimer[]` (distinct project, note and tag of finished
   recordings, newest first, archived projects left out; also `timer recent` and the MCP `recent_timers`), `publish(app)` (the `timer_status` event, the tray, the watchers and `Running`, the flag `timers::runs` reads for `timer:stop`; a change refreshes the menu),
   `start_ticking(app)` (publishes at startup and every minute while a timer runs).
+- `timers/origin.rs`: `TimerOrigin { recording_id, input: TimerInput }`, the last start of this run, kept in
+  `AppState.timer_origin` (memory only); `repeats(origin, running_id, input)` is whether a start repeats
+  the one that made the running recording. `timers::commands::start` then returns the running timer as it
+  is, so starting the same timer again (the tray, the picker, the CLI) never undoes what the owner edited
+  since; after any other start it sets the origin. `continued` matches the current fields only.
 - `timers/commands.rs`: `timer_start(projectId, note, tagId)`, `timer_stop` (`null` without a timer),
   `timer_update(projectId, note, tagId)` (the running timer's fields through `Recordings::update_timer`, spans
   untouched; `null` without a timer),

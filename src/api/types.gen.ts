@@ -608,9 +608,10 @@ export type RecordingInput = { projectId: string,
 spans: Array<Span>, note: string, tagId: string | null, };
 
 /**
- * Absent fields stay as they are; `spans` replaces every span, `tagId: null` removes the tag.
+ * Absent fields stay as they are; `spans` replaces every span (a running recording's closed ones), `openStart`
+ * moves a running recording's open span, `tagId: null` removes the tag.
  */
-export type RecordingPatch = { projectId?: string, spans?: Array<Span>, note?: string, tagId?: string | null, };
+export type RecordingPatch = { projectId?: string, spans?: Array<Span>, openStart?: number, note?: string, tagId?: string | null, };
 
 export type RecordingProposal = { 
 /**
