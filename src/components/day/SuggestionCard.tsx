@@ -53,7 +53,7 @@ export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focu
         <>
           <Sparkles size="0.846rem" aria-hidden="true" />
           <span className="suggestion-card-by">Suggested by {s.by}</span>
-          {s.tag && <TagLabel name={s.tag} emoji={s.tagEmoji} />}
+          {(s.tag || s.projectId) && <TagLabel name={s.tag} emoji={s.tagEmoji} />}
         </>
       }
       trailing={formatDuration(s.durationMs)}

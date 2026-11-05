@@ -115,7 +115,7 @@ export function RecordingEditor({ id }: { id?: string }) {
         </EditorField>
         {showTag && (
           <EditorField error={errors.tagId}>
-            <TagPicker value={draft.tagId} onChange={(tagId) => patchDraft({ tagId })} />
+            <TagPicker value={draft.tagId} onChange={(tagId) => patchDraft({ tagId })} warnEmpty />
           </EditorField>
         )}
       </div>

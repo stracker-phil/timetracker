@@ -304,6 +304,23 @@ describe("RecordingEditor", () => {
       expect(tagField()).toBeInTheDocument();
     });
 
+    it("warns with ⚠️ while no tag is chosen, and still saves the recording untagged", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      await chooseWebsite();
+      expect(tagField().parentElement).toHaveTextContent("⚠️");
+      await userEvent.click(button("Save"));
+      await waitFor(() => expect(mocked.recordingCreate).toHaveBeenCalledWith({ projectId: "p-site", spans: [{ start: START, end: END }], note: "", tagId: null }, "cancel"));
+    });
+
+    it("drops the ⚠️ once a tag is chosen", async () => {
+      renderCreate();
+      await editorForm("New recording");
+      await chooseWebsite();
+      await userEvent.type(tagField(), "res{Enter}");
+      expect(tagField().parentElement).not.toHaveTextContent("⚠️");
+    });
+
     it("is shown when a recording with a project is edited", async () => {
       mocked.recordingsList.mockResolvedValue([standupRow]);
       renderEditor({ mode: "edit", id: "r1" });

@@ -5,6 +5,7 @@ import { useStore } from "../../state/store";
 import { PickerField } from "./PickerField";
 import type { PickerRow } from "./PickerList";
 import { useTags } from "../../queries/projects";
+import { NoTagMark } from "../TagLabel";
 
 /** The tag's emoji, else the tag icon. */
 function TagIcon({ emoji }: { emoji: string | null }) {
@@ -50,10 +51,12 @@ function rowsFor(query: string, tags: TagListItem[]): PickerRow<Choice>[] {
 interface Props {
   value: string | null;
   onChange: (tagId: string | null) => void;
+  /** Without a tag, the field shows ⚠️ in its icon slot: a recording should carry one (warn only). */
+  warnEmpty?: boolean;
 }
 
 /** One tag or none: picks or creates a tag; ⌫ removes it (see `PickerField` for the keys). */
-export function TagPicker({ value, onChange }: Props) {
+export function TagPicker({ value, onChange, warnEmpty = false }: Props) {
   const tags = useTags();
   const tag = tags.find((t) => t.id === value);
   const chosen = value === null ? null : (tag?.name ?? value);
@@ -71,7 +74,7 @@ export function TagPicker({ value, onChange }: Props) {
     <PickerField
       label="Tag"
       listLabel="Tags"
-      icon={<TagIcon emoji={tag?.emoji ?? null} />}
+      icon={value === null && warnEmpty ? <NoTagMark /> : <TagIcon emoji={tag?.emoji ?? null} />}
       text={chosen}
       placeholder="No tag"
       rowsFor={(query) => rowsFor(query, tags)}

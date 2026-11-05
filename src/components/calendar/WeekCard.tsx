@@ -71,7 +71,7 @@ export const WeekCard = memo(function WeekCard({ entry, day, focused, dragging, 
       subtitle={entry.showNote && entry.note ? entry.note : undefined}
       meta={
         <>
-          {entry.tag && <TagLabel name={entry.tag} emoji={entry.tagEmoji} />}
+          <TagLabel name={entry.tag} emoji={entry.tagEmoji} />
           {entry.spanIds.length > 1 && <span>{entry.spanIds.length} times</span>}
         </>
       }

@@ -1170,6 +1170,35 @@ describe("DayPage", () => {
       expect(within(await recordingEl()).queryByText(/\p{Extended_Pictographic}/u)).not.toBeInTheDocument();
     });
 
+    it("marks an untagged recording with No tag in a span tall enough for both times", async () => {
+      renderDay(dayView({ recordings: [meeting] }));
+      expect(within(await recordingEl()).getByRole("img", { name: "No tag" })).toHaveTextContent("⚠️");
+    });
+
+    it("marks an untagged recording that is running with No tag", async () => {
+      renderDay(dayView({ recordings: [{ ...meeting, running: true }] }));
+      expect(within(await recordingEl()).getByRole("img", { name: "No tag" })).toBeInTheDocument();
+    });
+
+    it("shows no No tag mark in a span too short for both times", async () => {
+      renderDay(dayView({ recordings: [recordingBlock({ id: "r3", note: "quick", start: at("10:00"), end: at("10:10") })] }));
+      expect(within(await screen.findByLabelText("Website: quick")).queryByRole("img", { name: "No tag" })).not.toBeInTheDocument();
+    });
+
+    it("shows the emoji instead of No tag for a tagged recording", async () => {
+      renderDay(dayView({ recordings: [{ ...meeting, tag: "support", tagEmoji: "🧪" }] }));
+      const el = within(await recordingEl());
+      expect(el.getByText("🧪")).toBeInTheDocument();
+      expect(el.queryByRole("img", { name: "No tag" })).not.toBeInTheDocument();
+    });
+
+    it("shows neither emoji nor No tag for a tagged recording whose tag has no emoji", async () => {
+      renderDay(dayView({ recordings: [{ ...meeting, tag: "support", tagEmoji: null }] }));
+      const el = within(await recordingEl());
+      expect(el.queryByRole("img", { name: "No tag" })).not.toBeInTheDocument();
+      expect(el.queryByText("⚠️")).not.toBeInTheDocument();
+    });
+
     it("shows no times in a span too short for text", async () => {
       renderDay(dayView({ recordings: [recordingBlock({ id: "r3", note: "quick", start: at("10:00"), end: at("10:05") })] }));
       const el = within(await screen.findByLabelText("Website: quick"));
@@ -1587,6 +1616,23 @@ describe("DayPage", () => {
       expect(within(cardOf("standup, Website | Acme, 45m")).queryByText(/\p{Extended_Pictographic}/u)).not.toBeInTheDocument();
     });
 
+    it("shows ⚠️ and No tag on a card without a tag", async () => {
+      renderDay(sheetDay([planning]));
+      await screen.findByRole("complementary", { name: "Timesheet" });
+      const card = within(cardOf("planning, Website, 30m"));
+      expect(card.getByText("No tag")).toBeInTheDocument();
+      expect(card.getByText("⚠️")).toBeInTheDocument();
+    });
+
+    it("shows the tag name and no No tag on a tagged card", async () => {
+      renderDay(sheetDay([standupCard]));
+      await screen.findByRole("complementary", { name: "Timesheet" });
+      const card = within(cardOf("standup, Website | Acme, 45m"));
+      expect(card.getByText("support")).toBeInTheDocument();
+      expect(card.queryByText("No tag")).not.toBeInTheDocument();
+      expect(card.queryByText("⚠️")).not.toBeInTheDocument();
+    });
+
     it("titles a card without a note by its project and shows the client below", async () => {
       renderDay(sheetDay([bare]));
       await screen.findByRole("complementary", { name: "Timesheet" });
@@ -1827,6 +1873,28 @@ describe("DayPage", () => {
         expect(card.getByText("🧪")).toBeInTheDocument();
         expect(card.getByText("support")).toBeInTheDocument();
         expect(within(await mailCard()).queryByText("🧪")).not.toBeInTheDocument();
+      });
+
+      it("warns No tag on a suggestion with a project and no tag", async () => {
+        renderDay(withSuggestions(), withProject);
+        const card = within(await standupCard());
+        expect(card.getByText("No tag")).toBeInTheDocument();
+        expect(card.getByText("⚠️")).toBeInTheDocument();
+      });
+
+      it("shows the tag name and no No tag on a tagged suggestion", async () => {
+        renderDay(dayView({ lanes: [lane({ blocks: [docs] })], timesheet: [review], suggestions: [{ ...standupIdea, tag: "support" }, mailIdea] }), withProject);
+        const card = within(await standupCard());
+        expect(card.getByText("support")).toBeInTheDocument();
+        expect(card.queryByText("No tag")).not.toBeInTheDocument();
+      });
+
+      it("says nothing about the tag of a suggestion without a project and a tag", async () => {
+        const open = suggestion({ ruleIds: ["rule-mail"], by: "Mail", projectId: null, projectName: null, note: "inbox", start: at("14:00"), end: at("14:30"), nextCard: null });
+        renderDay(dayView({ lanes: [lane({ blocks: [docs] })], suggestions: [open] }), withProject);
+        const card = within(await screen.findByRole("group", { name: /^Suggested: inbox/ }));
+        expect(card.getByText("Suggested by Mail")).toBeInTheDocument();
+        expect(card.queryByText("No tag")).not.toBeInTheDocument();
       });
 
       it("puts each before the recording card it precedes and the last one at the end", async () => {

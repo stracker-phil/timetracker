@@ -4,6 +4,7 @@ import { formatClock } from "../../lib/format";
 import { fail, useStore } from "../../state/store";
 import { shadeColor } from "../Accent";
 import { Card } from "../Card";
+import { NoTagMark } from "../TagLabel";
 import { pointerDrag } from "./pointerDrag";
 import { sameSpan, spanMoved, spanWithEdge, type Grip } from "./spanDrag";
 import { tickPointer, type TickGrid } from "./tickPointer";
@@ -99,6 +100,13 @@ export const RecordingBlock = memo(function RecordingBlock({ block, grid, focuse
 
   const classes = ["recording", focused && "focused", hovered && "hovered", editing && "editing", ghost && "dragging", block.clippedStart && "clipped-start", block.clippedEnd && "clipped-end", block.running && "running"];
   const label = `${block.projectName}${block.note ? `: ${block.note}` : ""}`;
+  const tagMark = block.tag === null ? (
+    <span role="img" title="No tag" aria-label="No tag">
+      <NoTagMark />
+    </span>
+  ) : (
+    block.tagEmoji && <span className="tag-emoji">{block.tagEmoji}</span>
+  );
   return (
     <Card
       className={classes.filter(Boolean).join(" ")}
@@ -108,7 +116,7 @@ export const RecordingBlock = memo(function RecordingBlock({ block, grid, focuse
       style={{ top, height }}
       color={shadeColor(block.color, block.shade)}
       title={height >= TIMES_MIN_PX ? formatClock(shown.start) : undefined}
-      meta={height >= BOTH_TIMES_PX && block.tagEmoji ? <span className="tag-emoji">{block.tagEmoji}</span> : undefined}
+      meta={height >= BOTH_TIMES_PX ? tagMark : undefined}
       trailing={height >= BOTH_TIMES_PX ? formatClock(shown.end) : undefined}
       onPointerDown={press("move")}
       onPointerEnter={() => useStore.getState().hoverRecording(block.id)}

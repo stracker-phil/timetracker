@@ -15,10 +15,11 @@ import { TagPicker } from "./TagPicker";
 const mocked = vi.mocked(api, true);
 
 /** Holds the chosen id like a form would, and reports every change. */
-function Harness({ initial, onChange }: { initial: string | null; onChange: (id: string | null) => void }) {
+function Harness({ initial, onChange, warnEmpty }: { initial: string | null; onChange: (id: string | null) => void; warnEmpty?: boolean }) {
   const [value, setValue] = useState(initial);
   return (
     <TagPicker
+      warnEmpty={warnEmpty}
       value={value}
       onChange={(id) => {
         setValue(id);
@@ -28,13 +29,13 @@ function Harness({ initial, onChange }: { initial: string | null; onChange: (id:
   );
 }
 
-function renderPicker(initial: string | null = null, tags = DEFAULT_TAGS) {
+function renderPicker(initial: string | null = null, tags = DEFAULT_TAGS, warnEmpty = false) {
   const onChange = vi.fn();
   resetStore();
   seedProjects({ tags });
   renderWithClient(
     <>
-      <Harness initial={initial} onChange={onChange} />
+      <Harness initial={initial} onChange={onChange} warnEmpty={warnEmpty} />
       <Toasts />
     </>,
   );
@@ -56,6 +57,30 @@ describe("TagPicker", () => {
     renderPicker();
     expect(field()).toHaveValue("");
     expect(field()).toHaveAttribute("placeholder", "No tag");
+  });
+
+  describe("warning for an empty tag", () => {
+    it("shows ⚠️ in the field when warnEmpty is set and no tag is chosen", () => {
+      renderPicker(null, DEFAULT_TAGS, true);
+      expect(field().parentElement).toHaveTextContent("⚠️");
+    });
+
+    it("drops the ⚠️ once a tag is picked", async () => {
+      renderPicker(null, DEFAULT_TAGS, true);
+      await userEvent.click(field());
+      await userEvent.click(screen.getByRole("option", { name: "admin" }));
+      expect(field().parentElement).not.toHaveTextContent("⚠️");
+    });
+
+    it("shows no ⚠️ for a chosen tag", () => {
+      renderPicker("tag-admin", DEFAULT_TAGS, true);
+      expect(field().parentElement).not.toHaveTextContent("⚠️");
+    });
+
+    it("shows no ⚠️ without warnEmpty", () => {
+      renderPicker();
+      expect(field().parentElement).not.toHaveTextContent("⚠️");
+    });
   });
 
   describe("emoji", () => {

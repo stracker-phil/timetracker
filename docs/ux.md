@@ -321,7 +321,7 @@ literal durations elsewhere (the running timer's 1.6s pulse is an ambient loop, 
 | Component | Where | Look |
 |---|---|---|
 | `Toolbar` (`components/Toolbar.tsx`) | the first row of every view | see Shell; props `title`, `detail` and the actions as children |
-| `Card` (`components/Card.tsx`) | a recording in the timesheet, the time column and the Week view's columns | filled with `--block-fill`, text `--block-text`, no shadow: the title (600), the subtitle (500), a foot with meta (the tag, with an icon) and the duration (tabular) on the right |
+| `Card` (`components/Card.tsx`) | a recording in the timesheet, the time column and the Week view's columns | filled with `--block-fill`, text `--block-text`, no shadow: the title (600), the subtitle (500), a foot with meta (the tag with its emoji or an icon, or ⚠️ "No tag") and the duration (tabular) on the right |
 | `Block` (`components/Block.tsx`) | a summary block on the timeline, placed by time (activity lanes draw memories, see Timeline) | `--activity-fill`, 1px `--bg` border, `--radius-block`: the app (500, `--text-strong`), the title (`--text`), the duration trailing at the bottom right (`--o2`), as on a card; one line when short |
 | Popover | `Modal variant="popover"`: the date picker, View options | `--pop`, `--radius`, `--shadow`, placed under its control, no scrim |
 | Sheet | `Modal` (default `variant="sheet"`) | `--pop`, `--radius-lg`, `--shadow`, 20px padding, the title 13px bold, over `--scrim`; buttons at least 70px wide |
@@ -568,8 +568,9 @@ timeline's for every app.
   timesheet card when one is hovered or focused; project, note and tag belong to the recording and show on
   the card. A span shows only its start (top left) and end (bottom right), and a click on it opens the
   editor (the Week lists whole recordings as cards, see [Week and Month](#week-and-month)). Each is a `Card` filled in the project's shade (`--block-fill`, light in light palettes, a muted dark tint
-  in dark ones) with `--block-text`, at least 4.5:1 for every accent and shade: the project name (600), the
-  note (500), then the tag with a tag icon and the duration (tabular) at the bottom right. A dashed top or
+  in dark ones) with `--block-text`, at least 4.5:1 for every accent and shade: the start (600, tabular) at
+  the top left, the end at the bottom right and, once the block is tall enough for both times, the tag's emoji
+  at the bottom left (⚠️ without a tag, see [Tags](#tags); nothing for a tag without an emoji). A dashed top or
   bottom edge means the span continues on another day. The top and bottom 6px resize the span; the body
   moves it. Activity under recordings (half or more) takes `--activity-fill-dim` (summary) or a regular-weight
   `--o2` label (memories); hover lifts it.
@@ -705,7 +706,7 @@ timeline's for every app.
 - **Week** (Timely's Week view): seven columns, Monday at the left, with no time axis and no empty hours.
   Each head reads `Mon 19` (semibold; today as "Today" in accent text) with the day's recorded hours
   (`--o2`, tabular) on the right, none on a day without recordings; a click opens the day. Below, the day's recordings as filled `Card`s in
-  start order, a small gap apart: project, note, the tag with its icon, and the day's duration at the bottom
+  start order, a small gap apart: project, note, the tag with its icon (⚠️ "No tag" without one), and the day's duration at the bottom
   right. A card grows with its duration, from one line of title over the foot to a cap at six hours (Rust's
   height units), so a 6 h recording is clearly taller than a 10 min one; a card under four units (up to
   45 min) leaves out the note, which would not fit. A recording with several times that
@@ -749,6 +750,10 @@ timeline's for every app.
   emoji" under the field otherwise). The emoji shows before the tag's name in the tag picker and on
   recording cards (timesheet, Week, suggestions; a tag without one shows the tag icon), and alone in the
   lower-left corner of a recording's block in the time column when the block is tall enough for both times.
+- **Every recording should have a tag** (warn only: an untagged recording still saves). Without one, the
+  cards show ⚠️ and "No tag" in the foot's secondary text where the tag would be (plain text, never a chip),
+  a suggestion with a project does the same, the block in the time column shows ⚠️ (named "No tag") in the
+  emoji's place, and the editor's tag field shows ⚠️ in its icon slot before the "No tag" placeholder.
 - Rename in place, as in Finder: a double click on the name, ↵ on the focused row (rows are Tab stops) or the
   pencil turns the name into a field with its text selected. ↵ or leaving the field saves, Escape cancels; an
   empty or unchanged name cancels. A name another tag has (ignoring case) keeps the field open with the error

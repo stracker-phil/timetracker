@@ -56,7 +56,7 @@ export const TimesheetCard = memo(function TimesheetCard({ card, focused, hovere
       }
       meta={
         <>
-          {card.tag && <TagLabel name={card.tag} emoji={card.tagEmoji} />}
+          <TagLabel name={card.tag} emoji={card.tagEmoji} />
           {card.spanIds.length > 1 && <span>{card.spanIds.length} times</span>}
         </>
       }

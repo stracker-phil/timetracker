@@ -183,6 +183,24 @@ describe("WeekView", () => {
       expect(within(card("Website: review")).queryByText("🧪")).not.toBeInTheDocument();
     });
 
+    it("shows ⚠️ and No tag on a card without a tag, next to the times count", async () => {
+      renderWeek(recordedWeek([calendarEntry({ id: "r1", note: "standup", tag: null, spanIds: ["r1-s1", "r1-s2"] })]));
+      await screen.findAllByRole("columnheader");
+      const el = within(card());
+      expect(el.getByText("No tag")).toBeInTheDocument();
+      expect(el.getByText("⚠️")).toBeInTheDocument();
+      expect(el.getByText("2 times")).toBeInTheDocument();
+    });
+
+    it("shows no No tag on a tagged card", async () => {
+      renderWeek(recordedWeek([calendarEntry({ id: "r1", note: "standup", tag: "support", tagEmoji: null })]));
+      await screen.findAllByRole("columnheader");
+      const el = within(card());
+      expect(el.getByText("support")).toBeInTheDocument();
+      expect(el.queryByText("No tag")).not.toBeInTheDocument();
+      expect(el.queryByText("⚠️")).not.toBeInTheDocument();
+    });
+
     it.each([
       [false, false],
       [true, true],
