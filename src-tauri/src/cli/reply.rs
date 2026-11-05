@@ -5,20 +5,19 @@ use chrono::{DateTime, TimeZone};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use super::written::NO_PROJECT;
 use crate::activity::DeleteResult;
 use crate::activity::external::SOURCE_PREFIX;
 use crate::db::activities::ActivityRow;
-use crate::db::recordings::Recording;
 use crate::db::time::{Day, Ms, format_hm};
 use crate::ipc::IpcMessage;
 use crate::menu::palette::ListedCommand;
-use crate::recordings::cli::spans_text;
 use crate::remote::StatusReport;
 use crate::reports::cli::Reported;
 use crate::reports::{Billable, billable_text};
 use crate::scripting::timer::TimerState;
 use crate::timers::commands::TimerStarted;
-use crate::timers::open_start;
+use crate::timers::{Timer, open_start};
 use crate::tracker::{TrackerState, TrackerStatus};
 
 /// The text for `result`, the reply to `message`; `None` when the subcommand prints nothing.
@@ -77,21 +76,15 @@ pub fn render<Tz: TimeZone>(
             "restored {}",
             spans(&read::<DeleteResult>(result)?)
         )),
-        IpcMessage::TimerStart { .. } => {
-            let started = read::<TimerStarted>(result)?;
-            Some(format!(
-                "started {} at {}",
-                started.project_name,
-                clock(open_start(&started.recording), tz)
-            ))
-        }
-        IpcMessage::TimerStop => Some(match read::<Option<Recording>>(result)? {
-            // The span the stop closed: the recording's last.
-            Some(r) => match r.spans.last() {
-                Some(closed) => format!(
-                    "stopped {} ({})",
-                    spans_text(std::slice::from_ref(closed), |ms| clock(ms, tz)),
-                    format_hm(closed.duration(now))
+        IpcMessage::TimerStart { .. } => Some(started(&read::<TimerStarted>(result)?, tz)),
+        IpcMessage::TimerStop => Some(match read::<Option<Timer>>(result)? {
+            // The span the stop closed.
+            Some(timer) => match last_span(&timer) {
+                Some((start, end)) => format!(
+                    "stopped {}–{} ({})",
+                    clock(start, tz),
+                    end.map_or_else(|| "now".to_string(), |end| clock(end, tz)),
+                    format_hm(end.unwrap_or(now) - start)
                 ),
                 None => "stopped".into(),
             },
@@ -191,8 +184,41 @@ fn billable_today(billable: Option<&Billable>) -> String {
     }
 }
 
-/// `None` is a tracker that is off (no data store).
-/// `Acme · standup · 0:25`, or `none`.
+/// `started Acme at 09:15`, `already running: Acme since 09:15`, or the suggested timer with how to
+/// approve it.
+fn started<Tz: TimeZone>(started: &TimerStarted, tz: &Tz) -> String {
+    match started {
+        TimerStarted::Recording(r) => format!(
+            "started {} at {}",
+            r.project_name,
+            clock(open_start(&r.recording), tz)
+        ),
+        TimerStarted::Running(r) => format!(
+            "already running: {} since {}",
+            r.project_name,
+            clock(open_start(&r.recording), tz)
+        ),
+        TimerStarted::Suggestion(s) => {
+            let timer = Timer::Suggestion(s.suggestion.clone());
+            format!(
+                "suggested a timer for {} from {} ({}); approve it in the Day view or with timetracker approve {}",
+                s.project_name.as_deref().unwrap_or(NO_PROJECT),
+                clock(timer.open_start(), tz),
+                s.suggestion.id,
+                s.suggestion.id
+            )
+        }
+    }
+}
+
+fn last_span(timer: &Timer) -> Option<(Ms, Option<Ms>)> {
+    match timer {
+        Timer::Recording(r) => r.spans.last().map(|s| (s.start, s.end)),
+        Timer::Suggestion(s) => s.spans.last().map(|s| (s.start, Some(s.end))),
+    }
+}
+
+/// `Acme · standup · 0:25`, or `none`; `(suggested)` after a suggested timer.
 pub(super) fn timer(timer: &TimerState, now: Ms) -> String {
     let (Some(project), Some(started_at)) = (&timer.project, timer.started_at) else {
         return "none".into();
@@ -202,7 +228,12 @@ pub(super) fn timer(timer: &TimerState, now: Ms) -> String {
         parts.push(note.clone());
     }
     parts.push(format_hm(now - started_at));
-    parts.join(" · ")
+    let text = parts.join(" · ");
+    if timer.suggested {
+        format!("{text} (suggested)")
+    } else {
+        text
+    }
 }
 
 pub(super) fn tracker_state<Tz: TimeZone>(
@@ -265,8 +296,10 @@ mod tests {
     use crate::capture::PermissionStatus;
     use crate::db::away::AwayReason;
     use crate::db::recordings::{Recording, RecordingSpan};
+    use crate::db::stored_suggestions::StoredSuggestion;
     use crate::recordings::cli::{RecordRequest, Recorded};
     use crate::recordings::{Overlap, Span};
+    use crate::scripting::writes::Suggested;
     use crate::tracker::PauseUntil;
 
     const MINUTE: Ms = 60_000;
@@ -727,16 +760,18 @@ mod tests {
                 project: "ac".into(),
                 note: String::new(),
                 tag: None,
+                final_write: false,
+                source: None,
             },
         }
     }
 
     #[test]
     fn timer_start_prints_the_project_and_the_start_time() {
-        let result = serde_json::to_value(TimerStarted {
+        let result = serde_json::to_value(TimerStarted::Recording(Recorded {
             recording: timer_recording("", "2026-10-21T09:15:00+02:00", None),
             project_name: "Acme".into(),
-        })
+        }))
         .unwrap();
 
         assert_eq!(
@@ -747,11 +782,11 @@ mod tests {
 
     #[test]
     fn timer_stop_prints_the_span_and_the_duration() {
-        let result = serde_json::to_value(timer_recording(
+        let result = serde_json::to_value(Timer::Recording(timer_recording(
             "",
             "2026-10-21T09:15:00+02:00",
             Some("2026-10-21T10:40:00+02:00"),
-        ))
+        )))
         .unwrap();
 
         assert_eq!(
@@ -762,7 +797,7 @@ mod tests {
 
     #[test]
     fn timer_stop_of_a_continued_recording_prints_only_the_closed_span() {
-        let result = serde_json::to_value(timer_recording_spans(
+        let result = serde_json::to_value(Timer::Recording(timer_recording_spans(
             "",
             &[
                 (
@@ -774,7 +809,7 @@ mod tests {
                     Some("2026-10-21T14:45:00+02:00"),
                 ),
             ],
-        ))
+        )))
         .unwrap();
 
         assert_eq!(
@@ -785,7 +820,7 @@ mod tests {
 
     #[test]
     fn timer_start_of_a_continued_recording_prints_where_the_open_span_starts() {
-        let result = serde_json::to_value(TimerStarted {
+        let result = serde_json::to_value(TimerStarted::Recording(Recorded {
             recording: timer_recording_spans(
                 "",
                 &[
@@ -797,12 +832,97 @@ mod tests {
                 ],
             ),
             project_name: "Acme".into(),
-        })
+        }))
         .unwrap();
 
         assert_eq!(
             render_at_now(&timer_message(), &result),
             Ok(Some("started Acme at 14:15".into()))
+        );
+    }
+
+    fn timer_suggestion(spans: &[(&str, &str)], open_start: Option<&str>) -> StoredSuggestion {
+        StoredSuggestion {
+            id: "s1".into(),
+            project_id: Some("p1".into()),
+            note: String::new(),
+            tag_id: None,
+            source: "cli".into(),
+            day: crate::db::time::Day::parse("2026-10-21").unwrap(),
+            spans: spans
+                .iter()
+                .map(|&(start, end)| Span {
+                    start: ms(start),
+                    end: ms(end),
+                })
+                .collect(),
+            created_at: 0,
+            updated_at: 0,
+            open_start: open_start.map(ms),
+        }
+    }
+
+    #[test]
+    fn timer_start_of_a_suggested_timer_prints_where_it_starts_and_how_to_approve_it() {
+        let result = serde_json::to_value(TimerStarted::Suggestion(Suggested {
+            suggestion: timer_suggestion(&[], Some("2026-10-21T09:15:00+02:00")),
+            project_name: Some("Acme".into()),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            render_at_now(&timer_message(), &result),
+            Ok(Some(
+                "suggested a timer for Acme from 09:15 (s1); approve it in the Day view or with timetracker approve s1"
+                    .into()
+            ))
+        );
+    }
+
+    #[test]
+    fn timer_start_that_matched_the_running_recording_says_it_already_runs() {
+        let result = serde_json::to_value(TimerStarted::Running(Recorded {
+            recording: timer_recording("", "2026-10-21T09:15:00+02:00", None),
+            project_name: "Acme".into(),
+        }))
+        .unwrap();
+
+        assert_eq!(
+            render_at_now(&timer_message(), &result),
+            Ok(Some("already running: Acme since 09:15".into()))
+        );
+    }
+
+    #[test]
+    fn timer_stop_of_a_suggested_timer_prints_the_last_span_and_the_duration() {
+        let result = serde_json::to_value(Timer::Suggestion(timer_suggestion(
+            &[
+                ("2026-10-21T09:00:00+02:00", "2026-10-21T10:00:00+02:00"),
+                ("2026-10-21T14:00:00+02:00", "2026-10-21T14:45:00+02:00"),
+            ],
+            None,
+        )))
+        .unwrap();
+
+        assert_eq!(
+            render_at_now(&IpcMessage::TimerStop, &result),
+            Ok(Some("stopped 14:00–14:45 (0:45)".into()))
+        );
+    }
+
+    #[test]
+    fn timer_status_marks_a_suggested_timer() {
+        let state = TimerState {
+            suggested: true,
+            ..running_timer("standup", now() - 25 * MINUTE)
+        };
+
+        assert_eq!(
+            render_at_now(
+                &IpcMessage::TimerStatus,
+                &serde_json::to_value(state).unwrap()
+            ),
+            Ok(Some("timer: Acme · standup · 0:25 (suggested)".into()))
         );
     }
 

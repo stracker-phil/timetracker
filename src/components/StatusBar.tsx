@@ -2,6 +2,7 @@ import { PanelLeft } from "lucide-react";
 import type { Range } from "../api";
 import { useBindingLabel, runCommand } from "../commands";
 import { formatClock, formatDuration } from "../lib/format";
+import { NO_PROJECT } from "../state/slices/suggestions";
 import { useStore } from "../state/store";
 import { useLiveReload } from "./day/useLiveReload";
 import { useCalendarPeriod, useReportRange } from "./shownPeriod";
@@ -9,13 +10,14 @@ import { TrackerStatus } from "./TrackerStatus";
 import { useTimer } from "../queries/status";
 import { PERIOD_TOTALS_KEY, usePeriodTotals } from "../queries/calendar";
 
-/** `⏱ Project 1:23`; a click stops the timer. */
+/** `⏱ Project 1:23`, with `· Suggested` while another app's timer waits for review; a click stops the timer. */
 function RunningTimer() {
   const running = useTimer()?.running;
   if (!running) return null;
   return (
     <button className="status-text status-timer" title="Stop timer" onClick={() => void useStore.getState().stopTimer()}>
-      ⏱ {running.projectName} <span className="tabular">{formatDuration(running.elapsedMs)}</span>
+      ⏱ {running.projectName ?? NO_PROJECT} <span className="tabular">{formatDuration(running.elapsedMs)}</span>
+      {running.suggested && " · Suggested"}
     </button>
   );
 }

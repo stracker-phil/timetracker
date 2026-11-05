@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, RecordingAutofill, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuCommand, MenuState, MiniMonth, PauseUntil, Period, PeriodTotals, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, Timer, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, RecordingAutofill, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuCommand, MenuState, MiniMonth, PauseUntil, Period, PeriodTotals, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -118,10 +118,10 @@ export const api = {
   appIcons: (bundleIds: string[]) => invoke<Record<string, string>>("app_icons", { bundleIds }),
   /** A running timer stops where the new one starts. */
   timerStart: (projectId: string, note: string, tagId: string | null) => invoke<Recording>("timer_start", { projectId, note, tagId }),
-  /** `null` when no timer ran. */
-  timerStop: () => invoke<Recording | null>("timer_stop"),
-  /** The running timer with another project, note and tag; `null` when none runs. */
-  timerUpdate: (projectId: string, note: string, tagId: string | null) => invoke<Recording | null>("timer_update", { projectId, note, tagId }),
+  /** The stopped recording or suggested timer; `null` when no timer ran. */
+  timerStop: () => invoke<Timer | null>("timer_stop"),
+  /** The running timer (a recording, or a suggestion while suggested) with another project, note and tag; `null` when none runs. */
+  timerUpdate: (projectId: string, note: string, tagId: string | null) => invoke<Timer | null>("timer_update", { projectId, note, tagId }),
   timerStatus: () => invoke<TimerStatus>("timer_status"),
   timersRecent: () => invoke<RecentTimer[]>("timers_recent"),
   timerPickerOpen: () => invoke<null>("timer_picker_open"),

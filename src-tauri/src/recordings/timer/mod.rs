@@ -1,13 +1,18 @@
-//! Timers: a recording with an open span, started and stopped now. Both are ordinary undoable changes.
+//! Timers: a recording with an open span, or a stored suggestion with an open start when another app
+//! started it (`suggested.rs`, ADR 0041), started and stopped now. Each is an ordinary undoable change, and
+//! a start stops whatever timer runs.
+
+mod suggested;
 
 use super::checks::{check_tag, checked_note, usable_project};
 use super::ops::Op;
 use super::{Change, MINUTE_MS, Recordings, snap};
 use crate::db::new_id;
-use crate::db::recordings::{self, Recording, RecordingSpan};
+use crate::db::recordings::{self, Recording, RecordingSpan, Span};
+use crate::db::stored_suggestions::{self, StoredSuggestion};
 use crate::db::time::{Day, Ms};
 use crate::error::AppResult;
-use crate::timers::open_start;
+use crate::timers::{self, Timer};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimerInput {
@@ -37,16 +42,13 @@ impl Recordings<'_> {
         let note = checked_note(&input.note)?;
         let project = usable_project(self.db, &input.project_id, None).await?;
         check_tag(self.db, input.tag_id.as_deref()).await?;
-        let running = recordings::running(self.db).await?;
-        if let Some(r) = &running
+        let running = timers::current(self.db).await?;
+        if let Some(Timer::Recording(r)) = &running
             && same_timer(r, &project.id, &note, input.tag_id.as_deref())
         {
             return Ok(Change::unchanged(r.clone()));
         }
-        let start = match &running {
-            Some(r) => stop_time(open_start(r), now, self.snap_minutes),
-            None => self.free_start(now).await?,
-        };
+        let start = self.start_after(running.as_ref(), now).await?;
         let continued = self
             .continued(&project.id, &note, input.tag_id.as_deref(), start, now)
             .await?;
@@ -57,14 +59,16 @@ impl Recordings<'_> {
         };
         let (timed, timing) = continuation_or_new(continued, timer, start, now);
         let label = format!("Start timer for {}", project.name);
-        let op = match running {
-            Some(before) => Op::Batch {
-                label: label.clone(),
-                ops: vec![stopped(before, start, now), timing],
-            },
-            None => timing,
-        };
+        let op = after_stopping(running, start, now, timing, &label);
         self.commit(&mut undo, label, op, &timed.id).await
+    }
+
+    /// Where a timer started now begins: where the running one stops, else the free start.
+    async fn start_after(&self, running: Option<&Timer>, now: Ms) -> AppResult<Ms> {
+        match running {
+            Some(timer) => Ok(stop_time(timer.open_start(), now, self.snap_minutes)),
+            None => self.free_start(now).await,
+        }
     }
 
     /// The latest finished recording of today with this project, note and tag that ends by `start`.
@@ -100,23 +104,31 @@ impl Recordings<'_> {
             .fold(snapped, Ms::max))
     }
 
-    /// Stops the running timer; `None` when none runs.
-    pub async fn stop_timer(&self, now: Ms) -> AppResult<Change<Option<Recording>>> {
+    /// Stops the running timer, a recording or a suggested one; `None` when none runs.
+    pub async fn stop_timer(&self, now: Ms) -> AppResult<Change<Option<Timer>>> {
         let mut undo = self.undo.lock().await;
-        let Some(running) = recordings::running(self.db).await? else {
+        let Some(running) = timers::current(self.db).await? else {
             return Ok(Change::unchanged(None));
         };
-        let id = running.id.clone();
-        let end = stop_time(open_start(&running), now, self.snap_minutes);
-        let change = self
-            .commit(
-                &mut undo,
-                "Stop timer".into(),
-                stopped(running, end, now),
-                &id,
-            )
+        let end = stop_time(running.open_start(), now, self.snap_minutes);
+        let timer = running.clone();
+        let days = self
+            .apply_and_push(&mut undo, "Stop timer".into(), stopping(running, end, now))
             .await?;
-        Ok(change.map(Some))
+        Ok(Change {
+            value: Some(self.reread(&timer).await?),
+            days,
+        })
+    }
+
+    /// `timer` as it is stored now.
+    async fn reread(&self, timer: &Timer) -> AppResult<Timer> {
+        Ok(match timer {
+            Timer::Recording(r) => Timer::Recording(recordings::get(self.db, &r.id).await?),
+            Timer::Suggestion(s) => {
+                Timer::Suggestion(stored_suggestions::get(self.db, &s.id).await?)
+            }
+        })
     }
 
     /// Gives the running timer another project, note and tag; its spans stay. `None` when none runs; an
@@ -125,16 +137,23 @@ impl Recordings<'_> {
         &self,
         input: TimerInput,
         now: Ms,
-    ) -> AppResult<Change<Option<Recording>>> {
+    ) -> AppResult<Change<Option<Timer>>> {
         let mut undo = self.undo.lock().await;
-        let Some(running) = recordings::running(self.db).await? else {
-            return Ok(Change::unchanged(None));
+        let running = match timers::current(self.db).await? {
+            None => return Ok(Change::unchanged(None)),
+            Some(Timer::Suggestion(s)) => {
+                let change = self
+                    .update_suggested_timer(&mut undo, s, input, now)
+                    .await?;
+                return Ok(change.map(|s| Some(Timer::Suggestion(s))));
+            }
+            Some(Timer::Recording(running)) => running,
         };
         let note = checked_note(&input.note)?;
         let project = usable_project(self.db, &input.project_id, Some(&running.project_id)).await?;
         check_tag(self.db, input.tag_id.as_deref()).await?;
         if same_timer(&running, &project.id, &note, input.tag_id.as_deref()) {
-            return Ok(Change::unchanged(Some(running)));
+            return Ok(Change::unchanged(Some(Timer::Recording(running))));
         }
         let id = running.id.clone();
         let after = Recording {
@@ -149,7 +168,43 @@ impl Recordings<'_> {
             after,
         };
         let change = self.commit(&mut undo, "Edit timer".into(), op, &id).await?;
-        Ok(change.map(Some))
+        Ok(change.map(|r| Some(Timer::Recording(r))))
+    }
+}
+
+/// `start`, after stopping `running` where it begins, as one change.
+fn after_stopping(running: Option<Timer>, at: Ms, now: Ms, start: Op, label: &str) -> Op {
+    match running {
+        Some(before) => Op::Batch {
+            label: label.to_string(),
+            ops: vec![stopping(before, at, now), start],
+        },
+        None => start,
+    }
+}
+
+/// Stops `timer` at `end`: a recording's open span closes, a suggestion's open start becomes a span.
+fn stopping(timer: Timer, end: Ms, now: Ms) -> Op {
+    match timer {
+        Timer::Recording(before) => stopped(before, end, now),
+        Timer::Suggestion(before) => Op::Suggestion {
+            after: Some(closed(&before, end, now)),
+            before: Some(before),
+        },
+    }
+}
+
+/// The running suggestion with its open span ending at `end`.
+fn closed(suggestion: &StoredSuggestion, end: Ms, now: Ms) -> StoredSuggestion {
+    let mut spans = suggestion.spans.clone();
+    if let Some(start) = suggestion.open_start {
+        spans.push(Span { start, end });
+    }
+    StoredSuggestion {
+        spans,
+        open_start: None,
+        updated_at: now,
+        ..suggestion.clone()
     }
 }
 
@@ -515,7 +570,10 @@ mod tests {
 
         let change = w.service().stop_timer(at(10, 47)).await.unwrap();
 
-        let stopped = change.value.expect("a stopped recording");
+        let stopped = change
+            .value
+            .and_then(recording_of)
+            .expect("a stopped recording");
         assert_eq!(times(&stopped), [(at(10, 0), at(10, 45))]);
         assert_eq!(stopped.updated_at, at(10, 47));
         assert_eq!(change.days.first(), Some(&Day::of(at(10, 0))));
@@ -534,6 +592,7 @@ mod tests {
             .await
             .unwrap()
             .value
+            .and_then(recording_of)
             .unwrap();
 
         assert_eq!(stopped.end(), Some(at(10, 1)));
@@ -815,7 +874,10 @@ mod tests {
 
         let change = w.service().update_timer(input, at(10, 20)).await.unwrap();
 
-        let updated = change.value.expect("the running recording");
+        let updated = change
+            .value
+            .and_then(recording_of)
+            .expect("the running recording");
         assert_eq!(updated.id, running.id);
         assert_eq!(updated.updated_at, at(10, 20));
         assert_eq!(w.status().await.undo_label.as_deref(), Some("Edit timer"));
@@ -860,6 +922,7 @@ mod tests {
             .await
             .unwrap()
             .value
+            .and_then(recording_of)
             .unwrap();
 
         assert_eq!(updated.tag_id, None);
@@ -956,7 +1019,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(change.value, Some(running.clone()));
+        assert_eq!(change.value, Some(Timer::Recording(running.clone())));
         assert!(change.days.is_empty());
         assert_eq!(w.rows().await, [running]);
         assert_eq!(w.status().await, status);
@@ -977,6 +1040,7 @@ mod tests {
             .await
             .unwrap()
             .value
+            .and_then(recording_of)
             .unwrap();
 
         assert_eq!(stopped.spans[0], finished.spans[0]);
@@ -986,5 +1050,220 @@ mod tests {
         );
         assert_eq!(w.rows().await, [stopped]);
         assert_eq!(w.status().await.undo_label.as_deref(), Some("Stop timer"));
+    }
+
+    async fn suggested(w: &World, input: TimerInput, now: Ms) -> StoredSuggestion {
+        match w
+            .service()
+            .start_suggested_timer(input, "cli", now)
+            .await
+            .unwrap()
+            .value
+        {
+            Timer::Suggestion(s) => s,
+            Timer::Recording(r) => panic!("expected a suggestion, got recording {}", r.id),
+        }
+    }
+
+    async fn stored(w: &World, id: &str) -> StoredSuggestion {
+        stored_suggestions::get(&w.db, id).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn starting_a_final_timer_stops_a_running_suggested_one_in_one_undo_step() {
+        let w = World::new().await;
+        let running = suggested(&w, timer(&w), at(10, 0)).await;
+        let other = TimerInput {
+            project_id: w.other.id.clone(),
+            ..timer(&w)
+        };
+
+        let started = w
+            .service()
+            .start_timer(other, at(10, 32))
+            .await
+            .unwrap()
+            .value;
+
+        assert_eq!((started.start(), started.end()), (at(10, 30), None));
+        let stopped = stored(&w, &running.id).await;
+        assert_eq!(
+            stopped.spans,
+            [Span {
+                start: at(10, 0),
+                end: at(10, 30)
+            }]
+        );
+        assert_eq!(stopped.open_start, None);
+        assert_eq!(w.rows().await, [started]);
+        assert_eq!(
+            w.status().await.undo_label.as_deref(),
+            Some("Start timer for Beta")
+        );
+
+        w.service().undo().await.unwrap();
+
+        assert!(w.rows().await.is_empty());
+        assert_eq!(stored(&w, &running.id).await, running);
+    }
+
+    #[tokio::test]
+    async fn stopping_a_suggested_timer_closes_its_open_span_and_labels_the_change() {
+        let w = World::new().await;
+        let running = suggested(&w, timer(&w), at(10, 0)).await;
+
+        let change = w.service().stop_timer(at(10, 47)).await.unwrap();
+
+        let Some(Timer::Suggestion(stopped)) = change.value else {
+            panic!("expected a stopped suggestion");
+        };
+        assert_eq!(
+            stopped,
+            StoredSuggestion {
+                spans: vec![Span {
+                    start: at(10, 0),
+                    end: at(10, 45)
+                }],
+                open_start: None,
+                updated_at: at(10, 47),
+                ..running
+            }
+        );
+        assert!(change.days.contains(&Day::of(at(10, 0))));
+        assert_eq!(stored(&w, &stopped.id).await, stopped);
+        assert!(w.rows().await.is_empty());
+        assert_eq!(timers::current(&w.db).await.unwrap(), None);
+        assert_eq!(w.status().await.undo_label.as_deref(), Some("Stop timer"));
+    }
+
+    #[tokio::test]
+    async fn a_suggested_timer_stopped_after_twenty_seconds_lasts_one_minute() {
+        let w = World::new().await;
+        let running = suggested(&w, timer(&w), at(10, 0)).await;
+
+        w.service().stop_timer(at(10, 0) + 20_000).await.unwrap();
+
+        assert_eq!(
+            stored(&w, &running.id).await.spans,
+            [Span {
+                start: at(10, 0),
+                end: at(10, 1)
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn undoing_the_stop_of_a_suggested_timer_makes_it_run_again() {
+        let w = World::new().await;
+        let running = suggested(&w, timer(&w), at(10, 0)).await;
+        w.service().stop_timer(at(10, 47)).await.unwrap();
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Stop timer"));
+        assert_eq!(
+            timers::current(&w.db).await.unwrap(),
+            Some(Timer::Suggestion(running))
+        );
+    }
+
+    #[tokio::test]
+    async fn updating_a_suggested_timer_changes_only_project_note_and_tag() {
+        let w = World::new().await;
+        let running = suggested(&w, review(&w), at(10, 0)).await;
+        let input = TimerInput {
+            project_id: w.other.id.clone(),
+            note: "Planning".into(),
+            tag_id: Some(w.beta.id.clone()),
+        };
+
+        let change = w.service().update_timer(input, at(10, 20)).await.unwrap();
+
+        let Some(Timer::Suggestion(updated)) = change.value else {
+            panic!("expected the running suggestion");
+        };
+        assert_eq!(
+            updated,
+            StoredSuggestion {
+                project_id: Some(w.other.id.clone()),
+                note: "Planning".into(),
+                tag_id: Some(w.beta.id.clone()),
+                updated_at: at(10, 20),
+                ..running.clone()
+            }
+        );
+        assert!(change.days.contains(&Day::of(at(10, 0))));
+        assert_eq!(stored(&w, &running.id).await, updated);
+        assert_eq!(
+            w.status().await.undo_label.as_deref(),
+            Some("Edit suggestion")
+        );
+
+        w.service().undo().await.unwrap();
+
+        assert_eq!(stored(&w, &running.id).await, running);
+    }
+
+    #[tokio::test]
+    async fn updating_a_suggested_timer_to_what_it_already_is_writes_nothing() {
+        let w = World::new().await;
+        let running = suggested(&w, review(&w), at(10, 0)).await;
+        let status = w.status().await;
+
+        let change = w
+            .service()
+            .update_timer(review(&w), at(10, 20))
+            .await
+            .unwrap();
+
+        assert_eq!(change.value, Some(Timer::Suggestion(running.clone())));
+        assert!(change.days.is_empty());
+        assert_eq!(stored(&w, &running.id).await, running);
+        assert_eq!(w.status().await, status);
+    }
+
+    #[tokio::test]
+    async fn updating_a_suggested_timer_to_an_unusable_project_or_tag_is_refused() {
+        let w = World::new().await;
+        let running = suggested(&w, review(&w), at(10, 0)).await;
+        projects::set_archived(&w.db, &w.other.id, true)
+            .await
+            .unwrap();
+        let cases = [
+            (
+                "archived project",
+                TimerInput {
+                    project_id: w.other.id.clone(),
+                    ..review(&w)
+                },
+                ErrorKind::InvalidInput,
+            ),
+            (
+                "unknown project",
+                TimerInput {
+                    project_id: "nope".into(),
+                    ..review(&w)
+                },
+                ErrorKind::NotFound,
+            ),
+            (
+                "unknown tag",
+                TimerInput {
+                    tag_id: Some("nope".into()),
+                    ..review(&w)
+                },
+                ErrorKind::InvalidInput,
+            ),
+        ];
+        for (name, input, kind) in cases {
+            let err = w
+                .service()
+                .update_timer(input, at(10, 20))
+                .await
+                .unwrap_err();
+
+            assert_eq!(err.kind(), kind, "{name}");
+        }
+        assert_eq!(stored(&w, &running.id).await, running);
     }
 }

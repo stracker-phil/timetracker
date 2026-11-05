@@ -105,6 +105,9 @@ deleted id is never reused and an undo can restore rows by id.
   always its last), which counts as overlapping everything after its start. Stopping it sets the span's
   `end` to `stop_time`: the snapped now, at least a minute after the span's start. The recordings feature
   enforces this; the repository only checks a recording's own spans and offers the `overlapping` query.
+- At most one timer runs: an open recording span or a running stored suggestion (`open_start` set,
+  [ADR 0041](adr/0041-programmatic-timers-start-as-suggestions.md)), never both; every write checks it
+  (`ops::apply`), and a partial unique index allows one running suggestion.
 - `recordings` keeps no cached start or end: readers that sort by time use the first span
   (`min(recording_spans.start)`), so there is one source of truth for the time.
 - A note is one line ([ADR 0018](adr/0018-one-line-notes-tags-copyable-reports.md)).
@@ -171,7 +174,7 @@ there are no `query!` macros (they need a database at compile time).
 | `activities.rs` | `apps_seen(from, now)`, `list_clipped(from, to, now)`, `close_stale(source, duration)`, `replace_open(id, NewActivity)`, `insert(NewActivity) -> id`, `close_open(source, end)`, `open_by_source`, `overlapping(source, start, end)`, `sources_with_prefix(prefix)` (latest first); `insert_on`, `get_on`, `close_open_on`, `open_by_source_on`, `overlapping_on` take a connection so a caller can combine them in a transaction; `list_for_range(from, to)`, `list_sources(from, to)`, `delete_range(from, to)`, `count_range(from, to)`, `count`, `first_start`; `take_range_on(from, to)` deletes and returns the rows, `restore_on(row)` inserts one under its id | ranges are `[from, to)` and include open spans; touching edges do not overlap; results are not clipped; `close_open` never sets an end before the start |
 | `away.rs` | `insert(NewAway) -> id`, `close_open(end)`, `open`, `list_for_range`, `delete_range`, `count_range`, `take_range_on`, `restore_on` | as for activities; `AwayReason` is stored and sent as `idle`, `sleep`, `lock`, `paused` |
 | `recordings/` | `insert(NewRecording)`, `get`, `update(id, RecordingPatch)`, `delete(id) -> Recording`, `list_for_range`, `running`, `latest(limit)`, `overlapping(start, end, except)`, `count`; `put_on(recording)` writes a row with all its spans, `remove_on`, `get_on`, `overlapping_on` take a connection (`mod.rs`); the types, `check_spans` and `respanned` are in `model.rs` | one transaction per write; the project and the tag (`tag_id`, optional) must exist (`not_found`); a note with a line break is `invalid_input`, notes are stored trimmed; a recording needs a span, each ending after it starts, none overlapping another of the recording, only the last open; a query returns whole recordings with every span (also those outside the range) by first span; `delete` returns the row so it can be restored under its id |
-| `stored_suggestions.rs` | `get`, `list_for_day`, `list_for_days(from, to)`, `put_on(suggestion)` (an exact upsert, what undo uses), `remove_on(id)` | `StoredSuggestion`: spans as JSON, all on `day`; `project_id` optional (ADR 0030); written only through `recordings/stored.rs` (ADR 0028) |
+| `stored_suggestions.rs` | `get`, `list_for_day`, `list_for_days(from, to)` (by day, then the first span's start or the open start), `running` (the suggested timer), `put_on(suggestion)` (an exact upsert, what undo uses), `remove_on(id)` | `StoredSuggestion`: spans as JSON, all on `day`; `project_id` optional (ADR 0030); `open_start` while it runs as a timer (ADR 0041; `spans` may then be empty, `duration(now)` counts the open part); written only through `recordings/stored.rs` and `recordings/timer/suggested.rs` (ADR 0028) |
 | `backup.rs` | `export(db) -> Backup`, `write_to(db, path)` | every table, read in one transaction |
 | `one_tag.rs` | `back_up(migrator, pool, dir) -> Option<TagsDropped>`, `TagsDropped::message` | see [Migrations](#migrations) |
 
@@ -237,7 +240,8 @@ the field:
 ```
 
 Rows have the shape of their IPC types (`Client`, `Project`, `Tag`, `ActivityRow`, `AwayRow`, `Recording`,
-`StoredSuggestion`, `Rule`, `SavedReport`). Version 3 (before migration 0011) had no `storedSuggestions`. Version 1 (before migration 0006) had `tagIds` arrays on recordings and rules
+`StoredSuggestion`, `Rule`, `SavedReport`); a running stored suggestion carries `openStart` (migration 0013,
+left out otherwise, so the version stays 4). Version 3 (before migration 0011) had no `storedSuggestions`. Version 1 (before migration 0006) had `tagIds` arrays on recordings and rules
 instead of `tagId`; the pre-0006 backup is written in it. Version 2 (before migration 0007) had `start` and
 `end` on recordings instead of `spans`. Projects carry `billable` since migration 0008 (an older file has
 none: not billable). There is no import yet; one would map a version 1
@@ -281,6 +285,10 @@ with its `source`, its local `day` and its spans as a JSON array.
 
 `0012_suggestions_without_project.sql` rebuilds `stored_suggestions` with a nullable `project_id` (ADR 0030),
 keeping every row.
+
+`0013_running_suggestions.sql` adds `stored_suggestions.open_start` (ADR 0041): where a suggested timer's open
+span starts, NULL for every existing row and once stopped; the partial unique index
+`stored_suggestions_one_timer` allows one row with it set.
 
 ## Tests
 

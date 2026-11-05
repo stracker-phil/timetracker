@@ -13,6 +13,15 @@ use crate::db::tags::{self, Tag};
 use crate::db::time::{Day, Ms};
 use crate::error::AppError;
 use crate::test_support::project;
+use crate::timers::Timer;
+
+/// The recording a timer write returned; none for a suggested timer.
+pub fn recording_of(timer: Timer) -> Option<Recording> {
+    match timer {
+        Timer::Recording(recording) => Some(recording),
+        Timer::Suggestion(_) => None,
+    }
+}
 
 pub const MIN: Ms = 60_000;
 pub const HOUR: Ms = 60 * MIN;

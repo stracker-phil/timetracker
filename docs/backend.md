@@ -178,7 +178,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `rule_set_enabled` | `id, enabled: bool` | `Rule` | `not_found` |
 | `rule_preview` | `input: RuleInput, days: u32` | `RulePreview { hits: PreviewHit[] { block, day }, totalMs, days }`: what the conditions alone match over the last `days` days, today included (see [Rules and suggestions](#rules-and-suggestions)) | `invalid_input` (`field: conditions`), `db` |
 | `suggestions` | `day: Day` | `Suggestion[]` (the same as in `DayView`) | `db` |
-| `suggestion_approve` | `day: Day, id` | `SuggestionApproved { recording, durationMs }`: the recording, created like `recording_create` with `overlap: cancel` (undoable), and its length for the toast | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
+| `suggestion_approve` | `day: Day, id` | `SuggestionApproved { recording, durationMs }`: the recording, created like `recording_create` with `overlap: cancel` (undoable), and its length for the toast; a running stored suggestion becomes the running timer ([Timers](#timers)) | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
 | `suggestion_approve_rule` | `day: Day, ruleId` | `Recording[]`: every suggestion of the rule on the day, one undo entry `Approve suggestion` / `Approve n suggestions` (`Recordings::create_all_with`; one that would overlap is left out) | `not_found` (no suggestions), `db` |
 | `suggestions_approve` | `day: Day, ids: string[]` | `Recording[]`: the suggestions `ids` still on the day (the shown ones; others are not touched), one undo entry `Approve suggestion` / `Approve n suggestions` | `not_found` (none of them left), `db` |
 | `suggestion_approve_edited` | `day: Day, id, input: RecordingInput, overlap` | `Recording`: `input` (the editor's fields) created and the suggestion's whole span dismissed (a stored one deleted), one undo entry (`Recordings::create_with`) | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
@@ -397,12 +397,14 @@ running recording shows in the status bar and the tray at once.
   `Op::Suggestion { before, after }` on a stored suggestion (create, edit, delete); `inverse()` swaps them (a
   batch reversed). `suggestion_days` adds a dismissal's or stored suggestion's day to the days a change touched. `apply` runs the op in one transaction through
   `db::recordings::put_on` (the row and all its spans exactly as given, timestamps, tag and span ids included)
-  and `remove_on`, then refuses with `overlap` if any span it wrote shares time with another recording's;
-  then nothing is written.
+  and `remove_on`, then refuses with `overlap` if any span it wrote shares time with another recording's, and with
+  `invalid_input` ("Another timer is running; stop it first") if more than one timer would run
+  (`check_one_timer`: open recording spans and running stored suggestions, ADR 0041); then nothing is written.
 - **Undo** (`undo.rs`): `UndoStack` keeps the last 100 changes of this run with their labels (`Record 45m
   for Acme`, `Move recording`, `Resize recording`, `Edit recording`, `Delete recording`, `Add time`, `Remove
   time`, `Split time`, `Merge recordings`, `Approve suggestion`, `Approve n suggestions`, `Dismiss suggestion`, `Dismiss n suggestions`, from
-  `recordings::suggestions_label`); a new change clears
+  `recordings::suggestions_label`; `Start timer for Acme`, `Suggest timer for Acme`, `Stop timer`, `Edit timer`,
+  `Approve timer for Acme`); a new change clears
   the redo list. `undo` applies the inverse, `redo` the op again; one that would now overlap is refused and
   the stack stays as it was. `Recordings::undo`/`redo` live in `undo.rs`; `dismiss_with` (one `Op::Batch` of
   the ops that settle each suggestion) in `review.rs`.
@@ -555,7 +557,10 @@ through the CLI and MCP, share the list and the review.
   `list_for_day`) without recorded time and without the time of suggestions stored before it (by
   `createdAt`); a piece the cut leaves under `MIN_SUGGESTION_MS` is dropped, a whole span stays at any
   length. Ids are `stored:<id>:<start>:<end>`, `storedId` is the stored id, `ruleIds` is empty and `by` is
-  the source. One without a project (`projectId: null`, ADR 0030) has `projectId`, `projectName` and
+  the source. A running one (a suggested timer, ADR 0041) adds its open span from `openStart` to the view's
+  `now` (at least a minute, `MIN_OPEN_MS`); the piece of it that reaches that end stays at any length, has
+  `running: true` and the stable id `stored:<id>:<start>:open`, and the open time counts as taken for later
+  suggestions and the rules. One without a project (`projectId: null`, ADR 0030) has `projectId`, `projectName` and
   `clientName` null and the `graphite` accent (`NO_PROJECT_COLOR`, `NO_PROJECT_SHADE`).
 - `review.rs` (re-exported from `rules/mod.rs`): `approve`, `approve_all(ids)`, `approve_rule`, `approve_edited`
   and `dismiss(ids)` rebuild the day's suggestions and find them again through one lookup (`find_where`; a
@@ -570,17 +575,24 @@ through the CLI and MCP, share the list and the review.
   includes the joined suggestions the rule shares; its time stays the rule's even after the rule is edited
   or a recording over it is deleted. `approve_edited` creates the edited recording and dismisses the
   suggestion's span (or deletes the stored suggestion) in one `Op::Batch` (`Recordings::create_with`), so
-  what the edit left out does not come back. `input_of` refuses a suggestion without a project ("The
+  what the edit left out does not come back. A running stored suggestion is approved alone
+  (`approve_running`): its pieces before now become closed spans and the piece reaching now the open span of
+  a new running recording, and the suggestion is deleted, in one `Op::Batch` ("Approve timer for Acme",
+  `Recordings::approve_suggested_timer`); without a piece reaching now (a recording took that time) it is
+  `overlap`. `approve_edited` takes only the input's project, note and tag for it, `approve_patched` refuses
+  spans ("Stop the timer first"), and `approve_all`, `approve_rule` and Approve all skip it. `input_of` refuses a suggestion without a project ("The
   suggestion has no project yet; pick one first") unless the approval names one (`approve_patched`'s
   patch, `approve_edited`'s input), so `approve` and `approve_all` change nothing when one of them lacks it.
 - Stored suggestions are written by `recordings/stored.rs`: `Recordings::create_suggestion(input, source)`
   (a `SuggestionInput`, or a `RecordingInput` through `From`; "Suggest 0:30 for Acme", or "Suggest 0:30"
   without a project), `update_suggestion(id, RecordingPatch)` ("Edit suggestion"; a patch's project sets or
-  changes it, none keeps it; an unchanged one writes nothing) and `delete_suggestion(id)` ("Delete suggestion"), each an undoable `Op::Suggestion
+  changes it, none keeps it; an unchanged one writes nothing; a running one refuses `spans`, "Stop the timer
+  first") and `delete_suggestion(id)` ("Delete suggestion"; a running one's timer stops with it), each an undoable `Op::Suggestion
   { before, after }`. Spans are snapped like a recording's, must not overlap each other and must lie on one
   local day (`spans`: "must lie on one day"); `source` is one line of at most 40 characters; the project
   must not be archived, and may be left out (ADR 0030). They may share time with recordings (migration
-  `0011_stored_suggestions.sql`; spans as JSON; `0012` makes the project nullable).
+  `0011_stored_suggestions.sql`; spans as JSON; `0012` makes the project nullable; `0013` adds `open_start`, ADR
+  0041).
 - `day_of_rules` (`rules_today`): per active rule, the matched time (`suggest::matched_ms`) and the day's
   pending suggestions.
 - `preview` builds the views of the last days (`day::view_of`, without suggestions) and lists the
@@ -649,9 +661,9 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `activity delete DAY` / `activity delete FROM TO` | `activityDelete { from, to }`: `DAY` (`YYYY-MM-DD`, `today`, `yesterday`) is its local bounds; `FROM`/`TO` as `instant` | `deleted 412 activity spans and 3 away spans` and `undo within 30 s: timetracker activity undo` |
 | `activity undo` | `activityDeleteUndo` | `restored 412 activity spans and 3 away spans`; nothing to undo exits 1 with `Nothing to undo` |
 | `report [today\|yesterday\|week\|last-week\|month\|last-month\|DAY\|FROM TO] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30] [--up]` | `report { request: ReportRequest }` (`cli/report.rs` parses the range and flags); the app resolves names (`reports::cli`: an id, an exact name ignoring case, or a unique start; several matches list them) and runs the report | the report text and `Billable: 6:24 of 8:00 (80 %)` (when time is recorded); `--json`: the `ReportResult` (with `billable { recordedMs, billableMs, percent }`) plus `text`, with `from`, `to` and `title` first and `text` last (`reports::cli::leading`) |
-| `timer start PROJECT [--note N] [--tag T]` (hidden alias `start`) | `timerStart { request: TimerStartRequest }`; the app resolves the project and tag like `record` | `started Acme at 09:15` (the open span's start; a recording of today with the same project, note and tag continues); `--json`: the `Recording` plus `projectName` |
-| `timer stop` (hidden alias `stop`) | `timerStop` | `stopped 09:15–10:40 (1:25)` (the span just closed) or `no timer running` (exit 0) |
-| `timer status` | `timerStatus` | `timer: Acme · standup · 0:25` or `timer: none`; `--json`: `TimerState` |
+| `timer start PROJECT [--note N] [--tag T] [--source S] [--final] [--draft]` (hidden alias `start`, the same flags) | `timerStart { request: TimerStartRequest { project, note, tag, final, source } }` (`TimerStartArgs`; `final` is `--final` unless `--draft`, `FinalArgs`); the app resolves the project and tag like `record`. Without `final` it starts a suggested timer (ADR 0041, source `cli` unless `--source`; a request without `final` and `source` is one too) | `suggested a timer for Acme from 09:15 (<id>); approve it in the Day view or with timetracker approve <id>` (today's suggestion with the same project, note, tag and source continues), or `already running: Acme since 09:15` when a recording with that project, note and tag runs (it stays as it is), or with `--final` `started Acme at 09:15` (the open span's start; a recording of today with the same project, note and tag continues); `--json`: `TimerStarted`, `{ kind: suggestion \| recording \| running, … }` with the stored suggestion or the recording plus `projectName` |
+| `timer stop` (hidden alias `stop`) | `timerStop` | `stopped 09:15–10:40 (1:25)` (the span just closed, of a recording or a suggested timer) or `no timer running` (exit 0); `--json`: `Timer \| null`, tagged by `kind` |
+| `timer status` | `timerStatus` | `timer: Acme · standup · 0:25` (with ` (suggested)` after a suggested timer) or `timer: none`; `--json`: `TimerState` |
 | `timer update [--project P] [--note N] [--tag T\|--no-tag]` | `timerUpdate { request: TimerUpdateRequest }`: absent fields stay (`timers::commands::update_by_name`); refused without a timer | `timer: …` |
 | `timer pick` | `timerPicker`: `timers::picker::open` on the focused screen, as the timer shortcut; the main window stays as it is | – |
 | `timer recent [--limit N]` | `timerRecent { limit }` (default `timers::RECENT`, 8; 1 to `timers::MAX_RECENT`, 100; `scripting::timer::recent` clamps any other sender's) | one line each, `Portal · standup #development  <projectId>`, or `no recent timers`; `--json`: `RecentTimerEntry[]` |
@@ -693,8 +705,9 @@ window: hidden
 `current` is the tracker's open activity only; an open external span (`activity start`) does not show here.
 `--json` prints the reply's `result` instead (`status --json` is a `StatusReport { version, tracker,
 timer, billable, windowVisible }`; `tracker` and `billable` are `null` while the data store is unavailable,
-`timer` is a `TimerState { running, recordingId, projectId, project, client, tagId, tag, note, startedAt,
-startedAtIso, elapsedMs }`, every field but `running` `null` without a timer); an error prints
+`timer` is a `TimerState { running, suggested, recordingId, suggestionId, source, projectId, project, client,
+tagId, tag, note, startedAt, startedAtIso, elapsedMs }`, every field but `running` and `suggested` `null` without
+a timer; a suggested timer has `suggestionId` and `source` instead of `recordingId`); an error prints
 `{ "kind", "message" }`.
 
 **Scripting** (`scripting/`, ADR 0028): what the CLI reads and writes for other apps. `catalog.rs`
@@ -769,7 +782,7 @@ Every message is logged by type (`IpcMessage::kind`, never the contents).
 | `record`, `edit`, `delete { id, final }`, `approve { ids }` | `scripting::writes` | `Written`, `Written`, `Deleted`, `Recorded[]` |
 | `recordings { range }`, `suggestions { range }` | `scripting::listing` | `RecordingEntry[]`, `SuggestionEntry[]` |
 | `projects`, `clients`, `tags` | `scripting::catalog` | `ProjectEntry[]`, `ClientEntry[]`, `TagEntry[]` |
-| `timerStart`, `timerStop`, `timerStatus`, `timerUpdate` | `timers::commands::start_by_name`, `stop`, `scripting::timer::state`, `timers::commands::update_by_name` | `TimerStarted`, `Recording \| null`, `TimerState`, `TimerState` |
+| `timerStart`, `timerStop`, `timerStatus`, `timerUpdate` | `timers::commands::start_by_name`, `stop`, `scripting::timer::state`, `timers::commands::update_by_name` | `TimerStarted`, `Timer \| null`, `TimerState`, `TimerState` |
 | `timerPicker` | `timers::picker::open(app, Place::OnFocusedScreen)` | `null` |
 | `timerRecent { limit }` | `scripting::timer::recent` | `RecentTimerEntry[]` |
 | `watch` | `watch::current`; `ipc` then streams (only as a request) | `WatchEvent[]`: the timer, and the tracker unless it is off |
@@ -872,7 +885,8 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
 - `mcp/writes.rs`: the write tools. Each builds the CLI's `IpcMessage`, asks the app and answers with the
   CLI's line (`cli::reply::render`). `final`/`draft`/`replace` mean what `--final`/`--draft`/`--replace` do;
   spans are `[{ start, end }]` in `cli::time::instant` words. A suggestion's source is the client's
-  `clientInfo` title or name from the handshake (at most 40 characters), else `mcp`.
+  `clientInfo` title or name from the handshake (at most 40 characters), else `mcp`; so is a suggested timer's
+  (`timer_start` without `final`).
 
 | Tool | Args | Returns |
 |---|---|---|
@@ -882,18 +896,18 @@ nothing is logged. stdio is not the network ([ADR 0013](adr/0013-no-network.md) 
 | `tags` | – | `[{ id, name }]` |
 | `recent_timers` | `limit` (default 8, held to 1 to 100) | `[{ project_id, project, client?, tag?, note, last_used_iso }]` from `scripting::timer::recent`, newest first |
 | `clients` | – | `[{ id, name, archived }]` |
-| `suggestions` | `from`, `to` (default `from`; at most 62 days) | `[{ id, kind (rule, stored), by, day, spans: [{ start_iso, end_iso }], duration_min, project, client?, note, tag }]` from `scripting::listing::suggestions`; a stored one with all of its shown pieces |
+| `suggestions` | `from`, `to` (default `from`; at most 62 days) | `[{ id, kind (rule, stored), by, day, spans: [{ start_iso, end_iso }], duration_min, project, client?, note, tag, running }]` from `scripting::listing::suggestions`; a stored one with all of its shown pieces; `running` for a suggested timer, whose last span ends now |
 | `record` | `project` (optional; required with `final`), `spans`, `note`, `tag`, `final`, `draft`, `replace` | `IpcMessage::Record`: a stored suggestion unless final; the CLI's `suggested …` / `recorded …` line |
 | `edit` | `id`, `project`, `note`, `tag`, `clear_tag`, `spans`, `final`, `draft`, `replace` | `IpcMessage::Edit`: changes a suggestion, records one with `final`, changes a recording only with `final` |
 | `delete` | `id`, `final`, `draft` | `IpcMessage::Delete`: dismisses a suggestion; deletes a recording only with `final` |
 | `approve` | `ids` | `IpcMessage::Approve`: one recording per suggestion |
-| `timer_start` | `project`, `note`, `tag` | `IpcMessage::TimerStart` |
+| `timer_start` | `project`, `note`, `tag`, `final`, `draft` | `IpcMessage::TimerStart`: a suggested timer from the client's source unless final (ADR 0041); the CLI's `suggested a timer …` / `started …` line |
 | `timer_stop` | – | `IpcMessage::TimerStop` |
 | `timer_update` | `project`, `note`, `tag`, `clear_tag` | `IpcMessage::TimerUpdate` |
 | `timer_picker` | – | `IpcMessage::TimerPicker`: the timer picker on the user's screen |
 | `day_summary` | `day` | `{ day, recorded_min, tracked_min, away_min, by_project, by_tag }`; totals from `day::view_of`, the groups `[{ name, minutes, notes }]` from `reports::run` for that day |
 | `activity` | `day` | `{ activity: [{ start_iso, end_iso, app, title, url?, path?, source }], away: [{ start_iso, end_iso, reason }] }`; private rows keep only the app. Refused (`Activity is not exposed to MCP. Enable it in Settings → Data.`) unless `settings.mcp.exposeActivity` |
-| `status` | – | `IpcMessage::Status` to the app: `{ version, tracker: { state, text, current: { app, title?, url?, since_iso } }, timer: { project, client?, tag?, note, start_iso, elapsed_min }, window_visible }`; the current title and URL only when activity is exposed |
+| `status` | – | `IpcMessage::Status` to the app: `{ version, tracker: { state, text, current: { app, title?, url?, since_iso } }, timer: { project, client?, tag?, note, start_iso, elapsed_min, suggestion_id? }, window_visible }`; the current title and URL only when activity is exposed |
 | `open_day` | `day` | `IpcMessage::Show { day, focus: true }` to the app |
 
 Days are `YYYY-MM-DD`, `today` or `yesterday` (`cli::time::day`); ranges parse with `cli::report::range`, the
@@ -922,7 +936,7 @@ tray's own `on_menu_event` only starts recent timers (`start_recent`).
 | Pause Tracking ▸ For 15 Minutes, For 1 Hour, Until Tomorrow, Until Resumed | `tracker:pause:15`, `:60`, `:tomorrow`, `:resumed` | `Tracker::pause` (hidden while paused) |
 | Resume Tracking | `tracker:resume` | `Tracker::resume` (only while paused) |
 | Start Timer… | `timer:startUnderTray` (hidden) | `timers::picker::open(app, Place::UnderTray)` |
-| Stop Timer (Acme, 1h 23m) | `timer:stop` | `timers::commands::stop` (disabled without a timer) |
+| Stop Timer (Acme, 1h 23m) | `timer:stop` | `timers::commands::stop` (disabled without a timer; `(suggested)` after a suggested timer's) |
 | Recent Timers ▸ `Project · note` | `timer.recent.<n>` | starts that combination (tray only) |
 | Open TimeTracker | `app:show` | `window::show_main` |
 | Settings… | `app:settings` | `window::settings::open` |
@@ -933,34 +947,57 @@ follows `TrayIcon::of(state)`: `icons/tray/tray@2x.png` (running or away), `paus
 the clock) and `attention@2x.png` (an exclamation mark: the permission is missing). `sync` only relabels the
 status item while the icon stays the same, and rebuilds menu and icon when it changes, so an open menu is not
 replaced every few seconds. `tray::set_timer` shows a running timer as the item's title, `⏱ 1h 23m Acme` (the
-project cut to 24 characters), and rebuilds the timer items. The tray's click events go to
+project cut to 24 characters, `No project` without one; `⏱ 1h 23m Acme (suggested)` for a suggested timer), and
+rebuilds the timer items. The tray's click events go to
 `tauri_plugin_positioner::on_tray_event`, so the picker can open under the icon.
 
 ## Timers
 
-A timer is a recording with an open span, so the overlap rule, undo and reports need nothing new.
+A timer is a recording with an open span, so the overlap rule, undo and reports need nothing new. One that
+another app starts (the CLI's `timer start` and `start`, the MCP `timer_start`, a socket `timerStart` without
+`final`) is a suggested timer instead: a stored suggestion with an open start, reviewed like any suggestion
+([ADR 0041](adr/0041-programmatic-timers-start-as-suggestions.md)). At most one timer of either kind runs.
 
-- `recordings/timer.rs`: `Recordings::start_timer(TimerInput, now)` starts at `snap(now)`, moved forward past
-  any span that ended since (`free_start`); a running timer stops at that same instant, in one batch
-  ("Start timer for Acme"). A finished recording of today with the same project, note and tag whose spans
+- `timers/current.rs`: `Timer { Recording | Suggestion }` (serialized with `kind`), the running one, and
+  `current(db)`: the running recording, else the running stored suggestion (`stored_suggestions::running`);
+  `id`, `open_start`, `project_id`, `note`, `tag_id`, `is_suggested` and `source` read either.
+- `recordings/timer/mod.rs`: `Recordings::start_timer(TimerInput, now)` starts at `snap(now)`, moved forward past
+  any span that ended since (`free_start`); a running timer of either kind stops at that same instant, in one
+  batch ("Start timer for Acme"). A finished recording of today with the same project, note and tag whose spans
   all end by then continues: it gets the open span instead of a new recording being made (the latest such
   one). When the running timer already is that project, note and tag, nothing changes. `stop_timer(now)`
   closes the open span at `stop_time(start, now, snap)`: on the grid, and at least a minute long; it
-  changes nothing else, so edits made while the timer ran stay. Both go through `apply`'s overlap check and onto the undo stack; undoing a stop makes
-  the timer run again.
-- `timers/mod.rs`: `status(db, now) -> TimerStatus { running: Option<RunningTimer { recording, projectName,
-  color, shade, elapsedMs }> }` (`elapsedMs` since the open span started, `open_start`), `recent(db, 8) -> RecentTimer[]` (distinct project, note and tag of finished
+  changes nothing else, so edits made while the timer ran stay; a suggested timer's open start becomes its last
+  span (`closed`). `stop_timer` and `update_timer` (project, note and tag; "Edit timer", or "Edit suggestion"
+  on a suggested timer) return the `Timer`. All go through `apply`'s checks and onto the undo stack; undoing a
+  stop makes the timer run again.
+- `recordings/timer/suggested.rs`: `start_suggested_timer(TimerInput, source, now)` starts like `start_timer`
+  and stops whatever runs first, in one batch ("Suggest timer for Acme"); today's finished stored suggestion
+  with the same project, note, tag and source whose spans end by then continues (it gets the open start),
+  else a new one is stored with no spans and the open start. When the running timer, a recording or a
+  suggested one, already has that project, note and tag, nothing changes and it returns that `Timer` (the
+  owner's timer wins; `timers::commands::start_suggested` also returns it when the start repeats its origin). `approve_suggested_timer(id, input, open_start)` turns the
+  running suggestion into the running recording (`rules::approve`, see [Rules and
+  suggestions](#rules-and-suggestions)).
+- `timers/mod.rs`: `status(db, now) -> TimerStatus { running: Option<RunningTimer { id, suggested, source,
+  projectId, note, tagId, openStart, projectName, color, shade, elapsedMs }> }` (flat for both kinds: `id` is the
+  recording's or the suggestion's, `projectName` null and the graphite accent for a suggested timer without a
+  project; `elapsedMs` since the open span started), `recent(db, 8) -> RecentTimer[]` (distinct project, note and tag of finished
   recordings, newest first, archived projects left out; also `timer recent` and the MCP `recent_timers`), `publish(app)` (the `timer_status` event, the tray, the watchers and `Running`, the flag `timers::runs` reads for `timer:stop`; a change refreshes the menu),
   `start_ticking(app)` (publishes at startup and every minute while a timer runs).
-- `timers/origin.rs`: `TimerOrigin { recording_id, input: TimerInput }`, the last start of this run, kept in
+- `timers/origin.rs`: `TimerOrigin { timer_id, input: TimerInput }`, the last start of this run, kept in
   `AppState.timer_origin` (memory only); `repeats(origin, running_id, input)` is whether a start repeats
-  the one that made the running recording. `timers::commands::start` then returns the running timer as it
-  is, so starting the same timer again (the tray, the picker, the CLI) never undoes what the owner edited
+  the one that made the running timer (a recording or a suggestion). `timers::commands::start` (and
+  `start_suggested`) then returns the running timer as it is, so starting the same timer again (the tray, the picker, the CLI) never undoes what the owner edited
   since; after any other start it sets the origin. `continued` matches the current fields only.
-- `timers/commands.rs`: `timer_start(projectId, note, tagId)`, `timer_stop` (`null` without a timer),
+- `timers/commands.rs`: `timer_start(projectId, note, tagId)` (the picker's: always a running recording, as the
+  tray's recent timers and the menus start), `timer_stop` (the stopped `Timer`, `null` without a timer),
   `timer_update(projectId, note, tagId)` (the running timer's fields through `Recordings::update_timer`, spans
-  untouched; `null` without a timer),
-  `timer_status`, `timers_recent`, `timer_picker_open`, `timer_picker_close`; `start_by_name` serves the CLI;
+  untouched; the `Timer`, `null` without a timer),
+  `timer_status`, `timers_recent`, `timer_picker_open`, `timer_picker_close`; `start_by_name` serves the CLI and
+  MCP: a suggested timer (`start_suggested`, source `cli` unless the request names one) unless `final`, and
+  answers `TimerStarted { kind: recording | suggestion | running, … }` with `projectName` (`running`: the
+  running recording a suggested start left as it is);
   `register` adds the bus commands `timer:start`, `timer:startUnderTray` (hidden), `timer:stop` (while one
   runs) and `timer:toggle`.
 - `timers/picker.rs`: the `timer` window (`src/windows/timer/index.html`, 380×380, no decorations, transparent,
@@ -977,7 +1014,8 @@ A timer is a recording with an open span, so the overlap rule, undo and reports 
   builds, so the release app keeps it; `null` turns it off) open or close the picker from any app (`tauri-plugin-global-shortcut`). Only a chord with a Tauri key name
   (`keybindings::is_global`) qualifies; `sanitized` resets others. `update_settings` registers a changed
   shortcut before saving it and returns `invalid_input` when the system refuses.
-- `status` and `timer status` (CLI, `StatusReport.timer`, a flat `scripting::timer::TimerState`) print `timer: Acme · standup · 0:25`.
+- `status` and `timer status` (CLI, `StatusReport.timer`, a flat `scripting::timer::TimerState`) print `timer: Acme · standup · 0:25`
+  (`timer: Acme · 0:25 (suggested)` for a suggested timer); `watch` sends the same `TimerState`.
 
 ## Persistence
 

@@ -223,6 +223,7 @@ fn suggestion(rules: &[&Compiled], start: Ms, end: Ms, names: &Names) -> Option<
         tag: tag.map(|t| t.name.clone()),
         tag_emoji: tag.and_then(|t| t.emoji.clone()),
         next_card: None,
+        running: false,
     })
 }
 
@@ -506,6 +507,7 @@ mod tests {
                 tag: Some("tag t1".into()),
                 tag_emoji: None,
                 next_card: None,
+                running: false,
             }]
         );
     }

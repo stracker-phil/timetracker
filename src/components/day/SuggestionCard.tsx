@@ -1,12 +1,13 @@
 import { memo, useEffect, useRef, type CSSProperties } from "react";
 import { Check, FolderPlus, Sparkles, X } from "lucide-react";
 import type { Suggestion } from "../../api";
-import { formatClock, formatDuration } from "../../lib/format";
+import { formatDuration } from "../../lib/format";
 import { NO_PROJECT, isApprovable } from "../../state/slices/suggestions";
 import { useStore } from "../../state/store";
 import { AccentDot, shadeColor } from "../Accent";
 import { Card } from "../Card";
 import { TagLabel } from "../TagLabel";
+import { spanLabel } from "./SuggestionBlock";
 
 const MINUTE_MS = 60_000;
 
@@ -15,7 +16,8 @@ interface Props {
   focused: boolean;
 }
 
-/** A suggestion in the timesheet as a ghost card: ✓ approves, ✕ dismisses, a click edits (↵, ⌫, E when focused). */
+/** A suggestion in the timesheet as a ghost card: ✓ approves, ✕ dismisses, a click edits (↵, ⌫, E when focused).
+ *  A suggested timer's piece runs (the pulsing dot); approving it keeps the timer running as a recording. */
 export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focused }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -28,12 +30,12 @@ export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focu
     ? { label: "Approve", icon: <Check size="1rem" aria-hidden="true" /> }
     : { label: "Pick a project", icon: <FolderPlus size="1rem" aria-hidden="true" /> };
   const subtitle = s.note ? project : s.clientName;
-  const span = `${formatClock(s.start)}–${formatClock(s.end)}`;
+  const span = spanLabel(s);
   const store = useStore.getState;
   return (
     <Card
       ref={ref}
-      className={focused ? "sheet-card suggestion-card focused" : "sheet-card suggestion-card"}
+      className={["sheet-card suggestion-card", focused && "focused", s.running && "running"].filter(Boolean).join(" ")}
       color={shadeColor(s.color, s.shade)}
       style={{ "--card-minutes": Math.round(s.durationMs / MINUTE_MS) } as CSSProperties}
       role="group"

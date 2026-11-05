@@ -2,6 +2,7 @@
 //! global shortcut that start one. Starting and stopping are recordings changes (`recordings::timer`).
 
 pub mod commands;
+mod current;
 pub mod origin;
 #[cfg(target_os = "macos")]
 mod panel;
@@ -19,13 +20,15 @@ use ts_rs::TS;
 
 use crate::db::Db;
 use crate::db::projects;
-use crate::db::recordings::{self, Recording};
+use crate::db::recordings;
 use crate::db::time::{Ms, now_ms};
 use crate::error::AppResult;
 use crate::events::TIMER_STATUS_EVENT;
 use crate::recordings::timer::TimerInput;
+use crate::rules::stored::{NO_PROJECT_COLOR, NO_PROJECT_SHADE};
 use crate::state::AppState;
 use crate::{menu, tray, watch};
+pub use current::{Timer, current, open_start};
 
 /// How many recent timers the tray and the picker offer.
 pub const RECENT: usize = 8;
@@ -36,12 +39,24 @@ const RECENT_SCAN: u32 = 500;
 /// The tray title and the page's elapsed time move on at this pace while a timer runs.
 const TICK: Duration = Duration::from_secs(60);
 
+/// The running timer as the page, the tray and the menu show it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct RunningTimer {
-    pub recording: Recording,
-    pub project_name: String,
+    /// The recording's id, or the stored suggestion's when `suggested`.
+    pub id: String,
+    /// Started by another app: it runs as a suggestion that waits for review (ADR 0041).
+    pub suggested: bool,
+    /// The app that started a suggested timer.
+    pub source: Option<String>,
+    pub project_id: Option<String>,
+    pub note: String,
+    pub tag_id: Option<String>,
+    /// Where the open span starts.
+    pub open_start: Ms,
+    /// None for a suggested timer without a project.
+    pub project_name: Option<String>,
     pub color: String,
     pub shade: u8,
     pub elapsed_ms: i64,
@@ -78,23 +93,30 @@ impl From<RecentTimer> for TimerInput {
     }
 }
 
-/// Where the running recording's open span starts.
-pub fn open_start(running: &Recording) -> Ms {
-    running.open_span().map_or(running.start(), |s| s.start)
-}
-
 pub async fn status(db: &Db, now: Ms) -> AppResult<TimerStatus> {
-    let Some(recording) = recordings::running(db).await? else {
+    let Some(timer) = current(db).await? else {
         return Ok(TimerStatus::default());
     };
-    let project = projects::get(db, &recording.project_id).await?;
+    let project = match timer.project_id() {
+        Some(id) => Some(projects::get(db, id).await?),
+        None => None,
+    };
+    let open_start = timer.open_start();
     Ok(TimerStatus {
         running: Some(RunningTimer {
-            elapsed_ms: (now - open_start(&recording)).max(0),
-            project_name: project.name,
-            color: project.color,
-            shade: project.shade,
-            recording,
+            id: timer.id().to_string(),
+            suggested: timer.is_suggested(),
+            source: timer.source().map(str::to_string),
+            project_id: timer.project_id().map(str::to_string),
+            note: timer.note().to_string(),
+            tag_id: timer.tag_id().map(str::to_string),
+            open_start,
+            elapsed_ms: (now - open_start).max(0),
+            color: project
+                .as_ref()
+                .map_or(NO_PROJECT_COLOR.to_string(), |p| p.color.clone()),
+            shade: project.as_ref().map_or(NO_PROJECT_SHADE, |p| p.shade),
+            project_name: project.map(|p| p.name),
         }),
     })
 }
@@ -188,7 +210,7 @@ pub fn start_ticking(app: &AppHandle) {
 /// Started elsewhere (the CLI, the tray) since the last tick.
 async fn timer_runs(app: &AppHandle) -> bool {
     match app.state::<AppState>().data.db() {
-        Ok(db) => recordings::running(&db).await.ok().flatten().is_some(),
+        Ok(db) => current(&db).await.ok().flatten().is_some(),
         Err(_) => false,
     }
 }
@@ -200,6 +222,8 @@ mod tests {
     use super::*;
     use crate::db::projects::Project;
     use crate::db::recordings::NewRecording;
+    use crate::db::recordings::Recording;
+    use crate::db::stored_suggestions::{self, StoredSuggestion};
     use crate::db::tags;
     use crate::test_support::{project, recording};
 
@@ -266,8 +290,14 @@ mod tests {
         assert_eq!(
             timer,
             RunningTimer {
-                recording: running,
-                project_name: "Acme".into(),
+                id: running.id.clone(),
+                suggested: false,
+                source: None,
+                project_id: Some(running.project_id.clone()),
+                note: running.note.clone(),
+                tag_id: None,
+                open_start: T0,
+                project_name: Some("Acme".into()),
                 color: p.color.clone(),
                 shade: p.shade,
                 elapsed_ms: 25 * MIN,
@@ -310,11 +340,106 @@ mod tests {
         let value = serde_json::to_value(status(&db, T0 + MIN).await.unwrap()).unwrap();
 
         let running = &value["running"];
-        assert_eq!(running["projectName"], "Acme");
-        assert_eq!(running["elapsedMs"], MIN);
-        assert_eq!(running["recording"]["projectId"], json!(p.id));
-        assert_eq!(running["recording"]["spans"][0]["start"], json!(T0));
-        assert_eq!(running["recording"]["spans"][0]["end"], json!(null));
+        assert_eq!(
+            running,
+            &json!({
+                "id": running["id"],
+                "suggested": false,
+                "source": null,
+                "projectId": p.id,
+                "note": "",
+                "tagId": null,
+                "openStart": T0,
+                "projectName": "Acme",
+                "color": p.color,
+                "shade": p.shade,
+                "elapsedMs": MIN,
+            })
+        );
+    }
+
+    async fn put_suggestion(db: &Db, suggestion: &StoredSuggestion) {
+        let mut conn = db.pool().acquire().await.unwrap();
+        stored_suggestions::put_on(&mut conn, suggestion)
+            .await
+            .unwrap();
+    }
+
+    fn running_suggestion(project_id: Option<&str>, open_start: Ms) -> StoredSuggestion {
+        StoredSuggestion {
+            id: "s1".into(),
+            project_id: project_id.map(str::to_string),
+            note: "review".into(),
+            tag_id: None,
+            source: "claude".into(),
+            day: crate::db::time::Day::of(open_start),
+            spans: vec![recordings::Span {
+                start: open_start - 30 * MIN,
+                end: open_start - 10 * MIN,
+            }],
+            created_at: 1_000,
+            updated_at: 2_000,
+            open_start: Some(open_start),
+        }
+    }
+
+    #[tokio::test]
+    async fn status_reports_a_running_suggestion_as_suggested_with_its_source() {
+        let db = db().await;
+        let p = project(&db, "Acme").await;
+        put_suggestion(&db, &running_suggestion(Some(&p.id), T0)).await;
+
+        let timer = status(&db, T0 + 25 * MIN).await.unwrap().running.unwrap();
+
+        assert_eq!(
+            timer,
+            RunningTimer {
+                id: "s1".into(),
+                suggested: true,
+                source: Some("claude".into()),
+                project_id: Some(p.id.clone()),
+                note: "review".into(),
+                tag_id: None,
+                open_start: T0,
+                project_name: Some("Acme".into()),
+                color: p.color.clone(),
+                shade: p.shade,
+                elapsed_ms: 25 * MIN,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn status_reports_a_running_suggestion_without_a_project_in_graphite() {
+        let db = db().await;
+        put_suggestion(&db, &running_suggestion(None, T0)).await;
+
+        let timer = status(&db, T0 + MIN).await.unwrap().running.unwrap();
+
+        assert_eq!(
+            (
+                timer.project_id,
+                timer.project_name,
+                timer.color.as_str(),
+                timer.shade
+            ),
+            (None, None, "graphite", 4)
+        );
+    }
+
+    #[tokio::test]
+    async fn status_prefers_a_running_recording_over_a_running_suggestion() {
+        let db = db().await;
+        let p = project(&db, "Acme").await;
+        put_suggestion(&db, &running_suggestion(Some(&p.id), T0)).await;
+        let running = recording(&db, &p.id, T0 + MIN, None).await;
+
+        let timer = status(&db, T0 + 5 * MIN).await.unwrap().running.unwrap();
+
+        assert_eq!(
+            (timer.id, timer.suggested, timer.open_start),
+            (running.id, false, T0 + MIN)
+        );
     }
 
     #[tokio::test]

@@ -24,12 +24,11 @@ use clap::{CommandFactory, Parser, Subcommand};
 
 use crate::db::time::Ms;
 use crate::ipc::IpcMessage;
-use crate::timers::commands::TimerStartRequest;
 use activity::ActivityCommand;
 pub use batch::split;
 use record::RecordArgs;
 use report::ReportArgs;
-use scripting::{DeleteArgs, EditArgs, ListRange, TimerCommand, TrackerCommand};
+use scripting::{DeleteArgs, EditArgs, ListRange, TimerCommand, TimerStartArgs, TrackerCommand};
 
 const EXAMPLES: &str = "Examples:
   timetracker                          start TimeTracker or bring it to the front
@@ -168,16 +167,7 @@ enum Command {
     Report(ReportArgs),
     /// Same as `timer start`, for older scripts
     #[command(hide = true)]
-    Start {
-        /// The project's id, name or a unique start of its name
-        project: String,
-        /// One line
-        #[arg(long, default_value = "")]
-        note: String,
-        /// A tag by name (at most one)
-        #[arg(long)]
-        tag: Option<String>,
-    },
+    Start(TimerStartArgs),
     /// Same as `timer stop`, for older scripts
     #[command(hide = true)]
     Stop,
@@ -337,9 +327,7 @@ fn message<Tz: TimeZone>(
             request: args.request(now, tz)?,
         },
         Command::Report(args) => args.message(now, tz)?,
-        Command::Start { project, note, tag } => IpcMessage::TimerStart {
-            request: TimerStartRequest { project, note, tag },
-        },
+        Command::Start(args) => args.message(),
         Command::Stop => IpcMessage::TimerStop,
         Command::Timer(command) => command.message(),
         Command::Tracker(command) => command.message()?,
@@ -376,6 +364,7 @@ mod tests {
 
     use super::*;
     use crate::cli::testing::*;
+    use crate::timers::commands::TimerStartRequest;
     use crate::tracker::PauseUntil;
 
     #[test]
@@ -488,6 +477,8 @@ mod tests {
                 project: "acme".into(),
                 note: String::new(),
                 tag: None,
+                final_write: false,
+                source: None,
             },
         };
         for (args, message) in [
@@ -714,6 +705,8 @@ mod tests {
                     project: "acme".into(),
                     note: "x".into(),
                     tag: Some("a".into()),
+                    final_write: false,
+                    source: None,
                 }
             }
         );
@@ -731,6 +724,8 @@ mod tests {
                         project: "acme".into(),
                         note: String::new(),
                         tag: None,
+                        final_write: false,
+                        source: None,
                     }
                 },
                 true,

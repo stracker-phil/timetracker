@@ -145,7 +145,7 @@ fn try_set_timer(
     };
     let mut current = handle.0.lock_unpoisoned();
     current.timer = TimerMenu {
-        running: running.map(|t| format!("{}, {}", t.project_name, format_duration(t.elapsed_ms))),
+        running: running.map(stop_detail),
         recent,
     };
     let text = current.status.text()?;
@@ -156,17 +156,44 @@ fn try_set_timer(
     Ok(())
 }
 
-/// `⏱ 1h 23m Project`, the project cut short.
+/// The project a suggested timer without one shows.
+const NO_PROJECT: &str = "No project";
+/// Marks a timer another app started, which runs as a suggestion (ADR 0041).
+const SUGGESTED: &str = "(suggested)";
+
+fn project_name(timer: &RunningTimer) -> &str {
+    timer.project_name.as_deref().unwrap_or(NO_PROJECT)
+}
+
+/// `Acme, 1h 23m` for Stop Timer, with `(suggested)` after a suggested timer.
+fn stop_detail(timer: &RunningTimer) -> String {
+    let detail = format!(
+        "{}, {}",
+        project_name(timer),
+        format_duration(timer.elapsed_ms)
+    );
+    marked(detail, timer)
+}
+
+/// `⏱ 1h 23m Project`, the project cut short; `(suggested)` after a suggested timer.
 fn title(timer: &RunningTimer) -> String {
-    let mut project: String = timer
-        .project_name
-        .chars()
-        .take(TITLE_PROJECT_CHARS)
-        .collect();
-    if timer.project_name.chars().count() > TITLE_PROJECT_CHARS {
+    let name = project_name(timer);
+    let mut project: String = name.chars().take(TITLE_PROJECT_CHARS).collect();
+    if name.chars().count() > TITLE_PROJECT_CHARS {
         project.push('…');
     }
-    format!("⏱ {} {project}", format_duration(timer.elapsed_ms))
+    marked(
+        format!("⏱ {} {project}", format_duration(timer.elapsed_ms)),
+        timer,
+    )
+}
+
+fn marked(text: String, timer: &RunningTimer) -> String {
+    if timer.suggested {
+        format!("{text} {SUGGESTED}")
+    } else {
+        text
+    }
 }
 
 fn build_menu(
@@ -304,20 +331,14 @@ mod tests {
 
     fn running(project_name: &str, elapsed_ms: i64) -> RunningTimer {
         RunningTimer {
-            recording: crate::db::recordings::Recording {
-                id: "r1".into(),
-                project_id: "p1".into(),
-                note: String::new(),
-                tag_id: None,
-                created_at: 0,
-                updated_at: 0,
-                spans: vec![crate::db::recordings::RecordingSpan {
-                    id: "s1".into(),
-                    start: 0,
-                    end: None,
-                }],
-            },
-            project_name: project_name.into(),
+            id: "r1".into(),
+            suggested: false,
+            source: None,
+            project_id: Some("p1".into()),
+            note: String::new(),
+            tag_id: None,
+            open_start: 0,
+            project_name: Some(project_name.into()),
             color: "blue".into(),
             shade: 0,
             elapsed_ms,
@@ -340,6 +361,44 @@ mod tests {
                 "{elapsed_ms}"
             );
         }
+    }
+
+    fn suggested(project_name: Option<&str>, elapsed_ms: i64) -> RunningTimer {
+        RunningTimer {
+            suggested: true,
+            source: Some("claude".into()),
+            project_name: project_name.map(String::from),
+            ..running("unused", elapsed_ms)
+        }
+    }
+
+    #[test]
+    fn a_suggested_timer_is_marked_in_the_title() {
+        assert_eq!(
+            title(&suggested(Some("Acme"), 83 * 60_000)),
+            "⏱ 1h 23m Acme (suggested)"
+        );
+        assert_eq!(
+            title(&suggested(None, 60_000)),
+            "⏱ 1m No project (suggested)"
+        );
+    }
+
+    #[test]
+    fn stop_timer_names_the_project_and_the_elapsed_time() {
+        assert_eq!(stop_detail(&running("Acme", 83 * 60_000)), "Acme, 1h 23m");
+    }
+
+    #[test]
+    fn stop_timer_marks_a_suggested_timer() {
+        assert_eq!(
+            stop_detail(&suggested(Some("Acme"), 83 * 60_000)),
+            "Acme, 1h 23m (suggested)"
+        );
+        assert_eq!(
+            stop_detail(&suggested(None, 5 * 60_000)),
+            "No project, 5m (suggested)"
+        );
     }
 
     #[test]

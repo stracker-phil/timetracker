@@ -692,13 +692,20 @@ timeline's for every app.
   (still with reduced motion); only its start has a grip (its end moves when the timer stops), and a press on its body opens the editor; ⌥↑ ⌥↓ move only its start, ⌥⇧↑ ⌥⇧↓ do nothing. Starting the timer for a project, note and tag already
   recorded today continues that recording with a new span. The menu bar item's title reads `⏱ 1h 23m Acme` while it runs, and the
   status bar shows `⏱ Acme 1:23` (a click stops it).
+- **Suggested timers** (ADR 0041): a timer another app starts (`timetracker timer start`, Claude over MCP)
+  runs as a suggestion. Its piece reaching now is a ghost card and striped block like any suggestion, with
+  the pulsing dot (on the card left of ✓ and ✕), `since 09:00` in place of its span and no end; it grows with
+  the minute tick. ✓ approves it, and it keeps running as the timer ("Timer approved for Acme", Undo). The
+  status bar reads `⏱ Acme 1:23 · Suggested`.
 - The picker (⌃⌥⌘T from any app, ⌘T in the window, Start Timer… in the tray) is a small floating panel on
   `--pop` with `--radius-lg`, under the tray icon from the tray, else at the top center of the screen with
   the front window (or the pointer): "Start Timer", then the labelled fields in the editor's order
   (Note, focused, "What did you work on?"; Project; Tag), Start (↵), Cancel (Escape), and below a hairline the
   "Recent" timers as rows with their project's dot. While a timer runs the same form shows its note
   (selected, to retype), project and tag under "Timer running" with the project's dot and the elapsed time;
-  Save (↵) changes the running recording, Stop (at the leading end) stops it, Cancel (Escape); no Recent. It
+  Save (↵) changes the running recording, Stop (at the leading end) stops it, Cancel (Escape); no Recent. A
+  suggested timer reads "Suggested timer" and has Approve before Save (disabled without a project), which
+  approves it with the form's fields and closes the picker; Save and Stop change and stop the suggestion. It
   shows over full-screen apps on every space, never activates TimeTracker, and hides when it loses focus.
 
 ## Week and Month

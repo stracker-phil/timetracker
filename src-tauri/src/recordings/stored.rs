@@ -8,7 +8,7 @@ use crate::db::new_id;
 use crate::db::recordings::{self, RecordingPatch, Span};
 use crate::db::stored_suggestions::{self, StoredSuggestion};
 use crate::db::time::{Day, format_duration, now_ms};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 const MAX_SOURCE_CHARS: usize = 40;
 
@@ -32,7 +32,7 @@ impl From<RecordingInput> for SuggestionInput {
     }
 }
 
-fn checked_source(source: &str) -> AppResult<String> {
+pub(super) fn checked_source(source: &str) -> AppResult<String> {
     let source = source.trim();
     if source.is_empty() || source.contains(['\n', '\r']) {
         return Err(invalid("source", "must be one line of text"));
@@ -84,12 +84,13 @@ impl Recordings<'_> {
             spans,
             created_at: now,
             updated_at: now,
+            open_start: None,
         };
         let op = Op::Suggestion {
             before: None,
             after: Some(suggestion.clone()),
         };
-        let duration = format_duration(suggestion.duration());
+        let duration = format_duration(suggestion.duration(now));
         let label = match project {
             Some(project) => format!("Suggest {duration} for {}", project.name),
             None => format!("Suggest {duration}"),
@@ -101,7 +102,8 @@ impl Recordings<'_> {
         })
     }
 
-    /// `patch` applied like a recording's; the source stays, and so does a project once picked.
+    /// `patch` applied like a recording's; the source stays, and so does a project once picked. A running
+    /// suggestion (ADR 0041) takes no spans until its timer stops.
     pub async fn update_suggestion(
         &self,
         id: &str,
@@ -109,6 +111,9 @@ impl Recordings<'_> {
     ) -> AppResult<Change<StoredSuggestion>> {
         let mut undo = self.undo.lock().await;
         let current = stored_suggestions::get(self.db, id).await?;
+        if current.is_running() && patch.spans.is_some() {
+            return Err(AppError::InvalidInput("Stop the timer first".into()));
+        }
         let (spans, day) = match &patch.spans {
             Some(spans) => checked_spans(spans, self.snap_minutes)?,
             None => (current.spans.clone(), current.day),
@@ -238,6 +243,7 @@ mod tests {
                 spans: vec![span(local(10, 0), local(11, 0))],
                 created_at: saved.created_at,
                 updated_at: saved.created_at,
+                open_start: None,
             }
         );
         assert_eq!(change.days, [today()]);
@@ -874,6 +880,78 @@ mod tests {
         w.service().redo().await.unwrap();
 
         assert!(stored_rows(&w).await.is_empty());
+    }
+
+    async fn running_suggestion(w: &World) -> StoredSuggestion {
+        let input = crate::recordings::timer::TimerInput {
+            project_id: w.project.id.clone(),
+            note: "review".into(),
+            tag_id: None,
+        };
+        match w
+            .service()
+            .start_suggested_timer(input, "cli", at(10, 0))
+            .await
+            .unwrap()
+            .value
+        {
+            crate::timers::Timer::Suggestion(s) => s,
+            crate::timers::Timer::Recording(_) => panic!("expected a suggestion"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_running_suggestion_refuses_new_spans_but_takes_a_note_project_and_tag() {
+        let w = World::new().await;
+        let running = running_suggestion(&w).await;
+
+        let err = w
+            .service()
+            .update_suggestion(&running.id, respan(at(11, 0), at(12, 0)))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(err.to_string(), "Stop the timer first");
+        assert_eq!(stored_rows(&w).await, [running.clone()]);
+
+        let updated = w
+            .service()
+            .update_suggestion(
+                &running.id,
+                patch(|p| {
+                    p.note = Some("later".into());
+                    p.project_id = Some(w.other.id.clone());
+                    p.tag_id = Some(Some(w.beta.id.clone()));
+                }),
+            )
+            .await
+            .unwrap()
+            .value;
+
+        assert_eq!(
+            updated,
+            StoredSuggestion {
+                project_id: Some(w.other.id.clone()),
+                note: "later".into(),
+                tag_id: Some(w.beta.id.clone()),
+                updated_at: updated.updated_at,
+                ..running
+            }
+        );
+        assert_eq!(updated.open_start, Some(at(10, 0)));
+    }
+
+    #[tokio::test]
+    async fn deleting_a_running_suggestion_leaves_no_timer_running() {
+        let w = World::new().await;
+        let running = running_suggestion(&w).await;
+
+        let deleted = w.service().delete_suggestion(&running.id).await.unwrap();
+
+        assert_eq!(deleted.value, running);
+        assert!(stored_rows(&w).await.is_empty());
+        assert_eq!(crate::timers::current(&w.db).await.unwrap(), None);
     }
 
     #[tokio::test]

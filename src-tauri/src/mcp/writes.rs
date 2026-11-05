@@ -1,6 +1,6 @@
 //! The tools that change data. They ask the running app, as the CLI does, since the server's database is
 //! read-only (ADR 0017). Time goes in as a suggestion the user reviews in the Day view unless `final` says
-//! to record it (ADR 0028); the timer is live control and always direct.
+//! to record it (ADR 0028); so does a timer started here, which runs as a suggestion (ADR 0041).
 
 use chrono::Local;
 use rmcp::handler::server::wrapper::Parameters;
@@ -122,6 +122,12 @@ struct TimerStartArgs {
     note: Option<String>,
     /// A tag name
     tag: Option<String>,
+    /// Start a running recording instead of a suggested timer for the user to review
+    #[serde(default, rename = "final")]
+    final_write: bool,
+    /// Keep it a suggested timer even with `final`
+    #[serde(default)]
+    draft: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -224,16 +230,19 @@ impl TimeTrackerServer {
     }
 
     #[tool(
-        description = "Starts the timer for a project now; a running timer stops. Today's recording with the same project, note and tag continues"
+        description = "Starts a suggested timer for a project now, which the user approves in the Day view; with final a running recording instead. A running timer stops. Today's suggestion (or with final, recording) with the same project, note and tag continues. Answers with the suggestion's id"
     )]
     async fn timer_start(
         &self,
+        peer: Peer<RoleServer>,
         Parameters(args): Parameters<TimerStartArgs>,
     ) -> Result<String, String> {
         let request = TimerStartRequest {
             project: args.project,
             note: args.note.unwrap_or_default(),
             tag: args.tag,
+            final_write: args.final_write && !args.draft,
+            source: Some(source_of(&peer)),
         };
         self.told(IpcMessage::TimerStart { request }).await
     }

@@ -60,7 +60,8 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
         try {
           const { durationMs } = await api.suggestionApprove(get().day, suggestion.id);
           focusNextAfter([suggestion.id]);
-          undoToast(`Recorded ${formatDuration(durationMs)} for ${suggestion.projectName}`);
+          // A suggested timer's piece keeps running, as the running recording.
+          undoToast(suggestion.running ? `Timer approved for ${suggestion.projectName}` : `Recorded ${formatDuration(durationMs)} for ${suggestion.projectName}`);
         } catch (e) {
           fail(e, "Could not approve the suggestion");
         }

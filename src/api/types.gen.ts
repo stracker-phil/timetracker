@@ -777,7 +777,30 @@ totalMs: number,
  */
 days: number, };
 
-export type RunningTimer = { recording: Recording, projectName: string, color: string, shade: number, elapsedMs: number, };
+/**
+ * The running timer as the page, the tray and the menu show it.
+ */
+export type RunningTimer = { 
+/**
+ * The recording's id, or the stored suggestion's when `suggested`.
+ */
+id: string, 
+/**
+ * Started by another app: it runs as a suggestion that waits for review (ADR 0041).
+ */
+suggested: boolean, 
+/**
+ * The app that started a suggested timer.
+ */
+source: string | null, projectId: string | null, note: string, tagId: string | null, 
+/**
+ * Where the open span starts.
+ */
+openStart: number, 
+/**
+ * None for a suggested timer without a project.
+ */
+projectName: string | null, color: string, shade: number, elapsedMs: number, };
 
 export type SavedReport = { id: string, name: string, filter: ReportFilter, position: number, };
 
@@ -843,9 +866,13 @@ source: string,
  */
 day: Day, 
 /**
- * At least one, by start, never overlapping each other.
+ * By start, never overlapping each other; at least one unless it runs.
  */
-spans: Array<Span>, createdAt: number, updatedAt: number, };
+spans: Array<Span>, createdAt: number, updatedAt: number, 
+/**
+ * Where its open span starts while it runs as a timer (ADR 0041); after every span.
+ */
+openStart?: number, };
 
 /**
  * A recording proposed for time no recording covers yet, by rules or stored by another app; it becomes one
@@ -884,7 +911,11 @@ tag: string | null, tagEmoji: string | null,
 /**
  * The first timesheet card that starts after it, which its card goes before; none puts it last.
  */
-nextCard: string | null, };
+nextCard: string | null, 
+/**
+ * The piece of a running stored suggestion that reaches now (ADR 0041); it grows until the timer stops.
+ */
+running: boolean, };
 
 /**
  * An approved suggestion: the new recording and how long it is, for the page's toast.
@@ -929,10 +960,28 @@ summaryMinutes: number, showAllActivity: boolean, compact: boolean, groupByApp: 
  */
 snapMinutes: number, zoom: number, };
 
+export type Timer = { "kind": "recording" } & Recording | { "kind": "suggestion" } & StoredSuggestion;
+
 /**
- * Every field but `running` is `None` while no timer runs.
+ * Every field but `running` and `suggested` is `None` while no timer runs.
  */
-export type TimerState = { running: boolean, recordingId: string | null, projectId: string | null, project: string | null, client: string | null, tagId: string | null, tag: string | null, note: string | null, startedAt: number | null, startedAtIso: string | null, elapsedMs: number | null, };
+export type TimerState = { running: boolean, 
+/**
+ * Started by another app: it runs as a suggestion that waits for review (ADR 0041).
+ */
+suggested: boolean, 
+/**
+ * The running recording; none for a suggested timer.
+ */
+recordingId: string | null, 
+/**
+ * The running stored suggestion of a suggested timer.
+ */
+suggestionId: string | null, 
+/**
+ * The app that started a suggested timer.
+ */
+source: string | null, projectId: string | null, project: string | null, client: string | null, tagId: string | null, tag: string | null, note: string | null, startedAt: number | null, startedAtIso: string | null, elapsedMs: number | null, };
 
 export type TimerStatus = { running: RunningTimer | null, };
 

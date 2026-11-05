@@ -15,7 +15,9 @@ detail: [backend](backend.md), [frontend](frontend.md), [design language](ux.md)
 | **Project** | a named bucket for recordings, optionally under a client | the user |
 
 Activity never becomes a recording on its own. Rules only suggest recordings; tags classify them for
-reports; a timer is a recording whose last span ends "now" ([ADR 0005](adr/0005-activity-and-recordings-are-separate-layers.md)).
+reports; a timer is a recording whose last span ends "now" ([ADR 0005](adr/0005-activity-and-recordings-are-separate-layers.md)),
+or, when another app started it, a stored suggestion with an open start that waits for review like any
+suggestion ([ADR 0041](adr/0041-programmatic-timers-start-as-suggestions.md)).
 
 ## Design rules
 
@@ -130,6 +132,10 @@ Recording an hour of activity:
    The Approve all (`suggestions_approve`) and Dismiss all commands (palette and menu) send the shown ids.
 3. `data_changed` reloads the day; the approved time is now recorded and the dismissed time is cut away, so
    the suggestion is gone.
+
+A suggested timer (`timetracker timer start` without `--final`, the MCP `timer_start`) is a stored suggestion
+with an open start: its piece reaching now is `running`, and approving it turns it into the running timer
+([ADR 0041](adr/0041-programmatic-timers-start-as-suggestions.md)).
 
 ## Process model
 

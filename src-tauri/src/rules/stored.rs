@@ -1,18 +1,37 @@
 //! Stored suggestions on the Day view (ADR 0028): each span without the time recordings, or a suggestion
 //! stored before it, already take. A piece the cut leaves shorter than `MIN_SUGGESTION_MS` is dropped; a
-//! whole span stays at any length. One without a project shows in graphite (ADR 0030).
+//! whole span stays at any length. One without a project shows in graphite (ADR 0030). A running one's
+//! open span reaches now (ADR 0041); its piece that ends there stays at any length.
 
 use super::suggest::{MIN_SUGGESTION_MS, Span, subtract, union};
 use super::types::Suggestion;
 use crate::day::Names;
 use crate::db::stored_suggestions::StoredSuggestion;
+use crate::db::time::Ms;
 
-const NO_PROJECT_COLOR: &str = "graphite";
-const NO_PROJECT_SHADE: u8 = 4;
+/// The accent of a stored suggestion, or a suggested timer, without a project.
+pub const NO_PROJECT_COLOR: &str = "graphite";
+pub const NO_PROJECT_SHADE: u8 = 4;
+/// A running suggestion's open span shows at least this long, so a timer started just now has a piece.
+const MIN_OPEN_MS: Ms = 60_000;
 
-/// The pieces of `stored` (by creation, the earlier keeping shared time) outside `recorded`, by start; a
-/// suggestion whose project is gone is left out, one without a project is not.
-pub fn pieces(stored: &[StoredSuggestion], recorded: &[Span], names: &Names) -> Vec<Suggestion> {
+/// The spans of `suggestion` at `now`, by start, and whether the last one is the open span.
+fn spans_at(suggestion: &StoredSuggestion, now: Ms) -> (Vec<Span>, bool) {
+    let mut spans: Vec<Span> = suggestion.spans.iter().map(|s| (s.start, s.end)).collect();
+    if let Some(start) = suggestion.open_start {
+        spans.push((start, now.max(start + MIN_OPEN_MS)));
+    }
+    (spans, suggestion.open_start.is_some())
+}
+
+/// The pieces of `stored` (by creation, the earlier keeping shared time) outside `recorded` at `now`, by
+/// start; a suggestion whose project is gone is left out, one without a project is not.
+pub fn pieces(
+    stored: &[StoredSuggestion],
+    recorded: &[Span],
+    names: &Names,
+    now: Ms,
+) -> Vec<Suggestion> {
     let mut by_creation: Vec<&StoredSuggestion> = stored.iter().collect();
     by_creation.sort_by_key(|s| (s.created_at, s.id.clone()));
     let mut taken = union(recorded.to_vec());
@@ -39,16 +58,22 @@ pub fn pieces(stored: &[StoredSuggestion], recorded: &[Span], names: &Names) -> 
             .clone()
             .filter(|id| names.tags.contains_key(id));
         let tag = tag_id.as_ref().and_then(|id| names.tags.get(id));
-        for span in &suggestion.spans {
-            let whole = (span.start, span.end);
+        let (spans, open) = spans_at(suggestion, now);
+        let last = spans.len().saturating_sub(1);
+        for (index, &whole) in spans.iter().enumerate() {
             let free = subtract(&[whole], &taken);
             for (start, end) in free {
-                let is_whole = (start, end) == whole;
-                if !is_whole && end - start < MIN_SUGGESTION_MS {
+                let running = open && index == last && end == whole.1;
+                if !running && (start, end) != whole && end - start < MIN_SUGGESTION_MS {
                     continue;
                 }
+                let id = if running {
+                    format!("stored:{}:{start}:open", suggestion.id)
+                } else {
+                    format!("stored:{}:{start}:{end}", suggestion.id)
+                };
                 found.push(Suggestion {
-                    id: format!("stored:{}:{start}:{end}", suggestion.id),
+                    id,
                     rule_ids: Vec::new(),
                     stored_id: Some(suggestion.id.clone()),
                     by: suggestion.source.clone(),
@@ -65,11 +90,11 @@ pub fn pieces(stored: &[StoredSuggestion], recorded: &[Span], names: &Names) -> 
                     tag: tag.map(|t| t.name.clone()),
                     tag_emoji: tag.and_then(|t| t.emoji.clone()),
                     next_card: None,
+                    running,
                 });
             }
         }
-        let own = suggestion.spans.iter().map(|s| (s.start, s.end));
-        taken = union(taken.into_iter().chain(own).collect());
+        taken = union(taken.into_iter().chain(spans).collect());
     }
     found.sort_by_key(|s| s.start);
     found
@@ -99,6 +124,7 @@ mod tests {
                 .collect(),
             created_at,
             updated_at: created_at,
+            open_start: None,
         }
     }
 
@@ -116,7 +142,7 @@ mod tests {
     }
 
     fn pieces_of(stored: &[StoredSuggestion], recorded: &[(Ms, Ms)]) -> Vec<Suggestion> {
-        pieces(stored, recorded, &names(&["p1", "p2"], &["t1"]))
+        pieces(stored, recorded, &names(&["p1", "p2"], &["t1"]), 0)
     }
 
     #[test]
@@ -148,6 +174,7 @@ mod tests {
                 tag: Some("tag t1".into()),
                 tag_emoji: None,
                 next_card: None,
+                running: false,
             }]
         );
     }
@@ -329,6 +356,7 @@ mod tests {
                 tag: None,
                 tag_emoji: None,
                 next_card: None,
+                running: false,
             }]
         );
     }
@@ -358,6 +386,115 @@ mod tests {
             (&found[0].tag_id, &found[0].tag, &found[0].tag_emoji),
             (&None, &None, &None)
         );
+    }
+
+    fn running_stored(
+        id: &str,
+        created_at: Ms,
+        closed: &[(i64, i64)],
+        open: i64,
+    ) -> StoredSuggestion {
+        StoredSuggestion {
+            open_start: Some(open * MIN),
+            ..stored(id, created_at, closed)
+        }
+    }
+
+    fn pieces_at(
+        stored: &[StoredSuggestion],
+        recorded: &[(Ms, Ms)],
+        now_minute: i64,
+    ) -> Vec<Suggestion> {
+        pieces(
+            stored,
+            recorded,
+            &names(&["p1", "p2"], &["t1"]),
+            now_minute * MIN,
+        )
+    }
+
+    #[test]
+    fn the_open_span_reaches_now_and_its_piece_is_the_running_one() {
+        let found = pieces_at(&[running_stored("s1", 1, &[], 10)], &[], 30);
+
+        assert_eq!(minutes(&found), [(10, 30)]);
+        assert_eq!(found[0].id, format!("stored:s1:{}:open", 10 * MIN));
+        assert!(found[0].running);
+        assert_eq!(found[0].duration_ms, 20 * MIN);
+    }
+
+    #[test]
+    fn the_open_span_shows_at_least_a_minute() {
+        for now in [0, 10 * MIN, 10 * MIN + 30_000] {
+            let found = pieces(
+                &[running_stored("s1", 1, &[], 10)],
+                &[],
+                &names(&["p1"], &[]),
+                now,
+            );
+
+            assert_eq!(minutes(&found), [(10, 11)], "now {now}");
+            assert!(found[0].running, "now {now}");
+        }
+    }
+
+    #[test]
+    fn a_running_suggestion_keeps_its_closed_spans_as_pieces_that_do_not_run() {
+        let found = pieces_at(&[running_stored("s1", 1, &[(0, 10)], 20)], &[], 25);
+
+        assert_eq!(minutes(&found), [(0, 10), (20, 25)]);
+        assert_eq!(
+            found.iter().map(|s| s.running).collect::<Vec<_>>(),
+            [false, true]
+        );
+    }
+
+    #[test]
+    fn recorded_time_cuts_the_open_span_and_the_short_earlier_cut_is_dropped_but_the_running_end_stays()
+     {
+        let cases: [(&str, Vec<(Ms, Ms)>, Vec<(i64, i64)>); 3] = [
+            (
+                "an earlier cut under the minimum is dropped",
+                vec![recorded(12, 25)],
+                vec![(25, 30)],
+            ),
+            (
+                "an earlier cut of the minimum stays",
+                vec![recorded(15, 25)],
+                vec![(10, 15), (25, 30)],
+            ),
+            (
+                "a running end under the minimum stays",
+                vec![recorded(10, 29)],
+                vec![(29, 30)],
+            ),
+        ];
+        for (name, recordings, expected) in cases {
+            let found = pieces_at(&[running_stored("s1", 1, &[], 10)], &recordings, 30);
+
+            assert_eq!(minutes(&found), expected, "{name}");
+            assert!(found.last().unwrap().running, "{name}");
+        }
+    }
+
+    #[test]
+    fn an_earlier_suggestion_keeps_the_time_it_shares_with_the_running_one() {
+        let found = pieces_at(
+            &[stored("a", 1, &[(0, 30)]), running_stored("b", 2, &[], 20)],
+            &[],
+            40,
+        );
+
+        assert_eq!(owners_and_minutes(&found), [("a", 0, 30), ("b", 30, 40)]);
+        assert_eq!(found[1].id, format!("stored:b:{}:open", 30 * MIN));
+        assert!(found[1].running);
+    }
+
+    #[test]
+    fn a_recording_over_the_whole_open_span_leaves_no_running_piece() {
+        let found = pieces_at(&[running_stored("s1", 1, &[], 10)], &[recorded(0, 40)], 30);
+
+        assert!(found.is_empty());
     }
 
     #[test]

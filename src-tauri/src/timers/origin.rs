@@ -1,17 +1,18 @@
 //! The start that made the running timer, kept for this run, so starting the same timer again leaves its
-//! recording as the owner edited it since.
+//! recording or suggestion as the owner edited it since.
 
 use crate::recordings::timer::TimerInput;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimerOrigin {
-    pub recording_id: String,
+    /// The running recording's id, or the running suggestion's.
+    pub timer_id: String,
     pub input: TimerInput,
 }
 
-/// Whether starting `input` repeats the start that made the running recording `running_id`.
+/// Whether starting `input` repeats the start that made the running timer `running_id`.
 pub fn repeats(origin: Option<&TimerOrigin>, running_id: Option<&str>, input: &TimerInput) -> bool {
-    origin.is_some_and(|o| running_id == Some(o.recording_id.as_str()) && o.input == *input)
+    origin.is_some_and(|o| running_id == Some(o.timer_id.as_str()) && o.input == *input)
 }
 
 #[cfg(test)]
@@ -28,7 +29,7 @@ mod tests {
 
     fn origin() -> TimerOrigin {
         TimerOrigin {
-            recording_id: "r1".into(),
+            timer_id: "r1".into(),
             input: input("p1", "review", Some("t1")),
         }
     }

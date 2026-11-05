@@ -103,6 +103,9 @@ pub struct SuggestionEntry {
     pub day: Day,
     pub duration_ms: Ms,
     pub spans: Vec<SpanEntry>,
+    /// A suggested timer that still runs (ADR 0041): its last span reaches now.
+    #[serde(default)]
+    pub running: bool,
     #[serde(flatten)]
     pub labels: Labels,
 }
@@ -159,6 +162,7 @@ fn suggestion_entry(
             .iter()
             .map(|s| SpanEntry::new(s.start, Some(s.end)))
             .collect(),
+        running: pieces.iter().any(|s| s.running),
         labels: Labels::new(
             names,
             first.project_id.as_deref(),
@@ -501,6 +505,7 @@ mod tests {
                     SpanEntry::new(on(today, 11, 0), Some(on(today, 12, 0))),
                 ],
                 labels: w.portal_labels("from planner", true),
+                running: false,
             }]
         );
     }
@@ -545,6 +550,7 @@ mod tests {
                     tag: None,
                     note: "to sort".into(),
                 },
+                running: false,
             }]
         );
         let json = serde_json::to_value(&entries[0]).unwrap();
@@ -588,6 +594,7 @@ mod tests {
                 duration_ms: 60 * MIN,
                 spans: vec![SpanEntry::new(on(today, 9, 0), Some(on(today, 10, 0)))],
                 labels: w.portal_labels("", false),
+                running: false,
             }]
         );
     }
@@ -677,6 +684,7 @@ mod tests {
             duration_ms: 1_500,
             spans: vec![],
             labels,
+            running: false,
         };
 
         assert_eq!(
@@ -692,7 +700,7 @@ mod tests {
             serde_json::to_value(&suggestion).unwrap(),
             json!({
                 "id": "sg1", "kind": "rule", "by": "Slack rule", "day": "2026-10-20",
-                "durationMs": 1500, "spans": [],
+                "durationMs": 1500, "spans": [], "running": false,
                 "projectId": "p1", "project": "Portal", "client": null,
                 "tagId": "t1", "tag": "billing", "note": "n"
             })

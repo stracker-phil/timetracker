@@ -40,7 +40,7 @@ fn note_part(note: &str) -> String {
 }
 
 /// Shown in place of a missing project.
-const NO_PROJECT: &str = "no project";
+pub(super) const NO_PROJECT: &str = "no project";
 
 /// `Acme · note #tag`.
 fn labels_text(labels: &Labels) -> String {
@@ -70,8 +70,14 @@ fn written_text<Tz: TimeZone>(written: &Written, now: Ms, tz: &Tz) -> String {
             let s = &suggested.suggestion;
             format!(
                 "suggested {} ({}) for {}{}; review it in the Day view (id {})",
-                spans_text(s.spans.iter().map(|p| (p.start, Some(p.end))), tz),
-                format_hm(s.duration()),
+                spans_text(
+                    s.spans
+                        .iter()
+                        .map(|p| (p.start, Some(p.end)))
+                        .chain(s.open_start.map(|start| (start, None))),
+                    tz
+                ),
+                format_hm(s.duration(now)),
                 suggested.project_name.as_deref().unwrap_or(NO_PROJECT),
                 note_part(&s.note),
                 s.id
@@ -293,6 +299,7 @@ mod tests {
                     .collect(),
                 created_at: 0,
                 updated_at: 0,
+                open_start: None,
             },
             project_name: Some("Internal".into()),
         })

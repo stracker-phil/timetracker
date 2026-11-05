@@ -13,7 +13,7 @@ import { emit } from "../test/apiMock";
 import { trackerStatus } from "../test/data";
 import { at } from "../test/dayFixtures";
 import { renderWithClient, seedQuery, TIMER_KEY, TRACKER_KEY } from "../test/queries";
-import { runningStatus } from "../test/timerFixtures";
+import { runningStatus, suggestedStatus } from "../test/timerFixtures";
 import { StatusBar as Subject } from "./StatusBar";
 
 const mocked = vi.mocked(api, true);
@@ -161,6 +161,27 @@ describe("StatusBar", () => {
       resetStore();
       renderWithClient(<StatusBar />);
       expect(screen.getByRole("button", { name: "⏱ Docs 1h 23m" })).toBeInTheDocument();
+    });
+
+    it("marks a timer another app started as suggested", () => {
+      seedQuery(TIMER_KEY, suggestedStatus({ projectName: "Docs" }));
+      resetStore();
+      renderWithClient(<StatusBar />);
+      expect(screen.getByRole("button", { name: "⏱ Docs 1h 23m · Suggested" })).toBeInTheDocument();
+    });
+
+    it("does not mark an ordinary timer as suggested", () => {
+      seedQuery(TIMER_KEY, runningStatus({ projectName: "Docs" }));
+      resetStore();
+      renderWithClient(<StatusBar />);
+      expect(screen.queryByText(/Suggested/)).not.toBeInTheDocument();
+    });
+
+    it("shows No project for a suggested timer without one", () => {
+      seedQuery(TIMER_KEY, suggestedStatus({ projectId: null, projectName: null }));
+      resetStore();
+      renderWithClient(<StatusBar />);
+      expect(screen.getByRole("button", { name: "⏱ No project 1h 23m · Suggested" })).toBeInTheDocument();
     });
 
     it("shows nothing without a running timer", () => {

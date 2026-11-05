@@ -108,6 +108,8 @@ pub struct Suggestion {
     pub tag_emoji: Option<String>,
     /// The first timesheet card that starts after it, which its card goes before; none puts it last.
     pub next_card: Option<String>,
+    /// The piece of a running stored suggestion that reaches now (ADR 0041); it grows until the timer stops.
+    pub running: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]

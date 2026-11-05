@@ -2,7 +2,7 @@ import { act } from "@testing-library/react";
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type AwayPrompt, type ClientInput, type DataChanged, type RemoteEvent, type TimerStatus, type TrackerStatus, type DateJump, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingAutofill, type RecordingInput, type RecordingPatch, type RecordingSpan, type ReportFilter, type RuleInput, type Settings, type SnapEdge, type Span, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type AwayPrompt, type ClientInput, type DataChanged, type RemoteEvent, type TimerStatus, type TrackerStatus, type DateJump, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingAutofill, type RecordingInput, type RecordingPatch, type RecordingSpan, type ReportFilter, type RuleInput, type Settings, type SnapEdge, type Span, type Timer, type UiState } from "../api/types";
 import { mondayOf, monthView, weekView } from "./calendarFixtures";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
@@ -197,7 +197,7 @@ export function createApiMock(): typeof realApi {
     savedReportRename: vi.fn(async (id: string, name: string) => savedReport({ id, name })),
     savedReportDelete: vi.fn().mockResolvedValue(null),
     timerStart: vi.fn(async (projectId: string, note: string, tagId: string | null) => recording({ id: "recording-timer", projectId, note, tagId, spans: [{ id: "recording-timer-s1", start: 0, end: null }] })),
-    timerUpdate: vi.fn(async (projectId: string, note: string, tagId: string | null) => recording({ id: "recording-timer", projectId, note, tagId, spans: [{ id: "recording-timer-s1", start: 0, end: null }] })),
+    timerUpdate: vi.fn(async (projectId: string, note: string, tagId: string | null): Promise<Timer | null> => ({ kind: "recording", ...recording({ id: "recording-timer", projectId, note, tagId, spans: [{ id: "recording-timer-s1", start: 0, end: null }] }) })),
     timerStop: vi.fn().mockResolvedValue(null),
     timerStatus: vi.fn().mockResolvedValue({ running: null }),
     timersRecent: vi.fn().mockResolvedValue([]),

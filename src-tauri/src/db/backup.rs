@@ -380,6 +380,7 @@ mod tests {
             }],
             created_at: 10,
             updated_at: 20,
+            open_start: None,
         };
         let mut conn = db.pool().acquire().await.unwrap();
         stored_suggestions::put_on(&mut conn, &stored)

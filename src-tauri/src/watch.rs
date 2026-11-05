@@ -202,6 +202,9 @@ mod tests {
             started_at: Some(1_000),
             started_at_iso: Some("2026-10-21T09:00:00+02:00".into()),
             elapsed_ms,
+            source: None,
+            suggested: false,
+            suggestion_id: None,
         }
     }
 
@@ -313,6 +316,29 @@ mod tests {
     }
 
     #[test]
+    fn a_timer_turning_from_a_suggestion_into_a_recording_is_sent() {
+        let watchers = Watchers::default();
+        let mut events = watchers.subscribe();
+        let suggested = TimerState {
+            suggested: true,
+            suggestion_id: Some("s1".into()),
+            source: Some("claude".into()),
+            ..timer(Some(1_000))
+        };
+
+        watchers.send(WatchEvent::Timer(suggested.clone()));
+        watchers.send(WatchEvent::Timer(timer(Some(2_000))));
+
+        assert_eq!(
+            received(&mut events),
+            vec![
+                WatchEvent::Timer(suggested),
+                WatchEvent::Timer(timer(Some(2_000))),
+            ]
+        );
+    }
+
+    #[test]
     fn a_tracker_with_the_same_state_and_permission_is_left_out() {
         let watchers = Watchers::default();
         let mut events = watchers.subscribe();
@@ -407,7 +433,8 @@ mod tests {
                 serde_json::json!({
                     "event": "timer",
                     "data": {
-                        "running": true, "recordingId": "r1", "projectId": "p1",
+                        "running": true, "suggested": false, "suggestionId": null,
+                        "source": null, "recordingId": "r1", "projectId": "p1",
                         "project": "acme", "client": "ACME Inc", "tagId": null, "tag": null,
                         "note": "fix login", "startedAt": 1000,
                         "startedAtIso": "2026-10-21T09:00:00+02:00", "elapsedMs": 5000

@@ -28,7 +28,8 @@ activity (what windows were in front; private, available only when the user enab
 (optionally under a client; a project is billable or not, and its recordings with it). Days are local calendar days `YYYY-MM-DD` (or today, yesterday); times \
 are local ISO 8601 with offset, durations are minutes. Writes go to suggestions the user reviews in the \
 Day view (`suggestions` lists them, `approve` records them); pass `final` only when the user asked to change \
-the timesheet itself. The timer tools act at once. `status`, `open_day`, the timer and every write need the \
+the timesheet itself. `timer_start` starts a suggested timer the user approves the same way, unless `final`; \
+stopping and changing the timer act at once. `status`, `open_day`, the timer and every write need the \
 app running.";
 
 #[derive(Deserialize, JsonSchema)]
@@ -839,6 +840,7 @@ mod tests {
                     }],
                     created_at: 0,
                     updated_at: 0,
+                    open_start: None,
                 },
                 project_name: Some("Portal".into()),
             });
@@ -1187,6 +1189,8 @@ mod tests {
                         project: "Portal".into(),
                         note: "fix".into(),
                         tag: Some("focus".into()),
+                        final_write: false,
+                        source: Some("test".into()),
                     }
                 }
             );
@@ -1197,9 +1201,41 @@ mod tests {
                         project: "Portal".into(),
                         note: String::new(),
                         tag: None,
+                        final_write: false,
+                        source: Some("test".into()),
                     }
                 }
             );
+        }
+
+        #[tokio::test]
+        async fn timer_start_is_final_unless_draft_and_names_the_client_as_its_source() {
+            let cases = [
+                (json!({}), false),
+                (json!({"final": true}), true),
+                (json!({"final": true, "draft": true}), false),
+                (json!({"draft": true}), false),
+            ];
+
+            for (extra, final_write) in cases {
+                let mut session = session(client_info("claude-code"), vec![nothing()]).await;
+                let mut arguments = json!({"project": "Portal"});
+                arguments
+                    .as_object_mut()
+                    .unwrap()
+                    .extend(extra.as_object().unwrap().clone());
+
+                session.call("timer_start", arguments).await;
+
+                let IpcMessage::TimerStart { request } = session.asked() else {
+                    panic!("not a timer start");
+                };
+                assert_eq!(
+                    (request.final_write, request.source),
+                    (final_write, Some("claude-code".to_string())),
+                    "{extra}"
+                );
+            }
         }
 
         #[tokio::test]

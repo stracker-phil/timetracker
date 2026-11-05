@@ -363,6 +363,7 @@ mod tests {
             }],
             created_at: 1_000,
             updated_at: 2_000,
+            open_start: None,
         }
     }
 

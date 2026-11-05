@@ -313,6 +313,9 @@ mod tests {
                 },
                 "timer": {
                     "running": false,
+                    "suggested": false,
+                    "suggestionId": null,
+                    "source": null,
                     "recordingId": null,
                     "projectId": null,
                     "project": null,
@@ -344,6 +347,9 @@ mod tests {
             started_at: Some(1_000),
             started_at_iso: Some("1970-01-01T00:00:01+00:00".into()),
             elapsed_ms: Some(60_000),
+            source: None,
+            suggested: false,
+            suggestion_id: None,
         };
         let original = StatusReport {
             timer,
@@ -356,6 +362,9 @@ mod tests {
             value["timer"],
             serde_json::json!({
                 "running": true,
+                "suggested": false,
+                "suggestionId": null,
+                "source": null,
                 "recordingId": "r1",
                 "projectId": "p1",
                 "project": "Portal",

@@ -43,6 +43,9 @@ pub struct TimerOut {
     pub note: String,
     pub start_iso: String,
     pub elapsed_min: f64,
+    /// Set while the timer runs as a suggestion (ADR 0041): what `approve` takes to record it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suggestion_id: Option<String>,
 }
 
 /// `None` while no timer runs.
@@ -54,6 +57,7 @@ fn timer_out(timer: TimerState) -> Option<TimerOut> {
         note: timer.note.unwrap_or_default(),
         start_iso: timer.started_at_iso?,
         elapsed_min: minutes(timer.elapsed_ms.unwrap_or(0)),
+        suggestion_id: timer.suggestion_id,
     })
 }
 
@@ -146,6 +150,30 @@ mod tests {
                 "note": "tooling",
                 "start_iso": iso(14, 0),
                 "elapsed_min": 30.0,
+            })
+        );
+    }
+
+    #[test]
+    fn a_suggested_timer_carries_the_suggestion_id_to_approve() {
+        let timer = TimerState {
+            suggested: true,
+            recording_id: None,
+            suggestion_id: Some("s1".into()),
+            source: Some("claude".into()),
+            ..running_timer()
+        };
+
+        let out = serde_json::to_value(status_out(report_with(timer), false)).unwrap();
+
+        assert_eq!(
+            out["timer"],
+            json!({
+                "project": "Portal",
+                "note": "tooling",
+                "start_iso": iso(14, 0),
+                "elapsed_min": 30.0,
+                "suggestion_id": "s1",
             })
         );
     }

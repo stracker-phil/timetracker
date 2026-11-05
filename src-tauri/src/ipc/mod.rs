@@ -592,8 +592,50 @@ mod tests {
                 project: "acme".into(),
                 note: "weekly call".into(),
                 tag: Some("external meeting".into()),
+                final_write: false,
+                source: None,
             },
         }
+    }
+
+    #[test]
+    fn a_timer_start_message_from_an_older_client_is_a_suggested_start_from_the_cli() {
+        let old = serde_json::json!({
+            "type": "timerStart",
+            "request": { "project": "acme", "note": "weekly call", "tag": "external meeting" }
+        });
+
+        assert_eq!(
+            serde_json::from_value::<IpcMessage>(old).unwrap(),
+            timer_start_message()
+        );
+    }
+
+    #[test]
+    fn a_timer_start_message_carries_final_and_the_source_on_the_wire() {
+        let message = IpcMessage::TimerStart {
+            request: TimerStartRequest {
+                project: "acme".into(),
+                note: String::new(),
+                tag: None,
+                final_write: true,
+                source: Some("planner".into()),
+            },
+        };
+
+        let wire = serde_json::to_value(&message).unwrap();
+
+        assert_eq!(
+            wire,
+            serde_json::json!({
+                "type": "timerStart",
+                "request": {
+                    "project": "acme", "note": "", "tag": null,
+                    "final": true, "source": "planner"
+                }
+            })
+        );
+        assert_eq!(serde_json::from_value::<IpcMessage>(wire).unwrap(), message);
     }
 
     #[test]
@@ -949,7 +991,8 @@ mod tests {
                 serde_json::json!({
                     "type": "timerStart",
                     "request": {
-                        "project": "acme", "note": "weekly call", "tag": "external meeting"
+                        "project": "acme", "note": "weekly call", "tag": "external meeting",
+                        "final": false
                     }
                 }),
             ),

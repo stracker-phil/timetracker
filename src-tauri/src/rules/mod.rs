@@ -33,8 +33,9 @@ pub(crate) fn candidates(view: &DayView) -> Vec<&ActivityBlock> {
     view.rule_blocks.iter().collect()
 }
 
-/// The view's suggestions, by start: the pieces of the `stored` ones, then those of `rules` (compiled, in
-/// order) in the time left, without the `dismissed` time; each placed among the timesheet's cards.
+/// The view's suggestions at `now`, by start: the pieces of the `stored` ones, then those of `rules`
+/// (compiled, in order) in the time left, without the `dismissed` time; each placed among the timesheet's
+/// cards.
 pub fn day_suggestions(
     view: &DayView,
     rules: &[Compiled],
@@ -42,9 +43,10 @@ pub fn day_suggestions(
     settings: &Settings,
     dismissed: &[Dismissal],
     stored: &[StoredSuggestion],
+    now: Ms,
 ) -> Vec<Suggestion> {
     let recorded: Vec<(Ms, Ms)> = view.recordings.iter().map(|r| (r.start, r.end)).collect();
-    let mut suggestions = stored::pieces(stored, &recorded, names);
+    let mut suggestions = stored::pieces(stored, &recorded, names, now);
     if !rules.is_empty() {
         let taken: Vec<(Ms, Ms)> = recorded
             .into_iter()
@@ -1947,6 +1949,297 @@ mod tests {
         assert_eq!(preview.hits[0].block.start, midnight + 249 * 5 * MIN);
         assert_eq!(preview.hits[199].block.start, midnight + 50 * 5 * MIN);
         assert_eq!((preview.total_ms, preview.days), (500 * MIN, 1));
+    }
+
+    /// Today's running suggested timer from 00:30, with a finished span 00:10 to 00:20 when `finished`.
+    async fn timer_suggestion(w: &World, today: Day, finished: bool) -> StoredSuggestion {
+        use crate::recordings::timer::TimerInput;
+
+        let input = TimerInput {
+            project_id: w.project.id.clone(),
+            note: "from claude".into(),
+            tag_id: Some(w.tag_id.clone()),
+        };
+        if finished {
+            w.service()
+                .start_suggested_timer(input.clone(), "claude", on(today, 0, 10))
+                .await
+                .unwrap();
+            w.service().stop_timer(on(today, 0, 20)).await.unwrap();
+        }
+        w.service()
+            .start_suggested_timer(input, "claude", on(today, 0, 30))
+            .await
+            .unwrap();
+        stored_suggestions::running(&w.db).await.unwrap().unwrap()
+    }
+
+    async fn running_piece(w: &World, today: Day) -> Suggestion {
+        w.suggestions(today)
+            .await
+            .into_iter()
+            .find(|s| s.running)
+            .expect("a running piece")
+    }
+
+    fn spans_of(recording: &Recording) -> Vec<(Ms, Option<Ms>)> {
+        recording.spans.iter().map(|s| (s.start, s.end)).collect()
+    }
+
+    #[tokio::test]
+    async fn approving_a_running_suggestion_makes_it_the_running_recording_in_one_undo_step() {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let running = timer_suggestion(&w, today, true).await;
+        let piece = running_piece(&w, today).await;
+        assert_eq!(
+            piece.id,
+            format!("stored:{}:{}:open", running.id, on(today, 0, 30))
+        );
+        assert_eq!(piece.stored_id.as_deref(), Some(running.id.as_str()));
+
+        let change = approve(&w.service(), &w.settings, today, &piece.id)
+            .await
+            .unwrap();
+
+        let recording = change.value;
+        assert_eq!(
+            (
+                recording.project_id.as_str(),
+                recording.note.as_str(),
+                recording.tag_id.clone(),
+            ),
+            (w.project.id.as_str(), "from claude", Some(w.tag_id.clone()))
+        );
+        assert_eq!(
+            spans_of(&recording),
+            [
+                (on(today, 0, 10), Some(on(today, 0, 20))),
+                (on(today, 0, 30), None),
+            ]
+        );
+        assert!(change.days.contains(&today));
+        assert_eq!(w.recordings().await, [recording.clone()]);
+        assert!(w.stored_of(today).await.is_empty());
+        assert_eq!(
+            crate::timers::current(&w.db).await.unwrap(),
+            Some(crate::timers::Timer::Recording(recording))
+        );
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Approve timer for Portal"));
+        assert!(w.recordings().await.is_empty());
+        assert_eq!(w.stored_of(today).await, [running]);
+        assert_eq!(running_piece(&w, today).await.id, piece.id);
+    }
+
+    #[tokio::test]
+    async fn approving_a_running_suggestion_whose_running_time_is_recorded_is_an_overlap() {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let running = timer_suggestion(&w, today, true).await;
+        let covering = stored::insert(
+            &w.db,
+            stored::NewRecording {
+                id: "covering".into(),
+                project_id: w.project.id.clone(),
+                spans: vec![(on(today, 0, 25), Some(now_ms() + 60 * MIN))],
+                note: String::new(),
+                tag_id: None,
+            },
+        )
+        .await
+        .unwrap();
+        let shown = w.suggestions(today).await;
+        assert_eq!(shown.len(), 1);
+        assert!(!shown[0].running);
+
+        let err = approve(&w.service(), &w.settings, today, &shown[0].id)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::Overlap);
+        assert_eq!(w.recordings().await, [covering]);
+        assert_eq!(
+            stored_suggestions::running(&w.db).await.unwrap(),
+            Some(running)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_running_suggestion_without_a_project_cannot_be_approved() {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let running = StoredSuggestion {
+            project_id: None,
+            ..timer_suggestion(&w, today, false).await
+        };
+        let mut conn = w.db.pool().acquire().await.unwrap();
+        stored_suggestions::put_on(&mut conn, &running)
+            .await
+            .unwrap();
+        drop(conn);
+        let piece = running_piece(&w, today).await;
+
+        let err = approve(&w.service(), &w.settings, today, &piece.id)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(&err, AppError::InvalidInput(m) if m == NO_PROJECT_MESSAGE));
+        assert_eq!(w.stored_of(today).await, [running]);
+        assert!(w.recordings().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn approving_an_edited_running_suggestion_takes_only_project_note_and_tag() {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let other = project(&w.db, "Other").await;
+        timer_suggestion(&w, today, true).await;
+        let piece = running_piece(&w, today).await;
+        let edited = RecordingInput {
+            project_id: other.id.clone(),
+            spans: vec![Span {
+                start: on(today, 5, 0),
+                end: on(today, 6, 0),
+            }],
+            note: "edited".into(),
+            tag_id: None,
+        };
+
+        let recording = approve_edited(
+            &w.service(),
+            &w.settings,
+            today,
+            &piece.id,
+            edited,
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap()
+        .value;
+
+        assert_eq!(
+            (
+                recording.project_id.clone(),
+                recording.note.as_str(),
+                recording.tag_id.clone()
+            ),
+            (other.id, "edited", None)
+        );
+        assert_eq!(
+            spans_of(&recording),
+            [
+                (on(today, 0, 10), Some(on(today, 0, 20))),
+                (on(today, 0, 30), None),
+            ]
+        );
+        assert!(w.stored_of(today).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn approving_a_running_suggestion_patched_with_spans_says_to_stop_the_timer_first() {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let running = timer_suggestion(&w, today, true).await;
+        let piece = running_piece(&w, today).await;
+        let with_spans = RecordingPatch {
+            spans: Some(vec![Span {
+                start: on(today, 5, 0),
+                end: on(today, 6, 0),
+            }]),
+            ..RecordingPatch::default()
+        };
+
+        let err = approve_patched(
+            &w.service(),
+            &w.settings,
+            today,
+            &piece.id,
+            with_spans,
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(&err, AppError::InvalidInput(m) if m == "Stop the timer first"));
+        assert!(w.recordings().await.is_empty());
+        assert_eq!(w.stored_of(today).await, [running]);
+
+        let recording = approve_patched(
+            &w.service(),
+            &w.settings,
+            today,
+            &piece.id,
+            note_patch("patched"),
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap()
+        .value;
+
+        assert_eq!(recording.note, "patched");
+        assert_eq!(spans_of(&recording).last(), Some(&(on(today, 0, 30), None)));
+    }
+
+    #[tokio::test]
+    async fn approving_all_skips_a_running_suggestion_and_records_the_others() {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let running = timer_suggestion(&w, today, false).await;
+        w.stored_suggestion(today, &[((0, 0), (0, 10))]).await;
+        let shown = w.suggestions(today).await;
+        assert_eq!(shown.len(), 2);
+
+        let change = approve_all(&w.service(), &w.settings, today, &ids_of(&shown))
+            .await
+            .unwrap();
+
+        assert_eq!(change.value.len(), 1);
+        assert_eq!(
+            spans_of(&change.value[0]),
+            [(on(today, 0, 0), Some(on(today, 0, 10)))]
+        );
+        assert_eq!(w.stored_of(today).await, [running.clone()]);
+
+        let only_running = approve_all(&w.service(), &w.settings, today, &[shown[1].id.clone()])
+            .await
+            .unwrap();
+
+        assert!(only_running.value.is_empty());
+        assert!(only_running.days.is_empty());
+        assert_eq!(w.stored_of(today).await, [running]);
+    }
+
+    #[tokio::test]
+    async fn dismissing_a_running_suggestion_deletes_it_and_no_timer_runs() {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        timer_suggestion(&w, today, false).await;
+        let piece = running_piece(&w, today).await;
+
+        let change = dismiss(&w.service(), &w.settings, today, &[piece.id])
+            .await
+            .unwrap();
+
+        assert_eq!(change.value, 1);
+        assert!(w.stored_of(today).await.is_empty());
+        assert_eq!(crate::timers::current(&w.db).await.unwrap(), None);
+        assert!(w.recordings().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_running_suggestion_shows_as_the_running_piece_up_to_now() {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        timer_suggestion(&w, today, false).await;
+
+        let piece = running_piece(&w, today).await;
+
+        assert_eq!(piece.start, on(today, 0, 30));
+        assert!(piece.end >= piece.start + MIN);
+        assert_eq!(piece.by, "claude");
     }
 
     #[tokio::test]

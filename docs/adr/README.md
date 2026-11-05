@@ -50,3 +50,4 @@ stands in TimeTracker. The numbers in this table are TimeTracker's.
 | [0038](0038-app-commands-live-in-a-rust-bus.md) | App commands live in a Rust bus | Accepted (2026-11-04), implemented |
 | [0039](0039-the-palette-runs-the-menus.md) | The palette runs the menus | Accepted (2026-11-04), implemented |
 | [0040](0040-reads-go-through-tanstack-query.md) | Reads go through TanStack Query, invalidated by events | Accepted (2026-11-04), implemented |
+| [0041](0041-programmatic-timers-start-as-suggestions.md) | Timers other apps start are suggestions unless final | Accepted (2026-11-05), implemented |

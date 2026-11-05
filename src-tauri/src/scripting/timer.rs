@@ -5,18 +5,28 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::day;
+use crate::db::Db;
 use crate::db::time::{Ms, to_local_iso};
-use crate::db::{Db, recordings};
 use crate::error::AppResult;
-use crate::timers::{self, open_start};
+use crate::timers::{self, Timer};
 
-/// Every field but `running` is `None` while no timer runs.
+/// Every field but `running` and `suggested` is `None` while no timer runs.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct TimerState {
     pub running: bool,
+    /// Started by another app: it runs as a suggestion that waits for review (ADR 0041).
+    #[serde(default)]
+    pub suggested: bool,
+    /// The running recording; none for a suggested timer.
     pub recording_id: Option<String>,
+    /// The running stored suggestion of a suggested timer.
+    #[serde(default)]
+    pub suggestion_id: Option<String>,
+    /// The app that started a suggested timer.
+    #[serde(default)]
+    pub source: Option<String>,
     pub project_id: Option<String>,
     pub project: Option<String>,
     pub client: Option<String>,
@@ -69,25 +79,31 @@ pub async fn recent(db: &Db, limit: u32) -> AppResult<Vec<RecentTimerEntry>> {
 }
 
 pub async fn state(db: &Db, now: Ms) -> AppResult<TimerState> {
-    let Some(recording) = recordings::running(db).await? else {
+    let Some(timer) = timers::current(db).await? else {
         return Ok(TimerState::default());
     };
     let names = day::names(db).await?;
-    let project = names.projects.get(&recording.project_id);
-    let started_at = open_start(&recording);
+    let project = timer.project_id().and_then(|id| names.projects.get(id));
+    let started_at = timer.open_start();
+    let (recording_id, suggestion_id) = match &timer {
+        Timer::Recording(r) => (Some(r.id.clone()), None),
+        Timer::Suggestion(s) => (None, Some(s.id.clone())),
+    };
     Ok(TimerState {
         running: true,
+        suggested: timer.is_suggested(),
+        recording_id,
+        suggestion_id,
+        source: timer.source().map(str::to_string),
         project: project.map(|p| p.name.clone()),
         client: project.and_then(|p| p.client_name.clone()),
-        tag: recording
-            .tag_id
-            .as_ref()
+        tag: timer
+            .tag_id()
             .and_then(|id| names.tags.get(id))
             .map(|t| t.name.clone()),
-        recording_id: Some(recording.id),
-        project_id: Some(recording.project_id),
-        tag_id: recording.tag_id,
-        note: Some(recording.note),
+        project_id: timer.project_id().map(str::to_string),
+        tag_id: timer.tag_id().map(str::to_string),
+        note: Some(timer.note().to_string()),
         started_at: Some(started_at),
         started_at_iso: Some(to_local_iso(started_at)),
         elapsed_ms: Some((now - started_at).max(0)),
@@ -100,7 +116,9 @@ mod tests {
 
     use super::*;
     use crate::db::projects::{self, ProjectInput};
+    use crate::db::recordings;
     use crate::db::recordings::NewRecording;
+    use crate::db::stored_suggestions::{self, StoredSuggestion};
     use crate::db::tags;
     use crate::test_support::{client, project, recording};
 
@@ -338,6 +356,9 @@ mod tests {
                 started_at: Some(started),
                 started_at_iso: Some(to_local_iso(started)),
                 elapsed_ms: Some(25 * MIN),
+                source: None,
+                suggested: false,
+                suggestion_id: None,
             }
         );
     }
@@ -379,13 +400,106 @@ mod tests {
         assert_eq!(state.elapsed_ms, Some(0));
     }
 
+    async fn put_suggestion(db: &Db, suggestion: &StoredSuggestion) {
+        let mut conn = db.pool().acquire().await.unwrap();
+        stored_suggestions::put_on(&mut conn, suggestion)
+            .await
+            .unwrap();
+    }
+
+    fn running_suggestion(project_id: Option<&str>, tag_id: Option<&str>) -> StoredSuggestion {
+        StoredSuggestion {
+            id: "s1".into(),
+            project_id: project_id.map(str::to_string),
+            note: "review".into(),
+            tag_id: tag_id.map(str::to_string),
+            source: "claude".into(),
+            day: crate::db::time::Day::of(2_000 * MIN),
+            spans: Vec::new(),
+            created_at: 1_000,
+            updated_at: 1_000,
+            open_start: Some(2_000 * MIN),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_running_suggestion_is_a_suggested_timer_with_its_source_and_no_recording() {
+        let db = Db::open_memory().await.unwrap();
+        let portal = project(&db, "Portal").await;
+        let billing = tags::insert(&db, "billing").await.unwrap();
+        put_suggestion(
+            &db,
+            &running_suggestion(Some(&portal.id), Some(&billing.id)),
+        )
+        .await;
+        let started = 2_000 * MIN;
+
+        let state = state(&db, started + 25 * MIN).await.unwrap();
+
+        assert_eq!(
+            state,
+            TimerState {
+                running: true,
+                suggested: true,
+                recording_id: None,
+                suggestion_id: Some("s1".into()),
+                source: Some("claude".into()),
+                project_id: Some(portal.id),
+                project: Some("Portal".into()),
+                client: None,
+                tag_id: Some(billing.id),
+                tag: Some("billing".into()),
+                note: Some("review".into()),
+                started_at: Some(started),
+                started_at_iso: Some(to_local_iso(started)),
+                elapsed_ms: Some(25 * MIN),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_running_suggestion_without_a_project_has_no_project_names() {
+        let db = Db::open_memory().await.unwrap();
+        put_suggestion(&db, &running_suggestion(None, None)).await;
+
+        let state = state(&db, 2_000 * MIN).await.unwrap();
+
+        assert_eq!(
+            (
+                state.running,
+                state.suggested,
+                state.project_id,
+                state.project
+            ),
+            (true, true, None, None)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_running_recording_is_the_state_before_a_running_suggestion() {
+        let db = Db::open_memory().await.unwrap();
+        let podcast = project(&db, "Podcast").await;
+        put_suggestion(&db, &running_suggestion(Some(&podcast.id), None)).await;
+        let id = timer_of(&db, &podcast.id, "", None).await;
+
+        let state = state(&db, 2_000 * MIN).await.unwrap();
+
+        assert_eq!(
+            (state.suggested, state.recording_id, state.suggestion_id),
+            (false, Some(id), None)
+        );
+    }
+
     #[test]
     fn the_state_has_camel_case_fields_and_nulls_when_idle() {
         assert_eq!(
             serde_json::to_value(TimerState::default()).unwrap(),
             json!({
                 "running": false,
+                "suggested": false,
                 "recordingId": null,
+                "suggestionId": null,
+                "source": null,
                 "projectId": null,
                 "project": null,
                 "client": null,

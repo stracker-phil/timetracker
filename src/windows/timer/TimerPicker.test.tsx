@@ -5,12 +5,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api } from "../../api";
+import { today } from "../../lib/day";
 import { resetStore, useStore } from "../../state/store";
 import { emit } from "../../test/apiMock";
+import { at, dayView } from "../../test/dayFixtures";
 import { projectItem } from "../../test/projectFixtures";
-import { recording } from "../../test/recordingFixtures";
+import { storedSuggestion } from "../../test/ruleFixtures";
 import { settings } from "../../test/settings";
-import { recentTimer, runningStatus } from "../../test/timerFixtures";
+import { recentTimer, runningStatus, suggestedStatus } from "../../test/timerFixtures";
 import { TimerPicker } from "./TimerPicker";
 
 const mocked = vi.mocked(api, true);
@@ -140,7 +142,7 @@ describe("TimerPicker", () => {
 
   describe("with a running timer", () => {
     beforeEach(() => {
-      mocked.timerStatus.mockResolvedValue(runningStatus({ projectName: "Website", recording: recording({ end: null, projectId: "p-site", note: "writing", tagId: "tag-support" }) }));
+      mocked.timerStatus.mockResolvedValue(runningStatus({ projectName: "Website", projectId: "p-site", note: "writing", tagId: "tag-support" }));
       mocked.timersRecent.mockResolvedValue([recentTimer()]);
     });
 
@@ -201,6 +203,85 @@ describe("TimerPicker", () => {
       await screen.findByRole("button", { name: "Stop" });
       await userEvent.keyboard("{Escape}");
       expect(mocked.timerPickerClose).toHaveBeenCalled();
+    });
+
+    it("offers no Approve for a timer that is not suggested", async () => {
+      renderPicker();
+      await screen.findByRole("heading", { name: /Timer running/ });
+      expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("with a suggested timer", () => {
+    const start = at("09:00", today());
+    const piece = storedSuggestion({ storedId: "st-timer", id: `stored:st-timer:${start}:open`, running: true, start, end: start + 83 * 60_000 });
+
+    beforeEach(() => {
+      mocked.timerStatus.mockResolvedValue(suggestedStatus({ projectName: "Website", projectId: "p-site", note: "writing", tagId: "tag-support" }));
+      mocked.dayView.mockResolvedValue(dayView({ day: today(), suggestions: [piece] }));
+    });
+
+    it("is headed Suggested timer, filled with the timer's note, project and tag", async () => {
+      renderPicker();
+      expect(await screen.findByRole("heading", { level: 1, name: /Suggested timer/ })).toHaveTextContent("1h 23m");
+      expect(noteField()).toHaveValue("writing");
+      await vi.waitFor(() => expect(screen.getByRole("combobox", { name: "Project" })).toHaveDisplayValue("Website"));
+      expect(screen.getByRole("combobox", { name: "Tag" })).toHaveDisplayValue("support");
+    });
+
+    it("approves today's running piece with the edited fields, then closes", async () => {
+      renderPicker();
+      await screen.findByRole("heading", { name: /Suggested timer/ });
+      await vi.waitFor(() => expect(screen.getByRole("combobox", { name: "Project" })).toHaveDisplayValue("Website"));
+      await userEvent.clear(noteField());
+      await userEvent.type(noteField(), "  reviewing ");
+      await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+      await vi.waitFor(() => expect(mocked.timerPickerClose).toHaveBeenCalled());
+      expect(mocked.dayView).toHaveBeenCalledWith(today());
+      expect(mocked.suggestionApproveEdited).toHaveBeenCalledWith(
+        today(),
+        piece.id,
+        { projectId: "p-site", note: "reviewing", tagId: "tag-support", spans: [{ start: piece.start, end: piece.end }] },
+        "cancel",
+      );
+      expect(useStore.getState().toasts.map((t) => t.message)).toEqual(["Timer approved for Website"]);
+    });
+
+    it("stays open and toasts when the timer's piece is gone", async () => {
+      mocked.dayView.mockResolvedValue(dayView({ day: today(), suggestions: [] }));
+      renderPicker();
+      await screen.findByRole("heading", { name: /Suggested timer/ });
+      await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+      await vi.waitFor(() => expect(useStore.getState().toasts.map((t) => t.message)).toEqual(["The suggested timer is gone"]));
+      expect(mocked.timerPickerClose).not.toHaveBeenCalled();
+    });
+
+    it("disables Approve while no project is chosen and enables it once one is", async () => {
+      mocked.timerStatus.mockResolvedValue(suggestedStatus({ projectId: null, projectName: null }));
+      renderPicker();
+      await screen.findByRole("heading", { name: /Suggested timer/ });
+      expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+      await chooseProject();
+      expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+    });
+
+    it("saves the edited note through timerUpdate, then closes", async () => {
+      renderPicker();
+      await screen.findByRole("heading", { name: /Suggested timer/ });
+      await vi.waitFor(() => expect(screen.getByRole("combobox", { name: "Project" })).toHaveDisplayValue("Website"));
+      await userEvent.clear(noteField());
+      await userEvent.type(noteField(), "reviewing");
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect(mocked.timerUpdate).toHaveBeenCalledWith("p-site", "reviewing", "tag-support");
+      expect(mocked.suggestionApproveEdited).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(mocked.timerPickerClose).toHaveBeenCalled());
+    });
+
+    it("stops the timer and closes on Stop", async () => {
+      renderPicker();
+      await userEvent.click(await screen.findByRole("button", { name: "Stop" }));
+      expect(mocked.timerStop).toHaveBeenCalled();
+      await vi.waitFor(() => expect(mocked.timerPickerClose).toHaveBeenCalled());
     });
   });
 

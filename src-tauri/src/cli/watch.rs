@@ -76,6 +76,23 @@ mod tests {
     }
 
     #[test]
+    fn a_suggested_timer_is_marked_in_its_line() {
+        let event = WatchEvent::Timer(TimerState {
+            running: true,
+            suggested: true,
+            project: Some("Acme".into()),
+            note: Some("standup".into()),
+            started_at: Some(ms("2026-10-21T11:35:00+02:00")),
+            ..TimerState::default()
+        });
+
+        assert_eq!(
+            line(&event, now(), &Vienna),
+            "timer: Acme · standup · 0:25 (suggested)"
+        );
+    }
+
+    #[test]
     fn a_stopped_timer_prints_none() {
         let event = WatchEvent::Timer(TimerState::default());
 

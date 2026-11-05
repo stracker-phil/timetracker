@@ -23,6 +23,8 @@ pub struct SuggestionOut {
     pub note: String,
     /// `null` when untagged.
     pub tag: Option<String>,
+    /// A suggested timer that still runs: its last span ends now; approving it starts a running recording.
+    pub running: bool,
 }
 
 #[derive(Serialize)]
@@ -44,7 +46,7 @@ impl Core {
                     .into_iter()
                     .map(|span| SuggestionSpanOut {
                         start_iso: span.start_iso,
-                        // Only a running timer's span is open; a suggestion's never is.
+                        // Only a running recording's span is open; a running suggestion's piece ends now.
                         end_iso: span.end_iso.unwrap_or_default(),
                     })
                     .collect(),
@@ -57,6 +59,7 @@ impl Core {
                 client: entry.labels.client,
                 note: entry.labels.note,
                 tag: entry.labels.tag,
+                running: entry.running,
             })
             .collect())
     }
@@ -101,6 +104,7 @@ mod tests {
                 .collect(),
             created_at: 1,
             updated_at: 1,
+            open_start: None,
         };
         let mut conn = seed.db.pool().acquire().await.unwrap();
         stored_suggestions::put_on(&mut conn, &suggestion)
@@ -131,8 +135,39 @@ mod tests {
                 "client": "Acme",
                 "note": "review PR",
                 "tag": "development",
+                "running": false,
             }])
         );
+    }
+
+    #[tokio::test]
+    async fn a_running_suggested_timer_is_marked_running_and_starts_at_its_open_start() {
+        let seed = seeded().await;
+        let suggestion = StoredSuggestion {
+            id: "t1".into(),
+            project_id: Some(seed.portal.id.clone()),
+            note: "review PR".into(),
+            tag_id: None,
+            source: "Claude Desktop".into(),
+            day: Day::parse(DAY).unwrap(),
+            spans: Vec::new(),
+            created_at: 1,
+            updated_at: 1,
+            open_start: Some(at(15, 0)),
+        };
+        let mut conn = seed.db.pool().acquire().await.unwrap();
+        stored_suggestions::put_on(&mut conn, &suggestion)
+            .await
+            .unwrap();
+        drop(conn);
+
+        let out = seed.core.suggestions(DAY, None).await.unwrap();
+
+        assert_eq!(out.len(), 1);
+        assert!(out[0].running);
+        assert_eq!(out[0].spans.len(), 1);
+        assert_eq!(out[0].spans[0].start_iso, iso(15, 0));
+        assert_eq!(out[0].project.as_deref(), Some("Portal"));
     }
 
     #[tokio::test]
@@ -154,6 +189,7 @@ mod tests {
                 "project": null,
                 "note": "review PR",
                 "tag": "development",
+                "running": false,
             }])
         );
     }

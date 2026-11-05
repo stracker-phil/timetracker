@@ -25,6 +25,7 @@ pub async fn load(db: &Db, day: Day, settings: &Settings, now: Ms) -> AppResult<
         settings,
         &dismissed,
         &stored,
+        now,
     );
     Ok(view)
 }

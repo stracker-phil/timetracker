@@ -1,5 +1,6 @@
 //! `timetracker edit`, `delete`, `approve`, `recordings`, `suggestions`, `timer` and `tracker`: writes are
-//! suggestions unless `--final`, and `--draft` wins over `--final` (ADR 0028); the timer is always direct.
+//! suggestions unless `--final`, and `--draft` wins over `--final` (ADR 0028); `timer start` starts a
+//! suggested timer unless `--final` (ADR 0041), while stop and update change whatever timer runs.
 
 use chrono::TimeZone;
 use clap::{Args, Subcommand};
@@ -31,7 +32,8 @@ pub struct ChangeArgs {
 
 #[derive(Args, Debug)]
 pub struct FinalArgs {
-    /// Act on a recording instead of a suggestion (edit: or record the suggestion with the changes)
+    /// Act on a recording instead of a suggestion (edit: or record the suggestion with the changes; timer
+    /// start: start a running recording)
     #[arg(long = "final")]
     final_write: bool,
     /// Act on suggestions only, even with --final
@@ -136,17 +138,9 @@ impl ListRange {
 
 #[derive(Subcommand, Debug)]
 pub enum TimerCommand {
-    /// Start a timer for a project now; a running timer stops (the same project, note and tag continue)
-    Start {
-        /// The project's id, name or a unique start of its name
-        project: String,
-        /// One line
-        #[arg(long, default_value = "")]
-        note: String,
-        /// A tag by name (at most one)
-        #[arg(long)]
-        tag: Option<String>,
-    },
+    /// Start a suggested timer for a project now, reviewed in the Day view (--final: a recording); a
+    /// running timer stops (the same project, note and tag continue)
+    Start(TimerStartArgs),
     /// Stop the running timer
     Stop,
     /// Print the running timer (--json: flat fields with project, client, tag, note and start)
@@ -170,9 +164,7 @@ pub enum TimerCommand {
 impl TimerCommand {
     pub fn message(self) -> IpcMessage {
         match self {
-            TimerCommand::Start { project, note, tag } => IpcMessage::TimerStart {
-                request: TimerStartRequest { project, note, tag },
-            },
+            TimerCommand::Start(args) => args.message(),
             TimerCommand::Stop => IpcMessage::TimerStop,
             TimerCommand::Status => IpcMessage::TimerStatus,
             TimerCommand::Pick => IpcMessage::TimerPicker,
@@ -189,6 +181,38 @@ impl TimerCommand {
                     tag,
                     clear_tag: no_tag,
                 },
+            },
+        }
+    }
+}
+
+/// `timer start` (and the hidden `start`).
+#[derive(Args, Debug)]
+pub struct TimerStartArgs {
+    /// The project's id, name or a unique start of its name
+    project: String,
+    /// One line
+    #[arg(long, default_value = "")]
+    note: String,
+    /// A tag by name (at most one)
+    #[arg(long)]
+    tag: Option<String>,
+    #[command(flatten)]
+    final_args: FinalArgs,
+    /// The app the suggested timer comes from, shown in the Day view (default cli)
+    #[arg(long)]
+    source: Option<String>,
+}
+
+impl TimerStartArgs {
+    pub fn message(self) -> IpcMessage {
+        IpcMessage::TimerStart {
+            request: TimerStartRequest {
+                final_write: self.final_args.is_final(),
+                project: self.project,
+                note: self.note,
+                tag: self.tag,
+                source: self.source,
             },
         }
     }
@@ -550,6 +574,8 @@ mod tests {
                 project: "acme".into(),
                 note: note.into(),
                 tag: tag.map(String::from),
+                final_write: false,
+                source: None,
             },
         };
         let cases = [
@@ -572,6 +598,40 @@ mod tests {
         ];
         for (args, message) in cases {
             assert_eq!(remote(&args), (message, false, false), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn a_timer_start_is_final_only_with_final_and_not_with_draft_and_carries_the_source() {
+        let start = |final_write: bool, source: Option<&str>| IpcMessage::TimerStart {
+            request: TimerStartRequest {
+                project: "acme".into(),
+                note: String::new(),
+                tag: None,
+                final_write,
+                source: source.map(String::from),
+            },
+        };
+        let cases = [
+            (vec!["acme"], start(false, None)),
+            (vec!["acme", "--final"], start(true, None)),
+            (vec!["acme", "--draft"], start(false, None)),
+            (vec!["acme", "--final", "--draft"], start(false, None)),
+            (
+                vec!["acme", "--source", "planner"],
+                start(false, Some("planner")),
+            ),
+            (
+                vec!["acme", "--final", "--source", "planner"],
+                start(true, Some("planner")),
+            ),
+        ];
+        for (extra, message) in cases {
+            for command in [vec!["timer", "start"], vec!["start"]] {
+                let args: Vec<&str> = command.iter().chain(&extra).copied().collect();
+
+                assert_eq!(remote(&args), (message.clone(), false, false), "{args:?}");
+            }
         }
     }
 

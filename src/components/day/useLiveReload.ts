@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { QueryKey } from "@tanstack/react-query";
 import { invalidate } from "../../queries/queryClient";
-import { useTracker } from "../../queries/status";
+import { useTimer, useTracker } from "../../queries/status";
 
 const TICK_MS = 30_000;
 const STATUS_MIN_MS = 10_000;
@@ -17,15 +17,18 @@ function useDocumentVisible(): boolean {
 }
 
 /**
- * Refetches the shown queries under `keys` every 30 s while `live`, and on tracker status changes at most every
- * 10 s, so today's timeline and totals follow the open span. The tracker itself sends no `data_changed`. While
+ * Refetches the shown queries under `keys` every 30 s while `live`, and on tracker status changes and a suggested
+ * timer's minute ticks at most every 10 s, so today's timeline and totals follow the open span. Neither the tracker
+ * nor the tick sends `data_changed` (a suggested timer's piece in the day's view ends at the view's now). While
  * the window is hidden it stands still, and refetches once when the window shows again.
  */
 export function useLiveReload(live: boolean, keys: QueryKey[]): void {
+  const timer = useTimer();
   const tracker = useTracker();
+  const suggestedTimer = timer?.running?.suggested ? timer : null;
   const visible = useDocumentVisible();
   const last = useRef(Date.now());
-  const seenTracker = useRef(tracker);
+  const seen = useRef({ tracker, suggestedTimer });
   const stale = useRef(false);
   const keysRef = useRef(keys);
   keysRef.current = keys;
@@ -50,12 +53,12 @@ export function useLiveReload(live: boolean, keys: QueryKey[]): void {
   }, [live, visible, bump]);
 
   useEffect(() => {
-    if (seenTracker.current === tracker) return;
-    seenTracker.current = tracker;
+    if (seen.current.tracker === tracker && seen.current.suggestedTimer === suggestedTimer) return;
+    seen.current = { tracker, suggestedTimer };
     if (!live || !visible) return;
     const wait = last.current + STATUS_MIN_MS - Date.now();
     if (wait <= 0) return bump();
     const timer = setTimeout(bump, wait);
     return () => clearTimeout(timer);
-  }, [tracker, live, visible, bump]);
+  }, [tracker, suggestedTimer, live, visible, bump]);
 }

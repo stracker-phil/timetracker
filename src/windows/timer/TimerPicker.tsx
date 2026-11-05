@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { Play, Square } from "lucide-react";
+import { Check, Play, Square } from "lucide-react";
 import { api, type RecentTimer, type RunningTimer as Running } from "../../api";
 import { AccentDot } from "../../components/Accent";
 import { FormField } from "../../components/Field";
@@ -50,9 +50,17 @@ interface Fields {
 
 const EMPTY: Fields = { projectId: null, note: "", tagId: null };
 
-/** Starts a timer, or edits the running one (the same fields, filled in). */
-function TimerForm({ running, onSubmit, onStop }: { running?: Running; onSubmit: Start; onStop?: () => void }) {
-  const initial: Fields = running ? { projectId: running.recording.projectId, note: running.recording.note, tagId: running.recording.tagId } : EMPTY;
+interface FormProps {
+  running?: Running;
+  onSubmit: Start;
+  onStop?: () => void;
+  /** Approves a suggested timer with the form's fields. */
+  onApprove?: Start;
+}
+
+/** Starts a timer, or edits the running one (the same fields, filled in); a suggested one can be approved too. */
+function TimerForm({ running, onSubmit, onStop, onApprove }: FormProps) {
+  const initial: Fields = running ? { projectId: running.projectId, note: running.note, tagId: running.tagId } : EMPTY;
   const [fields, setFields] = useState(initial);
   const change = (patch: Partial<Fields>) => setFields((f) => ({ ...f, ...patch }));
   const noteId = useId();
@@ -68,7 +76,7 @@ function TimerForm({ running, onSubmit, onStop }: { running?: Running; onSubmit:
       {running ? (
         <h1 className="timer-running">
           <AccentDot accent={running.color} shade={running.shade} />
-          <span className="grow-text">Timer running</span>
+          <span className="grow-text">{running.suggested ? "Suggested timer" : "Timer running"}</span>
           <span className="timer-elapsed">{formatDuration(running.elapsedMs)}</span>
         </h1>
       ) : (
@@ -101,6 +109,11 @@ function TimerForm({ running, onSubmit, onStop }: { running?: Running; onSubmit:
         <button type="button" className="btn" onClick={close}>
           Cancel
         </button>
+        {onApprove && (
+          <button type="button" className="btn" disabled={!projectId} onClick={() => projectId && onApprove(projectId, note.trim(), tagId)}>
+            <Check size="0.923rem" /> Approve
+          </button>
+        )}
         <button type="submit" className="btn btn-primary" disabled={!projectId}>
           {running ? (
             "Save"
@@ -169,6 +182,11 @@ function TimerPickerContent() {
       .updateTimer(projectId, note, tagId)
       .then((saved) => saved && close());
   const stop = () => void useStore.getState().stopTimer().then(close);
+  const approve: Start = (projectId, note, tagId) =>
+    void useStore
+      .getState()
+      .approveTimer(projectId, note, tagId)
+      .then((approved) => approved && close());
 
   return (
     <div
@@ -179,7 +197,13 @@ function TimerPickerContent() {
     >
       {running ? (
         // Filled anew on every opening and after every change, never while typing (the clock ticks).
-        <TimerForm key={`${running.recording.id}:${running.recording.updatedAt}:${opened}`} running={running} onSubmit={save} onStop={stop} />
+        <TimerForm
+          key={`${running.id}:${running.projectId}:${running.note}:${running.tagId}:${opened}`}
+          running={running}
+          onSubmit={save}
+          onStop={stop}
+          onApprove={running.suggested ? approve : undefined}
+        />
       ) : (
         <TimerForm key={formKey} onSubmit={start} />
       )}

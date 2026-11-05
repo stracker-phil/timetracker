@@ -984,6 +984,7 @@ mod tests {
             .await
             .unwrap()
             .value
+            .and_then(recording_of)
             .expect("a recording was running");
 
         assert_eq!(stopped.id, timer.id);
@@ -1348,6 +1349,7 @@ mod tests {
             spans: vec![Span { start, end }],
             created_at: 1,
             updated_at: 1,
+            open_start: None,
         }
     }
 

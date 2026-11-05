@@ -32,6 +32,7 @@ export function suggestion(patch: Partial<Suggestion> = {}): Suggestion {
     tag: null,
     tagEmoji: null,
     nextCard: null,
+    running: false,
     ...patch,
   };
 }

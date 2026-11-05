@@ -36,6 +36,9 @@
 .suggestion-card { box-shadow: none; cursor: pointer; }
 .suggestion-card .card-title, .suggestion-card .card-subtitle { padding-right: 4.2rem; }
 .suggestion-card-by { overflow: hidden; text-overflow: ellipsis; }
+/* A suggested timer's dot sits left of ✓ and ✕, level with them. */
+.suggestion-card.running::after { right: calc(var(--space-2) + 3.692rem + var(--space-1) + 0.231rem); top: calc(var(--space-2) + 0.923rem - 3px); }
+.suggestion-card.running .card-title, .suggestion-card.running .card-subtitle { padding-right: 5rem; }
 .suggestion-card-actions { position: absolute; top: var(--space-2); right: var(--space-2); display: flex; gap: var(--space-1); }
 .suggestion-card-action {
   display: inline-flex; align-items: center; justify-content: center; width: 1.846rem; height: 1.846rem; padding: 0;

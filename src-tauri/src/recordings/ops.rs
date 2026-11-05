@@ -112,6 +112,7 @@ pub async fn apply(db: &Db, op: &Op) -> AppResult<()> {
     let mut tx = db.pool().begin().await?;
     run(&mut tx, op).await?;
     check_no_overlap(&mut tx, op).await?;
+    check_one_timer(&mut tx).await?;
     tx.commit().await?;
     Ok(())
 }
@@ -160,6 +161,22 @@ async fn check_no_overlap(conn: &mut SqliteConnection, op: &Op) -> AppResult<()>
                 return Err(overlap_error(others));
             }
         }
+    }
+    Ok(())
+}
+
+/// At most one timer runs: one open recording span or one running stored suggestion (ADR 0041).
+async fn check_one_timer(conn: &mut SqliteConnection) -> AppResult<()> {
+    let running: i64 = sqlx::query_scalar(
+        r#"SELECT (SELECT COUNT(*) FROM recording_spans WHERE "end" IS NULL)
+             + (SELECT COUNT(*) FROM stored_suggestions WHERE open_start IS NOT NULL)"#,
+    )
+    .fetch_one(conn)
+    .await?;
+    if running > 1 {
+        return Err(AppError::InvalidInput(
+            "Another timer is running; stop it first".into(),
+        ));
     }
     Ok(())
 }
@@ -319,6 +336,7 @@ mod tests {
             }],
             created_at: 1_000,
             updated_at: 2_000,
+            open_start: None,
         }
     }
 
@@ -780,5 +798,93 @@ mod tests {
 
         apply(&w.db, &op.inverse()).await.unwrap();
         assert_eq!(w.rows().await, [before]);
+    }
+
+    fn running_stored(w: &World, id: &str, open_start: i64) -> StoredSuggestion {
+        StoredSuggestion {
+            project_id: Some(w.project.id.clone()),
+            spans: Vec::new(),
+            open_start: Some(open_start),
+            ..stored(id, "timer", Day::of(open_start))
+        }
+    }
+
+    #[tokio::test]
+    async fn an_op_leaving_two_timers_running_is_refused_and_changes_nothing() {
+        let w = World::new().await;
+        let running = running_with(&w, &[], at(10, 0)).await;
+        let suggestion = running_stored(&w, "s", at(11, 0));
+
+        let err = apply(&w.db, &suggestion_op(None, Some(&suggestion)))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(err.to_string(), "Another timer is running; stop it first");
+        assert_eq!(w.rows().await, [running]);
+        assert!(
+            stored_suggestions::list_for_day(&w.db, suggestion.day)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn undoing_the_deletion_of_a_running_suggestion_while_a_recording_runs_is_refused() {
+        let w = World::new().await;
+        let suggestion = running_stored(&w, "s", at(10, 0));
+        apply(&w.db, &suggestion_op(None, Some(&suggestion)))
+            .await
+            .unwrap();
+        let deleting = suggestion_op(Some(&suggestion), None);
+        apply(&w.db, &deleting).await.unwrap();
+        let running = running_with(&w, &[], at(11, 0)).await;
+
+        let err = apply(&w.db, &deleting.inverse()).await.unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(w.rows().await, [running]);
+        assert_eq!(stored_suggestions::running(&w.db).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn a_stopping_and_a_starting_step_in_one_batch_leave_one_timer() {
+        let w = World::new().await;
+        let running = running_stored(&w, "s", at(10, 0));
+        let day = running.day;
+        apply(&w.db, &suggestion_op(None, Some(&running)))
+            .await
+            .unwrap();
+        let stopped = StoredSuggestion {
+            spans: vec![crate::db::recordings::Span {
+                start: at(10, 0),
+                end: at(10, 30),
+            }],
+            open_start: None,
+            ..running.clone()
+        };
+        let next = running_stored(&w, "t", at(10, 30));
+
+        apply(
+            &w.db,
+            &batch(vec![
+                suggestion_op(Some(&running), Some(&stopped)),
+                suggestion_op(None, Some(&next)),
+            ]),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            stored_suggestions::running(&w.db).await.unwrap(),
+            Some(next)
+        );
+        assert!(
+            stored_suggestions::list_for_day(&w.db, day)
+                .await
+                .unwrap()
+                .contains(&stopped)
+        );
     }
 }
