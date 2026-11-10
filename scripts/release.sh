@@ -1,7 +1,8 @@
 #!/bin/zsh
 # Every release build gets a new version (ADR 0043): release.sh major|minor|patch|X.Y.Z.
 # Writes the version into package.json, tauri.conf.json, Cargo.toml and Cargo.lock, builds the release app,
-# installs it (scripts/install.sh), then commits "Release X.Y.Z" and tags vX.Y.Z locally. A failed build puts
+# installs it (scripts/install.sh), then commits "Release X.Y.Z" and tags vX.Y.Z locally
+# and cleans the build folder (scripts/clean-build.sh). A failed build puts
 # the version files back, so no version is used twice or skipped. Needs a clean working tree.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -43,3 +44,4 @@ git add -- "${FILES[@]}"
 git commit -q -m "Release $NEXT"
 git tag "v$NEXT"
 echo "Released $NEXT (commit and tag v$NEXT, not pushed)"
+scripts/clean-build.sh
