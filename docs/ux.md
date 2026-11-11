@@ -78,7 +78,8 @@ One place for views and one place for dates: the sidebar.
     report's first day for a custom report, else today); ‹ › page it until the shown date changes. The shown range is highlighted: the day on `--sidebar-selected` (Day view), the whole week row as a
     rounded `--sidebar-selected` band with its number in the accent (Week view), or the title (Month view);
     Reports highlight their period the same way when it is one day, week or month. A click on a day shows it
-    in the Day view, on a week number that week in the Week view, on the title that month in the Month view.
+    in the Day view, on a week number that week in the Week view, on the title that month in the Month view;
+    in Reports the click makes that day, week or month the report's period instead.
     The cells are for the pointer; the keys are ⌘1 to ⌘3, P, N, O and Go to Date… (`nav.goToDate`), whose
     picker opens under the title.
   - **Hours** (clock): today in the Day view, ready to record today; selected while the Day view shows today.

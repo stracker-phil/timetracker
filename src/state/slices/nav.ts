@@ -32,6 +32,8 @@ export interface NavSlice {
   goToday: () => void;
   /** Shows `day` (in Reports, the period holding it) without changing the view. */
   showDate: (day: string) => void;
+  /** Shows `unit`'s period holding `day`: in Reports as the report's period, elsewhere in the Day, Week or Month view. */
+  showPeriod: (unit: PeriodUnit, day: string) => void;
   /** A day, week or month back (-1) or ahead (1), by the view shown; in Reports the report's period. */
   step: (by: 1 | -1) => void;
 }
@@ -72,6 +74,10 @@ export const navSlice: Slice<NavSlice> = {
       showDate(day) {
         if (get().view === "reports") void get().shiftReportRange(day, 0);
         else stay(day);
+      },
+      showPeriod(unit, day) {
+        if (get().view === "reports") void get().showReportPeriod(unit, day);
+        else enter(unit, () => stay(day));
       },
       step(by) {
         const { view } = get();

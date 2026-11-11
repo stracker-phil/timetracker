@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { type MiniDay, type MiniWeek } from "../api";
+import { type MiniDay, type MiniWeek, type PeriodUnit } from "../api";
 import { today } from "../lib/day";
 import { useStore } from "../state/store";
 import { useShown, useShownDay } from "./shownPeriod";
@@ -8,10 +8,7 @@ import { useMiniMonth } from "../queries/calendar";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
-function show(view: "week" | "month", day: string) {
-  const { setView, showDate } = useStore.getState();
-  setView(view, () => showDate(day));
-}
+const show = (unit: PeriodUnit, day: string) => useStore.getState().showPeriod(unit, day);
 
 function DayCell({ cell }: { cell: MiniDay }) {
   const classes = ["mini-day", !cell.inMonth && "out", cell.isToday && "today", cell.selected && "sel", cell.hasRecordings && "recorded"];
@@ -22,7 +19,7 @@ function DayCell({ cell }: { cell: MiniDay }) {
       className={classes.filter(Boolean).join(" ")}
       aria-label={cell.day}
       aria-current={cell.selected ? "date" : undefined}
-      onClick={() => useStore.getState().goToDay(cell.day)}
+      onClick={() => show("day", cell.day)}
     >
       <span className="mini-day-number">{cell.dayOfMonth}</span>
     </button>
@@ -51,7 +48,7 @@ function WeekRow({ week }: { week: MiniWeek }) {
 
 /**
  * The month of the shown date, Monday first with week numbers; the shown day, week or month is highlighted. A
- * day, a week number or the title shows that day, week or month; ‹ › page the calendar only.
+ * click shows that day, week or month; ‹ › page the calendar only.
  */
 export function MiniCalendar() {
   const shownDay = useShownDay();

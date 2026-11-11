@@ -75,6 +75,35 @@ describe("MiniCalendar", () => {
     });
   });
 
+  describe("clicks in Reports", () => {
+    const range = { kind: "custom", from: "2026-03-23", to: "2026-03-29" } as const;
+
+    beforeEach(() => {
+      mocked.reportRangeShift.mockResolvedValue(range);
+      resetStore({ view: "reports", reportFilter: { ...defaultFilter(null), range: { kind: "custom", from: "2026-03-10", to: "2026-03-12" } } });
+    });
+
+    it.each([
+      ["a day", "2026-03-18", "today", "2026-03-18"],
+      ["a week number", "Week 13", "thisWeek", "2026-03-23"],
+    ] as const)("%s sets the report's range and stays in Reports", async (_what, name, preset, anchor) => {
+      render(<MiniCalendar />);
+      await title("March 2026");
+      await userEvent.click(within(calendar()).getByRole("button", { name }));
+      await vi.waitFor(() => expect(useStore.getState().reportFilter?.range).toEqual(range));
+      expect(useStore.getState().view).toBe("reports");
+      expect(mocked.reportRangeShift).toHaveBeenCalledWith({ kind: preset }, anchor, 0);
+    });
+
+    it("the title sets the report's range to the month and stays in Reports", async () => {
+      render(<MiniCalendar />);
+      await userEvent.click(await title("March 2026"));
+      await vi.waitFor(() => expect(useStore.getState().reportFilter?.range).toEqual(range));
+      expect(useStore.getState().view).toBe("reports");
+      expect(mocked.reportRangeShift).toHaveBeenCalledWith({ kind: "thisMonth" }, "2026-03-01", 0);
+    });
+  });
+
   describe("paging", () => {
     it.each([
       ["Previous month", "February 2026", -1],

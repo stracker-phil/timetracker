@@ -34,6 +34,37 @@ describe("reports slice, shifting the period", () => {
   });
 });
 
+describe("reports slice, showing a period", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore({ view: "reports", reportFilter: { ...defaultFilter(null), range: { kind: "thisWeek" }, groupBy: "tag" } });
+  });
+
+  it.each([
+    ["day", "today"],
+    ["week", "thisWeek"],
+    ["month", "thisMonth"],
+  ] as const)("asks Rust for the %s period holding the day, from the %s preset", async (unit, preset) => {
+    mocked.reportRangeShift.mockResolvedValueOnce({ kind: "custom", from: "2026-03-23", to: "2026-03-29" });
+    await state().showReportPeriod(unit, "2026-03-25");
+    expect(mocked.reportRangeShift).toHaveBeenCalledWith({ kind: preset }, "2026-03-25", 0);
+  });
+
+  it("sets the returned range and keeps the rest of the filter", async () => {
+    mocked.reportRangeShift.mockResolvedValueOnce({ kind: "custom", from: "2026-03-23", to: "2026-03-29" });
+    await state().showReportPeriod("week", "2026-03-25");
+    expect(state().reportFilter).toMatchObject({ range: { kind: "custom", from: "2026-03-23", to: "2026-03-29" }, groupBy: "tag" });
+    expect(state().view).toBe("reports");
+  });
+
+  it("toasts and keeps the range when Rust rejects the period", async () => {
+    mocked.reportRangeShift.mockRejectedValueOnce({ kind: "io", message: "Out of range", code: null });
+    await state().showReportPeriod("month", "2026-03-25");
+    expect(state().reportFilter).toMatchObject({ range: { kind: "thisWeek" }, groupBy: "tag" });
+    expect(state().toasts.map((t) => t.message)).toEqual(["Could not change the report's period: Out of range"]);
+  });
+});
+
 describe("reports slice, the opened saved report", () => {
   beforeEach(() => {
     vi.clearAllMocks();

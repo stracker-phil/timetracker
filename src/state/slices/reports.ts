@@ -1,4 +1,4 @@
-import { api, type ReportFilter, type SavedReport, type Settings } from "../../api";
+import { api, type PeriodUnit, type Range, type ReportFilter, type SavedReport, type Settings } from "../../api";
 import { fail } from "../requests";
 import type { Slice } from "../store";
 import { setSavedReports } from "../../queries/reports";
@@ -16,6 +16,8 @@ export interface ReportsSlice {
    * given; `by = 0` with an anchor is the period holding `anchor`.
    */
   shiftReportRange: (anchor: string | null, by: number) => Promise<void>;
+  /** The report shows `unit`'s period holding `day` (a preset where one matches). */
+  showReportPeriod: (unit: PeriodUnit, day: string) => Promise<void>;
   /** Saves the shown filter under `name`. */
   saveReport: (name: string) => Promise<void>;
   renameSavedReport: (id: string, name: string) => Promise<void>;
@@ -36,58 +38,65 @@ export function defaultFilter(settings: Settings | null): ReportFilter {
   };
 }
 
+/** A range of each unit: Rust moves it to the period of that unit holding the anchor day. */
+const UNIT_RANGES: Record<PeriodUnit, Range> = { day: { kind: "today" }, week: { kind: "thisWeek" }, month: { kind: "thisMonth" } };
+
 export const selectReportFilter = (s: { reportFilter: ReportFilter | null }) => s.reportFilter ?? defaultFilter(currentSettings());
 
 export const reportsSlice: Slice<ReportsSlice> = {
-  create: (set, get) => ({
-    reportFilter: null,
-    openedReport: null,
-
-    setReportFilter(patch) {
-      set({ reportFilter: { ...selectReportFilter(get()), ...patch }, openedReport: null });
-    },
-
-    async shiftReportRange(anchor, by) {
+  create: (set, get) => {
+    const moveRange = async (range: Range, anchor: string | null, by: number) => {
       try {
-        const range = await api.reportRangeShift(selectReportFilter(get()).range, anchor, by);
-        get().setReportFilter({ range });
+        get().setReportFilter({ range: await api.reportRangeShift(range, anchor, by) });
       } catch (e) {
         fail(e, "Could not change the report's period");
       }
-    },
+    };
+    return {
+      reportFilter: null,
+      openedReport: null,
 
-    async saveReport(name) {
-      try {
-        const saved = await api.savedReportSave(name, selectReportFilter(get()));
-        setSavedReports((reports) => [...reports, saved]);
-        get().toast("success", `Saved report "${saved.name}"`);
-      } catch (e) {
-        fail(e, "Could not save the report");
-      }
-    },
+      setReportFilter(patch) {
+        set({ reportFilter: { ...selectReportFilter(get()), ...patch }, openedReport: null });
+      },
 
-    async renameSavedReport(id, name) {
-      try {
-        const renamed = await api.savedReportRename(id, name);
-        setSavedReports((reports) => reports.map((r) => (r.id === id ? renamed : r)));
-      } catch (e) {
-        fail(e, "Could not rename the report");
-      }
-    },
+      shiftReportRange: (anchor, by) => moveRange(selectReportFilter(get()).range, anchor, by),
 
-    async deleteSavedReport(id) {
-      try {
-        await api.savedReportDelete(id);
-        setSavedReports((reports) => reports.filter((r) => r.id !== id));
-        set((s) => ({ openedReport: s.openedReport === id ? null : s.openedReport }));
-      } catch (e) {
-        fail(e, "Could not delete the report");
-      }
-    },
+      showReportPeriod: (unit, day) => moveRange(UNIT_RANGES[unit], day, 0),
 
-    openSavedReport(saved) {
-      set({ reportFilter: saved.filter, openedReport: saved.id });
-      get().setView("reports");
-    },
-  }),
+      async saveReport(name) {
+        try {
+          const saved = await api.savedReportSave(name, selectReportFilter(get()));
+          setSavedReports((reports) => [...reports, saved]);
+          get().toast("success", `Saved report "${saved.name}"`);
+        } catch (e) {
+          fail(e, "Could not save the report");
+        }
+      },
+
+      async renameSavedReport(id, name) {
+        try {
+          const renamed = await api.savedReportRename(id, name);
+          setSavedReports((reports) => reports.map((r) => (r.id === id ? renamed : r)));
+        } catch (e) {
+          fail(e, "Could not rename the report");
+        }
+      },
+
+      async deleteSavedReport(id) {
+        try {
+          await api.savedReportDelete(id);
+          setSavedReports((reports) => reports.filter((r) => r.id !== id));
+          set((s) => ({ openedReport: s.openedReport === id ? null : s.openedReport }));
+        } catch (e) {
+          fail(e, "Could not delete the report");
+        }
+      },
+
+      openSavedReport(saved) {
+        set({ reportFilter: saved.filter, openedReport: saved.id });
+        get().setView("reports");
+      },
+    };
+  },
 };
