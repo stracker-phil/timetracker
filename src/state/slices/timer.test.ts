@@ -4,12 +4,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { today } from "../../lib/day";
-import { at, dayView } from "../../test/dayFixtures";
-import { projectItem } from "../../test/projectFixtures";
-import { seedProjects, seedQuery, TIMER_KEY } from "../../test/queries";
 import { recording } from "../../test/recordingFixtures";
-import { storedSuggestion } from "../../test/ruleFixtures";
-import { runningStatus, suggestedStatus } from "../../test/timerFixtures";
 import { resetStore, useStore } from "../store";
 
 const mocked = vi.mocked(api, true);
@@ -60,58 +55,6 @@ describe("timer slice", () => {
       mocked.timerUpdate.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
       await expect(useStore.getState().updateTimer("p2", "", null)).resolves.toBe(false);
       expect(toastMessages()).toContain("Could not change the timer: Disk full");
-    });
-  });
-
-  describe("approveTimer", () => {
-    const start = at("09:00", today());
-    const piece = storedSuggestion({ storedId: "st-timer", id: `stored:st-timer:${start}:open`, running: true, start, end: start + 83 * 60_000 });
-    const edited = { projectId: "p-site", note: "writing", tagId: "tag-support", spans: [{ start: piece.start, end: piece.end }] };
-
-    beforeEach(() => {
-      seedProjects({ projects: [projectItem({ project: { id: "p-site", name: "Website" } })] });
-      seedQuery(TIMER_KEY, suggestedStatus({ id: "st-timer" }));
-      mocked.dayView.mockResolvedValue(dayView({ day: today(), suggestions: [piece] }));
-    });
-
-    it("approves today's running piece with the given fields, keeps the timer running and offers Undo", async () => {
-      await expect(useStore.getState().approveTimer("p-site", "writing", "tag-support")).resolves.toBe(true);
-      expect(mocked.dayView).toHaveBeenCalledWith(today());
-      expect(mocked.suggestionApproveEdited).toHaveBeenCalledWith(today(), piece.id, edited, "cancel");
-      expect(toastMessages()).toEqual(["Timer approved for Website"]);
-      expect(toasts()[0].action?.label).toBe("Undo");
-    });
-
-    it("runs the Undo action through the api", async () => {
-      await useStore.getState().approveTimer("p-site", "", null);
-      toasts()[0].action?.run();
-      await vi.waitFor(() => expect(mocked.undo).toHaveBeenCalled());
-    });
-
-    it("toasts that the timer is gone when today's view has no running piece of it", async () => {
-      mocked.dayView.mockResolvedValue(dayView({ day: today(), suggestions: [{ ...piece, storedId: "st-other" }] }));
-      await expect(useStore.getState().approveTimer("p-site", "", null)).resolves.toBe(false);
-      expect(toastMessages()).toEqual(["The suggested timer is gone"]);
-      expect(mocked.suggestionApproveEdited).not.toHaveBeenCalled();
-    });
-
-    it("does nothing for a timer that is not suggested", async () => {
-      seedQuery(TIMER_KEY, runningStatus());
-      await expect(useStore.getState().approveTimer("p-site", "", null)).resolves.toBe(false);
-      expect(mocked.dayView).not.toHaveBeenCalled();
-      expect(toasts()).toEqual([]);
-    });
-
-    it("toasts that a recording covers now on an overlap", async () => {
-      mocked.suggestionApproveEdited.mockRejectedValueOnce({ kind: "overlap", message: "Overlaps", code: null });
-      await expect(useStore.getState().approveTimer("p-site", "", null)).resolves.toBe(false);
-      expect(toastMessages()).toEqual(["A recording already covers now"]);
-    });
-
-    it("toasts the message of any other error", async () => {
-      mocked.suggestionApproveEdited.mockRejectedValueOnce({ kind: "io", message: "Disk full", code: null });
-      await expect(useStore.getState().approveTimer("p-site", "", null)).resolves.toBe(false);
-      expect(toastMessages()).toContain("Could not approve the timer: Disk full");
     });
   });
 

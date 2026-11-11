@@ -38,6 +38,9 @@ export const NO_PROJECT = "No project";
 /** A suggestion without a project waits for the owner to pick one before it can be approved (ADR 0030). */
 export const isApprovable = (suggestion: Suggestion) => suggestion.projectId !== null;
 
+/** A running suggestion (a suggested timer) is neither approved nor dismissed until it stops (ADR 0046). */
+export const isSettleable = (suggestion: Suggestion) => !suggestion.running;
+
 export const suggestionsSlice: Slice<SuggestionsSlice> = {
   create: (set, get) => {
     const undoToast = (message: string) => get().toast("success", message, { label: "Undo", run: () => void get().undo() });
@@ -60,6 +63,7 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
       },
 
       async approveSuggestion(suggestion) {
+        if (!isSettleable(suggestion)) return;
         if (!isApprovable(suggestion)) {
           get().editSuggestion(suggestion);
           return;
@@ -86,7 +90,7 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
 
       async approveSuggestions(requested) {
         const ids = shownSuggestions()
-          .filter((s) => requested.includes(s.id) && isApprovable(s))
+          .filter((s) => requested.includes(s.id) && isApprovable(s) && isSettleable(s))
           .map((s) => s.id);
         if (ids.length === 0) return;
         try {
@@ -98,7 +102,9 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
         }
       },
 
-      async dismissSuggestions(ids) {
+      async dismissSuggestions(requested) {
+        const running = new Set(shownSuggestions().filter((s) => !isSettleable(s)).map((s) => s.id));
+        const ids = requested.filter((id) => !running.has(id));
         if (ids.length === 0) return;
         try {
           const dismissed = await api.suggestionsDismiss(get().day, ids);

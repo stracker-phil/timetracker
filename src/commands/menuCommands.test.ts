@@ -168,6 +168,38 @@ describe("suggestion commands", () => {
     expect(state().editor).toMatchObject({ mode: "create", suggestion: { id: unassigned.id } });
   });
 
+  describe("with a running suggestion", () => {
+    const running = suggestion({ running: true, ruleIds: [], start: at("13:00"), end: at("13:30") });
+
+    beforeEach(() => seedQuery(dayKey(DAY), dayView({ suggestions: [proposed, running] })));
+
+    it.each(["suggestion.approve", "suggestion.dismiss"])("%s does not run on the focused running suggestion", (id) => {
+      state().focusSuggestion(running.id);
+      expect(runMenuCommand(id)).toBe(false);
+      expect(mocked.suggestionApprove).not.toHaveBeenCalled();
+      expect(mocked.suggestionsDismiss).not.toHaveBeenCalled();
+    });
+
+    it("suggestion.edit still opens the editor on it", () => {
+      state().focusSuggestion(running.id);
+      expect(runMenuCommand("suggestion.edit")).toBe(true);
+      expect(state().editor).toMatchObject({ mode: "create", suggestion: { id: running.id } });
+    });
+
+    it("suggestion.approveAll and dismissAll leave it out", async () => {
+      expect(runMenuCommand("suggestion.approveAll")).toBe(true);
+      await vi.waitFor(() => expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [proposed.id]));
+      expect(runMenuCommand("suggestion.dismissAll")).toBe(true);
+      await vi.waitFor(() => expect(mocked.suggestionsDismiss).toHaveBeenCalledWith(DAY, [proposed.id]));
+    });
+
+    it("suggestion.approveAll and dismissAll do not run when only it is shown", () => {
+      seedQuery(dayKey(DAY), dayView({ suggestions: [running] }));
+      expect(runMenuCommand("suggestion.approveAll")).toBe(false);
+      expect(runMenuCommand("suggestion.dismissAll")).toBe(false);
+    });
+  });
+
   it("suggestion.dismissAll dismisses every suggestion of the shown day", async () => {
     expect(runMenuCommand("suggestion.dismissAll")).toBe(true);
     await vi.waitFor(() => expect(mocked.suggestionsDismiss).toHaveBeenCalledWith(DAY, [proposed.id]));

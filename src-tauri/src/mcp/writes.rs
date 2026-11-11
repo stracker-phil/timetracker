@@ -230,7 +230,7 @@ impl TimeTrackerServer {
     }
 
     #[tool(
-        description = "Starts a suggested timer for a project now, which the user approves in the Day view; with final a running recording instead. A running timer stops. Today's suggestion (or with final, recording) with the same project, note and tag continues. Answers with the suggestion's id"
+        description = "Starts a suggested timer for a project now, which the user reviews in the Day view once it stops; with final a running recording instead. A running timer stops. Today's suggestion (or with final, recording) with the same project, note and tag continues. Answers with the suggestion's id"
     )]
     async fn timer_start(
         &self,

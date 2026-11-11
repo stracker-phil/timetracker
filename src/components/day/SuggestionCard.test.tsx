@@ -41,11 +41,22 @@ describe("SuggestionCard", () => {
     expect(screen.getByRole("group", { name: "Suggested: standup, Website, since 09:00, by cli" })).toHaveClass("running");
   });
 
-  it("approving a running suggestion toasts that the timer was approved", async () => {
-    const suggestion = renderCard({ running: true });
-    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
-    expect(await screen.findByText("Timer approved for Website")).toBeInTheDocument();
-    expect(mocked.suggestionApprove).toHaveBeenCalledWith(DAY, suggestion.id);
+  it.each([
+    ["with a project", {}],
+    ["without a project", { projectId: null, projectName: null }],
+  ])("offers no approve, pick or dismiss button on a running suggestion %s", (_, patch) => {
+    renderCard({ running: true, ...patch });
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pick a project" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
+  });
+
+  it("dismisses a finished suggestion", async () => {
+    const suggestion = renderCard();
+    mocked.suggestionsDismiss.mockResolvedValueOnce(1);
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(await screen.findByText("Dismissed 1 suggestion")).toBeInTheDocument();
+    expect(mocked.suggestionsDismiss).toHaveBeenCalledWith(DAY, [suggestion.id]);
   });
 
   it("approving a finished suggestion toasts what was recorded", async () => {

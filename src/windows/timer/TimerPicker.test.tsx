@@ -5,12 +5,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api } from "../../api";
-import { today } from "../../lib/day";
 import { resetStore, useStore } from "../../state/store";
 import { emit } from "../../test/apiMock";
-import { at, dayView } from "../../test/dayFixtures";
 import { projectItem } from "../../test/projectFixtures";
-import { storedSuggestion } from "../../test/ruleFixtures";
 import { settings } from "../../test/settings";
 import { recentTimer, runningStatus, suggestedStatus } from "../../test/timerFixtures";
 import { TimerPicker } from "./TimerPicker";
@@ -213,12 +210,8 @@ describe("TimerPicker", () => {
   });
 
   describe("with a suggested timer", () => {
-    const start = at("09:00", today());
-    const piece = storedSuggestion({ storedId: "st-timer", id: `stored:st-timer:${start}:open`, running: true, start, end: start + 83 * 60_000 });
-
     beforeEach(() => {
       mocked.timerStatus.mockResolvedValue(suggestedStatus({ projectName: "Website", projectId: "p-site", note: "writing", tagId: "tag-support" }));
-      mocked.dayView.mockResolvedValue(dayView({ day: today(), suggestions: [piece] }));
     });
 
     it("is headed Suggested timer, filled with the timer's note, project and tag", async () => {
@@ -229,40 +222,13 @@ describe("TimerPicker", () => {
       expect(screen.getByRole("combobox", { name: "Tag" })).toHaveDisplayValue("support");
     });
 
-    it("approves today's running piece with the edited fields, then closes", async () => {
+    it("offers Stop, Cancel and Save but no Approve while it runs", async () => {
       renderPicker();
       await screen.findByRole("heading", { name: /Suggested timer/ });
-      await vi.waitFor(() => expect(screen.getByRole("combobox", { name: "Project" })).toHaveDisplayValue("Website"));
-      await userEvent.clear(noteField());
-      await userEvent.type(noteField(), "  reviewing ");
-      await userEvent.click(screen.getByRole("button", { name: "Approve" }));
-      await vi.waitFor(() => expect(mocked.timerPickerClose).toHaveBeenCalled());
-      expect(mocked.dayView).toHaveBeenCalledWith(today());
-      expect(mocked.suggestionApproveEdited).toHaveBeenCalledWith(
-        today(),
-        piece.id,
-        { projectId: "p-site", note: "reviewing", tagId: "tag-support", spans: [{ start: piece.start, end: piece.end }] },
-        "cancel",
-      );
-      expect(useStore.getState().toasts.map((t) => t.message)).toEqual(["Timer approved for Website"]);
-    });
-
-    it("stays open and toasts when the timer's piece is gone", async () => {
-      mocked.dayView.mockResolvedValue(dayView({ day: today(), suggestions: [] }));
-      renderPicker();
-      await screen.findByRole("heading", { name: /Suggested timer/ });
-      await userEvent.click(screen.getByRole("button", { name: "Approve" }));
-      await vi.waitFor(() => expect(useStore.getState().toasts.map((t) => t.message)).toEqual(["The suggested timer is gone"]));
-      expect(mocked.timerPickerClose).not.toHaveBeenCalled();
-    });
-
-    it("disables Approve while no project is chosen and enables it once one is", async () => {
-      mocked.timerStatus.mockResolvedValue(suggestedStatus({ projectId: null, projectName: null }));
-      renderPicker();
-      await screen.findByRole("heading", { name: /Suggested timer/ });
-      expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
-      await chooseProject();
-      expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
     });
 
     it("saves the edited note through timerUpdate, then closes", async () => {

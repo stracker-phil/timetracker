@@ -17,8 +17,8 @@ interface Props {
 }
 
 /** A suggestion in the timesheet as a ghost card: ✓ approves, ✕ dismisses, a click edits (↵, ⌫, E when focused)
- *  or adds its time to the open editor.
- *  A suggested timer's piece runs (the pulsing dot); approving it keeps the timer running as a recording. */
+ *  or adds its time to the open editor. A suggested timer's piece runs (the pulsing dot) and has no ✓ or ✕ until
+ *  the timer stops. */
 export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focused }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -64,32 +64,35 @@ export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focu
       onFocus={(e) => e.target === e.currentTarget && !store().editor && store().focusSuggestion(s.id)}
       onClick={() => store().clickSuggestion(s)}
     >
-      <span className="suggestion-card-actions">
-        <button
-          type="button"
-          className="suggestion-card-action"
-          aria-label={approve.label}
-          title={`${approve.label} (↵)`}
-          onClick={(e) => {
-            e.stopPropagation();
-            void store().approveSuggestion(s);
-          }}
-        >
-          {approve.icon}
-        </button>
-        <button
-          type="button"
-          className="suggestion-card-action"
-          aria-label="Dismiss"
-          title="Dismiss (⌫)"
-          onClick={(e) => {
-            e.stopPropagation();
-            void store().dismissSuggestions([s.id]);
-          }}
-        >
-          <X size="1rem" aria-hidden="true" />
-        </button>
-      </span>
+      {/* A running suggestion is settled only once its timer stops. */}
+      {!s.running && (
+        <span className="suggestion-card-actions">
+          <button
+            type="button"
+            className="suggestion-card-action"
+            aria-label={approve.label}
+            title={`${approve.label} (↵)`}
+            onClick={(e) => {
+              e.stopPropagation();
+              void store().approveSuggestion(s);
+            }}
+          >
+            {approve.icon}
+          </button>
+          <button
+            type="button"
+            className="suggestion-card-action"
+            aria-label="Dismiss"
+            title="Dismiss (⌫)"
+            onClick={(e) => {
+              e.stopPropagation();
+              void store().dismissSuggestions([s.id]);
+            }}
+          >
+            <X size="1rem" aria-hidden="true" />
+          </button>
+        </span>
+      )}
     </Card>
   );
 });

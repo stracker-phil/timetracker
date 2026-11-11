@@ -210,7 +210,7 @@ fn started<Tz: TimeZone>(started: &TimerStarted, tz: &Tz) -> String {
         TimerStarted::Suggestion(s) => {
             let timer = Timer::Suggestion(s.suggestion.clone());
             format!(
-                "suggested a timer for {} from {} ({}); approve it in the Day view or with timetracker approve {}",
+                "suggested a timer for {} from {} ({}); once stopped, approve it in the Day view or with timetracker approve {}",
                 s.project_name.as_deref().unwrap_or(NO_PROJECT),
                 clock(timer.open_start(), tz),
                 s.suggestion.id,
@@ -882,7 +882,7 @@ mod tests {
         assert_eq!(
             render_at_now(&timer_message(), &result),
             Ok(Some(
-                "suggested a timer for Acme from 09:15 (s1); approve it in the Day view or with timetracker approve s1"
+                "suggested a timer for Acme from 09:15 (s1); once stopped, approve it in the Day view or with timetracker approve s1"
                     .into()
             ))
         );

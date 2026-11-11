@@ -578,12 +578,10 @@ through the CLI and MCP, share the list and the review.
   includes the joined suggestions the rule shares; its time stays the rule's even after the rule is edited
   or a recording over it is deleted. `approve_edited` creates the edited recording and dismisses the
   suggestion's span (or deletes the stored suggestion) in one `Op::Batch` (`Recordings::create_with`), so
-  what the edit left out does not come back. A running stored suggestion is approved alone
-  (`approve_running`): its pieces before now become closed spans and the piece reaching now the open span of
-  a new running recording, and the suggestion is deleted, in one `Op::Batch` ("Approve timer for Acme",
-  `Recordings::approve_suggested_timer`); without a piece reaching now (a recording took that time) it is
-  `overlap`. `approve_edited` takes only the input's project, note and tag for it, `approve_patched` refuses
-  spans ("Stop the timer first"), and `approve_all`, `approve_rule` and Approve all skip it. `input_of` refuses a suggestion without a project ("The
+  what the edit left out does not come back. A running stored suggestion (a suggested timer) is neither
+  approved nor dismissed until it stops (ADR 0046): `approve`, `approve_edited` and `approve_patched` refuse it
+  (`invalid_input`, "The suggested timer is still running; stop it first"), `approve_all`, `approve_rule` and
+  `dismiss` skip it among others, and `dismiss` refuses when only running ones are left. `input_of` refuses a suggestion without a project ("The
   suggestion has no project yet; pick one first") unless the approval names one (`approve_patched`'s
   patch, `approve_edited`'s input), so `approve` and `approve_all` change nothing when one of them lacks it.
 - Stored suggestions are written by `recordings/stored.rs`: `Recordings::create_suggestion(input, source)`
@@ -665,7 +663,7 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `activity delete DAY` / `activity delete FROM TO` | `activityDelete { from, to }`: `DAY` (`YYYY-MM-DD`, `today`, `yesterday`) is its local bounds; `FROM`/`TO` as `instant` | `deleted 412 activity spans and 3 away spans` and `undo within 30 s: timetracker activity undo` |
 | `activity undo` | `activityDeleteUndo` | `restored 412 activity spans and 3 away spans`; nothing to undo exits 1 with `Nothing to undo` |
 | `report [today\|yesterday\|week\|last-week\|month\|last-month\|DAY\|FROM TO] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30] [--up]` | `report { request: ReportRequest }` (`cli/report.rs` parses the range and flags); the app resolves names (`reports::cli`: an id, an exact name ignoring case, or a unique start; several matches list them) and runs the report | the report text and `Billable: 6:24 of 8:00 (80 %)` (when time is recorded); `--json`: the `ReportResult` (with `billable { recordedMs, billableMs, percent }`) plus `text`, with `from`, `to` and `title` first and `text` last (`reports::cli::leading`) |
-| `timer start PROJECT [--note N] [--tag T] [--source S] [--final] [--draft]` (hidden alias `start`, the same flags) | `timerStart { request: TimerStartRequest { project, note, tag, final, source } }` (`TimerStartArgs`; `final` is `--final` unless `--draft`, `FinalArgs`); the app resolves the project and tag like `record`. Without `final` it starts a suggested timer (ADR 0041, source `cli` unless `--source`; a request without `final` and `source` is one too) | `suggested a timer for Acme from 09:15 (<id>); approve it in the Day view or with timetracker approve <id>` (today's suggestion with the same project, note, tag and source continues), or `already running: Acme since 09:15` when a recording with that project, note and tag runs (it stays as it is), or with `--final` `started Acme at 09:15` (the open span's start; a recording of today with the same project, note and tag continues); `--json`: `TimerStarted`, `{ kind: suggestion \| recording \| running, … }` with the stored suggestion or the recording plus `projectName` |
+| `timer start PROJECT [--note N] [--tag T] [--source S] [--final] [--draft]` (hidden alias `start`, the same flags) | `timerStart { request: TimerStartRequest { project, note, tag, final, source } }` (`TimerStartArgs`; `final` is `--final` unless `--draft`, `FinalArgs`); the app resolves the project and tag like `record`. Without `final` it starts a suggested timer (ADR 0041, source `cli` unless `--source`; a request without `final` and `source` is one too) | `suggested a timer for Acme from 09:15 (<id>); once stopped, approve it in the Day view or with timetracker approve <id>` (today's suggestion with the same project, note, tag and source continues), or `already running: Acme since 09:15` when a recording with that project, note and tag runs (it stays as it is), or with `--final` `started Acme at 09:15` (the open span's start; a recording of today with the same project, note and tag continues); `--json`: `TimerStarted`, `{ kind: suggestion \| recording \| running, … }` with the stored suggestion or the recording plus `projectName` |
 | `timer stop` (hidden alias `stop`) | `timerStop` | `stopped 09:15–10:40 (1:25)` (the span just closed, of a recording or a suggested timer) or `no timer running` (exit 0); `--json`: `Timer \| null`, tagged by `kind` |
 | `timer status` | `timerStatus` | `timer: Acme · standup · 0:25` (with ` (suggested)` after a suggested timer) or `timer: none`; `--json`: `TimerState` |
 | `timer update [--project P] [--note N] [--tag T\|--no-tag]` | `timerUpdate { request: TimerUpdateRequest }`: absent fields stay (`timers::commands::update_by_name`); refused without a timer | `timer: …` |
@@ -985,9 +983,8 @@ and it never passes a calendar day ([ADR 0042](adr/0042-a-timer-ends-by-midnight
   with the same project, note, tag and source whose spans lie on that day and end by then continues (it gets
   the open start), else a new one is stored with no spans and the open start. When the running timer, a recording or a
   suggested one, already has that project, note and tag, nothing changes and it returns that `Timer` (the
-  owner's timer wins; `timers::commands::start_suggested` also returns it when the start repeats its origin). `approve_suggested_timer(id, input, open_start)` turns the
-  running suggestion into the running recording, which keeps the suggestion's id (so its origin still matches, ADR 0045) (`rules::approve`, see [Rules and
-  suggestions](#rules-and-suggestions)).
+  owner's timer wins; `timers::commands::start_suggested` also returns it when the start repeats its origin). A running suggestion is settled only once it stops (ADR 0046, see
+  [Rules and suggestions](#rules-and-suggestions)).
 - `timers/mod.rs`: `status(db, now) -> TimerStatus { running: Option<RunningTimer { id, suggested, source,
   projectId, note, tagId, openStart, projectName, color, shade, elapsedMs }> }` (flat for both kinds: `id` is the
   recording's or the suggestion's, `projectName` null and the graphite accent for a suggested timer without a

@@ -112,7 +112,7 @@ reports can be saved under a name and sit under Reports in the sidebar.
 | `timetracker projects [--archived]`, `clients [--archived]`, `tags` | lists the names a command takes, with their ids; `projects --json` also has each project's `color` (an accent name such as `blue`, its client's under a client) and `shade` (0 to 8, darkest first) |
 | `timetracker undo`, `redo` | undoes or redoes the last change to recordings or suggestions, as ⌘Z in the app |
 | `timetracker report [RANGE] [--by project\|tag\|day\|week\|month] [--client C]… [--project P]… [--tag T]… [--round 5\|6\|10\|15\|30 [--up]] [--notes]` | prints the hours and notes of today (or `yesterday`, `week`, `last-week`, `month`, `last-month`, a day, or two days `FROM TO`), ready to paste into a timesheet, then `Billable: 6:24 of 8:00 (80 %)`; `--json` has both numbers in `billable`. `--notes` prints only the notes, one per line in time order (`report today --notes --project P`: that project's, as the Reports screen's Copy notes) |
-| `timetracker timer start PROJECT [--note N] [--tag T] [--source S]`, `timer stop` | starts a suggested timer now, which you approve in the Day view or with `approve ID` (a running timer stops; the same project, note, tag and source continue today's suggestion) / stops the running timer; `--json` has `kind` (`suggestion` or `recording`) |
+| `timetracker timer start PROJECT [--note N] [--tag T] [--source S]`, `timer stop` | starts a suggested timer now, which you review in the Day view or with `approve ID` once it is stopped (a running timer stops; the same project, note, tag and source continue today's suggestion) / stops the running timer; `--json` has `kind` (`suggestion` or `recording`) |
 | `timetracker timer start PROJECT … --final [--draft]` | starts a running recording instead, as the timer picker does (the same project, note and tag continue today's recording); `--draft` keeps it a suggestion |
 | `timetracker timer status [--json]` | the running timer (`(suggested)` after a suggested one): `--json` has `running`, `suggested`, `project`, `client`, `tag`, `note`, `startedAt` (ms), `startedAtIso`, `elapsedMs`, `source` (a suggested timer's) and the ids (`recordingId`, or `suggestionId` for a suggested timer) |
 | `timetracker timer update [--project P] [--note N] [--tag T\|--no-tag]` | changes the running timer in place |
@@ -139,8 +139,8 @@ Writes from other apps are suggestions you review, unless they say `--final` (AD
 approve it there or with `approve`, and every change is undoable. `--draft` keeps a write a suggestion even
 next to `--final`, so a wrapper script can't be talked into changing recordings. So does `timer start`: it
 starts a suggested timer that runs until it is stopped and waits for review like any suggestion (ADR
-[0041](docs/adr/0041-programmatic-timers-start-as-suggestions.md)); approving it while it runs makes it the
-running timer. `timer start --final` starts a recording, as the timer picker and the menu bar do. `timer
+[0041](docs/adr/0041-programmatic-timers-start-as-suggestions.md)); while it runs you can edit it, and once it
+stops you approve or dismiss it ([0046](docs/adr/0046-a-running-suggestion-is-settled-only-after-it-stops.md)). `timer start --final` starts a recording, as the timer picker and the menu bar do. `timer
 stop` and `timer update` change whatever timer runs. A timer never runs past midnight: a forgotten one
 stops there, or where the Mac fell asleep for more than an hour (ADR
 [0042](docs/adr/0042-a-timer-ends-by-midnight-or-when-the-mac-slept.md)).
@@ -234,7 +234,7 @@ Writes need the app running and work like the CLI's ([Suggestions and recordings
 you approve or dismiss them; `final: true` changes the timesheet itself (`draft: true` keeps it a suggestion).
 `record` may leave out the project when the client doesn't know it; you pick it before approving.
 `approve` records suggestions, `delete` dismisses one (a recording only with `final`), `timer_start` starts
-a suggested timer you approve like any suggestion (a running recording with `final: true`), `timer_stop` and
+a suggested timer you approve like any suggestion once it stops (a running recording with `final: true`), `timer_stop` and
 `timer_update` change whatever timer runs; `timer_picker` opens the timer picker for you to choose. Ask "suggest 9 to 10:30 today for Acme with the note
 from this ticket".
 

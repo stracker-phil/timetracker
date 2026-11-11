@@ -618,7 +618,7 @@ timeline's for every app.
   leaves the draft). The running timer's open span keeps its block, ringed inside its edge in the project's text
   color; dragging its start changes the draft. A new recording's project is proposed (only offered, never filled in): the project of the latest recording (two weeks back) that
   covered the same main app, else the rule matching most of the activity. Field errors show under their
-  field. **A suggested timer is edited as it runs** ([ADR 0045](adr/0045-a-suggested-timer-stays-editable-while-it-runs.md)): its start is a field and its end "running"; Save (no Approve while it runs) keeps it a suggestion with the changes, and a repeat of the start that made it leaves them as they are: the timer moves only its end. ✓ on its card makes it the running timer. **The running timer's recording is edited like any other while it runs**: Save writes its closed spans, its open span's start, project, note and tag and leaves it running; Stop Timer saves the changed times first; the open span shows last, its start a field and its end "running": the end moves only when the timer stops.
+  field. **A suggested timer is edited as it runs** ([ADR 0045](adr/0045-a-suggested-timer-stays-editable-while-it-runs.md)): its start is a field and its end "running"; Save (no Approve while it runs) keeps it a suggestion with the changes, and a repeat of the start that made it leaves them as they are: the timer moves only its end. While it runs it cannot be approved or dismissed: its card has no ✓ or ✕ and ↵ and ⌫ do nothing on it; once stopped it is reviewed like any suggestion ([ADR 0046](adr/0046-a-running-suggestion-is-settled-only-after-it-stops.md)). **The running timer's recording is edited like any other while it runs**: Save writes its closed spans, its open span's start, project, note and tag and leaves it running; Stop Timer saves the changed times first; the open span shows last, its start a field and its end "running": the end moves only when the timer stops.
 - **Leaving the view** with the editor open (the sidebar, the calendar, ⌘1…⌘7, the palette): an unchanged
   editor closes; a changed one asks "Discard changes?" with Keep editing and Discard, and the view changes only
   on Discard. Any change of view clears the selection, and the Week and Month views show only an editor opened
@@ -719,8 +719,8 @@ timeline's for every app.
   "Recent" timers as rows with their project's dot. While a timer runs the same form shows its note
   (selected, to retype), project and tag under "Timer running" with the project's dot and the elapsed time;
   Save (↵) changes the running recording, Stop (at the leading end) stops it, Cancel (Escape); no Recent. A
-  suggested timer reads "Suggested timer" and has Approve before Save (disabled without a project), which
-  approves it with the form's fields and closes the picker; Save and Stop change and stop the suggestion. It
+  suggested timer reads "Suggested timer"; Save and Stop change and stop the suggestion (no Approve: it is
+  reviewed in the Day view once stopped). It
   shows over full-screen apps on every space, never activates TimeTracker, and hides when it loses focus.
 
 ## Week and Month

@@ -2,20 +2,22 @@
 //! undoable create), approve one as edited, or dismiss them. Each looks the suggestions up again, so a
 //! stale id is `not_found`. A stored suggestion is approved and dismissed whole: every piece of it the day
 //! shows becomes one recording's spans, and the stored suggestion is deleted with it. A running one (a
-//! suggested timer, ADR 0041) becomes the running timer, and only alone: approving all skips it.
+//! suggested timer) is neither approved nor dismissed until its timer stops (ADR 0046): alone it is refused,
+//! among others it is skipped.
 
 use super::suggestions_of;
 use super::types::Suggestion;
 use crate::db::dismissed::Dismissal;
-use crate::db::recordings::{self, Recording, RecordingPatch};
+use crate::db::recordings::{Recording, RecordingPatch};
 use crate::db::stored_suggestions::{self, StoredSuggestion};
-use crate::db::time::{Day, now_ms};
+use crate::db::time::Day;
 use crate::error::{AppError, AppResult};
-use crate::recordings::ops::{Op, overlap_error};
+use crate::recordings::ops::Op;
 use crate::recordings::{Change, Overlap, RecordingInput, Recordings, Span, suggestions_label};
 use crate::store::settings::Settings;
 
 const NO_PROJECT: &str = "The suggestion has no project yet; pick one first";
+const RUNNING: &str = "The suggested timer is still running; stop it first";
 
 /// What approving `suggestion` records, under `project_id` when given (an edit); `shown` are the day's
 /// suggestions, for a stored one's other pieces. Refused when neither names a project (ADR 0030).
@@ -92,32 +94,12 @@ async fn running_stored(
     Ok(Some(stored_suggestions::get(service.db, id).await?).filter(StoredSuggestion::is_running))
 }
 
-/// Records the running suggestion `stored` as the running timer: `input`'s pieces before now as closed
-/// spans, the piece reaching now as the open span. Refused with `overlap` when a recording took the time
-/// up to now.
-async fn approve_running(
-    service: &Recordings<'_>,
-    stored: StoredSuggestion,
-    input: RecordingInput,
-    shown: &[Suggestion],
-) -> AppResult<Change<Recording>> {
-    let open = shown
-        .iter()
-        .find(|s| s.running && s.stored_id.as_ref() == Some(&stored.id));
-    let Some(open) = open else {
-        let start = stored.open_start.unwrap_or_default();
-        let others =
-            recordings::overlapping(service.db, start, now_ms().max(start + 1), None).await?;
-        return Err(overlap_error(others));
-    };
-    let spans = input
-        .spans
-        .into_iter()
-        .filter(|s| s.start != open.start)
-        .collect();
-    service
-        .approve_suggested_timer(&stored.id, RecordingInput { spans, ..input }, open.start)
-        .await
+/// Refuses to settle `suggestion` while it runs as a timer.
+async fn refuse_running(service: &Recordings<'_>, suggestion: &Suggestion) -> AppResult<()> {
+    match running_stored(service, suggestion).await? {
+        Some(_) => Err(AppError::InvalidInput(RUNNING.into())),
+        None => Ok(()),
+    }
 }
 
 /// One entry per stored suggestion: its first piece stands for it.
@@ -216,10 +198,8 @@ pub async fn approve(
 ) -> AppResult<Change<Recording>> {
     let Found { found, shown } = find_all(service, settings, day, &[id.to_string()]).await?;
     let suggestion = &found[0];
+    refuse_running(service, suggestion).await?;
     let input = input_of(suggestion, &shown, None)?;
-    if let Some(stored) = running_stored(service, suggestion).await? {
-        return approve_running(service, stored, input, &shown).await;
-    }
     let settles = settled_by_approval(service, day, suggestion).await?;
     service.create_with(input, Overlap::Cancel, settles).await
 }
@@ -234,15 +214,9 @@ pub async fn approve_edited(
     input: RecordingInput,
     overlap: Overlap,
 ) -> AppResult<Change<Recording>> {
-    let Found { found, shown } = find_all(service, settings, day, &[id.to_string()]).await?;
+    let Found { found, .. } = find_all(service, settings, day, &[id.to_string()]).await?;
     let suggestion = &found[0];
-    if let Some(stored) = running_stored(service, suggestion).await? {
-        let running = RecordingInput {
-            spans: input_of(suggestion, &shown, None)?.spans,
-            ..input
-        };
-        return approve_running(service, stored, running, &shown).await;
-    }
+    refuse_running(service, suggestion).await?;
     let settles = settling(service, day, suggestion).await?;
     service.create_with(input, overlap, settles).await
 }
@@ -259,10 +233,7 @@ pub async fn approve_patched(
 ) -> AppResult<Change<Recording>> {
     let Found { found, shown } = find_all(service, settings, day, &[id.to_string()]).await?;
     let suggestion = &found[0];
-    let running = running_stored(service, suggestion).await?;
-    if running.is_some() && patch.spans.is_some() {
-        return Err(AppError::InvalidInput("Stop the timer first".into()));
-    }
+    refuse_running(service, suggestion).await?;
     let base = input_of(suggestion, &shown, patch.project_id)?;
     let input = RecordingInput {
         spans: patch.spans.unwrap_or(base.spans),
@@ -270,9 +241,6 @@ pub async fn approve_patched(
         tag_id: patch.tag_id.unwrap_or(base.tag_id),
         ..base
     };
-    if let Some(stored) = running {
-        return approve_running(service, stored, input, &shown).await;
-    }
     let settles = settling(service, day, suggestion).await?;
     service.create_with(input, overlap, settles).await
 }
@@ -315,7 +283,15 @@ pub async fn dismiss(
     day: Day,
     ids: &[String],
 ) -> AppResult<Change<usize>> {
-    let found = one_per_stored(find_all(service, settings, day, ids).await?.found);
+    let mut found = Vec::new();
+    for suggestion in one_per_stored(find_all(service, settings, day, ids).await?.found) {
+        if running_stored(service, &suggestion).await?.is_none() {
+            found.push(suggestion);
+        }
+    }
+    if found.is_empty() {
+        return Err(AppError::InvalidInput(RUNNING.into()));
+    }
     let mut settles = Vec::new();
     for suggestion in &found {
         settles.push(settling(service, day, suggestion).await?);

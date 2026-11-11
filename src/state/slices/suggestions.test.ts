@@ -8,7 +8,7 @@ import { dayKey, seedQuery } from "../../test/queries";
 import { recording } from "../../test/recordingFixtures";
 import { storedSuggestion, suggestion } from "../../test/ruleFixtures";
 import { resetStore, useStore } from "../store";
-import { isApprovable } from "./suggestions";
+import { isApprovable, isSettleable } from "./suggestions";
 
 const mocked = vi.mocked(api, true);
 const state = () => useStore.getState();
@@ -120,6 +120,55 @@ describe("suggestions slice", () => {
       expect(state().editor).toMatchObject({ mode: "create", start: unassigned.start, end: unassigned.end, suggestion: { id: unassigned.id, by: unassigned.by } });
       expect(state().editor).toHaveProperty("projectId", undefined);
       expect(toastMessages()).toEqual([]);
+    });
+  });
+
+  describe("a running suggestion", () => {
+    const running = suggestion({ running: true, ruleIds: [], start: at("13:00"), end: at("13:30") });
+
+    beforeEach(() => show(first, running));
+
+    it("is not approved", async () => {
+      await state().approveSuggestion(running);
+      expect(mocked.suggestionApprove).not.toHaveBeenCalled();
+      expect(toastMessages()).toEqual([]);
+    });
+
+    it("does not open the editor when it has no project either", async () => {
+      const unassignedRunning = suggestion({ running: true, projectId: null, projectName: null });
+      await state().approveSuggestion(unassignedRunning);
+      expect(state().editor).toBeNull();
+    });
+
+    it("is skipped when approving several", async () => {
+      mocked.suggestionsApprove.mockResolvedValueOnce([recording({ id: "r1" })]);
+      await state().approveSuggestions([first.id, running.id]);
+      expect(mocked.suggestionsApprove).toHaveBeenCalledWith(DAY, [first.id]);
+    });
+
+    it("asks for nothing when it is the only one to approve", async () => {
+      await state().approveSuggestions([running.id]);
+      expect(mocked.suggestionsApprove).not.toHaveBeenCalled();
+    });
+
+    it("is left out when dismissing several", async () => {
+      await state().dismissSuggestions([first.id, running.id]);
+      expect(mocked.suggestionsDismiss).toHaveBeenCalledWith(DAY, [first.id]);
+    });
+
+    it("asks for nothing when it is the only one to dismiss", async () => {
+      await state().dismissSuggestions([running.id]);
+      expect(mocked.suggestionsDismiss).not.toHaveBeenCalled();
+      expect(toastMessages()).toEqual([]);
+    });
+  });
+
+  describe("isSettleable", () => {
+    it.each([
+      ["finished", false, true],
+      ["running", true, false],
+    ])("is decided by running: a %s suggestion", (_, running, expected) => {
+      expect(isSettleable(suggestion({ running }))).toBe(expected);
     });
   });
 

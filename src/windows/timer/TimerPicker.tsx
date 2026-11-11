@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { Check, Play, Square } from "lucide-react";
+import { Play, Square } from "lucide-react";
 import { api, type RecentTimer, type RunningTimer as Running } from "../../api";
 import { AccentDot } from "../../components/Accent";
 import { FormField } from "../../components/Field";
@@ -54,12 +54,10 @@ interface FormProps {
   running?: Running;
   onSubmit: Start;
   onStop?: () => void;
-  /** Approves a suggested timer with the form's fields. */
-  onApprove?: Start;
 }
 
-/** Starts a timer, or edits the running one (the same fields, filled in); a suggested one can be approved too. */
-function TimerForm({ running, onSubmit, onStop, onApprove }: FormProps) {
+/** Starts a timer, or edits the running one (the same fields, filled in). A suggested one is reviewed once it stops. */
+function TimerForm({ running, onSubmit, onStop }: FormProps) {
   const initial: Fields = running ? { projectId: running.projectId, note: running.note, tagId: running.tagId } : EMPTY;
   const [fields, setFields] = useState(initial);
   const change = (patch: Partial<Fields>) => setFields((f) => ({ ...f, ...patch }));
@@ -109,11 +107,6 @@ function TimerForm({ running, onSubmit, onStop, onApprove }: FormProps) {
         <button type="button" className="btn" onClick={close}>
           Cancel
         </button>
-        {onApprove && (
-          <button type="button" className="btn" disabled={!projectId} onClick={() => projectId && onApprove(projectId, note.trim(), tagId)}>
-            <Check size="0.923rem" /> Approve
-          </button>
-        )}
         <button type="submit" className="btn btn-primary" disabled={!projectId}>
           {running ? (
             "Save"
@@ -182,11 +175,6 @@ function TimerPickerContent() {
       .updateTimer(projectId, note, tagId)
       .then((saved) => saved && close());
   const stop = () => void useStore.getState().stopTimer().then(close);
-  const approve: Start = (projectId, note, tagId) =>
-    void useStore
-      .getState()
-      .approveTimer(projectId, note, tagId)
-      .then((approved) => approved && close());
 
   return (
     <div
@@ -202,7 +190,6 @@ function TimerPickerContent() {
           running={running}
           onSubmit={save}
           onStop={stop}
-          onApprove={running.suggested ? approve : undefined}
         />
       ) : (
         <TimerForm key={formKey} onSubmit={start} />

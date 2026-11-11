@@ -138,8 +138,8 @@ Recording an hour of activity:
    the suggestion is gone.
 
 A suggested timer (`timetracker timer start` without `--final`, the MCP `timer_start`) is a stored suggestion
-with an open start: its piece reaching now is `running`, and approving it turns it into the running timer
-([ADR 0041](adr/0041-programmatic-timers-start-as-suggestions.md)).
+with an open start: its piece reaching now is `running` ([ADR 0041](adr/0041-programmatic-timers-start-as-suggestions.md));
+it can be edited but not approved or dismissed until it stops ([ADR 0046](adr/0046-a-running-suggestion-is-settled-only-after-it-stops.md)).
 
 ## Process model
 

@@ -55,3 +55,4 @@ stands in TimeTracker. The numbers in this table are TimeTracker's.
 | [0043](0043-every-release-gets-a-new-version.md) | Every release gets a new version | Accepted (2026-11-05), implemented |
 | [0044](0044-the-open-editor-keeps-every-change-until-save.md) | The open editor keeps every change until Save | Accepted (2026-11-11), implemented |
 | [0045](0045-a-suggested-timer-stays-editable-while-it-runs.md) | A suggested timer stays editable while it runs | Accepted (2026-11-11), implemented |
+| [0046](0046-a-running-suggestion-is-settled-only-after-it-stops.md) | A running suggestion is settled only after it stops | Accepted (2026-11-11), implemented |

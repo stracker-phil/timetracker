@@ -1,5 +1,5 @@
 import type { Suggestion } from "../api";
-import { isApprovable, shownSuggestions } from "../state/slices/suggestions";
+import { isApprovable, isSettleable, shownSuggestions } from "../state/slices/suggestions";
 import { useStore } from "../state/store";
 import type { Command } from "./registry";
 import { registerScope } from "./scopes";
@@ -24,15 +24,19 @@ function withFocused(act: (suggestion: Suggestion) => void) {
   if (suggestion) act(suggestion);
 }
 
-const hasSuggestions = () => useStore.getState().view === "day" && shownSuggestions().length > 0;
+const hasSuggestions = () => useStore.getState().view === "day" && shownSuggestions().some(isSettleable);
+const focusedSettleable = () => {
+  const s = focusedSuggestion();
+  return s !== null && isSettleable(s);
+};
 const allIds = () => shownSuggestions().map((s) => s.id);
-const hasApprovable = () => useStore.getState().view === "day" && shownSuggestions().some(isApprovable);
+const hasApprovable = () => useStore.getState().view === "day" && shownSuggestions().some((s) => isApprovable(s) && isSettleable(s));
 const store = useStore.getState;
 
 export const SUGGESTION_COMMANDS: Command[] = [
-  { id: "suggestion.approve", title: "Approve suggestion", scope: "suggestion", defaultBinding: "Enter", menu: true, run: () => withFocused((s) => void store().approveSuggestion(s)) },
+  { id: "suggestion.approve", title: "Approve suggestion", scope: "suggestion", defaultBinding: "Enter", menu: true, when: focusedSettleable, run: () => withFocused((s) => void store().approveSuggestion(s)) },
   { id: "suggestion.edit", title: "Edit suggestion", scope: "suggestion", defaultBinding: "E", menu: true, run: () => withFocused((s) => store().editSuggestion(s)) },
-  { id: "suggestion.dismiss", title: "Dismiss suggestion", scope: "suggestion", defaultBinding: "Backspace", menu: true, run: () => withFocused((s) => void store().dismissSuggestions([s.id])) },
+  { id: "suggestion.dismiss", title: "Dismiss suggestion", scope: "suggestion", defaultBinding: "Backspace", menu: true, when: focusedSettleable, run: () => withFocused((s) => void store().dismissSuggestions([s.id])) },
   {
     id: "suggestion.approveRule",
     title: "Approve all suggestions of the rule",

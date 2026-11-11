@@ -3,15 +3,14 @@
 
 use super::{TimerInput, after_stopping, same_timer};
 use crate::db::new_id;
-use crate::db::recordings::{self, Recording, RecordingSpan};
 use crate::db::stored_suggestions::{self, StoredSuggestion};
-use crate::db::time::{Day, Ms, now_ms};
-use crate::error::{AppError, AppResult};
+use crate::db::time::{Day, Ms};
+use crate::error::AppResult;
 use crate::recordings::checks::{check_tag, checked_note, usable_project};
 use crate::recordings::ops::Op;
 use crate::recordings::stored::checked_source;
 use crate::recordings::undo::UndoStack;
-use crate::recordings::{Change, RecordingInput, Recordings, new_spans};
+use crate::recordings::{Change, Recordings};
 use crate::timers::{self, Timer};
 
 fn same_fields(
@@ -139,52 +138,6 @@ impl Recordings<'_> {
             .apply_and_push(undo, "Edit suggestion".into(), op)
             .await?;
         Ok(Change { value: after, days })
-    }
-
-    /// Approves the running suggestion `id`: `input` becomes the running timer's recording, its spans the
-    /// closed ones and its open span starting at `open_start`, and the suggestion is deleted, in one change.
-    pub async fn approve_suggested_timer(
-        &self,
-        id: &str,
-        input: RecordingInput,
-        open_start: Ms,
-    ) -> AppResult<Change<Recording>> {
-        let mut undo = self.undo.lock().await;
-        let suggestion = stored_suggestions::get(self.db, id).await?;
-        if !suggestion.is_running() {
-            return Err(AppError::NotFound("The suggestion is gone".into()));
-        }
-        let note = checked_note(&input.note)?;
-        let project = usable_project(self.db, &input.project_id, None).await?;
-        check_tag(self.db, input.tag_id.as_deref()).await?;
-        let mut spans = new_spans(&input.spans);
-        spans.push(RecordingSpan::new(open_start, None));
-        recordings::check_spans(&spans)?;
-        let now = now_ms();
-        // The timer keeps its id, so a repeat of the start that made it leaves it as approved (`timers::origin`).
-        let recording = Recording {
-            id: suggestion.id.clone(),
-            project_id: project.id,
-            note,
-            tag_id: input.tag_id,
-            created_at: now,
-            updated_at: now,
-            spans,
-        };
-        let label = format!("Approve timer for {}", project.name);
-        let op = Op::Batch {
-            label: label.clone(),
-            ops: vec![
-                Op::Suggestion {
-                    before: Some(suggestion),
-                    after: None,
-                },
-                Op::Create {
-                    recording: recording.clone(),
-                },
-            ],
-        };
-        self.commit(&mut undo, label, op, &recording.id).await
     }
 }
 
@@ -468,52 +421,6 @@ mod tests {
         assert_eq!(w.rows().await, [running]);
         assert!(stored_rows(&w).await.is_empty());
         assert_eq!(w.status().await, status);
-    }
-
-    #[tokio::test]
-    async fn approving_a_running_suggested_timer_keeps_its_id_and_undo_and_redo_swap_the_two() {
-        let w = World::new().await;
-        let running = suggest(&w, review(&w), at(10, 0)).await;
-        let input = RecordingInput {
-            note: "Review".into(),
-            tag_id: Some(w.alpha.id.clone()),
-            spans: Vec::new(),
-            ..w.input(0, 0)
-        };
-
-        let change = w
-            .service()
-            .approve_suggested_timer(&running.id, input, at(10, 0))
-            .await
-            .unwrap();
-
-        let recording = change.value;
-        assert_eq!(recording.id, running.id);
-        assert_eq!(
-            recording
-                .spans
-                .iter()
-                .map(|s| (s.start, s.end))
-                .collect::<Vec<_>>(),
-            [(at(10, 0), None)]
-        );
-        assert_eq!(w.rows().await, [recording.clone()]);
-        assert!(stored_rows(&w).await.is_empty());
-        assert_eq!(
-            crate::timers::current(&w.db).await.unwrap(),
-            Some(Timer::Recording(recording.clone()))
-        );
-
-        let undone = w.service().undo().await.unwrap();
-
-        assert_eq!(undone.value.as_deref(), Some("Approve timer for Acme"));
-        assert!(w.rows().await.is_empty());
-        assert_eq!(stored_rows(&w).await, [running]);
-
-        w.service().redo().await.unwrap();
-
-        assert_eq!(w.rows().await, [recording]);
-        assert!(stored_rows(&w).await.is_empty());
     }
 
     #[tokio::test]
