@@ -25,8 +25,8 @@ description: Finish a development step in TimeTracker - clean up and review the 
 6. Stage the step's files by path (check `git status` for stray files), then commit following
    `.claude/rules/commits.md`. Never push.
 7. Choose the bump from `git log v<last>..HEAD` (`git describe --tags --abbrev=0` names the last; with no
-   tag yet, release `1.0.0`) per ADR 0043: major if existing use breaks, minor for new features or visible
-   behavior, patch otherwise. Run
+   tag yet, release `1.0.0`) per ADR 0043 and ADR 0047: minor for new features, visible behavior and changes
+   that break existing use, patch otherwise. Major only with the owner's explicit approval, asked first. Run
    `bun run release major|minor|patch` (in the background; it takes minutes): `scripts/install.sh` installs
    the release build as `~/Applications/TimeTracker.app` and `timetracker`, and restarts the running app on
    it, so the user's app always matches the last commit; then the script commits "Release X.Y.Z" and tags
