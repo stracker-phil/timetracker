@@ -62,12 +62,14 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 - Drag over time or click activity (or J/K, V and ↵): the editor opens in the timesheet, snapped to the grid,
   for a one-line note, a project (often proposed), a tag and the spans. Each further click on a block adds its
   span or takes it out again, so scattered blocks make one recording with the time between them left out.
+  Changes in the editor, drags included, wait for Save; Cancel puts everything back. A suggested timer that
+  is still running is edited the same way, while it keeps running.
 - Recordings never overlap. Drag to move or resize, ⌘Z undoes; rules (⌥-drag a block onto a project) suggest
   recordings that wait in the timesheet as ghost cards until you approve, edit or dismiss them.
 - The sidebar opens with a month calendar that is the navigation: a click on a day shows that day, on a week
-  number that week, on the month's name that month; the shown day, week or month is highlighted and a dot
-  marks days with recordings. P, N and O step back, ahead and to today. Below it: Hours (today's Day view),
-  Reports, then Projects, Tags and Rules, and at the bottom the tracking status with play / pause and the
+  number that week, on the month's name that month (in Reports, that day, week or month becomes the report's
+  period); the shown day, week or month is highlighted and a dot marks days with recordings. P, N and O step
+  back, ahead and to today. Below it: Hours (today's Day view), Reports, then Projects, Tags and Rules, and at the bottom the tracking status with play / pause and the
   Settings gear (in the status bar while the sidebar is hidden, ⌘⌃S).
 - ⌘1 to ⌘7 switch to Day, Week, Month, Reports, Projects, Tags and Rules. Week and Month list the recordings
   per day (Week as cards, Month as one line each, Monday first); a card drags to another day.
@@ -268,8 +270,9 @@ Settings → Data shows the folder, its size and counts, with Reveal in Finder.
   forgot the grant for the new signature. Remove TimeTracker in System Settings → Privacy & Security →
   Accessibility, then click Allow… in the app (or the welcome sheet's Grant access) and turn it on again.
 - **"TimeTracker is not running" from the CLI** (exit 2). Only `show`, `focus` and a bare `timetracker`
-  start the app; `mcp` works without it. Run `timetracker` (or open the app), then repeat the command. Debug
-  and release builds share the socket, so the command reaches whichever one runs.
+  start the app; `mcp` works without it. Run `timetracker` (or open the app), then repeat the command. The
+  installed command reaches the release app only; a debug build has its own socket and data, so call its
+  binary by path.
 - **Launch at login stopped after moving or reinstalling the app.** The LaunchAgent records the app's path
   when it is turned on. Turn launch at login off and on again in Settings → General.
 - **"Data folder … not found; using the default"** on launch: the moved data folder is missing (an unmounted
