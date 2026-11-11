@@ -18,7 +18,8 @@ description: Finish a development step in TimeTracker - clean up and review the 
    `window.timetracker`) and check it with `scripts/dev/screenshot.sh <png>` (`--overlay` for the timer and
    away panels). For UI changes, run `scripts/dev/e2e.sh`: it fails when the main area, the toolbar, the first
    block or a clicked control moved (`.claude/rules/stable-controls.md`). Never use AppleScript clicks or
-   keystrokes; they need focus.
+   keystrokes; they need focus. When the checks are done, quit the debug app fully (`scripts/stop-app.sh`
+   with the CLI path above).
 5. Update the affected `docs/` page if behavior, commands, files or extension points changed; add an ADR for
    each new decision. Check that no real data slipped into code, docs, tests or screenshots
    (`.claude/rules/demo-data.md`).

@@ -53,7 +53,7 @@ a failed build puts the version back. Debug builds are never installed; call the
 | `bun run test:db` | the `#[ignore]` integration tests on temp SQLite files pass (no Docker needed), including `src-tauri/tests/performance.rs`: two seeded years, the Day view under 50 ms, a month's report under 200 ms, week under 100 ms, month under 150 ms, the list under 50 ms (medians) |
 | `bun run release patch` | `TimeTracker.app` and a `.dmg` in `src-tauri/target/release/bundle/`, a "Release X.Y.Z" commit and a `vX.Y.Z` tag |
 
-Try the app: `scripts/dev/launch.sh` starts the debug build next to the terminal without taking focus.
+Try the app: `scripts/dev/launch.sh` starts the debug build next to the terminal without taking focus. Quit it fully when done: `scripts/stop-app.sh <debug CLI path>`.
 Its data and settings live in `~/Library/Application Support/com.philippstracker.timetracker.debug/`, apart from
 the release build's, so it runs next to the release app. `timetracker dev seed --years 2` (debug builds) fills
 that folder with sample history; `--showcase` with the small made-up history of the README screenshots.

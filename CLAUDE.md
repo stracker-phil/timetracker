@@ -73,7 +73,7 @@ Test, lint and format-check commands run through the `ci` agent, never in the ma
   linked. `scripts/create-signing-cert.sh` (once per Mac) makes the fallback certificate for a Mac without an Apple Development one
 - `timetracker dev seed --years N` (debug builds): sample history in the running app's database; `--showcase`
   writes the made-up history `scripts/dev/screenshot-readme.sh` captures for the README
-- `bun run build:app` + `scripts/dev/launch.sh`: debug build, restarted next to the terminal without stealing focus
+- `bun run build:app` + `scripts/dev/launch.sh`: debug build, restarted next to the terminal without stealing focus; whoever launches it for a check quits it fully when done (`scripts/stop-app.sh <debug CLI path>`)
 - `scripts/dev/js.sh` / `scripts/dev/screenshot.sh`: drive (store: `window.timetracker`) and capture the running window in the background
 
 ## Workflow
