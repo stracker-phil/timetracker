@@ -1,6 +1,6 @@
 [package]
 name = "timetracker"
-version = "1.2.0"
+version = "1.3.0"
 description = "Local-first automatic time tracker for macOS"
 authors = ["Philipp Stracker <info@philippstracker.com>"]
 edition = "2024"
