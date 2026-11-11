@@ -2,7 +2,7 @@ import { act } from "@testing-library/react";
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type AwayPrompt, type ClientInput, type DataChanged, type RemoteEvent, type TimerStatus, type TrackerStatus, type DateJump, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingAutofill, type RecordingInput, type RecordingPatch, type RecordingSpan, type ReportFilter, type RuleInput, type Settings, type SnapEdge, type Span, type Timer, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type AwayPrompt, type ClientInput, type DataChanged, type RemoteEvent, type TimerStatus, type TrackerStatus, type DateJump, type FoundEntry, type Keybindings, type PeriodUnit, type ProjectInput, type Range, type RecordingAutofill, type RecordingInput, type RecordingPatch, type RecordingSpan, type ReportFilter, type RuleInput, type Settings, type SnapEdge, type Span, type Timer, type UiState } from "../api/types";
 import { mondayOf, monthView, weekView } from "./calendarFixtures";
 import { dataInfo, trackerStatus } from "./data";
 import { dayView } from "./dayFixtures";
@@ -126,6 +126,8 @@ export function createApiMock(): typeof realApi {
     calendarMiniMonth: vi.fn(async (shownDay: string) => ({ monthStart: `${shownDay.slice(0, 7)}-01`, monthName: "Oct", year: Number(shownDay.slice(0, 4)), monthSelected: false, weeks: [] })),
     calendarPicker: vi.fn(async (month: string) => ({ monthStart: `${month.slice(0, 7)}-01`, weeks: [] })),
     calendarJumps: vi.fn(async (): Promise<DateJump[]> => []),
+    revealRecordings: vi.fn(async (): Promise<FoundEntry[]> => []),
+    revealSuggestions: vi.fn(async (): Promise<FoundEntry[]> => []),
     calendarStep: vi.fn(async (unit: PeriodUnit, day: string, by: number) => stepDay(unit, day, by)),
     calendarParseTime: vi.fn(async (text: string, on: number) => parseClock(text, on)),
     recordingMove: vi.fn(async (id: string) => recording({ id })),

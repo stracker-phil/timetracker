@@ -1,4 +1,4 @@
-import type { PeriodUnit } from "../../api";
+import type { EntryRef, PeriodUnit } from "../../api";
 import { today } from "../../lib/day";
 import { dayStepper } from "../../lib/dayStepper";
 import type { Slice } from "../store";
@@ -20,6 +20,10 @@ export interface NavSlice {
   setView: (view: View, then?: () => void) => void;
   /** Shows `day` in the Day view. */
   goToDay: (day: string) => void;
+  /** The recording or suggestion the Day view selects once its day's view is shown (`DayPage`). */
+  revealing: EntryRef | null;
+  /** Shows the entry's day in the Day view with the entry selected, as a click on it would. */
+  revealEntry: (entry: EntryRef) => void;
   /** Hours: today in the Day view. */
   showHours: () => void;
   /** The hidden window was shown again: Hours, and the Day view scrolls to now. */
@@ -51,6 +55,13 @@ export const navSlice: Slice<NavSlice> = {
       setView: enter,
 
       goToDay: show,
+      revealing: null,
+      revealEntry(entry) {
+        const reveal = () => set({ day: entry.day, revealing: entry });
+        // `enter` leaves the editor only when it changes the view.
+        if (get().view === "day") get().leaveEditor(reveal);
+        else enter("day", reveal);
+      },
       showHours: () => show(today()),
       openings: 0,
       windowOpened() {

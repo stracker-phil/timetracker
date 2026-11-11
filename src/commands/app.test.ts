@@ -26,6 +26,14 @@ describe("app commands", () => {
     installCommands();
   });
 
+  describe("palette.reveal", () => {
+    it("opens the palette seeded with the recordings prefix on Cmd+Shift+F", async () => {
+      await press("{Meta>}{Shift>}f{/Shift}{/Meta}");
+      expect(useStore.getState().paletteOpen).toBe(true);
+      expect(useStore.getState().paletteSeed).toBe("r: ");
+    });
+  });
+
   describe("app:background", () => {
     it("asks the bus to hide to the menu bar", () => {
       expect(runCommand("app:background")).toBe(true);

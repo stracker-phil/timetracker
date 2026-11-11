@@ -239,5 +239,38 @@ describe("leaving a view with the recording editor open", () => {
       expect(discardDialog()).not.toBeInTheDocument();
       expect(state().editor).not.toBeNull();
     });
+
+    describe("revealEntry", () => {
+      const entry = { day: "2026-03-12", kind: "suggestion", id: "s1" } as const;
+
+      it("asks first and keeps the view, the day and the editor meanwhile", () => {
+        act(() => state().revealEntry(entry));
+        expect(screen.getByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();
+        expect([state().view, state().day, state().revealing]).toEqual(["week", "2026-03-10", null]);
+        expect(state().editor).not.toBeNull();
+      });
+
+      it("Discard closes the editor and shows the entry's day in the Day view", async () => {
+        act(() => state().revealEntry(entry));
+        await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+        expect([state().view, state().day, state().editor, state().revealing]).toEqual(["day", "2026-03-12", null, entry]);
+      });
+
+      it("Keep editing leaves everything as it was", async () => {
+        act(() => state().revealEntry(entry));
+        await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+        expect([state().view, state().day, state().revealing]).toEqual(["week", "2026-03-10", null]);
+        expect(state().draft?.note).toBe("half written");
+      });
+    });
+  });
+
+  describe("revealEntry without an editor", () => {
+    it("shows the entry's day in the Day view, clears the selection and notes the entry", () => {
+      const entry = { day: "2026-03-12", kind: "recording", id: "r1" } as const;
+      resetStore({ view: "month", day: "2026-03-10", selection, selectionSnap: selection });
+      state().revealEntry(entry);
+      expect([state().view, state().day, state().selection, state().revealing]).toEqual(["day", "2026-03-12", null, entry]);
+    });
   });
 });

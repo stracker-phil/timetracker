@@ -466,6 +466,19 @@ mod tests {
     }
 
     #[test]
+    fn select_names_one_id_and_does_not_start_the_app() {
+        assert_eq!(
+            remote(&["select", "abc"]),
+            (IpcMessage::Select { id: "abc".into() }, false, false)
+        );
+    }
+
+    #[test]
+    fn select_without_an_id_is_an_error() {
+        assert!(error_of(&["select"]).contains("<ID>"));
+    }
+
+    #[test]
     fn listings_default_to_today_and_read_range_words_and_days() {
         let cases = [
             (vec![], Range::Today),

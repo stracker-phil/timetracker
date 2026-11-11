@@ -438,12 +438,16 @@ anywhere) and grouped in sections, the best section first:
 - **Projects:** ↵ opens Reports filtered to the project for the report's period; ⌘↵ starts a timer on it.
 - **Clients:** ↵ opens Reports filtered to the client.
 - **Saved reports:** ↵ opens one.
+- **Suggestions, Recordings** (only after `r:`; ⌘⇧F, Go → Find Recording or Suggestion…, opens the palette with
+  it): the suggestions of today and the six days before, then the latest recordings whose note, project, client
+  or tag holds the text. A row shows the project with its color, then the day, the times and the note; ↵ opens
+  the day in Hours with the row's recording or suggestion selected.
 - **Commands:** the menu bar's items, each under its menu's title (File, Edit, Day …) with its key: those
   that can run when the palette opens, as the menus would grey the rest, and the rows of menus on screen
   (Tracking: "Pause tracking: For 1 hour"). The palette runs the menus, so a command reaches it by getting a
   menu item.
 
-Prefixes limit the list: `>` commands, `p:` projects, `c:` clients, `@` dates. ↑ ↓ move, ↵ opens, ⌘↵ runs
+Prefixes limit the list: `>` commands, `p:` projects, `c:` clients, `r:` recordings and suggestions, `@` dates. ↑ ↓ move, ↵ opens, ⌘↵ runs
 the row's second action where it has one (the footer names it), Esc closes. Section labels are small `--o3`
 text; a row's date or detail follows its title in `--o2`.
 
@@ -660,7 +664,8 @@ timeline's for every app.
 - **Striped blocks** in the time column: the ghost card's stripes, no outline, project, rule
   and duration; a click opens the editor on it like its card. The suggestion being edited gives way to the
   editor's draft spans.
-- **Focus and keys**: ] and [ step through the timesheet, recordings and suggestions alike; Tab reaches a ghost
+- **Focus and keys**: ] and [ step through the timesheet, recordings and suggestions alike, and so do ↓ and ↑ while
+  one of them holds the focus and the editor is closed; Tab reaches a ghost
   card. A focused suggestion (accent ring on card and block) takes ↵ approve, E edit, ⌫ dismiss; after
   approving or dismissing, the focus moves to the next suggestion. Approve and dismiss each toast with Undo.
 - **Without a project**: a stored suggestion may come without a project (ADR 0030), a reminder that time
@@ -776,7 +781,7 @@ timeline's for every app.
 
 - A window of its own in the System Settings layout ([ADR 0034](adr/0034-settings-is-a-window-of-its-own.md)),
   opened by ⌘,, the app menu, the tray, the palette's `Settings: <page>` and the sidebar's gear. The page list on
-  `--settings-chrome` starts with a drag strip under the window buttons and a Search field (⌘F); typing narrows
+  `--settings-chrome` starts with a drag strip under the window buttons and a Search field (⌘⇧F); typing narrows
   the list to the pages whose name, group or a section (its heading or row labels: "accent" finds Appearance)
   matches, the section shown beside the page; ↵ opens the first hit, scrolled to that section, and "No
   Results" stands alone when nothing matches. The list dims while the window is inactive. The page's title sits
@@ -898,7 +903,7 @@ other scope's keys.
 | `app:settings` | Settings… | ⌘, | global |
 | `app:launchAtLogin` | Launch at login (a check item) | menu | global |
 | `welcome.show` | Show welcome again | menu | global |
-| `settings.search` | Search Settings | ⌘F | settings |
+| `settings.search` | Search Settings | ⌘⇧F | settings |
 | `settings.close` | Close Settings | Escape | settings |
 | `shortcuts.show` | Keyboard shortcuts | ? | global |
 | `palette.toggle` | Command palette | ⌘K | global |
@@ -933,6 +938,7 @@ other scope's keys.
 | `day.settings` | View options | menu | day |
 | `day.clearFocus` | Clear selection (and the block and recording focus) | Escape | day |
 | `recording.next` / `recording.prev` | Next / Previous recording | ] / [ | day |
+| `recording.below` / `recording.above` | The same while a recording or suggestion has the focus and the editor is closed | ↓ / ↑ | day |
 | `recording.open` | Record selection or edit recording (opens the editor) | ↵ | day |
 | `recording.create` | Record selection | menu (shows ↵) | day |
 | `recording.edit` | Edit recording | menu | day |

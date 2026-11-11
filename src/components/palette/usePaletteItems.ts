@@ -8,6 +8,8 @@ import { VIEWS } from "../views";
 import { paletteMenuItems } from "./menus";
 import { fuzzyScore, parsePrefix, score, type Prefix } from "./parse";
 import { useDateJumps } from "./useDateJumps";
+import { entryItems } from "./entryItems";
+import { useRevealRecordings, useRevealSuggestions } from "../../queries/reveal";
 import { useProjectLists } from "../../queries/projects";
 import { useMenuCommands } from "../../queries/system";
 import { useSavedReports } from "../../queries/reports";
@@ -15,7 +17,7 @@ import { useKeybindings } from "../../queries/settings";
 
 export interface Item {
   key: string;
-  /** Go to, Settings, Recent projects, Projects, Clients, Saved reports, a menu's title or a menu on screen's. */
+  /** The heading the row is listed under: a kind of result, or the title of the menu it comes from. */
   section: string;
   title: string;
   subtitle?: string;
@@ -193,6 +195,9 @@ export function usePaletteItems(query: string) {
   useSettingsPagesVersion();
   const { prefix, needle } = parsePrefix(query);
   const jumps = useDateJumps(prefix, needle);
+  const revealing = prefix === "r:";
+  const suggestions = useRevealSuggestions(revealing);
+  const recordings = useRevealRecordings(revealing ? needle : null);
   // Asked once per opening: what the menus hold doesn't change while the palette covers the page.
   const { data: commands } = useMenuCommands();
   const goTo = [...viewItems(custom, prefix, needle), ...dateItems(jumps, needle)];
@@ -202,6 +207,7 @@ export function usePaletteItems(query: string) {
     projectItems(projects, recent, prefix, needle),
     clientItems(clients, prefix, needle),
     savedItems(saved, prefix, needle),
+    ...entryItems(suggestions, recordings, needle),
     ...menuItems(commands ?? [], prefix, needle),
   ]);
   return { items, prefix, needle };

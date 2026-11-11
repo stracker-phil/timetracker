@@ -15,6 +15,7 @@ use crate::menu::palette::ListedCommand;
 use crate::remote::StatusReport;
 use crate::reports::cli::Reported;
 use crate::reports::{Billable, billable_text};
+use crate::reveal::{EntryKind, EntryRef};
 use crate::scripting::timer::TimerState;
 use crate::timers::commands::TimerStarted;
 use crate::timers::{Timer, open_start};
@@ -91,6 +92,14 @@ pub fn render<Tz: TimeZone>(
             None => "no timer running".into(),
         }),
         IpcMessage::Report { .. } => Some(read::<Reported>(result)?.text.trim_end().to_string()),
+        IpcMessage::Select { .. } => {
+            let entry = read::<EntryRef>(result)?;
+            let what = match entry.kind {
+                EntryKind::Recording => "recording",
+                EntryKind::Suggestion => "suggestion",
+            };
+            Some(format!("selected the {what} on {}", entry.day))
+        }
         IpcMessage::Commands => Some(command_list(&read::<Vec<ListedCommand>>(result)?)),
         #[cfg(debug_assertions)]
         IpcMessage::DevSeed { .. } => {
@@ -1104,6 +1113,32 @@ mod tests {
     #[test]
     fn a_report_reply_without_text_is_an_error() {
         let err = render_at_now(&report_message(), &json!({ "totalMs": 1 })).unwrap_err();
+        assert!(
+            err.starts_with("The running TimeTracker sent an unexpected reply"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn select_says_what_the_day_view_selected_and_on_which_day() {
+        let message = IpcMessage::Select { id: "x".into() };
+        for (kind, expected) in [
+            ("recording", "selected the recording on 2026-10-21"),
+            ("suggestion", "selected the suggestion on 2026-10-21"),
+        ] {
+            let result = json!({ "day": "2026-10-21", "kind": kind, "id": "x" });
+            assert_eq!(
+                render_at_now(&message, &result),
+                Ok(Some(expected.into())),
+                "{kind}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_select_reply_of_the_wrong_shape_is_an_error() {
+        let message = IpcMessage::Select { id: "x".into() };
+        let err = render_at_now(&message, &json!({ "day": "2026-10-21" })).unwrap_err();
         assert!(
             err.starts_with("The running TimeTracker sent an unexpected reply"),
             "{err}"

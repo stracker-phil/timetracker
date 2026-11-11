@@ -6,6 +6,8 @@ describe("parsePrefix", () => {
     [">x", ">", "x"],
     ["p: a", "p:", "a"],
     ["c:b", "c:", "b"],
+    ["r: acme", "r:", "acme"],
+    ["r:", "r:", ""],
     ["@ mon", "@", "mon"],
     ["  >x", ">", "x"],
     [" foo ", null, "foo"],

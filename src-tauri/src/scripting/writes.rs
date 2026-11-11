@@ -13,8 +13,10 @@ use crate::error::{AppError, AppResult};
 use crate::recordings::cli::{RecordRequest, Recorded, record as record_final};
 use crate::recordings::commands::changing;
 use crate::recordings::{Overlap, Span, SuggestionInput};
+use crate::reveal::{EntryKind, EntryRef};
 use crate::rules;
 use crate::state::AppState;
+use crate::store::settings::Settings;
 
 /// The source of suggestions the CLI stores without `--source`.
 pub const CLI_SOURCE: &str = "cli";
@@ -124,9 +126,12 @@ fn needs_final(id: &str) -> AppError {
 }
 
 /// The id of the first piece of `suggestion` the Day view shows.
-async fn first_piece(app: &AppHandle, db: &Db, suggestion: &StoredSuggestion) -> AppResult<String> {
-    let settings = app.state::<AppState>().settings.get();
-    rules::suggestions_of(db, suggestion.day, &settings)
+async fn first_piece(
+    db: &Db,
+    settings: &Settings,
+    suggestion: &StoredSuggestion,
+) -> AppResult<String> {
+    rules::suggestions_of(db, suggestion.day, settings)
         .await?
         .into_iter()
         .find(|s| s.stored_id.as_deref() == Some(&suggestion.id))
@@ -228,7 +233,8 @@ pub async fn edit(app: &AppHandle, request: EditRequest) -> AppResult<Written> {
             changing(app, async |s| s.update(&recording.id, patch, overlap).await).await?
         }
         Target::Stored(suggestion) => {
-            let piece = first_piece(app, &db, &suggestion).await?;
+            let settings = app.state::<AppState>().settings.get();
+            let piece = first_piece(&db, &settings, &suggestion).await?;
             approve_patched(app, suggestion.day, &piece, patch, overlap).await?
         }
         Target::Rule { day, id: piece } => {
@@ -290,6 +296,34 @@ pub async fn delete(app: &AppHandle, id: &str, final_write: bool) -> AppResult<D
     })
 }
 
+/// Where the Day view shows what `id` names (`timetracker select`): a recording on the day of its first span,
+/// a suggestion as its first piece on its day; a rule's piece only while the Day view shows it.
+pub async fn locate(db: &Db, settings: &Settings, id: &str) -> AppResult<EntryRef> {
+    Ok(match target(db, id).await? {
+        Target::Recording(recording) => EntryRef {
+            day: Day::of(recording.start()),
+            kind: EntryKind::Recording,
+            id: recording.id,
+        },
+        Target::Stored(suggestion) => EntryRef {
+            id: first_piece(db, settings, &suggestion).await?,
+            day: suggestion.day,
+            kind: EntryKind::Suggestion,
+        },
+        Target::Rule { day, id } => {
+            let shown = rules::suggestions_of(db, day, settings).await?;
+            if !shown.iter().any(|s| s.id == id) {
+                return Err(AppError::NotFound(format!("No suggestion `{id}` on {day}")));
+            }
+            EntryRef {
+                day,
+                kind: EntryKind::Suggestion,
+                id,
+            }
+        }
+    })
+}
+
 /// Records each suggestion as it is, one undo step each; stops at the first that can't be recorded.
 pub async fn approve(app: &AppHandle, ids: &[String]) -> AppResult<Vec<Recorded>> {
     let db = app.state::<AppState>().data.db()?;
@@ -303,7 +337,7 @@ pub async fn approve(app: &AppHandle, ids: &[String]) -> AppResult<Vec<Recorded>
                 )));
             }
             Target::Stored(suggestion) => {
-                let piece = first_piece(app, &db, &suggestion).await?;
+                let piece = first_piece(&db, &settings, &suggestion).await?;
                 (suggestion.day, piece)
             }
             Target::Rule { day, id: piece } => (day, piece),
@@ -327,6 +361,9 @@ mod tests {
     use crate::error::ErrorKind;
     use crate::recordings::Recordings;
     use crate::recordings::undo::UndoStack;
+    use crate::rules::testing::{plain_settings, save_rule};
+    use crate::rules::types::{RuleField, RuleOp};
+    use crate::store::settings::Continuity;
     use crate::test_support::{project, recording};
 
     fn nine() -> Ms {
@@ -514,6 +551,123 @@ mod tests {
 
         assert_eq!(err.kind(), ErrorKind::NotFound);
         assert_eq!(err.to_string(), "No recording or suggestion `nope`");
+    }
+
+    const HOUR: Ms = 3_600_000;
+
+    #[tokio::test]
+    async fn locating_a_recording_gives_the_day_of_its_first_span() {
+        let db = Db::open_memory().await.unwrap();
+        let portal = project(&db, "Website relaunch").await;
+        let rec = recording(&db, &portal.id, nine(), Some(nine() + HOUR)).await;
+
+        let settings = plain_settings(Continuity::Off);
+
+        let found = locate(&db, &settings, &rec.id).await.unwrap();
+
+        assert_eq!(
+            found,
+            EntryRef {
+                day: Day::parse("2026-01-05").unwrap(),
+                kind: EntryKind::Recording,
+                id: rec.id,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn locating_a_stored_suggestion_gives_its_day_and_first_piece_as_the_day_view_shows_it() {
+        let db = Db::open_memory().await.unwrap();
+        let portal = project(&db, "Website relaunch").await;
+        let undo = Mutex::new(UndoStack::default());
+        let service = Recordings {
+            db: &db,
+            undo: &undo,
+            snap_minutes: 5,
+        };
+        let (first_end, second_start) = (nine() + HOUR, nine() + 2 * HOUR);
+        let input = SuggestionInput {
+            project_id: Some(portal.id.clone()),
+            spans: vec![
+                Span {
+                    start: nine(),
+                    end: first_end,
+                },
+                Span {
+                    start: second_start,
+                    end: second_start + HOUR,
+                },
+            ],
+            note: "standup".into(),
+            tag_id: None,
+        };
+        let stored = service
+            .create_suggestion(input, "planner")
+            .await
+            .unwrap()
+            .value;
+        let expected = EntryRef {
+            day: Day::parse("2026-01-05").unwrap(),
+            kind: EntryKind::Suggestion,
+            id: format!("stored:{}:{}:{first_end}", stored.id, nine()),
+        };
+
+        let settings = plain_settings(Continuity::Off);
+
+        for id in [stored.id.clone(), expected.id.clone()] {
+            assert_eq!(locate(&db, &settings, &id).await.unwrap(), expected, "{id}");
+        }
+    }
+
+    #[tokio::test]
+    async fn locating_a_rule_piece_the_day_view_shows_keeps_its_id() {
+        let db = Db::open_memory().await.unwrap();
+        let portal = project(&db, "Website relaunch").await;
+        let rule = save_rule(
+            &db,
+            "Slack rule",
+            &portal.id,
+            &[(RuleField::App, RuleOp::Is, "Slack")],
+        )
+        .await;
+        crate::test_support::activity(&db, nine(), Some(nine() + HOUR), "Slack", "").await;
+        let id = format!("{}:{}:{}", rule.id, nine(), nine() + HOUR);
+
+        let settings = plain_settings(Continuity::Off);
+
+        let found = locate(&db, &settings, &id).await.unwrap();
+
+        assert_eq!(
+            found,
+            EntryRef {
+                day: Day::parse("2026-01-05").unwrap(),
+                kind: EntryKind::Suggestion,
+                id,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn locating_a_rule_piece_the_day_view_does_not_show_is_not_found() {
+        let db = Db::open_memory().await.unwrap();
+        let id = format!("rule-1:{}:{}", nine(), nine() + HOUR);
+
+        let settings = plain_settings(Continuity::Off);
+
+        let err = locate(&db, &settings, &id).await.unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+    }
+
+    #[tokio::test]
+    async fn locating_an_unknown_id_is_not_found() {
+        let db = Db::open_memory().await.unwrap();
+
+        let settings = plain_settings(Continuity::Off);
+
+        let err = locate(&db, &settings, "nope").await.unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::NotFound);
     }
 
     #[tokio::test]

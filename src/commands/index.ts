@@ -119,6 +119,8 @@ const hasFocusedBlock = () => useStore.getState().focusedBlock !== null;
 const hasSelection = () => useStore.getState().selection !== null;
 const hasFocusedRecording = () => useStore.getState().focusedRecording !== null;
 const hasFocusedSuggestion = () => useStore.getState().focusedSuggestion !== null;
+/** ↑ ↓ stay with the editor's own controls while it is open. */
+const canStepWithArrows = () => (hasFocusedRecording() || hasFocusedSuggestion()) && useStore.getState().editor === null;
 
 /** Opens the editor on the Day view's selection, else on Rust's default span (the half hour up to now) on today's Day, Week or Month view. */
 function newRecording() {
@@ -218,6 +220,7 @@ const APP_COMMANDS: Command[] = [
   { id: "welcome.show", title: "Show welcome again", scope: "global", menu: true, menuOnly: true, run: showWelcomeAgain },
   { id: "shortcuts.show", title: "Keyboard shortcuts", scope: "global", defaultBinding: "Shift+?", menu: true, run: toggleShortcuts },
   { id: "palette.toggle", title: "Command palette", scope: "global", defaultBinding: "Mod+K", menu: true, run: togglePalette },
+  { id: "palette.reveal", title: "Find recording or suggestion…", scope: "global", defaultBinding: "Mod+Shift+F", menu: true, run: () => useStore.getState().setPaletteOpen(true, "r: ") },
   { id: "sidebar.toggle", title: "Toggle sidebar", scope: "global", defaultBinding: "Mod+Ctrl+S", menu: true, run: () => useStore.getState().toggleSidebar() },
   ...VIEWS.map(({ id, label }, i): Command => ({ id: `view.${id}`, title: `Show ${label}`, scope: "global", defaultBinding: `Mod+${i + 1}`, menu: true, checked: () => useStore.getState().view === id, run: () => useStore.getState().setView(id) })),
   { id: "zoom.in", title: "Zoom in", scope: "global", defaultBinding: "Mod+=", menu: true, run: zoomIn },
@@ -242,6 +245,8 @@ const APP_COMMANDS: Command[] = [
   { id: "day.clearFocus", title: "Clear selection", scope: "day", defaultBinding: "Escape", when: () => hasFocusedBlock() || hasSelection() || hasFocusedRecording() || hasFocusedSuggestion(), run: clearDayFocus },
   { id: "recording.next", title: "Next recording or suggestion", scope: "day", defaultBinding: "]", menu: true, run: () => stepEntry(1) },
   { id: "recording.prev", title: "Previous recording or suggestion", scope: "day", defaultBinding: "[", menu: true, run: () => stepEntry(-1) },
+  { id: "recording.below", title: "Recording or suggestion below the focused one", scope: "day", defaultBinding: "ArrowDown", when: canStepWithArrows, run: () => stepEntry(1) },
+  { id: "recording.above", title: "Recording or suggestion above the focused one", scope: "day", defaultBinding: "ArrowUp", when: canStepWithArrows, run: () => stepEntry(-1) },
   { id: "recording.open", title: "Record selection or edit recording", scope: "day", defaultBinding: "Enter", when: () => hasSelection() || hasFocusedRecording(), run: openRecording },
   { id: "recording.new", title: "New recording…", scope: "global", menu: true, run: newRecording },
   { id: "recording.create", title: "Record selection", scope: "day", menu: true, when: hasSelection, run: () => (useStore.getState().focusRecording(null), openRecording()) },

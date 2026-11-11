@@ -1,4 +1,4 @@
-/** Answers requests from other processes (`timetracker show`, `timetracker run page:<id>`) that only the page
+/** Answers requests from other processes (`timetracker show`, `select`, `run page:<id>`) that only the page
  *  can answer. */
 import { api, toAppError, type RemoteEvent, type RemoteRequest } from "../api";
 import { useStore } from "../state/store";
@@ -16,6 +16,9 @@ function handle(request: RemoteRequest): unknown {
   switch (request.type) {
     case "showDay":
       useStore.getState().goToDay(request.day);
+      return null;
+    case "select":
+      useStore.getState().revealEntry(request.entry);
       return null;
     case "runCommand":
       runPageCommand(request.id);

@@ -114,6 +114,62 @@ describe("recording commands", () => {
       expect(state().focusedRecording).toBe("r1");
     });
 
+    describe("with the arrow keys", () => {
+      const idea = suggestion({ start: at("12:30"), end: at("13:00"), nextCard: null });
+
+      beforeEach(() => {
+        seedQuery(dayKey(DAY), dayView({ timesheet: [timesheetCard({ id: "r1" }), timesheetCard({ id: "r2", start: at("11:00"), end: at("12:00") })], suggestions: [idea] }));
+      });
+
+      it.each([
+        ["recording.below", "ArrowDown"],
+        ["recording.above", "ArrowUp"],
+      ])("binds %s to %s", (id, binding) => {
+        expect(getCommand(id)?.defaultBinding).toBe(binding);
+      });
+
+      it("↓ steps from a focused recording to the next one, then onto the suggestion", async () => {
+        state().focusRecording("r1");
+        await press("{ArrowDown}");
+        expect(state().focusedRecording).toBe("r2");
+        await press("{ArrowDown}");
+        expect(state().focusedSuggestion).toBe(idea.id);
+        expect(state().focusedRecording).toBeNull();
+      });
+
+      it("↑ steps back from the suggestion to the recording before it, then to the first", async () => {
+        state().focusSuggestion(idea.id);
+        await press("{ArrowUp}");
+        expect(state().focusedRecording).toBe("r2");
+        await press("{ArrowUp}");
+        expect(state().focusedRecording).toBe("r1");
+      });
+
+      it("↓ on the last entry stays on it", async () => {
+        state().focusSuggestion(idea.id);
+        await press("{ArrowDown}");
+        expect(state().focusedSuggestion).toBe(idea.id);
+      });
+
+      it("↑ on the first entry stays on it", async () => {
+        state().focusRecording("r1");
+        await press("{ArrowUp}");
+        expect(state().focusedRecording).toBe("r1");
+      });
+
+      it("does nothing while nothing is focused", async () => {
+        await press("{ArrowDown}");
+        expect([state().focusedRecording, state().focusedSuggestion]).toEqual([null, null]);
+      });
+
+      it("does not step while the editor is open", async () => {
+        state().focusRecording("r1");
+        useStore.setState({ editor: { mode: "edit", id: "r1" } });
+        await press("{ArrowDown}");
+        expect(state().focusedRecording).toBe("r1");
+      });
+    });
+
     describe("with suggestions between the recordings", () => {
       const between = suggestion({ start: at("10:00"), end: at("10:30"), nextCard: "r2" });
       const last = suggestion({ ruleIds: ["rule-2"], start: at("13:00"), end: at("13:30"), nextCard: null });

@@ -22,6 +22,15 @@ describe("answerRemote", () => {
     expect(mocked.remoteReply).toHaveBeenCalledWith("7", null, null);
   });
 
+  it("reveals the selected entry in the Day view and replies without an error", async () => {
+    const entry = { day: "2026-10-20", kind: "recording", id: "r1" } as const;
+    await answerRemote({ id: "14", request: { type: "select", entry } });
+    expect(useStore.getState().view).toBe("day");
+    expect(useStore.getState().day).toBe("2026-10-20");
+    expect(useStore.getState().revealing).toEqual(entry);
+    expect(mocked.remoteReply).toHaveBeenCalledWith("14", null, null);
+  });
+
   describe("runCommand", () => {
     beforeEach(() => installCommands());
 

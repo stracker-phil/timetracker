@@ -220,6 +220,7 @@ src-tauri/
   src/activity/              external activity (rules, commands), deletion with undo (delete.rs)
   src/autostart.rs           launch at login
   src/day/ calendar/ projects/ recordings/ rules/ reports/ timers/ away_prompt/ mcp/
+  src/reveal/                a recording or suggestion shown selected: the palette's r: rows, timetracker select
   tests/                     integration tests on a temp SQLite file (performance.rs)
 src/
   main.tsx modules.ts App.tsx

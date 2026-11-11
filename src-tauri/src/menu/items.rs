@@ -138,6 +138,11 @@ pub const GO_MENU: MenuDef = MenuDef {
             item("Next", "page:nav.next", "N"),
             item("Today", "page:nav.today", "O"),
             item("Go to Date…", "page:nav.goToDate", ""),
+            item(
+                "Find Recording or Suggestion…",
+                "page:palette.reveal",
+                "Mod+Shift+F",
+            ),
         ],
         &[
             item("Next Activity", "page:day.nextBlock", "J"),
@@ -405,6 +410,18 @@ mod tests {
                 "{command}"
             );
         }
+    }
+
+    #[test]
+    fn finding_a_recording_or_suggestion_is_a_go_item_bound_to_mod_shift_f() {
+        let item = menu_item("page:palette.reveal").unwrap();
+
+        assert_eq!(
+            (item.label, item.default_binding),
+            ("Find Recording or Suggestion…", "Mod+Shift+F")
+        );
+        assert!(GO_MENU.groups[0].iter().any(|i| i.command == item.command));
+        assert_eq!(default_binding("palette.reveal"), Some("Mod+Shift+F"));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, Timer, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, RecordingAutofill, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuCommand, MenuState, MiniMonth, PauseUntil, Period, PeriodTotals, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, FoundEntry, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, Timer, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, RecordingAutofill, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuCommand, MenuState, MiniMonth, PauseUntil, Period, PeriodTotals, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -136,6 +136,10 @@ export const api = {
   calendarPicker: (month: string, selected: [string, string] | null) => invoke<PickerMonth>("calendar_picker", { month, selected }),
   /** The palette's dates for `text`: a typed date, or the date words it starts; "" gives the Go to defaults. */
   calendarJumps: (text: string) => invoke<DateJump[]>("calendar_jumps", { text }),
+  /** The palette's `r:` rows: recordings whose note, project, client or tag holds `text`, latest first. */
+  revealRecordings: (text: string) => invoke<FoundEntry[]>("reveal_recordings", { text }),
+  /** The palette's `r:` rows: the suggestions of today and the six days before, latest day first. */
+  revealSuggestions: () => invoke<FoundEntry[]>("reveal_suggestions"),
   /** The day `by` days, weeks or months from `day`; a month step lands on the 1st. */
   calendarStep: (unit: PeriodUnit, day: string, by: number) => invoke<string>("calendar_step", { unit, day, by }),
   /** A typed time on the local day of `on`, or null; see `calendar_parse_time`. */

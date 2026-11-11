@@ -28,6 +28,7 @@ pub mod projects;
 pub mod recordings;
 pub mod remote;
 pub mod reports;
+pub mod reveal;
 pub mod rules;
 pub mod scripting;
 pub mod state;
@@ -230,7 +231,11 @@ mod tests {
         .unwrap();
         let cargo = env!("CARGO_PKG_VERSION");
 
-        assert_eq!(release["version"], serde_json::json!(cargo), "tauri.conf.json");
+        assert_eq!(
+            release["version"],
+            serde_json::json!(cargo),
+            "tauri.conf.json"
+        );
         assert_eq!(package["version"], serde_json::json!(cargo), "package.json");
         let parts: Vec<&str> = cargo.split('.').collect();
         assert!(

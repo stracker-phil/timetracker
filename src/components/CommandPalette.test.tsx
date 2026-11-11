@@ -5,11 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api, type DateJump, type Project, type SavedReport, type TrackerStatus } from "../api";
+import { api, type DateJump, type FoundEntry, type Project, type SavedReport, type TrackerStatus } from "../api";
 import { installCommands, runCommand } from "../commands";
 import { registerSettingsPage } from "../registry/settingsPages";
 import { resetStore, useStore, type Store } from "../state/store";
 import { trackerStatus } from "../test/data";
+import { at } from "../test/dayFixtures";
 import { menuCommand, menuCommands } from "../test/menuFixtures";
 import { client, projectItem } from "../test/projectFixtures";
 import { renderWithClient, SAVED_REPORTS_KEY, seedProjects, seedQuery, TRACKER_KEY } from "../test/queries";
@@ -29,7 +30,26 @@ const solo = projectItem({ project: { id: "p-solo", name: "Solo" } });
 const archived = projectItem({ project: { id: "p-old", name: "Promo archive", archivedAt: 5 } });
 const weekly = savedReport({ id: "s1", name: "Weekly" });
 
-const today: DateJump = { name: "Today", unit: "day", from: "2026-03-10", to: "2026-03-10", label: "Tue, Mar 10" };
+/** A recording of "Website relaunch" on 2026-03-10 from 09:00 to 10:30; `patch` overrides fields. */
+function found(patch: Partial<FoundEntry> = {}): FoundEntry {
+  return {
+    entry: { day: "2026-03-10", kind: "recording", id: "r1" },
+    dayLabel: "Tue, Mar 10",
+    start: at("09:00"),
+    end: at("10:30"),
+    project: "Website relaunch",
+    client: null,
+    color: "blue",
+    shade: 0,
+    note: "weekly call",
+    tag: null,
+    by: null,
+    ...patch,
+  };
+}
+const suggested = (id: string, patch: Partial<FoundEntry> = {}) => found({ entry: { day: "2026-03-09", kind: "suggestion", id }, dayLabel: "Mon, Mar 9", by: "Planner", ...patch });
+
+const today: DateJump ={ name: "Today", unit: "day", from: "2026-03-10", to: "2026-03-10", label: "Tue, Mar 10" };
 
 /** Store state, plus the query data the palette lists. */
 type PaletteSetup = Partial<Store> & { recent?: Project[]; savedReports?: SavedReport[]; tracker?: TrackerStatus };
@@ -102,7 +122,7 @@ describe("CommandPalette", () => {
 
     it("hints at the prefixes in the footer until something is typed", async () => {
       await openPalette();
-      expect(screen.getByText("> commands · p: projects · c: clients · @ dates")).toBeInTheDocument();
+      expect(screen.getByText("> commands · p: projects · c: clients · r: recordings · @ dates")).toBeInTheDocument();
       await userEvent.type(screen.getByLabelText("Search"), "d");
       expect(screen.queryByText(/> commands/)).not.toBeInTheDocument();
     });
@@ -384,6 +404,92 @@ describe("CommandPalette", () => {
       mocked.calendarJumps.mockClear();
       await userEvent.type(screen.getByLabelText("Search"), "promo");
       expect(mocked.calendarJumps).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("recordings and suggestions after r:", () => {
+    beforeEach(() => {
+      mocked.revealSuggestions.mockResolvedValue([]);
+      mocked.revealRecordings.mockResolvedValue([]);
+    });
+
+    it("lists the suggestions, then the recordings, each row with its project, day, times and note", async () => {
+      mocked.revealSuggestions.mockResolvedValue([suggested("s1", { start: at("14:00", "2026-03-09"), end: at("14:30", "2026-03-09"), note: "design review" })]);
+      mocked.revealRecordings.mockResolvedValue([found()]);
+      await openPalette("r:");
+      await screen.findByRole("option", { name: /design review/ });
+      await screen.findByRole("option", { name: /weekly call/ });
+      expect(options()).toEqual(["Website relaunchMon, Mar 9 · 14:00–14:30 · design review", "Website relaunchTue, Mar 10 · 09:00–10:30 · weekly call"]);
+      const list = screen.getByRole("listbox", { name: "Results" });
+      expect(within(list).getByText("Suggestions")).toBeInTheDocument();
+      expect(within(list).getByText("Recordings")).toBeInTheDocument();
+    });
+
+    it("shows no views, projects or other sections", async () => {
+      mocked.revealRecordings.mockResolvedValue([found()]);
+      await openPalette("r:", { recent: [promo.project], savedReports: [weekly] });
+      await screen.findByRole("option", { name: /weekly call/ });
+      expect(options()).toHaveLength(1);
+      ["Go to", "Recent projects", "Projects", "Saved reports"].forEach((name) => expect(screen.queryByText(name)).not.toBeInTheDocument());
+    });
+
+    it("ends a running recording with now and names an entry without a project", async () => {
+      mocked.revealRecordings.mockResolvedValue([found({ end: null, project: null, note: "" })]);
+      await openPalette("r:");
+      await screen.findByRole("option", { name: /09:00–now/ });
+      expect(options()).toEqual(["No projectTue, Mar 10 · 09:00–now"]);
+    });
+
+    it("asks Rust for the recordings matching the text behind the prefix", async () => {
+      await openPalette("r: weekly");
+      await vi.waitFor(() => expect(mocked.revealRecordings).toHaveBeenLastCalledWith("weekly"));
+    });
+
+    it.each([
+      ["the project", "relaunch"],
+      ["the note", "design"],
+      ["the client", "globex"],
+      ["the tag", "billing"],
+      ["what suggested it", "planner"],
+    ])("filters the suggestions by %s", async (_field, text) => {
+      mocked.revealSuggestions.mockResolvedValue([
+        suggested("s1", { project: "Website relaunch", note: "design review", client: "Globex", tag: "Billing" }),
+        suggested("s2", { project: "Intranet", note: "inbox", by: "Mailer" }),
+      ]);
+      await openPalette("r:");
+      await vi.waitFor(() => expect(options()).toHaveLength(2));
+      await userEvent.type(screen.getByLabelText("Search"), text);
+      await vi.waitFor(() => expect(options()).toEqual([expect.stringContaining("design review")]));
+    });
+
+    it("says so when nothing matches", async () => {
+      mocked.revealSuggestions.mockResolvedValue([suggested("s1")]);
+      await openPalette("r:zzz");
+      expect(await screen.findByText("No matches.")).toBeInTheDocument();
+    });
+
+    it("closes and shows the recording's day in the Day view when its row is chosen", async () => {
+      mocked.revealRecordings.mockResolvedValue([found()]);
+      await openPalette("r:", { view: "projects", day: "2026-03-01" });
+      await userEvent.click(await screen.findByRole("option", { name: /weekly call/ }));
+      const state = useStore.getState();
+      expect([state.view, state.day, state.paletteOpen]).toEqual(["day", "2026-03-10", false]);
+      expect(state.revealing).toEqual({ day: "2026-03-10", kind: "recording", id: "r1" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("reveals the suggestion of the active row on Enter", async () => {
+      mocked.revealSuggestions.mockResolvedValue([suggested("s1")]);
+      await openPalette("r:", { view: "week" });
+      await screen.findByRole("option", { name: /Mon, Mar 9/ });
+      await userEvent.keyboard("{Enter}");
+      expect(useStore.getState()).toMatchObject({ view: "day", day: "2026-03-09", revealing: { day: "2026-03-09", kind: "suggestion", id: "s1" }, paletteOpen: false });
+    });
+
+    it("opens seeded with r: when the Find command runs", async () => {
+      await openPalette();
+      act(() => void runCommand("palette.reveal"));
+      await vi.waitFor(() => expect(screen.getByLabelText("Search")).toHaveValue("r: "));
     });
   });
 

@@ -201,6 +201,8 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `calendar_period` (`calendar/commands.rs`) | `unit: PeriodUnit` (`day`, `week`, `month`), `day: Day` | `Period { from, to, holdsToday }`: the day, Monday-to-Sunday week or month holding `day` (`calendar::period::period`); the billable ratio and the date picker's selection | `invalid_input` |
 | `calendar_mini_month` | `shownDay: Day`, `offset: i32` (months from `shownDay`'s, the ‹ › paging), `shown: Shown` (`{ kind: "period", unit, day }` for the Day, Week or Month view, `{ kind: "report", range }`, `{ kind: "none" }`) | `MiniMonth { monthStart, monthName, year, monthSelected, weeks: MiniWeek[] }` (`monthName` short or full by `calendarTitle`), six weeks from the Monday on or before the 1st; `MiniWeek { number (ISO), start, selected, days: MiniDay[] }`; `MiniDay { day, dayOfMonth, inMonth, isToday, hasRecordings, selected }` (see [Week and month](#week-and-month)); the sidebar's calendar | `invalid_input` (a report range that ends before it starts, a month out of range), `db` |
 | `calendar_picker` | `month: Day` (any day of it), `selected: [Day, Day] \| null` | `PickerMonth { monthStart, weeks: PickerDay[][] }` (whole weeks Monday to Sunday); `PickerDay { day, outside, isToday, selected }` (`calendar::period::picker_month`); the date picker | `invalid_input` |
+| `reveal_recordings` (`reveal/search.rs`) | `text: string` | `FoundEntry[] { entry: EntryRef { day, kind: recording \| suggestion, id }, dayLabel, start, end, project, client, color, shade, note, tag, by }`: up to 30 recordings whose note, project, client or tag holds `text` (`db::recordings::search`, ASCII case ignored; `""` all), latest first; the palette's `r:` | `db` |
+| `reveal_suggestions` | – | `FoundEntry[]`: the suggestions the Day view shows on today and the six days before, latest day first, a stored one once as its first piece; the palette's `r:` | `db` |
 | `calendar_jumps` | `text: string` | `DateJump[] { name: string \| null, unit: PeriodUnit, from: Day, to: Day, label: string }` (`calendar::jump::jumps`): a typed date (`2026-10-12`, `12.10.`, `12.10.2026`, `oct 12`, `12 october 2026`; without a year the latest on or before today) as one day without a name, else the date words starting with `text` or one of whose words does (Today, Yesterday, This week, Last week, This month, Last month, a weekday: the latest on or before today, a month name: the latest on or before this month); `""` gives Today, Yesterday, This week, This month; the palette | – |
 | `calendar_step` | `unit: PeriodUnit, day: Day, by: i32` | `Day`: `by` days, weeks or months from `day` (a month step lands on the 1st; `calendar::period::step`); P and N, the date picker's keys, moving a recording a day | `invalid_input` (out of the date range) |
 | `calendar_parse_time` | `text: string, on: Ms` | `Ms \| null` (`cli::time::typed`): a clock time (`9:30`, `09:30`, `930`, `0930`) on the local day of `on`, or a date and time (`2026-10-21T09:30`) as the CLI reads it; `null` while it is neither; the editor's and the away prompt's From / To, the Delete activity range | – |
@@ -673,6 +675,7 @@ as it is), `--log-level <error|warn|info|debug|trace>` (overrides the setting fo
 | `edit ID [--project P] [--note N] [--tag T\|--no-tag] [--from/--to \| --span…] [--final [--replace]] [--draft]` | `edit { request: EditRequest }`; spans given replace all | the written suggestion or recording, as `record` |
 | `delete ID [--final] [--draft]` | `delete { id, final }` | `deleted the suggestion ID` / `deleted the recording ID`; `--json`: `Deleted { kind, id }` |
 | `approve ID…` | `approve { ids }`: each one `rules::approve`, one undo step each, stopping at the first refused | one `recorded …` line each |
+| `select ID` | `select { id }` (a recording or suggestion id, as `recordings` and `suggestions` list them); needs the running app | `selected the suggestion on 2026-10-21`; `--json`: `EntryRef { day, kind, id }` (`id` as the Day view knows it: a stored suggestion's first piece); an unknown id exits 1 |
 | `suggestions [RANGE]`, `recordings [RANGE]` | `suggestions { range }`, `recordings { range }` (`Range` as `report`'s) | one line each with its id, or `no suggestions` / `no recordings`; `--json`: `SuggestionEntry[]` / `RecordingEntry[]` |
 | `projects [--archived]`, `clients [--archived]`, `tags` | `projects { archived }`, `clients { archived }`, `tags` | one line each with its id; `--json`: `ProjectEntry[]` (with `color`, an accent name, and `shade`, 0 to 8) / `ClientEntry[]` / `TagEntry[]` |
 | `undo`, `redo` | `undo`, `redo` (`Recordings::undo/redo`, the app's ⌘Z stack) | `undid Record 30m for Acme` or `nothing to undo` |
@@ -773,6 +776,7 @@ Every message is logged by type (`IpcMessage::kind`, never the contents).
 |---|---|---|
 | `activate`, `error` | `launch::queue`: pushed to `LaunchQueue` (`error` → `LaunchEvent::Error`, `activate { hidden: false }` → `Activate`), `launch` emitted, the window shown unless `hidden` | `null` |
 | `show { day, focus }` | shows the window (`window::show_main`, or `show_main_in_background` without `focus`), then asks the page `ShowDay { day }` (today when `null`) | `null` |
+| `select { id }` | `remote::select`: `scripting::writes::locate` finds the day and the Day view's id (a recording on the day of its first span, a stored suggestion as its first piece, a rule's piece only while the Day view shows it; else `not_found`), shows the window in the background and asks the page `Select { entry }` | `EntryRef`; the CLI prints `selected the recording on 2026-10-21` |
 | `hide` | `window::hide_main` | `null` |
 | `run { id }` | `remote::run`: a `page:<id>` shows the main window and asks the page `RunCommand { id }` (it fails when the command is unknown or can't run); any other id runs on the bus (`run_or_err`), one that `quits` 200 ms after replying | `null` |
 | `commands` | `menu::palette::command_list` | `ListedCommand[]` |
@@ -835,7 +839,7 @@ after TimeTracker restarts (retrying while it is down) and takes the reply as th
 ### Requests the page answers
 
 `remote.rs`: `Bridge::ask` emits `remote` with a fresh id (`pending::PendingReplies`) and waits up to 4 s
-(below the IPC client's 5 s) for `remote_reply`. `RemoteRequest` is `showDay { day }`;
+(below the IPC client's 5 s) for `remote_reply`. `RemoteRequest` is `showDay { day }`, `select { entry }` (`revealEntry`) or `runCommand { id }`;
 `src/commands/remote.ts` (`answerRemote`) always replies, with an error for a request it does not know.
 
 ### Deep links

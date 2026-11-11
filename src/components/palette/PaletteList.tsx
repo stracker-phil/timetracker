@@ -53,7 +53,7 @@ export function PaletteList({ items, active, activeRef, onHover, onChoose }: Pro
   );
 }
 
-const PREFIX_HINTS = "> commands · p: projects · c: clients · @ dates";
+const PREFIX_HINTS = "> commands · p: projects · c: clients · r: recordings · @ dates";
 
 /** The keys of the active row; the prefixes while nothing is typed. */
 export function PaletteFooter({ item, empty }: { item: Item | undefined; empty: boolean }) {

@@ -52,7 +52,7 @@ line number.
   `events.rs` (every event name and payload), `state.rs` (`AppState`), `store/` (JSON files), `db/` (SQLite,
   repositories, backup, `relocate.rs`), `capture/` (`Source`, `macos.rs`), `tracker/`, `activity/` (external
   activity, deletion), `day/`, `calendar/` (week, month), `projects/`, `recordings/`, `timers/`, `rules/`,
-  `reports/`, `away_prompt/`, `mcp/`, `app_icons.rs`, `autostart.rs`, `commands.rs`, `bus/` (command bus: app commands by id, `page:<id>`), `menu/` (menu bar from `MENUS`, each window's enabled state, palette list), `help.rs`, `tray.rs`, `window/` (helpers, navigation guard),
+  `reports/`, `reveal/` (palette `r:`, `select`), `away_prompt/`, `mcp/`, `app_icons.rs`, `autostart.rs`, `commands.rs`, `bus/` (command bus: app commands by id, `page:<id>`), `menu/` (menu bar from `MENUS`, each window's enabled state, palette list), `help.rs`, `tray.rs`, `window/` (helpers, navigation guard),
   `error.rs`, `lock.rs`, `dev.rs` (debug builds), `test_support/` (fixtures, seed; tests and debug builds).
 - Errors cross the boundary as `{ kind, message, code }` (`error.rs`). IPC types are generated with ts-rs.
 - Timestamps are UTC milliseconds; days are local `YYYY-MM-DD`, computed in Rust.

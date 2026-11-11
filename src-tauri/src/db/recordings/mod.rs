@@ -139,6 +139,36 @@ pub async fn latest_with_note(db: &Db, note: &str) -> AppResult<Option<(String, 
     .await?)
 }
 
+/// Recordings whose note, project, client or tag holds `text` (ignoring ASCII case; empty matches all), the
+/// one with the latest span first, the running one included.
+pub async fn search(db: &Db, text: &str, limit: u32) -> AppResult<Vec<Recording>> {
+    let mut conn = db.pool().acquire().await?;
+    let rows = sqlx::query_as(
+        r#"SELECT r.* FROM recordings r
+           JOIN projects p ON p.id = r.project_id
+           LEFT JOIN clients c ON c.id = p.client_id
+           LEFT JOIN tags t ON t.id = r.tag_id
+           WHERE r.note LIKE ?1 ESCAPE '\' OR p.name LIKE ?1 ESCAPE '\'
+             OR c.name LIKE ?1 ESCAPE '\' OR t.name LIKE ?1 ESCAPE '\'
+           ORDER BY (SELECT max(s.start) FROM recording_spans s WHERE s.recording_id = r.id) DESC, r.id
+           LIMIT ?2"#,
+    )
+    .bind(like_pattern(text))
+    .bind(limit)
+    .fetch_all(&mut *conn)
+    .await?;
+    with_spans(&mut conn, rows).await
+}
+
+/// `%text%` for `LIKE … ESCAPE '\'`, with the wildcards and the escape character in `text` matching literally.
+fn like_pattern(text: &str) -> String {
+    let escaped = text
+        .replace('\\', r"\\")
+        .replace('%', r"\%")
+        .replace('_', r"\_");
+    format!("%{escaped}%")
+}
+
 /// Recordings with a span that shares time with `[start, end)`, except the one with id `except`, by first
 /// start. Touching edges do not overlap; an open span overlaps everything after its start.
 pub async fn overlapping(
@@ -957,5 +987,169 @@ mod tests {
         recording(&db, &p.id, 100, Some(200)).await;
         recording(&db, &p.id, 200, Some(300)).await;
         assert_eq!(count(&db).await.unwrap(), 2);
+    }
+
+    async fn noted(db: &Db, project_id: &str, note: &str, start: Ms) -> Recording {
+        insert(
+            db,
+            NewRecording {
+                note: note.into(),
+                ..new(project_id, start, Some(start + 100))
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn search_matches_the_note_project_client_and_tag() {
+        let db = Db::open_memory().await.unwrap();
+        let example = crate::test_support::client(&db, "Example Co").await;
+        let relaunch = crate::db::projects::insert(
+            &db,
+            crate::db::projects::ProjectInput {
+                client_id: Some(example.id),
+                name: "Website relaunch".into(),
+                color: "blue".into(),
+                shade: None,
+                billable: false,
+            },
+        )
+        .await
+        .unwrap();
+        let podcast = project(&db, "Podcast").await;
+        let billing = tags::insert(&db, "billing").await.unwrap();
+        let by_note = noted(&db, &podcast.id, "outline the intro", 100).await;
+        let by_project_and_client = noted(&db, &relaunch.id, "", 200).await;
+        let by_tag = insert(
+            &db,
+            NewRecording {
+                tag_id: Some(billing.id),
+                ..new(&podcast.id, 300, Some(400))
+            },
+        )
+        .await
+        .unwrap();
+
+        for (text, expected) in [
+            ("intro", vec![&by_note.id]),
+            ("relaunch", vec![&by_project_and_client.id]),
+            ("example co", vec![&by_project_and_client.id]),
+            ("billing", vec![&by_tag.id]),
+        ] {
+            let found = search(&db, text, 10).await.unwrap();
+            assert_eq!(
+                found.iter().map(|r| &r.id).collect::<Vec<_>>(),
+                expected,
+                "{text}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn search_without_a_match_is_empty() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "Podcast").await;
+        noted(&db, &p.id, "outline", 100).await;
+
+        assert!(search(&db, "invoice", 10).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_ignores_ascii_case() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "Website relaunch").await;
+        let rec = noted(&db, &p.id, "Fix Login", 100).await;
+
+        for text in ["fix login", "FIX LOGIN", "WEBSITE", "relaunch"] {
+            assert_eq!(
+                ids(search(&db, text, 10).await.unwrap()),
+                [rec.id.clone()],
+                "{text}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn search_takes_percent_underscore_and_backslash_literally() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "Podcast").await;
+        let percent = noted(&db, &p.id, "50% done", 100).await;
+        let underscore = noted(&db, &p.id, "snake_case", 200).await;
+        let backslash = noted(&db, &p.id, r"notes\draft", 300).await;
+        noted(&db, &p.id, "plain text", 400).await;
+
+        for (text, expected) in [
+            ("50%", vec![percent.id.clone()]),
+            ("e_c", vec![underscore.id.clone()]),
+            (r"s\d", vec![backslash.id.clone()]),
+            ("5_", vec![]),
+            ("0% d", vec![percent.id.clone()]),
+            ("n%t", vec![]),
+            ("a_e", vec![]),
+            (r"\\", vec![]),
+        ] {
+            assert_eq!(
+                ids(search(&db, text, 10).await.unwrap()),
+                expected,
+                "{text}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn search_lists_the_latest_span_first_and_includes_the_running_recording() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "Podcast").await;
+        let spread = multi(&db, &p.id, &[(100, Some(200)), (900, Some(1_000))]).await;
+        let middle = recording(&db, &p.id, 500, Some(600)).await;
+        let early = recording(&db, &p.id, 300, Some(400)).await;
+        let running = recording(&db, &p.id, 2_000, None).await;
+
+        let found = search(&db, "podcast", 10).await.unwrap();
+
+        assert_eq!(ids(found), [running.id, spread.id, middle.id, early.id]);
+    }
+
+    #[tokio::test]
+    async fn search_returns_each_recording_with_all_its_spans() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "Podcast").await;
+        let rec = multi(&db, &p.id, &[(100, Some(200)), (300, None)]).await;
+
+        assert_eq!(search(&db, "podcast", 10).await.unwrap(), [rec]);
+    }
+
+    #[tokio::test]
+    async fn search_stops_at_the_limit_keeping_the_latest() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "Podcast").await;
+        recording(&db, &p.id, 100, Some(200)).await;
+        let middle = recording(&db, &p.id, 300, Some(400)).await;
+        let latest = recording(&db, &p.id, 500, Some(600)).await;
+
+        assert_eq!(
+            ids(search(&db, "podcast", 2).await.unwrap()),
+            [latest.id, middle.id]
+        );
+    }
+
+    #[tokio::test]
+    async fn search_with_empty_text_returns_everything_up_to_the_limit() {
+        let db = Db::open_memory().await.unwrap();
+        let p = project(&db, "Podcast").await;
+        let other = project(&db, "Website relaunch").await;
+        let first = recording(&db, &p.id, 100, Some(200)).await;
+        let second = recording(&db, &other.id, 300, Some(400)).await;
+        let third = recording(&db, &p.id, 500, Some(600)).await;
+
+        assert_eq!(
+            ids(search(&db, "", 10).await.unwrap()),
+            [third.id.clone(), second.id.clone(), first.id]
+        );
+        assert_eq!(
+            ids(search(&db, "", 2).await.unwrap()),
+            [third.id, second.id]
+        );
     }
 }

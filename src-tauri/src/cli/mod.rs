@@ -50,6 +50,7 @@ const EXAMPLES: &str = "Examples:
   timetracker record --span 11:00-12:00 --note \"call with Ana\"
   timetracker suggestions --json       today's suggestions with their ids
   timetracker approve <id>             record a suggestion as it is
+  timetracker select <id>              show a recording or suggestion selected in the Day view
   timetracker timer update --note \"ID-123: Payment bug\"
   timetracker projects --json          the projects with their clients and ids
   timetracker commands                 every command `run` takes, with its menu item
@@ -108,6 +109,11 @@ enum Command {
     Show {
         /// YYYY-MM-DD, today or yesterday (default today)
         day: Option<String>,
+    },
+    /// Show a recording or suggestion selected in its day's Day view
+    Select {
+        /// A recording or suggestion id, from `timetracker recordings` or `suggestions`
+        id: String,
     },
     /// Show the window and bring it to the front, starting TimeTracker if needed
     Focus,
@@ -314,6 +320,7 @@ fn message<Tz: TimeZone>(
             day: day.map(|day| time::day(&day, now, tz)).transpose()?,
             focus: false,
         },
+        Command::Select { id } => IpcMessage::Select { id },
         Command::Focus => IpcMessage::Activate { hidden: false },
         Command::Hide => IpcMessage::Hide,
         Command::Quit => IpcMessage::Quit,

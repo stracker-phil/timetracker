@@ -345,7 +345,39 @@ export type DraftToggle = {
  */
 spans: Array<Span>, totalMs: number, included: boolean, };
 
+export type EntryKind = "recording" | "suggestion";
+
+/**
+ * A recording, or a suggestion's first piece, on `day`, by the id the Day view uses.
+ */
+export type EntryRef = { day: Day, kind: EntryKind, id: string, };
+
 export type ErrorKind = "db" | "io" | "invalid_input" | "not_found" | "overlap" | "permission_required" | "tracker_paused" | "session_not_found" | "cancelled";
+
+/**
+ * One palette row: where it is and what it shows.
+ */
+export type FoundEntry = { entry: EntryRef, 
+/**
+ * `Wed, Nov 11`, the short day title.
+ */
+dayLabel: string, start: number, 
+/**
+ * `None` while it runs.
+ */
+end: number | null, 
+/**
+ * `None` for a suggestion waiting for a project (ADR 0030).
+ */
+project: string | null, client: string | null, 
+/**
+ * The project's accent.
+ */
+color: string, shade: number, note: string, tag: string | null, 
+/**
+ * A suggestion's rules' names or the app that stored it.
+ */
+by: string | null, };
 
 export type Group = "project" | "tag" | "day" | "week" | "month";
 
@@ -631,7 +663,7 @@ end: number | null, };
 
 export type RemoteEvent = { id: string, request: RemoteRequest, };
 
-export type RemoteRequest = { "type": "showDay", day: Day, } | { "type": "runCommand", id: string, };
+export type RemoteRequest = { "type": "showDay", day: Day, } | { "type": "select", entry: EntryRef, } | { "type": "runCommand", id: string, };
 
 export type ReportCharts = { byClient: Array<ChartSlice>, byProject: Array<ChartSlice>, byTag: Array<ChartSlice>, };
 

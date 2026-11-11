@@ -58,6 +58,10 @@ pub enum IpcMessage {
         day: Option<Day>,
         focus: bool,
     },
+    /// Shows the window at the Day view of a recording or suggestion, with it selected.
+    Select {
+        id: String,
+    },
     Hide,
     /// Runs a bus command (`app:settings`, `timer:stop`) or, as `page:<id>`, one of the window's own.
     Run {
@@ -163,6 +167,7 @@ impl IpcMessage {
             IpcMessage::Activate { .. } => "Activate",
             IpcMessage::Error { .. } => "Error",
             IpcMessage::Show { .. } => "Show",
+            IpcMessage::Select { .. } => "Select",
             IpcMessage::Hide => "Hide",
             IpcMessage::Run { .. } => "Run",
             IpcMessage::Commands => "Commands",

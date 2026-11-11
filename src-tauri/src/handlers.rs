@@ -4,7 +4,7 @@ use tauri::ipc::Invoke;
 
 use crate::{
     activity, app_icons, autostart, away_prompt, bus, calendar, commands, day, db, help, menu,
-    projects, recordings, remote, reports, rules, timers, tracker,
+    projects, recordings, remote, reports, reveal, rules, timers, tracker,
 };
 
 pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
@@ -106,6 +106,8 @@ pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         calendar::commands::calendar_period,
         calendar::commands::calendar_picker,
         calendar::commands::calendar_jumps,
+        reveal::search::reveal_recordings,
+        reveal::search::reveal_suggestions,
         calendar::commands::calendar_step,
         calendar::commands::calendar_parse_time,
         away_prompt::commands::away_prompt_current,

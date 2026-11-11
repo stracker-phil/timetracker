@@ -20,6 +20,7 @@ use crate::launch;
 use crate::pending::{NoReply, PendingReplies};
 use crate::recordings::commands::changing;
 use crate::reports;
+use crate::reveal::EntryRef;
 use crate::scripting::timer::{self, TimerState};
 use crate::scripting::{catalog, listing, writes};
 use crate::state::AppState;
@@ -38,6 +39,8 @@ const QUIT_DELAY: Duration = Duration::from_millis(200);
 pub enum RemoteRequest {
     /// Navigate to the day's Day view.
     ShowDay { day: Day },
+    /// Navigate to the entry's day in the Day view and select it there.
+    Select { entry: EntryRef },
     /// Run one of the page's own commands (`timetracker run page:<id>`); fails when it can't run now.
     RunCommand { id: String },
 }
@@ -166,6 +169,22 @@ async fn show(app: &AppHandle, day: Option<Day>, focus: bool) -> HandlerResult {
         .await
 }
 
+/// The Day view of what `id` names, with it selected; replies with where that is.
+async fn select(app: &AppHandle, id: &str) -> HandlerResult {
+    let settings = app.state::<AppState>().settings.get();
+    let entry = writes::locate(&db(app)?, &settings, id).await?;
+    window::show_main_in_background(app);
+    app.state::<Bridge>()
+        .ask(
+            app,
+            RemoteRequest::Select {
+                entry: entry.clone(),
+            },
+        )
+        .await?;
+    json(entry)
+}
+
 /// A bus command, or a page command the window runs and answers for.
 async fn run(app: &AppHandle, id: &str) -> HandlerResult {
     if let Some(page) = id.strip_prefix(PAGE_PREFIX) {
@@ -198,6 +217,7 @@ pub async fn handle(app: AppHandle, message: IpcMessage) -> HandlerResult {
     log::info!("Received {} from another process", message.kind());
     match message {
         IpcMessage::Show { day, focus } => show(&app, day, focus).await,
+        IpcMessage::Select { id } => select(&app, &id).await,
         IpcMessage::Hide => {
             window::hide_main(&app);
             Ok(serde_json::Value::Null)

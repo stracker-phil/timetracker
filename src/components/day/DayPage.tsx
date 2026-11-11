@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { toAppError, type DayView } from "../../api";
 import { isToday } from "../../lib/day";
 import { dayKey, useDayView } from "../../queries/day";
-import { focusCleared } from "../../state/focus";
+import { focusCleared, focusRevealed } from "../../state/focus";
 import { useStore } from "../../state/store";
 import { Splitter, usePaneSize } from "../Splitter";
 import { DayHeader } from "./DayHeader";
@@ -36,14 +36,17 @@ function EmptyDay({ day }: { day: string }) {
   );
 }
 
-/** Another day's view arriving takes the key focus off the last day's blocks, recordings and suggestions. */
-function useFocusClearedOnNewDay(shown: string | undefined) {
+/** Moves the key focus off the last day's entries when another day shows, or onto a revealed entry once its day shows. */
+function useFocusOnShownDay(shown: string | undefined) {
   const last = useRef(shown);
+  const revealing = useStore((s) => s.revealing);
   useEffect(() => {
-    if (shown === undefined || shown === last.current) return;
+    if (shown === undefined) return;
+    const newDay = shown !== last.current;
     last.current = shown;
-    useStore.setState(focusCleared("day"));
-  }, [shown]);
+    if (revealing?.day === shown) useStore.setState(focusRevealed(revealing));
+    else if (newDay) useStore.setState(focusCleared("day"));
+  }, [shown, revealing]);
 }
 
 /** The Day view: the timesheet beside the shown day's timeline; it reloads when the day's data changes and keeps following today. */
@@ -56,7 +59,7 @@ export function DayPage() {
   // The last loaded title stays while the next day loads, so the toolbar never blanks.
   const label = query.data?.label;
   const pane = usePaneSize("timesheet", Math.round(window.innerWidth * TIMESHEET.share), TIMESHEET.min, TIMESHEET.max);
-  useFocusClearedOnNewDay(view?.day);
+  useFocusOnShownDay(view?.day);
 
   return (
     <section className="day-page" aria-label="Day">

@@ -72,7 +72,9 @@ Browsers ask once each whether TimeTracker may read their address bar (Automatio
 - ⌘1 to ⌘7 switch to Day, Week, Month, Reports, Projects, Tags and Rules. Week and Month list the recordings
   per day (Week as cards, Month as one line each, Monday first); a card drags to another day.
 - Each recording has at most one tag (Tags has a page of its own), for kinds of work across projects.
-- Everything works from the keyboard: ⌘K opens the command palette, ? lists the shortcuts.
+- Everything works from the keyboard: ⌘K opens the command palette, ? lists the shortcuts. ⌘⇧F (or `r:` in the
+  palette) finds a recording by its note, project, client or tag, or a suggestion of the last week, and shows it
+  selected in its day.
 - A project is billable or not (a switch in its sheet; no rates). The status bar shows the billable share of
   the recorded time for the shown day, week, month or report period, e.g. `Billable 80 %`.
 
@@ -105,6 +107,7 @@ reports can be saved under a name and sit under Reports in the sidebar.
 | `timetracker edit ID [--project P] [--note N] [--tag T\|--no-tag] [--span …] [--final [--replace]]` | changes a suggestion; with `--final` changes a recording, or records the suggestion with the changes |
 | `timetracker delete ID [--final]` | deletes a suggestion (a rule's is dismissed); with `--final` a recording |
 | `timetracker approve ID…` | records suggestions as they are |
+| `timetracker select ID` | shows a recording or suggestion selected in its day's Day view |
 | `timetracker suggestions [RANGE]`, `recordings [RANGE]` | lists them with their ids (`RANGE` as for `report`; suggestions of at most 62 days) |
 | `timetracker projects [--archived]`, `clients [--archived]`, `tags` | lists the names a command takes, with their ids; `projects --json` also has each project's `color` (an accent name such as `blue`, its client's under a client) and `shade` (0 to 8, darkest first) |
 | `timetracker undo`, `redo` | undoes or redoes the last change to recordings or suggestions, as ⌘Z in the app |
@@ -113,7 +116,7 @@ reports can be saved under a name and sit under Reports in the sidebar.
 | `timetracker timer start PROJECT … --final [--draft]` | starts a running recording instead, as the timer picker does (the same project, note and tag continue today's recording); `--draft` keeps it a suggestion |
 | `timetracker timer status [--json]` | the running timer (`(suggested)` after a suggested one): `--json` has `running`, `suggested`, `project`, `client`, `tag`, `note`, `startedAt` (ms), `startedAtIso`, `elapsedMs`, `source` (a suggested timer's) and the ids (`recordingId`, or `suggestionId` for a suggested timer) |
 | `timetracker timer update [--project P] [--note N] [--tag T\|--no-tag]` | changes the running timer in place |
-| `timetracker timer pick` | opens the timer picker (the timer shortcut's, ⌘F4 by default) on the focused screen; the main window stays hidden |
+| `timetracker timer pick` | opens the timer picker (the timer shortcut's, ⌘⇧F4 by default) on the focused screen; the main window stays hidden |
 | `timetracker timer recent [--limit N] [--json]` | the menu bar's Recent Timers (default 8, at most 100): the latest distinct project, note and tag of the recordings, newest first, archived projects left out; `--json` is `[{ projectId, project, client, tagId, tag, note, lastUsedAt }]` (`lastUsedAt`: where its latest span starts, ms) |
 | `timetracker commands [--json]` | lists every command `run` takes: the app's (`app:settings`, `timer:stop`, `tracker:pause:<15\|60\|tomorrow\|resumed>` …) and the menu items for the window's own (`page:view.week  View → Week`) |
 | `timetracker run ID` | runs a command as its menu item does: `run app:settings:capture` opens Settings at Capture, `run page:view.week` shows the Week view; refused when it can't run now (`timer:stop` without a timer) |
