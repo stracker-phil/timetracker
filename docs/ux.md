@@ -547,9 +547,16 @@ timeline's for every app.
   between them unrecorded; spans that touch or overlap once snapped merge into one. Taking out the last span
   of a new recording closes the editor without saving, as Escape does; a recording keeps its last span. A drag
   while the editor is open adds its span the same way (merged with the spans it touches). Both work alike on a
-  new recording and on the recording being edited, where the change saves at once (also on the running timer's,
-  whose open span Rust refuses to cover with an added span). ⌥ on a block without an open editor drags it onto a
-  project for a rule.
+  new recording, a suggestion and the recording being edited (also the running timer's, whose open span Rust
+  refuses to cover with an added span on Save). ⌥ on a block without an open editor drags it onto a project for a
+  rule.
+- **The open editor wins** ([ADR 0044](adr/0044-the-open-editor-keeps-every-change-until-save.md)): while the
+  editor is open, a click on a suggestion (its block in the time column or its card) adds the time it shows to
+  the editor's spans instead of opening it. Time taken into the draft hides from the suggestions, and time the draft
+  lets go of again (✕ on a span, a shorter span, Cancel) shows as the suggestion again: a 14:00–15:00
+  suggestion taken in and cut to 14:00–14:40 shows 14:40–15:00 as the suggestion. A click on another recording
+  opens it only while the open editor is unchanged; a changed one stays open with the toast "Save or cancel the
+  open recording first". Opening a suggestion means Save or Cancel first, then the click.
 - **Snapping** (the Time snapping setting, 5 min by default) applies to every selection, drag and resize,
   and Rust computes the grid ([ADR 0026](adr/0026-timeline-pointer-input-snaps-to-ticks.md)): a selection over
   activity snaps each end to the nearest mark (blocks from 13:12 to 13:38 give 13:10–13:40). The pointer
@@ -592,31 +599,29 @@ timeline's for every app.
   recording it counts up to now, read-only), the spans as
   `[10:00] – [10:20]` lines behind a clock icon (✕ removes one while there are several; "Add time" adds one
   after the last), then Save and Cancel at the leading end and a trash icon for Delete at the trailing end; on the running timer's recording Stop Timer sits before Delete (its slot is empty otherwise, so Save and Cancel never move) and stops it, leaving the editor open on the stopped recording.
-  **Times save at once on a recording**: while the editor is open on an existing recording, every change of
-  its times (dragging or resizing its blocks, the From and To fields, Logged, Add time, ✕, a selection or a
-  clicked block taken in) is saved straight away with a toast offering Undo, and the fields follow what Rust
-  saved (also after an undo or a nudge elsewhere). Save then writes project, note and tag, and Cancel drops only
-  those. A new recording and a suggestion keep their times in the draft until Save or Approve.
+  **Nothing is written before Save**: every change in the editor (the fields, the times, a selection, a clicked
+  block or suggestion taken in) stays in the draft; Save (or Approve) writes it as one change with a toast offering
+  Undo, and Cancel drops it. While the times are unchanged, the fields follow what Rust holds (an undo or a nudge
+  elsewhere, a stopped timer).
   Like Timely's, the card is sections split by hairlines, with no labels and no field frames: the note is
   one input styled as a 15px semibold title (focus only adds the field's surface, frame and ring, so nothing
   moves), the pickers are full-width semibold rows that light up on hover and focus, so a long project name
   fits, and the times sit on soft fills. Project colors show as small rounded squares in the editor and the
   picker lists.
   The editor shows no activity: activity is only a signal for recording, never linked to a recording. A new
-  recording's or suggestion's draft spans show in the time column filled like a recording of the picked
+  The draft spans show in the time column (in place of an edited recording's own blocks) filled like a recording of the picked
   project (neutral without one) under a strong 2px outline in its color, with their times and a short bar
   in that color on the top and bottom edge (an edge in another day has none): dragging an edge
   moves that end from mark to mark while the block and the From and To fields follow, and dragging the body
   moves the span (a press on it never starts a selection); on release Rust merges
   spans that now touch or overlap into one. A click on a block can split them again (its span
-  leaves the draft). An existing recording being edited keeps its own blocks, ringed inside their edge in the
-  project's text color, which drag and resize as they always do (and save at once). A new recording's project is proposed (only offered, never filled in): the project of the latest recording (two weeks back) that
+  leaves the draft). The running timer's open span keeps its block, ringed inside its edge in the project's text
+  color; dragging its start changes the draft. A new recording's project is proposed (only offered, never filled in): the project of the latest recording (two weeks back) that
   covered the same main app, else the rule matching most of the activity. Field errors show under their
-  field. **The running timer's recording is edited like any other while it runs**: its closed spans and its open span's start save at once, Save writes project, note and tag and leaves it running; the open span shows last, its start a field and its end "running": the end moves only when the timer stops.
-- **Leaving the view** with the editor open (the sidebar, the calendar, ⌘1…⌘7, the palette), or opening
-  another recording or suggestion: an unchanged editor closes; a changed one (on a recording only project,
-  note or tag count, its times are saved) asks "Discard changes?" with Keep editing and Discard, and the view
-  changes or the other one opens only on Discard; the one already open stays as it is. Any change of view clears the selection, and the Week and Month views show only an editor opened
+  field. **A suggested timer is edited as it runs** ([ADR 0045](adr/0045-a-suggested-timer-stays-editable-while-it-runs.md)): its start is a field and its end "running"; Save (no Approve while it runs) keeps it a suggestion with the changes, and a repeat of the start that made it leaves them as they are: the timer moves only its end. ✓ on its card makes it the running timer. **The running timer's recording is edited like any other while it runs**: Save writes its closed spans, its open span's start, project, note and tag and leaves it running; Stop Timer saves the changed times first; the open span shows last, its start a field and its end "running": the end moves only when the timer stops.
+- **Leaving the view** with the editor open (the sidebar, the calendar, ⌘1…⌘7, the palette): an unchanged
+  editor closes; a changed one asks "Discard changes?" with Keep editing and Discard, and the view changes only
+  on Discard. Any change of view clears the selection, and the Week and Month views show only an editor opened
   in them.
 - **Overlap**: asked inside the editor (outside it, a confirm sheet) listing the recordings in the way, each
   with its spans; "Replace overlapped part" trims or cuts their spans, and deletes a recording left without

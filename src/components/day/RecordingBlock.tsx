@@ -32,8 +32,8 @@ interface Drag {
 /**
  * One span of a recording in the Day view's time column, filled in its project's color and showing its start and end:
  * a click focuses and edits it; drag the body to move it, an edge to resize it, both from tick to tick (an edge
- * drag leaves the other edge where it was). The running timer's span moves only its start: its end is Rust's
- * until the timer stops.
+ * drag leaves the other edge where it was), saved at once. The running timer's span moves only its start: its end
+ * is Rust's until the timer stops.
  */
 export const RecordingBlock = memo(function RecordingBlock({ block, grid, focused, hovered = false, editing = false }: Props) {
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -59,6 +59,11 @@ export const RecordingBlock = memo(function RecordingBlock({ block, grid, focuse
 
   /** Rust saves the dragged span as it is; other failures were toasted by the store. */
   async function save(span: Span, grip: Grip) {
+    if (editing) {
+      // Only the edited running span keeps its block: its new start waits in the draft for Save.
+      setDrag(null);
+      return useStore.getState().setOpenStart(span.start);
+    }
     setDrag({ span, from: { start: block.start, end: block.end } });
     try {
       const saved = await useStore.getState().updateSpan(block.id, block.spanId, span, grip === "move" ? null : grip);
@@ -73,7 +78,8 @@ export const RecordingBlock = memo(function RecordingBlock({ block, grid, focuse
   const press = (grip: Grip) => (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    useStore.getState().focusRecording(block.id);
+    // The open editor keeps the focus until another recording opens in it.
+    if (!useStore.getState().editor) useStore.getState().focusRecording(block.id);
     if (!(grip === "start" ? startMovable : movable)) {
       edit();
       return;

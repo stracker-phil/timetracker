@@ -6,7 +6,7 @@ import { api } from "../../api";
 import { at, DAY, dayView } from "../../test/dayFixtures";
 import { dayKey, seedQuery } from "../../test/queries";
 import { recording } from "../../test/recordingFixtures";
-import { suggestion } from "../../test/ruleFixtures";
+import { storedSuggestion, suggestion } from "../../test/ruleFixtures";
 import { resetStore, useStore } from "../store";
 import { isApprovable } from "./suggestions";
 
@@ -252,13 +252,31 @@ describe("suggestions slice", () => {
       await vi.waitFor(() => expect(state().draft).toMatchObject({ projectId: "p-site", note: "standup", tagId: "tag-1", spans: [{ start: at("09:00"), end: at("09:30") }] }));
     });
 
-    it("asks before replacing an editor with unsaved changes and opens nothing yet", async () => {
+    it("opens a running stored suggestion on its start as the running span, with no closed spans", async () => {
+      const timer = storedSuggestion({ running: true, projectId: "p-site", note: "build", start: at("09:00"), end: at("09:30") });
+      state().editSuggestion(timer);
+      expect(state().editor).toMatchObject({ mode: "create", openStart: at("09:00"), suggestion: { id: timer.id, by: "cli", running: { storedId: "st-1" } } });
+      await vi.waitFor(() => expect(state().draft).toMatchObject({ projectId: "p-site", note: "build", spans: [], openStart: at("09:00") }));
+    });
+
+    it("toasts and opens nothing while the open editor has unsaved changes, leaving the focus alone", async () => {
       state().openEditor({ mode: "create", start: at("13:00"), end: at("13:30") });
       await vi.waitFor(() => expect(state().draft).not.toBeNull());
       state().patchDraft({ note: "half written" });
+      state().focusSuggestion(second.id);
       state().editSuggestion(first);
-      expect(state().dialog).toMatchObject({ type: "confirm", title: "Discard changes?" });
+      expect(toastMessages()).toEqual(["Save or cancel the open recording first"]);
+      expect(state().dialog).toBeNull();
       expect(state().editor).toEqual({ mode: "create", start: at("13:00"), end: at("13:30") });
+      expect(state().focusedSuggestion).toBe(second.id);
+    });
+
+    it("replaces an unchanged open editor", async () => {
+      state().openEditor({ mode: "create", start: at("13:00"), end: at("13:30") });
+      await vi.waitFor(() => expect(state().draft).not.toBeNull());
+      state().editSuggestion(first);
+      expect(state().editor).toMatchObject({ mode: "create", suggestion: { id: first.id } });
+      expect(state().focusedSuggestion).toBe(first.id);
     });
 
     it("keeps the editor of the same suggestion with its typed note", async () => {
@@ -268,6 +286,66 @@ describe("suggestions slice", () => {
       state().editSuggestion(first);
       expect(state().dialog).toBeNull();
       expect(state().draft?.note).toBe("typed");
+    });
+  });
+
+  describe("updateSuggestion", () => {
+    const patch = { projectId: "p-site", note: "changed", tagId: null };
+
+    it("saves the patch to the stored suggestion, resolves true and offers Undo", async () => {
+      await expect(state().updateSuggestion("st-1", patch)).resolves.toBe(true);
+      expect(mocked.suggestionUpdate).toHaveBeenCalledWith("st-1", patch);
+      expect(toastMessages()).toEqual(["Suggestion changed"]);
+      expect(state().toasts[0].action?.label).toBe("Undo");
+    });
+
+    it("toasts the error and resolves false when the save fails", async () => {
+      mocked.suggestionUpdate.mockRejectedValueOnce({ kind: "db", message: "Locked", code: null });
+      await expect(state().updateSuggestion("st-1", patch)).resolves.toBe(false);
+      expect(toastMessages()).toEqual(["Could not change the suggestion: Locked"]);
+    });
+
+    it("rejects with the error a form field shows, without a toast", async () => {
+      const error = { kind: "invalid_input", message: "`start`: in the future", code: null, field: { path: "start", message: "The start is in the future" } };
+      mocked.suggestionUpdate.mockRejectedValueOnce(error);
+      await expect(state().updateSuggestion("st-1", patch)).rejects.toEqual(error);
+      expect(toastMessages()).toEqual([]);
+    });
+  });
+
+  describe("clickSuggestion", () => {
+    const openElsewhere = async () => {
+      state().openEditor({ mode: "create", start: at("13:00"), end: at("13:30") });
+      await vi.waitFor(() => expect(state().draft).not.toBeNull());
+    };
+
+    it("opens the suggestion in the editor without one open", () => {
+      state().clickSuggestion(first);
+      expect(state().editor).toMatchObject({ mode: "create", start: first.start, end: first.end, suggestion: { id: first.id } });
+      expect(state().focusedSuggestion).toBe(first.id);
+    });
+
+    it("joins all of the suggestion's time into the open draft", async () => {
+      await openElsewhere();
+      state().clickSuggestion(first);
+      await vi.waitFor(() => expect(state().draft?.spans).toEqual([{ start: first.start, end: first.end }, { start: at("13:00"), end: at("13:30") }]));
+      expect(state().editor).toEqual({ mode: "create", start: at("13:00"), end: at("13:30") });
+    });
+
+    it("joins only the part given into the open draft", async () => {
+      await openElsewhere();
+      const part = { start: at("09:10"), end: at("09:20") };
+      state().clickSuggestion(first, part);
+      await vi.waitFor(() => expect(state().draft?.spans).toEqual([part, { start: at("13:00"), end: at("13:30") }]));
+    });
+
+    it("keeps the open editor's typed fields when it takes the time", async () => {
+      await openElsewhere();
+      state().patchDraft({ note: "typed" });
+      state().clickSuggestion(first);
+      await vi.waitFor(() => expect(state().draft?.spans).toHaveLength(2));
+      expect(state().draft?.note).toBe("typed");
+      expect(toastMessages()).toEqual([]);
     });
   });
 

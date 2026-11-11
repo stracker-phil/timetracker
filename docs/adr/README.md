@@ -53,3 +53,5 @@ stands in TimeTracker. The numbers in this table are TimeTracker's.
 | [0041](0041-programmatic-timers-start-as-suggestions.md) | Timers other apps start are suggestions unless final | Accepted (2026-11-05), implemented |
 | [0042](0042-a-timer-ends-by-midnight-or-when-the-mac-slept.md) | A timer ends by midnight, or where the Mac slept | Accepted (2026-11-05), implemented |
 | [0043](0043-every-release-gets-a-new-version.md) | Every release gets a new version | Accepted (2026-11-05), implemented |
+| [0044](0044-the-open-editor-keeps-every-change-until-save.md) | The open editor keeps every change until Save | Accepted (2026-11-11), implemented |
+| [0045](0045-a-suggested-timer-stays-editable-while-it-runs.md) | A suggested timer stays editable while it runs | Accepted (2026-11-11), implemented |

@@ -1,11 +1,9 @@
 import type { CalendarEntry } from "../../api";
 import { useStore } from "../../state/store";
 
-/** Opens the editor on the entry's recording, focusing it first. */
+/** Opens the editor on the entry's recording. */
 export function editEntry(entry: CalendarEntry) {
-  const s = useStore.getState();
-  s.focusRecording(entry.id);
-  s.switchEditor({ mode: "edit", id: entry.id, at: { start: entry.start, end: entry.end }, spanId: entry.spanIds[0] });
+  useStore.getState().switchEditor({ mode: "edit", id: entry.id, at: { start: entry.start, end: entry.end }, spanId: entry.spanIds[0] });
 }
 
 /** `Website: Landing page`, or the project alone without a note. */

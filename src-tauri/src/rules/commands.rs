@@ -7,7 +7,8 @@ use super::{
     approve, approve_all, approve_edited, approve_rule, day_of_rules, dismiss, preview, store,
     suggestions_of,
 };
-use crate::db::recordings::Recording;
+use crate::db::recordings::{Recording, RecordingPatch};
+use crate::db::stored_suggestions::StoredSuggestion;
 use crate::db::time::{Day, Ms, now_ms};
 use crate::error::AppResult;
 use crate::events::{self, DataKind};
@@ -151,6 +152,17 @@ pub async fn suggestion_approve_edited(
         approve_edited(s, &settings, day, &id, input, overlap).await
     })
     .await
+}
+
+/// Saves the stored suggestion `stored_id` with `patch` as one undoable change and keeps it a suggestion; a
+/// running one keeps running (ADR 0041), its start may move.
+#[tauri::command]
+pub async fn suggestion_update(
+    app: AppHandle,
+    stored_id: String,
+    patch: RecordingPatch,
+) -> AppResult<StoredSuggestion> {
+    changing(&app, async |s| s.update_suggestion(&stored_id, patch).await).await
 }
 
 /// Dismisses the suggestions `ids` of `day` as one undoable change; returns how many.

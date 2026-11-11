@@ -125,6 +125,7 @@ pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         rules::commands::suggestion_approve_rule,
         rules::commands::suggestions_approve,
         rules::commands::suggestion_approve_edited,
+        rules::commands::suggestion_update,
         rules::commands::suggestions_dismiss,
         reports::commands::report_run,
         reports::commands::report_range_shift,

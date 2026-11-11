@@ -19,7 +19,7 @@ interface Props {
 }
 
 /**
- * One of a new recording's (or suggestion's) spans in the time column, with its times; drag its body to move it,
+ * One of the open editor's draft spans in the time column, with its times; drag its body to move it,
  * its top or bottom edge to move that end while the other keeps its time, both from tick to tick. On release Rust
  * merges it with the spans it then touches or overlaps.
  */

@@ -1,7 +1,7 @@
 //! Stored suggestions on the Day view (ADR 0028): each span without the time recordings, or a suggestion
 //! stored before it, already take. A piece the cut leaves shorter than `MIN_SUGGESTION_MS` is dropped; a
 //! whole span stays at any length. One without a project shows in graphite (ADR 0030). A running one's
-//! open span reaches now (ADR 0041); its piece that ends there stays at any length.
+//! open span reaches now (ADR 0041), cut by recordings only; its piece that ends there stays at any length.
 
 use super::suggest::{MIN_SUGGESTION_MS, Span, subtract, union};
 use super::types::Suggestion;
@@ -34,7 +34,8 @@ pub fn pieces(
 ) -> Vec<Suggestion> {
     let mut by_creation: Vec<&StoredSuggestion> = stored.iter().collect();
     by_creation.sort_by_key(|s| (s.created_at, s.id.clone()));
-    let mut taken = union(recorded.to_vec());
+    let recorded = union(recorded.to_vec());
+    let mut taken = recorded.clone();
     let mut found = Vec::new();
     for suggestion in by_creation {
         let project = match &suggestion.project_id {
@@ -61,7 +62,10 @@ pub fn pieces(
         let (spans, open) = spans_at(suggestion, now);
         let last = spans.len().saturating_sub(1);
         for (index, &whole) in spans.iter().enumerate() {
-            let free = subtract(&[whole], &taken);
+            // The running timer's open span gives way only to recordings, so a timer started just after another
+            // stopped (its end rounded up to a minute) shows at once.
+            let open_span = open && index == last;
+            let free = subtract(&[whole], if open_span { &recorded } else { &taken });
             for (start, end) in free {
                 let running = open && index == last && end == whole.1;
                 if !running && (start, end) != whole && end - start < MIN_SUGGESTION_MS {
@@ -478,16 +482,43 @@ mod tests {
     }
 
     #[test]
-    fn an_earlier_suggestion_keeps_the_time_it_shares_with_the_running_one() {
+    fn an_earlier_suggestion_does_not_cut_the_open_span_of_the_running_one() {
         let found = pieces_at(
             &[stored("a", 1, &[(0, 30)]), running_stored("b", 2, &[], 20)],
             &[],
             40,
         );
 
-        assert_eq!(owners_and_minutes(&found), [("a", 0, 30), ("b", 30, 40)]);
-        assert_eq!(found[1].id, format!("stored:b:{}:open", 30 * MIN));
+        assert_eq!(owners_and_minutes(&found), [("a", 0, 30), ("b", 20, 40)]);
+        assert_eq!(found[1].id, format!("stored:b:{}:open", 20 * MIN));
         assert!(found[1].running);
+    }
+
+    #[test]
+    fn a_stopped_timer_ending_where_the_running_one_starts_leaves_the_running_piece_whole() {
+        let found = pieces_at(
+            &[stored("a", 1, &[(10, 11)]), running_stored("b", 2, &[], 10)],
+            &[],
+            40,
+        );
+
+        assert_eq!(owners_and_minutes(&found), [("a", 10, 11), ("b", 10, 40)]);
+        assert_eq!(found[1].id, format!("stored:b:{}:open", 10 * MIN));
+        assert!(found[1].running);
+    }
+
+    #[test]
+    fn the_closed_spans_of_the_running_one_still_give_way_to_an_earlier_suggestion() {
+        let found = pieces_at(
+            &[
+                stored("a", 1, &[(0, 30)]),
+                running_stored("b", 2, &[(10, 25)], 40),
+            ],
+            &[],
+            50,
+        );
+
+        assert_eq!(owners_and_minutes(&found), [("a", 0, 30), ("b", 40, 50)]);
     }
 
     #[test]

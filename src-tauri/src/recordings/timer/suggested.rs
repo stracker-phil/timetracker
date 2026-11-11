@@ -161,8 +161,9 @@ impl Recordings<'_> {
         spans.push(RecordingSpan::new(open_start, None));
         recordings::check_spans(&spans)?;
         let now = now_ms();
+        // The timer keeps its id, so a repeat of the start that made it leaves it as approved (`timers::origin`).
         let recording = Recording {
-            id: new_id(),
+            id: suggestion.id.clone(),
             project_id: project.id,
             note,
             tag_id: input.tag_id,
@@ -467,6 +468,52 @@ mod tests {
         assert_eq!(w.rows().await, [running]);
         assert!(stored_rows(&w).await.is_empty());
         assert_eq!(w.status().await, status);
+    }
+
+    #[tokio::test]
+    async fn approving_a_running_suggested_timer_keeps_its_id_and_undo_and_redo_swap_the_two() {
+        let w = World::new().await;
+        let running = suggest(&w, review(&w), at(10, 0)).await;
+        let input = RecordingInput {
+            note: "Review".into(),
+            tag_id: Some(w.alpha.id.clone()),
+            spans: Vec::new(),
+            ..w.input(0, 0)
+        };
+
+        let change = w
+            .service()
+            .approve_suggested_timer(&running.id, input, at(10, 0))
+            .await
+            .unwrap();
+
+        let recording = change.value;
+        assert_eq!(recording.id, running.id);
+        assert_eq!(
+            recording
+                .spans
+                .iter()
+                .map(|s| (s.start, s.end))
+                .collect::<Vec<_>>(),
+            [(at(10, 0), None)]
+        );
+        assert_eq!(w.rows().await, [recording.clone()]);
+        assert!(stored_rows(&w).await.is_empty());
+        assert_eq!(
+            crate::timers::current(&w.db).await.unwrap(),
+            Some(Timer::Recording(recording.clone()))
+        );
+
+        let undone = w.service().undo().await.unwrap();
+
+        assert_eq!(undone.value.as_deref(), Some("Approve timer for Acme"));
+        assert!(w.rows().await.is_empty());
+        assert_eq!(stored_rows(&w).await, [running]);
+
+        w.service().redo().await.unwrap();
+
+        assert_eq!(w.rows().await, [recording]);
+        assert!(stored_rows(&w).await.is_empty());
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-import { api, type Suggestion } from "../../api";
+import { api, toAppError, type RecordingPatch, type Span, type Suggestion } from "../../api";
 import { formatDuration } from "../../lib/format";
 import { focusCleared } from "../focus";
 import { fail } from "../requests";
@@ -20,6 +20,13 @@ export interface SuggestionsSlice {
   dismissSuggestions: (ids: string[]) => Promise<void>;
   /** Opens the editor prefilled with the suggestion; its Save approves it as edited. */
   editSuggestion: (suggestion: Suggestion) => void;
+  /**
+   * A click on a suggestion: with the editor open, `part` (the time it shows, all of it by default) joins the
+   * draft's spans; else the suggestion opens in the editor.
+   */
+  clickSuggestion: (suggestion: Suggestion, part?: Span) => void;
+  /** Saves a stored suggestion, still a suggestion; false when toasted, rejects when a form field shows the error. */
+  updateSuggestion: (storedId: string, patch: RecordingPatch) => Promise<boolean>;
 }
 
 /** The shown day's suggestions, once its view is loaded. */
@@ -104,16 +111,39 @@ export const suggestionsSlice: Slice<SuggestionsSlice> = {
 
       editSuggestion(suggestion) {
         const s = get();
-        s.focusSuggestion(suggestion.id);
+        // A suggested timer keeps running: Save writes to its stored suggestion instead of approving it.
+        const timer = suggestion.running && suggestion.storedId ? { storedId: suggestion.storedId } : undefined;
         s.switchEditor({
           mode: "create",
           start: suggestion.start,
           end: suggestion.end,
+          ...(timer && { openStart: suggestion.start }),
           projectId: suggestion.projectId ?? undefined,
           note: suggestion.note,
           tagId: suggestion.tagId,
-          suggestion: { id: suggestion.id, by: suggestion.by },
+          suggestion: { id: suggestion.id, by: suggestion.by, ...(timer && { running: timer }) },
         });
+        // A changed editor stays open, and the focus with it.
+        const open = get().editor;
+        if (open?.mode === "create" && open.suggestion?.id === suggestion.id) s.focusSuggestion(suggestion.id);
+      },
+
+      async updateSuggestion(storedId, patch) {
+        try {
+          await api.suggestionUpdate(storedId, patch);
+          undoToast("Suggestion changed");
+          return true;
+        } catch (e) {
+          if (toAppError(e).field) throw e;
+          fail(e, "Could not change the suggestion");
+          return false;
+        }
+      },
+
+      clickSuggestion(suggestion, part = suggestion) {
+        const s = get();
+        if (s.editor && s.draft) void s.includeSpan({ start: part.start, end: part.end });
+        else s.editSuggestion(suggestion);
       },
     };
   },

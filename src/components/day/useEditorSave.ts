@@ -6,12 +6,16 @@ import { typedTimesSettled } from "./TimeField";
 /** The editor's Save, Delete and Stop Timer, with the field errors a save brought back. */
 export function useEditorSave() {
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const showFieldError = (e: unknown) => {
+    const field = toAppError(e).field;
+    if (field) setErrors({ [field.path]: field.message });
+  };
 
   async function save() {
     await typedTimesSettled();
-    // Save writes after the edited recording's pending time saves.
     await useStore.getState().spansSettled();
-    const { editor, draft, editing, createRecording, updateRecording, closeEditor } = useStore.getState();
+    const s = useStore.getState();
+    const { editor, draft, editing } = s;
     if (!draft) return;
     if (!draft.projectId) {
       setErrors({ projectId: "Pick a project" });
@@ -19,22 +23,34 @@ export function useEditorSave() {
     }
     setErrors({});
     const fields = { projectId: draft.projectId, note: draft.note, tagId: draft.tagId };
-    // An existing recording's times were saved as they changed.
     try {
-      const suggestionId = editor?.mode === "create" ? editor.suggestion?.id : undefined;
-      const saved = editing ? await updateRecording(editing.id, fields) : await createRecording({ ...fields, spans: draft.spans }, suggestionId);
-      if (!saved) return;
-      closeEditor();
+      const suggestion = editor?.mode === "create" ? editor.suggestion : undefined;
+      let saved;
+      if (suggestion?.running) {
+        // A running suggestion has no closed spans of its own here; added ones go to Rust, which refuses them.
+        const spans = draft.spans.length > 0 ? { spans: draft.spans } : {};
+        saved = await s.updateSuggestion(suggestion.running.storedId, { ...fields, ...s.changedTimes(), ...spans });
+      } else if (editing) {
+        saved = await s.updateRecording(editing.id, { ...fields, ...s.changedTimes() });
+      } else {
+        saved = await s.createRecording({ ...fields, spans: draft.spans }, suggestion?.id);
+      }
+      if (saved) s.closeEditor();
     } catch (e) {
-      const field = toAppError(e).field;
-      if (field) setErrors({ [field.path]: field.message });
+      showFieldError(e);
     }
   }
 
-  /** Stops the running timer once the times asked so far are saved; the editor stays open on the recording. */
+  /** Saves the changed times, then stops the running timer; the editor stays open on the recording. */
   async function stop() {
     await typedTimesSettled();
     await useStore.getState().spansSettled();
+    try {
+      if (!(await useStore.getState().saveEditedTimes())) return;
+    } catch (e) {
+      showFieldError(e);
+      return;
+    }
     await useStore.getState().stopTimer();
   }
 

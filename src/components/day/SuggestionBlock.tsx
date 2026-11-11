@@ -14,8 +14,9 @@ interface Props {
   focused: boolean;
 }
 
-/** A suggestion in the time column, hatched: not a recording until approved. A click opens it in the editor.
- *  A suggested timer's piece that reaches now carries the pulsing dot. */
+/** A suggestion (or the part of it the open draft leaves) in the time column, hatched: not a recording until approved.
+ *  A click opens it in the editor, or adds its time to the open one. A suggested timer's piece that reaches now
+ *  carries the pulsing dot. */
 export function SuggestionBlock({ suggestion: s, y, focused }: Props) {
   const top = y(s.start);
   const height = Math.max(2, y(s.end) - top);
@@ -31,7 +32,7 @@ export function SuggestionBlock({ suggestion: s, y, focused }: Props) {
       style={{ top, height, "--rec": shadeColor(s.color, s.shade) } as CSSProperties}
       // A press here is the suggestion's; it must not start a selection drag on the column.
       onPointerDown={(e) => e.stopPropagation()}
-      onClick={() => useStore.getState().editSuggestion(s)}
+      onClick={() => useStore.getState().clickSuggestion(s)}
     >
       <span className="suggestion-project">{project}</span>
       <span className="suggestion-by">{s.by}</span>

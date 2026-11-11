@@ -3,6 +3,7 @@
 
 use super::checks::{check_tag, checked_note, invalid, snapped_spans, usable_project};
 use super::ops::Op;
+use super::running::checked_running_start;
 use super::{Change, RecordingInput, Recordings, new_spans};
 use crate::db::new_id;
 use crate::db::recordings::{self, RecordingPatch, Span};
@@ -103,7 +104,8 @@ impl Recordings<'_> {
     }
 
     /// `patch` applied like a recording's; the source stays, and so does a project once picked. A running
-    /// suggestion (ADR 0041) takes no spans until its timer stops.
+    /// suggestion (ADR 0041) takes no spans until its timer stops, but its open span's start may move (not
+    /// before its earlier spans end).
     pub async fn update_suggestion(
         &self,
         id: &str,
@@ -129,6 +131,19 @@ impl Recordings<'_> {
             }
             None => current.project_id.clone(),
         };
+        let now = now_ms();
+        let open_start = match patch.open_start {
+            None => current.open_start,
+            Some(_) if !current.is_running() => {
+                return Err(invalid("openStart", "is only for a running timer"));
+            }
+            Some(start) => Some(checked_running_start(
+                start,
+                &current.spans,
+                now,
+                self.snap_minutes,
+            )?),
+        };
         let tag_id = match patch.tag_id {
             Some(tag_id) => {
                 check_tag(self.db, tag_id.as_deref()).await?;
@@ -142,7 +157,8 @@ impl Recordings<'_> {
             tag_id,
             day,
             spans,
-            updated_at: now_ms(),
+            open_start,
+            updated_at: now,
             ..current.clone()
         };
         let unchanged = StoredSuggestion {
@@ -200,7 +216,7 @@ mod tests {
     }
 
     async fn stored_rows(w: &World) -> Vec<StoredSuggestion> {
-        let (from, to) = (today().prev().prev(), today().next().next());
+        let (from, to) = (today().prev().prev(), Day::of(now_ms()).next().next());
         stored_suggestions::list_for_days(&w.db, from, to)
             .await
             .unwrap()
@@ -940,6 +956,165 @@ mod tests {
             }
         );
         assert_eq!(updated.open_start, Some(at(10, 0)));
+    }
+
+    async fn running_since(w: &World, start: Ms) -> StoredSuggestion {
+        let input = crate::recordings::timer::TimerInput {
+            project_id: w.project.id.clone(),
+            note: "review".into(),
+            tag_id: None,
+        };
+        match w
+            .service()
+            .start_suggested_timer(input, "cli", start)
+            .await
+            .unwrap()
+            .value
+        {
+            crate::timers::Timer::Suggestion(s) => s,
+            crate::timers::Timer::Recording(_) => panic!("expected a suggestion"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_running_suggestion_takes_a_new_snapped_start_with_its_other_fields_in_one_undoable_edit()
+     {
+        let w = World::new().await;
+        let (midnight, halfway) = today_starts();
+        let running = running_since(&w, midnight).await;
+        let change = patch(|p| {
+            p.open_start = Some(halfway + 2 * MIN);
+            p.note = Some("later".into());
+            p.project_id = Some(w.other.id.clone());
+            p.tag_id = Some(Some(w.beta.id.clone()));
+        });
+
+        let updated = w
+            .service()
+            .update_suggestion(&running.id, change)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            updated.value,
+            StoredSuggestion {
+                project_id: Some(w.other.id.clone()),
+                note: "later".into(),
+                tag_id: Some(w.beta.id.clone()),
+                open_start: Some(halfway),
+                updated_at: updated.value.updated_at,
+                ..running.clone()
+            }
+        );
+        assert!(updated.value.is_running());
+        assert_eq!(stored_rows(&w).await, [updated.value]);
+        assert_eq!(w.status().await, undo_label("Edit suggestion"));
+
+        w.service().undo().await.unwrap();
+
+        assert_eq!(stored_rows(&w).await, [running]);
+    }
+
+    #[tokio::test]
+    async fn moving_a_running_suggestion_to_its_own_start_changes_nothing() {
+        let w = World::new().await;
+        let (midnight, _) = today_starts();
+        let running = running_since(&w, midnight).await;
+        let before = w.status().await;
+
+        let result = w
+            .service()
+            .update_suggestion(&running.id, patch(|p| p.open_start = Some(midnight)))
+            .await
+            .unwrap();
+
+        assert!(result.days.is_empty());
+        assert_eq!(result.value, running);
+        assert_eq!(w.status().await, before);
+    }
+
+    #[tokio::test]
+    async fn a_running_suggestion_refuses_a_start_in_the_future_or_before_midnight() {
+        let w = World::new().await;
+        let (midnight, _) = today_starts();
+        let running = running_since(&w, midnight + 5 * MIN).await;
+        let cases = [
+            (
+                "in the future",
+                now_ms() + HOUR,
+                "A timer can't start in the future",
+            ),
+            (
+                "before midnight",
+                midnight - HOUR,
+                "A timer can't start before midnight",
+            ),
+        ];
+
+        for (name, start, message) in cases {
+            let err = w
+                .service()
+                .update_suggestion(&running.id, patch(|p| p.open_start = Some(start)))
+                .await
+                .unwrap_err();
+
+            assert_eq!(field_of(&err).as_deref(), Some("start"), "{name}");
+            assert_eq!(err.field().unwrap().message, message, "{name}");
+        }
+        assert_eq!(stored_rows(&w).await, [running]);
+    }
+
+    #[tokio::test]
+    async fn a_running_suggestion_cannot_start_before_its_earlier_time_ends() {
+        let w = World::new().await;
+        let (midnight, _) = today_starts();
+        let input = crate::recordings::timer::TimerInput {
+            project_id: w.project.id.clone(),
+            note: "review".into(),
+            tag_id: None,
+        };
+        w.service()
+            .start_suggested_timer(input.clone(), "cli", midnight)
+            .await
+            .unwrap();
+        w.service().stop_timer(midnight + 20 * MIN).await.unwrap();
+        w.service()
+            .start_suggested_timer(input, "cli", midnight + 30 * MIN)
+            .await
+            .unwrap();
+        let running = stored_suggestions::running(&w.db).await.unwrap().unwrap();
+        assert_eq!(running.spans, [span(midnight, midnight + 20 * MIN)]);
+
+        let err = w
+            .service()
+            .update_suggestion(
+                &running.id,
+                patch(|p| p.open_start = Some(midnight + 10 * MIN)),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(field_of(&err).as_deref(), Some("start"));
+        assert_eq!(
+            err.field().unwrap().message,
+            "The timer can't start before its earlier time ends"
+        );
+        assert_eq!(stored_rows(&w).await, [running]);
+    }
+
+    #[tokio::test]
+    async fn a_suggestion_that_is_not_running_refuses_an_open_start() {
+        let w = World::new().await;
+        let saved = suggest(&w, (10, 0), (11, 0)).await;
+
+        let err = w
+            .service()
+            .update_suggestion(&saved.id, patch(|p| p.open_start = Some(local(10, 0))))
+            .await
+            .unwrap_err();
+
+        assert_eq!(field_of(&err).as_deref(), Some("openStart"));
+        assert_eq!(stored_rows(&w).await, [saved]);
     }
 
     #[tokio::test]

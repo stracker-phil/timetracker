@@ -3,7 +3,7 @@
 
 use super::checks::{invalid, snapped_spans};
 use super::snap;
-use crate::db::recordings::{Recording, RecordingPatch, RecordingSpan, respanned};
+use crate::db::recordings::{Recording, RecordingPatch, RecordingSpan, Span, respanned};
 use crate::db::time::{Day, Ms};
 use crate::error::{AppError, AppResult};
 
@@ -15,6 +15,23 @@ pub fn checked_open_start(start: Ms, now: Ms, snap_minutes: u32) -> AppResult<Ms
     }
     if start < Day::of(now).bounds().0 {
         return Err(invalid("start", "A timer can't start before midnight"));
+    }
+    Ok(start)
+}
+
+/// A suggested timer's new open start: as `checked_open_start`, and not before its `closed` spans end.
+pub(super) fn checked_running_start(
+    start: Ms,
+    closed: &[Span],
+    now: Ms,
+    snap_minutes: u32,
+) -> AppResult<Ms> {
+    let start = checked_open_start(start, now, snap_minutes)?;
+    if closed.iter().any(|s| s.end > start) {
+        return Err(invalid(
+            "start",
+            "The timer can't start before its earlier time ends",
+        ));
     }
     Ok(start)
 }

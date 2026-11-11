@@ -103,9 +103,19 @@ describe("leaving a view with the recording editor open", () => {
   });
 
   describe("with an edited recording", () => {
-    it("switches without asking after a time change, which is saved already", async () => {
+    it("asks after a time change, which is not saved until Save", async () => {
       await openEdited();
       await act(() => state().setDraftSpan(0, longer));
+      act(() => state().setView("month"));
+      expect(screen.getByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();
+      expect(state().view).toBe("week");
+      expect(mocked.recordingUpdate).not.toHaveBeenCalled();
+    });
+
+    it("switches without asking when a time was changed back", async () => {
+      await openEdited();
+      await act(() => state().setDraftSpan(0, longer));
+      await act(() => state().setDraftSpan(0, { start: selection.start, end: selection.end }));
       act(() => state().setView("month"));
       expect(discardDialog()).not.toBeInTheDocument();
       expect([state().view, state().editor]).toEqual(["month", null]);
@@ -128,35 +138,33 @@ describe("leaving a view with the recording editor open", () => {
       expect(state().editor).toEqual(otherRecording);
     });
 
-    it("opens it at once after a time change of an edited recording", async () => {
-      await openEdited();
-      await act(() => state().setDraftSpan(0, longer));
+    it("focuses the recording it opens", async () => {
+      await openEditor();
+      act(() => state().switchEditor(otherRecording));
+      expect(state().focusedRecording).toBe("r2");
+    });
+
+    it.each([
+      ["a new recording's note", openEditor, async () => state().patchDraft({ note: "half written" })],
+      ["an edited recording's note", openEdited, async () => state().patchDraft({ note: "half written" })],
+      ["an edited recording's times", openEdited, () => state().setDraftSpan(0, longer)],
+    ])("keeps %s open with a toast instead of asking when it has unsaved changes", async (_name, open, change) => {
+      await open();
+      await act(change);
+      const before = state().draft;
       act(() => state().switchEditor(otherRecording));
       expect(discardDialog()).not.toBeInTheDocument();
-      expect(state().editor).toEqual(otherRecording);
-    });
-
-    it.each([
-      ["a new recording's draft", openEditor],
-      ["an edited recording's fields", openEdited],
-    ])("asks first when %s has unsaved changes, and Keep editing stays", async (_name, open) => {
-      await open();
-      act(() => state().patchDraft({ note: "half written" }));
-      act(() => state().switchEditor(otherRecording));
-      expect(screen.getByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();
-      await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+      expect(state().toasts.map((t) => [t.kind, t.message])).toEqual([["info", "Save or cancel the open recording first"]]);
       expect(state().editor).not.toEqual(otherRecording);
-      expect(state().draft?.note).toBe("half written");
+      expect(state().draft).toEqual(before);
+      expect(state().focusedRecording).toBeNull();
     });
 
-    it.each([
-      ["a new recording's draft", openEditor],
-      ["an edited recording's fields", openEdited],
-    ])("opens it after Discard of %s", async (_name, open) => {
-      await open();
+    it("opens it once the typed change is undone", async () => {
+      await openEditor();
       act(() => state().patchDraft({ note: "half written" }));
+      act(() => state().patchDraft({ note: "" }));
       act(() => state().switchEditor(otherRecording));
-      await userEvent.click(screen.getByRole("button", { name: "Discard" }));
       expect(state().editor).toEqual(otherRecording);
     });
 
@@ -187,10 +195,11 @@ describe("leaving a view with the recording editor open", () => {
         expect(state().draft?.note).toBe("typed");
       });
 
-      it("asks before opening another suggestion", async () => {
+      it("toasts instead of opening another suggestion over typed changes", async () => {
         await openSuggestion();
         act(() => state().switchEditor({ ...suggested, suggestion: { id: "s2", by: "Planner" } }));
-        expect(screen.getByRole("heading", { name: "Discard changes?" })).toBeInTheDocument();
+        expect(discardDialog()).not.toBeInTheDocument();
+        expect(state().toasts.map((t) => t.message)).toEqual(["Save or cancel the open recording first"]);
         expect(state().editor).toEqual(suggested);
       });
     });

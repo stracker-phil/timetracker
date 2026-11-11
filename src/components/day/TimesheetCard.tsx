@@ -23,11 +23,7 @@ export const TimesheetCard = memo(function TimesheetCard({ card, focused, hovere
   const project = card.clientName ? `${card.projectName} | ${card.clientName}` : card.projectName;
   const title = card.note || card.projectName;
   const subtitle = card.note ? project : card.clientName;
-  const edit = () => {
-    const s = useStore.getState();
-    s.focusRecording(card.id);
-    s.switchEditor({ mode: "edit", id: card.id, spanId: card.spanIds[0] });
-  };
+  const edit = () => useStore.getState().switchEditor({ mode: "edit", id: card.id, spanId: card.spanIds[0] });
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key !== "Enter") return;
     e.preventDefault();

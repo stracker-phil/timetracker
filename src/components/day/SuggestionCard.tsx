@@ -16,7 +16,8 @@ interface Props {
   focused: boolean;
 }
 
-/** A suggestion in the timesheet as a ghost card: ✓ approves, ✕ dismisses, a click edits (↵, ⌫, E when focused).
+/** A suggestion in the timesheet as a ghost card: ✓ approves, ✕ dismisses, a click edits (↵, ⌫, E when focused)
+ *  or adds its time to the open editor.
  *  A suggested timer's piece runs (the pulsing dot); approving it keeps the timer running as a recording. */
 export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focused }: Props) {
   const ref = useRef<HTMLDivElement>(null);
@@ -59,8 +60,9 @@ export const SuggestionCard = memo(function SuggestionCard({ suggestion: s, focu
         </>
       }
       trailing={formatDuration(s.durationMs)}
-      onFocus={(e) => e.target === e.currentTarget && store().focusSuggestion(s.id)}
-      onClick={() => store().editSuggestion(s)}
+      // The open editor keeps the key focus on what it edits.
+      onFocus={(e) => e.target === e.currentTarget && !store().editor && store().focusSuggestion(s.id)}
+      onClick={() => store().clickSuggestion(s)}
     >
       <span className="suggestion-card-actions">
         <button

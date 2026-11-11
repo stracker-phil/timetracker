@@ -8,7 +8,6 @@ use crate::db::recordings::Recording;
 use crate::db::time::now_ms;
 use crate::db::{projects, tags};
 use crate::error::{AppError, AppResult};
-use crate::lock::MutexExt;
 use crate::recordings::cli::Recorded;
 use crate::recordings::commands::changing;
 use crate::recordings::timer::TimerInput;
@@ -22,7 +21,7 @@ pub async fn start(app: &AppHandle, input: TimerInput) -> AppResult<Recording> {
         return Ok(running);
     }
     let started = changing(app, async |s| s.start_timer(input.clone(), now_ms()).await).await?;
-    remember_origin(app, &started.id, input);
+    remember_origin(app, &started.id, input).await;
     Ok(started)
 }
 
@@ -38,23 +37,27 @@ pub async fn start_suggested(app: &AppHandle, input: TimerInput, source: &str) -
     })
     .await?;
     if started.is_suggested() {
-        remember_origin(app, started.id(), input);
+        remember_origin(app, started.id(), input).await;
     }
     Ok(started)
 }
 
-fn remember_origin(app: &AppHandle, timer_id: &str, input: TimerInput) {
-    *app.state::<AppState>().timer_origin.lock_unpoisoned() = Some(TimerOrigin {
+/// A failed save only costs the origin after a restart, so it is logged, not returned.
+async fn remember_origin(app: &AppHandle, timer_id: &str, input: TimerInput) {
+    let origin = TimerOrigin {
         timer_id: timer_id.to_string(),
         input,
-    });
+    };
+    if let Err(e) = app.state::<AppState>().timer_origin.set(origin).await {
+        log::warn!("Could not save the timer's origin: {e}");
+    }
 }
 
 /// The running timer when starting `input` repeats the start that made it.
 async fn repeated(app: &AppHandle, input: &TimerInput) -> AppResult<Option<Timer>> {
     let state = app.state::<AppState>();
     let running = current(&state.data.db()?).await?;
-    let origin = state.timer_origin.lock_unpoisoned().clone();
+    let origin = state.timer_origin.get();
     Ok(running.filter(|t| repeats(origin.as_ref(), Some(t.id()), input)))
 }
 
@@ -99,7 +102,7 @@ pub fn register(bus: &mut CommandBus<AppHandle>) {
 pub async fn update(app: &AppHandle, input: TimerInput) -> AppResult<Option<Timer>> {
     let updated = changing(app, async |s| s.update_timer(input.clone(), now_ms()).await).await?;
     if let Some(running) = &updated {
-        remember_origin(app, running.id(), input);
+        remember_origin(app, running.id(), input).await;
     }
     Ok(updated)
 }

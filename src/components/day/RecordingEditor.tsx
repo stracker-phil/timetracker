@@ -20,9 +20,9 @@ const RUNNING_TICK_MS = 10_000;
 
 /**
  * The recording editor, inline in the timesheet (a sheet in the Week view, labelled by `id`): note, project, tag,
- * duration and spans; Save (↵ or ⌘↵), Cancel (Escape), Delete (⌘⌫). Rust snaps the times. On an existing
- * recording the times save as they change and Save writes project, note and tag. Opened on a suggestion, it is
- * prefilled with it and Save (Approve) approves it as edited. On the running timer's recording the logged time
+ * duration and spans; Save (↵ or ⌘↵), Cancel (Escape), Delete (⌘⌫). Rust snaps the times. Nothing is written
+ * before Save, the times included; Cancel drops every change. Opened on a suggestion, it is prefilled with it and
+ * Save (Approve) approves it as edited. On the running timer's recording the logged time
  * counts up to now, Save leaves it running and Stop Timer stops it.
  */
 export function RecordingEditor({ id }: { id?: string }) {
@@ -57,10 +57,12 @@ export function RecordingEditor({ id }: { id?: string }) {
 
   if (!editor || !draft) return null;
   const suggestion = editor.mode === "create" ? editor.suggestion : undefined;
+  // A running suggestion is not final: Save keeps it a suggestion with the changes.
+  const approves = suggestion !== undefined && !suggestion.running;
   const showTag = draft.projectId !== null || draft.tagId !== null;
   const ring = color ? ({ "--editor-ring": color } as CSSProperties) : undefined;
   const total = running ? draft.totalMs + Math.max(0, now - openStart) : draft.totalMs;
-  const saveLabel = suggestion ? "Approve" : "Save";
+  const saveLabel = approves ? "Approve" : "Save";
   const canAutofill = autofill !== null && (autofill.projectId !== draft.projectId || autofill.tagId !== draft.tagId);
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -90,7 +92,7 @@ export function RecordingEditor({ id }: { id?: string }) {
       {suggestion && (
         <p className="editor-suggested" role="note">
           <Sparkles size="0.923rem" aria-hidden="true" />
-          Suggested by {suggestion.by}. Approve records it.
+          {suggestion.running ? `Suggested by ${suggestion.by}, still running. Save keeps it a suggestion; the timer moves only its end.` : `Suggested by ${suggestion.by}. Approve records it.`}
         </p>
       )}
       <div className="editor-section editor-note-row">
@@ -131,7 +133,7 @@ export function RecordingEditor({ id }: { id?: string }) {
         <button type="button" className="btn btn-quiet" title="Cancel (Escape)" onClick={closeEditor}>
           Cancel
         </button>
-        {running && (
+        {running && editing && (
           <button type="button" className="btn btn-quiet editor-stop" onClick={() => void stop()}>
             Stop Timer
           </button>

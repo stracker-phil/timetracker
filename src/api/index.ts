@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, FoundEntry, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, Timer, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, RecordingAutofill, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuCommand, MenuState, MiniMonth, PauseUntil, Period, PeriodTotals, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
+import type { ActivityCount, ActivityInput, ActivityRow, DateJump, DeleteResult, FoundEntry, AppError, AppSeen, AppSettingPatch, DayTotals, DayView, KnownApp, ReportFilter, ReportResult, SavedReport, WeekView, MonthView, Timer, TimerStatus, RecentTimer, AwayPrompt, Rule, RuleDay, RuleInput, RulePreview, SuggestionApproved, StoredSuggestion, Overlap, Recording, RecordingInput, RecordingPatch, RecordingProposal, RecordingAutofill, DraftSpans, DraftToggle, SnapEdge, Span, UndoStatus, AwayRow, BackupWritten, Client, ClientInput, Project, ProjectInput, ProjectListItem, Tag, TagListItem, DataChanged, DataInfo, ErrorKind, Keybindings, LaunchEvent, MenuCommand, MenuState, MiniMonth, PauseUntil, Period, PeriodTotals, PeriodUnit, PermissionStatus, PickerMonth, Range, RemoteEvent, Settings, Shown, TrackerStatus, UiState } from "./types";
 
 export * from "./types";
 
@@ -220,6 +220,8 @@ export const api = {
   suggestionsApprove: (day: string, ids: string[]) => invoke<Recording[]>("suggestions_approve", { day, ids }),
   /** Records the suggestion as the editor changed it and dismisses the rest of it, as one undoable change. */
   suggestionApproveEdited: (day: string, id: string, input: RecordingInput, overlap: Overlap) => invoke<Recording>("suggestion_approve_edited", { day, id, input, overlap }),
+  /** Saves the stored suggestion with `patch`, still a suggestion; a running one keeps running and its start may move. */
+  suggestionUpdate: (storedId: string, patch: RecordingPatch) => invoke<StoredSuggestion>("suggestion_update", { storedId, patch }),
   /** Dismisses the suggestions `ids` of the day as one undoable change: their rules suggest nothing there again. Returns how many. */
   suggestionsDismiss: (day: string, ids: string[]) => invoke<number>("suggestions_dismiss", { day, ids }),
 

@@ -181,6 +181,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `suggestion_approve` | `day: Day, id` | `SuggestionApproved { recording, durationMs }`: the recording, created like `recording_create` with `overlap: cancel` (undoable), and its length for the toast; a running stored suggestion becomes the running timer ([Timers](#timers)) | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
 | `suggestion_approve_rule` | `day: Day, ruleId` | `Recording[]`: every suggestion of the rule on the day, one undo entry `Approve suggestion` / `Approve n suggestions` (`Recordings::create_all_with`; one that would overlap is left out) | `not_found` (no suggestions), `db` |
 | `suggestions_approve` | `day: Day, ids: string[]` | `Recording[]`: the suggestions `ids` still on the day (the shown ones; others are not touched), one undo entry `Approve suggestion` / `Approve n suggestions` | `not_found` (none of them left), `db` |
+| `suggestion_update` | `storedId, patch: RecordingPatch` | `StoredSuggestion`: the stored suggestion with `patch` applied, still a suggestion (`Recordings::update_suggestion`; a running one keeps running and takes `openStart`), one undo entry "Edit suggestion" | `not_found`, `invalid_input` (field `start`, "Stop the timer first" for spans while running), `db` |
 | `suggestion_approve_edited` | `day: Day, id, input: RecordingInput, overlap` | `Recording`: `input` (the editor's fields) created and the suggestion's whole span dismissed (a stored one deleted), one undo entry (`Recordings::create_with`) | `not_found` (the suggestion is gone), `overlap`, `invalid_input`, `db` |
 | `suggestions_dismiss` | `day: Day, ids: string[]` | `number` dismissed: each one's rule, day and span stored in `dismissed_suggestions`, one undo entry `Dismiss suggestion` / `Dismiss n suggestions` | `not_found` (none of them left), `db` |
 | `rules_today` | – | `RuleDay[] { ruleId, matchedMs, pending, pendingMs }` for each active rule today (`rules::day_of_rules`): the activity it matched (first match wins) and its suggestions waiting for review; the Rules screen | `db` |
@@ -589,7 +590,8 @@ through the CLI and MCP, share the list and the review.
   (a `SuggestionInput`, or a `RecordingInput` through `From`; "Suggest 0:30 for Acme", or "Suggest 0:30"
   without a project), `update_suggestion(id, RecordingPatch)` ("Edit suggestion"; a patch's project sets or
   changes it, none keeps it; an unchanged one writes nothing; a running one refuses `spans`, "Stop the timer
-  first") and `delete_suggestion(id)` ("Delete suggestion"; a running one's timer stops with it), each an undoable `Op::Suggestion
+  first", but takes `open_start`: snapped, refused in the future, before midnight or before its earlier spans
+  end, field `start`; ADR 0045) and `delete_suggestion(id)` ("Delete suggestion"; a running one's timer stops with it), each an undoable `Op::Suggestion
   { before, after }`. Spans are snapped like a recording's, must not overlap each other and must lie on one
   local day (`spans`: "must lie on one day"); `source` is one line of at most 40 characters; the project
   must not be archived, and may be left out (ADR 0030). They may share time with recordings (migration
@@ -984,7 +986,7 @@ and it never passes a calendar day ([ADR 0042](adr/0042-a-timer-ends-by-midnight
   the open start), else a new one is stored with no spans and the open start. When the running timer, a recording or a
   suggested one, already has that project, note and tag, nothing changes and it returns that `Timer` (the
   owner's timer wins; `timers::commands::start_suggested` also returns it when the start repeats its origin). `approve_suggested_timer(id, input, open_start)` turns the
-  running suggestion into the running recording (`rules::approve`, see [Rules and
+  running suggestion into the running recording, which keeps the suggestion's id (so its origin still matches, ADR 0045) (`rules::approve`, see [Rules and
   suggestions](#rules-and-suggestions)).
 - `timers/mod.rs`: `status(db, now) -> TimerStatus { running: Option<RunningTimer { id, suggested, source,
   projectId, note, tagId, openStart, projectName, color, shade, elapsedMs }> }` (flat for both kinds: `id` is the
@@ -1009,8 +1011,9 @@ and it never passes a calendar day ([ADR 0042](adr/0042-a-timer-ends-by-midnight
   span the tracker closes (`Tracker::subscribe_away`), so a timer stops as the Mac wakes. Through
   `recordings::commands::changing`, so the days change and the timer publishes. Known limit: while the app is
   quit nothing records a sleep, so a timer left running then stops only at midnight, when the app next runs.
-- `timers/origin.rs`: `TimerOrigin { timer_id, input: TimerInput }`, the last start of this run, kept in
-  `AppState.timer_origin` (memory only); `repeats(origin, running_id, input)` is whether a start repeats
+- `timers/origin.rs`: `TimerOrigin { timer_id, input: TimerInput }`, the last start, kept in
+  `AppState.timer_origin` (`TimerOriginStore`: `timer_origin.json` in the config folder, so it survives a restart;
+  ADR 0045); `repeats(origin, running_id, input)` is whether a start repeats
   the one that made the running timer (a recording or a suggestion). `timers::commands::start` (and
   `start_suggested`) then returns the running timer as it is, so starting the same timer again (the tray, the picker, the CLI) never undoes what the owner edited
   since; after any other start it sets the origin. `continued` matches the current fields only.

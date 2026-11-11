@@ -415,14 +415,16 @@ describe("recording commands", () => {
       expect(state().editor).toEqual({ mode: "edit", id: "r1" });
     });
 
-    it("asks before replacing an editor with unsaved changes and keeps it until Discard", async () => {
+    it("toasts and keeps an editor with unsaved changes open", async () => {
       state().openEditor({ mode: "create", start: at("13:00"), end: at("13:30") });
       await vi.waitFor(() => expect(state().draft).not.toBeNull());
       state().patchDraft({ note: "half written" });
       state().focusRecording("r1");
       runCommand("recording.edit");
-      expect(state().dialog).toMatchObject({ type: "confirm", title: "Discard changes?" });
+      expect(state().toasts.map((t) => [t.kind, t.message])).toEqual([["info", "Save or cancel the open recording first"]]);
+      expect(state().dialog).toBeNull();
       expect(state().editor).toEqual({ mode: "create", start: at("13:00"), end: at("13:30") });
+      expect(state().draft?.note).toBe("half written");
     });
   });
 

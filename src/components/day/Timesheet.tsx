@@ -5,6 +5,7 @@ import type { Draft, Editor } from "../../state/slices/editor";
 import { runCommand, useBindingLabel } from "../../commands";
 import { formatDuration } from "../../lib/format";
 import { sheetEntries, type SheetEntry } from "../../lib/sheet";
+import { uncoveredParts } from "../../lib/suggestionParts";
 import { useStore } from "../../state/store";
 import { RecordingEditor } from "./RecordingEditor";
 import { SuggestionCard } from "./SuggestionCard";
@@ -29,6 +30,14 @@ function editorSlot(entries: SheetEntry[], editor: Editor | null, draft: Draft |
   return { entryId: entries.find((e) => e.start > start)?.id ?? null, replaces: false };
 }
 
+/** The entries, without the suggestions the open draft covers whole (back once it lets go of them); the edited one keeps its slot. */
+function shownEntries(view: DayView, editor: Editor | null, draft: Draft | null): SheetEntry[] {
+  const entries = sheetEntries(view);
+  if (!draft) return entries;
+  const edited = editor?.mode === "create" ? editor.suggestion?.id : undefined;
+  return entries.filter((e) => e.kind === "card" || e.id === edited || uncoveredParts(e.suggestion, draft.spans).length > 0);
+}
+
 /**
  * The left pane of the Day view: the day's recorded total, + for a new recording, and one
  * card per recording and suggestion in time order, with the editor open in the place of what it edits or creates.
@@ -40,10 +49,11 @@ export function Timesheet({ view }: { view: DayView }) {
   const editor = useStore((s) => s.editor);
   const draft = useStore((s) => s.draft);
   const newKeys = useBindingLabel("recording.new");
-  const entries = sheetEntries(view);
+  const entries = shownEntries(view, editor, draft);
   const slot = editorSlot(entries, editor, draft);
   // One keyed list: the editor moves among the cards without being mounted again.
-  const editorEl = slot && <RecordingEditor key={editor?.mode === "edit" ? `edit-${editor.id}` : "new"} />;
+  // Another recording or suggestion gets a fresh editor, without the last one's field errors.
+  const editorEl = slot && <RecordingEditor key={editor?.mode === "edit" ? `edit-${editor.id}` : `new-${editor?.suggestion?.id ?? ""}`} />;
   const items: ReactNode[] = entries.flatMap((entry) => {
     const el =
       entry.kind === "card" ? (

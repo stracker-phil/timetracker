@@ -15,7 +15,8 @@ use crate::db::time::{Day, Ms};
 use crate::error::AppResult;
 use crate::timers::{self, Timer};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TimerInput {
     pub project_id: String,
     pub note: String,

@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use crate::activity::delete::DeleteBuffer;
 use crate::db::{self, DB_FILE, DataStore};
@@ -9,7 +8,7 @@ use crate::recordings::undo::UndoStack;
 use crate::store::keybindings::KeybindingsStore;
 use crate::store::settings::SettingsStore;
 use crate::store::ui_state::UiStateStore;
-use crate::timers::origin::TimerOrigin;
+use crate::timers::origin::TimerOriginStore;
 
 pub struct AppState {
     pub settings: SettingsStore,
@@ -21,8 +20,8 @@ pub struct AppState {
     pub undo: tokio::sync::Mutex<UndoStack>,
     /// The last activity delete, for its undo window.
     pub deleted_activity: DeleteBuffer,
-    /// The last timer start of this run (`timers::origin`).
-    pub timer_origin: Mutex<Option<TimerOrigin>>,
+    /// The start that made the running timer (`timers::origin`).
+    pub timer_origin: TimerOriginStore,
     pub config_dir: PathBuf,
 }
 
@@ -44,7 +43,7 @@ impl AppState {
             launches,
             undo: Default::default(),
             deleted_activity: DeleteBuffer::default(),
-            timer_origin: Mutex::default(),
+            timer_origin: TimerOriginStore::open(config_dir),
             config_dir: config_dir.to_path_buf(),
         }
     }
