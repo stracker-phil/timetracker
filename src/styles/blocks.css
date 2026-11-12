@@ -85,7 +85,7 @@
 /* A running timer: a pulsing dot at its growing edge. */
 .recording.running::after, .sheet-card.running::after, .week-card.running::after, .suggestion.running::after {
   content: ""; position: absolute; right: 0.462rem; top: 0.462rem; width: 6px; height: 6px; border-radius: 50%;
-  background: var(--accent); animation: pulse 1.6s ease-in-out infinite;
+  background: var(--accent); animation: pulse var(--motion-pulse) var(--ease-in-out) infinite;
 }
 @keyframes pulse { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .recording.running::after, .sheet-card.running::after, .week-card.running::after, .suggestion.running::after { animation: none; } }

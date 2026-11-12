@@ -54,7 +54,8 @@ window's `sidebar` material (vibrancy) shows through, and it greys out while the
 ## Scrollbars
 
 None are styled: every scroller keeps macOS's overlay scrollbars, shown only while scrolling. Any
-`::-webkit-scrollbar` rule would make WebKit draw a permanent bar, so there is none anywhere. Every
+`::-webkit-scrollbar` rule would make WebKit draw a permanent bar, so there is none anywhere, and no
+`scrollbar-gutter`: an overlay bar takes no space, so a gutter would only add an empty strip. Every
 user-scrollable box carries the one `.scroller` class (`styles/base.css`: `overflow: auto` and
 `isolation: isolate`), never its own `overflow: auto`; a box that scrolls one axis only keeps `.scroller` and
 overrides the other. Being its own stacking context keeps a nested scroller's bar from staying behind while an
@@ -303,10 +304,11 @@ The rule for every control, list and popover ([`.claude/rules/stable-controls.md
 
 Nothing jumps from one state to another (`styles/motion.css`). Tokens: `--motion-fast` 120ms (hover, press,
 the scrim, the palette), `--motion-base` 150ms (fades, switches, dialogs and toasts popping in, an exit),
-`--motion-slow` 200ms (movement and size: glides, expand and collapse), `--ease-out`, `--ease-in-out`; no
-literal durations elsewhere (the running timer's 1.6s pulse is an ambient loop, not a state change). Under
+`--motion-slow` 200ms (movement and size: glides, expand and collapse), `--motion-highlight` 1200ms (an accent
+wash fading out: a flash, a Settings search hit), `--motion-pulse` 1600ms (one breath of the running timer's
+dot), `--ease-out`, `--ease-in-out`; no literal durations elsewhere. Under
 `prefers-reduced-motion` movement and size changes are instant (`--motion-slow` is 0) and fades are short
-(`--motion-base` takes `--motion-fast`); the pulse and the flash stop.
+(`--motion-base` takes `--motion-fast`); the pulse, the flash and the search wash stop.
 
 - Show and hide fade: the scrim fades in, dialogs, popovers and toasts pop in (`fade`, `pop`). `usePresence`
   (`lib/motion.ts`) keeps something mounted for its exit, with `state` "leaving" for the CSS.

@@ -4,6 +4,10 @@
   --motion-fast: 120ms;
   --motion-base: 150ms;
   --motion-slow: 200ms;
+  /* An accent wash that fades out (useFlash, a Settings search hit). */
+  --motion-highlight: 1200ms;
+  /* One breath of the running timer's dot. */
+  --motion-pulse: 1600ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -24,6 +28,6 @@
 .motion-off, .motion-off * { transition: none !important; }
 
 /* A row or card whose content just changed (useFlash): an accent wash that fades out; no size or position change. */
-.flash { animation: flash 1200ms var(--ease-out); }
+.flash { animation: flash var(--motion-highlight) var(--ease-out); }
 @keyframes flash { from { box-shadow: inset 0 0 0 100vmax color-mix(in srgb, var(--accent) 18%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .flash { animation: none; } }

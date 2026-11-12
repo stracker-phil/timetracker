@@ -104,7 +104,7 @@ function instantly(element: HTMLElement) {
   requestAnimationFrame(() => requestAnimationFrame(() => element.classList.remove("motion-off")));
 }
 
-/** How long a flashed row keeps its highlight; `.flash` in motion.css fades over the same time. */
+/** How long a flashed row keeps its highlight: `--motion-highlight`, over which `.flash` in motion.css fades. */
 const FLASH_MS = 1200;
 
 /** True for a moment after `value` changes while mounted, never on mount: a row or card flashes when what it shows
