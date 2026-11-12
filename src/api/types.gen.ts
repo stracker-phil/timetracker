@@ -92,6 +92,16 @@ app: string, lastSeen: number, totalMs: number, };
  */
 export type AppSettingPatch = { ownLane?: boolean, hidden?: boolean, };
 
+export type AppStatus = { name: string, version: string, debug: boolean, capture: CaptureKind, 
+/**
+ * Settings, keybindings and the socket.
+ */
+settingsFolder: string, 
+/**
+ * The database file, wherever Settings → Data moved it.
+ */
+database: string, logFolder: string, commandLine: CommandLine, };
+
 export type AwayPrompt = { span: AwayRow, 
 /**
  * The span's end; prompts are only made for closed spans.
@@ -157,6 +167,11 @@ spanIds: Array<string>, running: boolean, };
  */
 export type CalendarTitle = "short" | "full";
 
+/**
+ * What the tracker records: the real frontmost windows, or the debug build's made-up ones (ADR 0031).
+ */
+export type CaptureKind = "real" | "demo";
+
 export type CaptureSettings = { 
 /**
  * Bundle ids the tracker never records.
@@ -184,6 +199,11 @@ percent: number,
  */
 offset: number, share: number, };
 
+/**
+ * Whether the `timetracker` command on the PATH reaches this build.
+ */
+export type CliLink = "installed" | "notInstalled" | "notApplicable";
+
 export type Client = { id: string, name: string, 
 /**
  * An accent name (`ACCENTS`); the hue of the client's projects.
@@ -195,6 +215,12 @@ export type ClientInput = { name: string,
  * Blank: a new client takes the first accent no active client has; an existing one keeps its color.
  */
 color: string, };
+
+export type CommandLine = { link: CliLink, 
+/**
+ * The link's place, or this build's binary for a debug build.
+ */
+path: string, };
 
 export type Condition = { id: string, field: RuleField, op: RuleOp, value: string, };
 

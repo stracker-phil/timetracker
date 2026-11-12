@@ -21,7 +21,7 @@ function renderPage(patch: Partial<Settings> = {}) {
   resetStore();
   seedQuery(SETTINGS_KEY, settings(patch));
   installCommands();
-  return renderWithClient(<SettingsWindow page="timeline" onPage={() => {}} />);
+  return renderWithClient(<SettingsWindow request={{ id: "timeline" }} onOpen={() => {}} />);
 }
 
 const timelineWith = (patch: Partial<Settings["timeline"]>) => ({ ...settings().timeline, ...patch });

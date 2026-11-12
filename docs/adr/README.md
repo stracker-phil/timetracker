@@ -44,7 +44,7 @@ it; they state the decision as it stands in TimeTracker. The numbers in this tab
 | [0031](0031-the-debug-build-runs-on-demo-data.md) | The debug build runs on demo data | Accepted (2026-11-04), implemented |
 | [0032](0032-builds-are-signed-with-an-apple-development-certificate.md) | Builds are signed with an Apple Development certificate | Accepted (2026-11-04), implemented |
 | [0033](0033-hardened-runtime-strict-csp-and-no-navigation.md) | Hardened runtime with Apple Events, strict CSP and no navigation | Accepted (2026-11-04), implemented |
-| [0034](0034-settings-is-a-window-of-its-own.md) | Settings is a window of its own | Accepted (2026-11-04), implemented |
+| [0034](0034-settings-is-a-window-of-its-own.md) | Settings is a window of its own | Accepted (2026-11-04), implemented, superseded in part by 0049 |
 | [0035](0035-appearance-keeps-schemes-and-an-accent.md) | Appearance keeps a scheme per mode and an accent | Accepted (2026-11-04) |
 | [0036](0036-the-status-bar-stays.md) | The status bar stays | Accepted (2026-11-04) |
 | [0037](0037-menus-are-drawn-in-the-page.md) | Menus are drawn in the page | Accepted (2026-11-04), implemented |
@@ -59,3 +59,6 @@ it; they state the decision as it stands in TimeTracker. The numbers in this tab
 | [0046](0046-a-running-suggestion-is-settled-only-after-it-stops.md) | A running suggestion is settled only after it stops | Accepted (2026-11-11), implemented |
 | [0047](0047-a-major-version-needs-the-owners-approval.md) | A major version needs the owner's approval | Accepted (2026-11-11), implemented |
 | [0048](0048-a-read-only-mcp-server.md) | A read-only MCP server, with writes as suggestions | Accepted (2026-11-12), implemented |
+| [0049](0049-the-settings-search-finds-every-row.md) | The Settings search finds every row | Accepted (2026-11-12), implemented |
+| [0050](0050-shortcuts-reassign-keys-and-reset-only-off-the-default.md) | Settings → Shortcuts reassigns keys and resets only off the default | Accepted (2026-11-12), implemented |
+| [0051](0051-settings-has-status-and-about-pages.md) | Settings has Status and About pages | Accepted (2026-11-12), implemented |

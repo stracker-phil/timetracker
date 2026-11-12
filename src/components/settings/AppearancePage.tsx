@@ -1,7 +1,7 @@
 /** Settings → Appearance: the scheme per macOS mode, the accent, date titles and the text size. */
 import { TEXT_SIZES, type Scheme } from "../../api";
 import { schemeLook } from "../../lib/theme";
-import type { SettingsPageProps } from "../../registry/settingsPages";
+import type { SettingsPageProps, SettingsRow } from "../../registry/settingsPages";
 import { AccentSwatches } from "../Accent";
 import { Group, Row, Segmented } from "./controls";
 
@@ -31,23 +31,33 @@ function SchemePicker({ label, value, onChange }: { label: string; value: Scheme
   );
 }
 
+export const APPEARANCE_ROWS: SettingsRow[] = [
+  { id: "light-scheme", title: "Light mode scheme", keywords: ["theme", "look", "colors"] },
+  { id: "dark-scheme", title: "Dark mode scheme", keywords: ["theme", "look", "colors", "dark mode"] },
+  { id: "accent", title: "Accent", keywords: ["color", "colour", "tint", "highlight"] },
+  { id: "calendar-title", title: "Calendar title", keywords: ["month", "date format"] },
+  { id: "day-title", title: "Day title", keywords: ["weekday", "date format"] },
+  { id: "text-size", title: "Text size", keywords: ["font", "zoom", "larger", "smaller"] },
+];
+
 export function AppearancePage({ s, set }: SettingsPageProps) {
   return (
     <>
-      <Group title="Look" section="look">
-        <Row label="Light mode scheme" description="Used while macOS is in light mode." stacked>
+      <Group title="Look">
+        <Row label="Light mode scheme" anchor="light-scheme" description="Used while macOS is in light mode." stacked>
           <SchemePicker label="Light mode scheme" value={s.lightScheme} onChange={(lightScheme) => set({ lightScheme })} />
         </Row>
-        <Row label="Dark mode scheme" description="Used while macOS is in dark mode." stacked>
+        <Row label="Dark mode scheme" anchor="dark-scheme" description="Used while macOS is in dark mode." stacked>
           <SchemePicker label="Dark mode scheme" value={s.darkScheme} onChange={(darkScheme) => set({ darkScheme })} />
         </Row>
-        <Row label="Accent" description="Buttons, links, selection and focus. System follows macOS.">
+        <Row label="Accent" anchor="accent" description="Buttons, links, selection and focus. System follows macOS.">
           <AccentSwatches withSystem value={s.accent} onChange={(accent) => set({ accent })} />
         </Row>
       </Group>
-      <Group title="Dates" section="dates">
+      <Group title="Dates">
         <Segmented
           label="Calendar title"
+          anchor="calendar-title"
           description="The sidebar calendar's month: abbreviated or in full."
           options={["short", "full"] as const}
           value={s.calendarTitle}
@@ -55,15 +65,17 @@ export function AppearancePage({ s, set }: SettingsPageProps) {
         />
         <Segmented
           label="Day title"
+          anchor="day-title"
           description="The Day view's title: with the weekday and month in full, or abbreviated."
           options={["long", "short"] as const}
           value={s.dayTitle}
           onChange={(dayTitle) => set({ dayTitle })}
         />
       </Group>
-      <Group title="Text" section="text">
+      <Group title="Text">
         <Segmented
           label="Text size"
+          anchor="text-size"
           description="Every text in the window. ⌘= and ⌘- step through the sizes outside the Day view."
           options={TEXT_SIZES.map((t) => t.size)}
           value={s.textSize}

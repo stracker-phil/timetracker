@@ -3,7 +3,8 @@
 ## Status
 
 Accepted (2026-11-04), implemented. Inherited from Taskboard ADR 0010 (its Settings part). Amends
-[0024](0024-native-macos-look.md), which kept Settings as a panel in the main window.
+[0024](0024-native-macos-look.md), which kept Settings as a panel in the main window. Superseded in part by
+[0049](0049-the-settings-search-finds-every-row.md) (the Search bullet).
 
 ## Context
 

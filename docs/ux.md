@@ -789,10 +789,13 @@ timeline's for every app.
 
 - A window of its own in the System Settings layout ([ADR 0034](adr/0034-settings-is-a-window-of-its-own.md)),
   opened by ⌘,, the app menu, the tray, the palette's `Settings: <page>` and the sidebar's gear. The page list on
-  `--settings-chrome` starts with a drag strip under the window buttons and a Search field (⌘⇧F); typing narrows
-  the list to the pages whose name, group or a section (its heading or row labels: "accent" finds Appearance)
-  matches, the section shown beside the page; ↵ opens the first hit, scrolled to that section, and "No
-  Results" stands alone when nothing matches. The list dims while the window is inactive. The page's title sits
+  `--settings-chrome` starts with a drag strip under the window buttons and a Search field (⌘F) that finds every
+  row ([ADR 0049](adr/0049-the-settings-search-finds-every-row.md)): typing replaces the page list with one
+  list of matching pages and rows, best first, ranked like the palette; a row hit is two lines, the page as
+  listed and the row's title below. ↵ or a click opens the page scrolled to the row and washes the row in the
+  accent once (`--motion-highlight`), again on every pick; "No Results" stands alone when nothing matches. No
+  headline repeats the one above it (page title, group heading, row label, row description); a page with one
+  group leaves it without a heading. The list dims while the window is inactive. The page's title sits
   in the strip beside the list; only the page below it scrolls. Escape (outside a text field or sheet) and ⌘W
   close the window. The page list has 28px rows; the current page filled
   with the accent and `--on-accent` text, as a focused macOS sidebar) and the page on `--settings-bg`: the title in
@@ -803,11 +806,18 @@ timeline's for every app.
   figures; paths, bundle ids and commands are mono and selectable. A failure reads in red on a light red
   tint; a value Rust refuses (or a number outside its range) keeps the typed text and shows the reason in red
   under the field.
-- Pages, in order: General, Appearance, Shortcuts (App); Capture, Tracker, Timeline (Tracking); Data
-  (System). Tracker holds Away after and the away prompt switch with its "For longer than" minutes; how often
+- Pages, in order: General, Appearance, Shortcuts (App); Capture, Tracker, Timeline (Tracking); Data, Status,
+  About (System; [ADR 0051](adr/0051-settings-has-status-and-about-pages.md)). Status shows the build, what is
+  captured (real or made-up windows), the Accessibility permission, the tracker's line and where the files
+  are; About shows the version with Show Data Folder, Open Log Folder and Open README. Tracker holds Away after and the away prompt switch with its "For longer than" minutes; how often
   the tracker looks is fixed (2 s). Data → Location is a stacked row: Reveal in Finder and Move…, the path
   under them. Shortcuts lists every command that can take a key, without menu-only toggles (Launch at
-  login, Show welcome again). There is no Logging page: Help → Open Log Folder opens the logs and
+  login, Show welcome again), grouped by where the key works: System-wide (the timer picker), In the main
+  window, In Day, Week, Month and Reports, In the Day view and the other views, With a suggestion focused, In
+  the Settings window ([ADR 0050](adr/0050-shortcuts-reassign-keys-and-reset-only-off-the-default.md)). A key
+  another command holds asks in a Reassign sheet that names both; Reassign moves it in one save, Cancel and
+  Esc keep both. Reset shows only while the key differs from the default (its slot stays), and recording the
+  default resets it. There is no Logging page: Help → Open Log Folder opens the logs and
   `--log-level` sets their level for a run.
 - Appearance → **Dates**: Calendar title (Short `Nov 2026`, the default, or Full `November 2026`) and Day
   title (Long `Wednesday, November 11, 2026`, the default, or Short `Wed, Nov 11`, with the year only when it
@@ -911,7 +921,7 @@ other scope's keys.
 | `app:settings` | Settings… | ⌘, | global |
 | `app:launchAtLogin` | Launch at login (a check item) | menu | global |
 | `welcome.show` | Show welcome again | menu | global |
-| `settings.search` | Search Settings | ⌘⇧F | settings |
+| `settings.search` | Search Settings | ⌘F | settings |
 | `settings.close` | Close Settings | Escape | settings |
 | `shortcuts.show` | Keyboard shortcuts | ? | global |
 | `palette.toggle` | Command palette | ⌘K | global |

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api, toAppError, type DataInfo } from "../../api";
 import { copyText } from "../../lib/clipboard";
 import { formatBytes, formatCount } from "../../lib/format";
-import type { SettingsPageProps } from "../../registry/settingsPages";
+import type { SettingsPageProps, SettingsRow } from "../../registry/settingsPages";
 import { fail } from "../../state/requests";
 import { useStore } from "../../state/store";
 import { Modal } from "../Modal";
@@ -84,8 +84,8 @@ function FolderGroup({ info, onMoved }: { info: DataInfo; onMoved: () => void })
   };
 
   return (
-    <Group title="Folder" section="folder">
-      <Row label="Location" stacked>
+    <Group title="Folder">
+      <Row label="Location" anchor="data-location" stacked>
         <div className="settings-location">
           <div className="settings-buttons">
             <button type="button" className="btn" onClick={() => void revealFolder(info.file)}>
@@ -124,6 +124,14 @@ function mcpAddCommand(binaryPath: string): string {
   return `claude mcp add timetracker -- ${binary} mcp`;
 }
 
+export const DATA_ROWS: SettingsRow[] = [
+  { id: "data-location", title: "Location", keywords: ["data folder", "database", "move", "Reveal in Finder"] },
+  { id: "contents", title: "Contents", keywords: ["activities", "recordings", "projects", "size on disk", "first activity"] },
+  { id: "json-backup", title: "JSON backup", keywords: ["export", "backup"] },
+  { id: "expose-activity", title: "Expose activity to the MCP server", keywords: ["MCP", "AI", "window titles"] },
+  { id: "mcp-claude", title: "Claude", keywords: ["MCP", "claude mcp add", "command"] },
+];
+
 export function DataPage({ s, set }: SettingsPageProps) {
   const { data: info } = useDataInfo();
   if (!info) return null;
@@ -136,7 +144,7 @@ export function DataPage({ s, set }: SettingsPageProps) {
       )}
       <FolderGroup info={info} onMoved={() => invalidate([DATA_INFO_KEY])} />
       {info.available && (
-        <Group title="Contents" section="contents">
+        <Group title="Contents" anchor="contents">
           <CountRow label="Activities" value={formatCount(info.activities)} />
           <CountRow label="Recordings" value={formatCount(info.recordings)} />
           <CountRow label="Projects" value={formatCount(info.projects)} />
@@ -144,21 +152,22 @@ export function DataPage({ s, set }: SettingsPageProps) {
           <CountRow label="Size on disk" value={formatBytes(info.sizeBytes)} />
         </Group>
       )}
-      <Group title="Backup" section="backup">
-        <Row label="JSON backup" description="Every client, project, tag, activity and recording in one file.">
+      <Group title="Backup">
+        <Row label="JSON backup" anchor="json-backup" description="Every client, project, tag, activity and recording in one file.">
           <button type="button" className="btn" disabled={!info.available} onClick={() => void exportBackup()}>
             <Download size="1.077rem" /> Export backup…
           </button>
         </Row>
       </Group>
-      <Group title="MCP server" section="mcp">
+      <Group title="MCP server">
         <Switch
           label="Expose activity to the MCP server"
+          anchor="expose-activity"
           description="Window titles and URLs become readable by MCP clients such as Claude. Recordings and reports are always available."
           checked={s.mcp.exposeActivity}
           onChange={(exposeActivity) => set({ mcp: { ...s.mcp, exposeActivity } })}
         />
-        <Row label="Claude" description={<span className="mono selectable">{mcpAddCommand(info.binaryPath)}</span>}>
+        <Row label="Claude" anchor="mcp-claude" description={<span className="mono selectable">{mcpAddCommand(info.binaryPath)}</span>}>
           <button type="button" className="btn" onClick={() => void copyText(mcpAddCommand(info.binaryPath), "the command")}>
             <Copy size="1.077rem" /> Copy
           </button>

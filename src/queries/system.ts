@@ -14,6 +14,9 @@ export const useAppsSeen = (days: number) => useQuery({ queryKey: ["appsSeen", d
 /** Whether the LaunchAgent is installed. */
 export const useAutostartStatus = () => useQuery({ queryKey: ["autostart"], queryFn: api.autostartStatus, staleTime: 0 });
 
+/** The build and its folders (Settings → About and Status). */
+export const useAppStatus = () => useQuery({ queryKey: ["appStatus"], queryFn: api.appStatus, staleTime: 0 });
+
 /** Where the data lives and what it holds. */
 export const useDataInfo = () => useQuery({ queryKey: DATA_INFO_KEY, queryFn: api.dataInfo, staleTime: 0 });
 

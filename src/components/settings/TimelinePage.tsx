@@ -1,6 +1,6 @@
 import { type AppOverride, type AppSettingPatch, type KnownApp } from "../../api";
 import { formatDuration } from "../../lib/format";
-import type { SettingsPageProps } from "../../registry/settingsPages";
+import type { SettingsPageProps, SettingsRow } from "../../registry/settingsPages";
 import { useStore } from "../../state/store";
 import { AppIcon } from "../AppIcon";
 import { Group, Row } from "./controls";
@@ -34,14 +34,27 @@ function AppRow({ app, override }: { app: KnownApp; override: AppOverride | unde
   );
 }
 
+export const TIMELINE_ROWS: SettingsRow[] = [
+  { id: "summary-lane", title: "Summary lane", keywords: ["lanes", "main app"] },
+  { id: "summary-interval", title: "Summary interval", keywords: ["lanes", "minutes"], under: "summary-lane" },
+  { id: "show-all-activity", title: "Show all activity", keywords: ["lanes", "activity lane"] },
+  { id: "compact-activity", title: "Compact activity", keywords: ["dense", "rows"] },
+  { id: "group-by-app", title: "Group by app and website", keywords: ["merge", "windows"] },
+  { id: "join-short-gaps", title: "Join short gaps", keywords: ["continuity", "merge"] },
+  { id: "hide-short-activity", title: "Hide activity shorter than", keywords: ["noise", "short"] },
+  { id: "titles", title: "Titles", keywords: ["labels", "document", "page name"] },
+  { id: "time-snapping", title: "Time snapping (minutes)", keywords: ["snap", "grid"] },
+  { id: "apps", title: "Apps", keywords: ["hidden", "own lane", "hide an app"] },
+];
+
 export function TimelinePage({ s }: SettingsPageProps) {
   const { data: apps, error } = useApps();
   return (
     <>
-      <Group section="lanes">
+      <Group>
         <TimelineControls timeline={s.timeline} />
       </Group>
-      <Group title="Apps" section="apps">
+      <Group title="Apps" anchor="apps">
         {error && <Row label="Could not list the apps" description={error.message} />}
         {apps?.length === 0 && <Row label="No apps tracked yet" />}
         {apps?.map((app) => <AppRow key={app.appKey} app={app} override={s.apps[app.appKey]} />)}

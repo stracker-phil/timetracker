@@ -1,47 +1,38 @@
-/** The core settings pages and the sections the search finds. Modules register their own pages from their
- *  install function. */
-import { Activity, Database, EyeOff, GanttChart, Keyboard, Palette, Power } from "lucide-react";
-import { registerSettingsPage } from "../../registry/settingsPages";
+/** The core settings pages and the rows the search finds. Modules register their own pages from their install
+ *  function. */
+import { Activity, Database, EyeOff, Gauge, GanttChart, Info, Keyboard, Palette, Power } from "lucide-react";
+import { registerSettingsPage, type SettingsRow } from "../../registry/settingsPages";
+import { AboutPage, ABOUT_ROWS } from "./AboutPage";
 import { showWelcomeAgain } from "./actions";
-import { AppearancePage } from "./AppearancePage";
-import { CapturePage, TrackerPage } from "./CapturePage";
+import { APPEARANCE_ROWS, AppearancePage } from "./AppearancePage";
+import { CAPTURE_ROWS, CapturePage, TRACKER_ROWS, TrackerPage } from "./CapturePage";
 import { Group, Row } from "./controls";
-import { DataPage } from "./DataPage";
+import { DATA_ROWS, DataPage } from "./DataPage";
 import { LaunchAtLoginSwitch } from "./LaunchAtLoginSwitch";
-import { ShortcutsPage } from "./ShortcutsPage";
-import { TimelinePage } from "./TimelinePage";
+import { ShortcutsPage, shortcutRows } from "./ShortcutsPage";
+import { STATUS_ROWS, StatusPage } from "./StatusPage";
+import { TIMELINE_ROWS, TimelinePage } from "./TimelinePage";
+
+const GENERAL_ROWS: SettingsRow[] = [
+  { id: "launch-at-login", title: "Launch at login", keywords: ["startup", "login", "autostart", "menu bar"] },
+  { id: "welcome-sheet", title: "Welcome sheet", keywords: ["Show welcome again", "onboarding", "Accessibility"] },
+];
 
 function GeneralPage() {
   return (
-    <>
-      <Group section="startup">
-        <LaunchAtLoginSwitch />
-      </Group>
-      <Group title="Welcome" section="welcome">
-        <Row label="Welcome sheet" description="What TimeTracker records, the Accessibility permission and how it starts.">
-          <button type="button" className="btn" onClick={showWelcomeAgain}>
-            Show welcome again
-          </button>
-        </Row>
-      </Group>
-    </>
+    <Group>
+      <LaunchAtLoginSwitch />
+      <Row label="Welcome sheet" anchor="welcome-sheet" description="What TimeTracker records, the Accessibility permission and how it starts.">
+        <button type="button" className="btn" onClick={showWelcomeAgain}>
+          Show welcome again
+        </button>
+      </Row>
+    </Group>
   );
 }
 
 export function registerCoreSettingsPages() {
-  registerSettingsPage({
-    id: "general",
-    group: "App",
-    label: "General",
-    icon: Power,
-    order: 0,
-    intro: "How TimeTracker starts.",
-    Body: GeneralPage,
-    sections: [
-      { id: "startup", title: "Launch at login", keywords: ["login", "startup", "autostart", "menu bar"] },
-      { id: "welcome", title: "Welcome", keywords: ["Welcome sheet", "Show welcome again", "onboarding", "Accessibility"] },
-    ],
-  });
+  registerSettingsPage({ id: "general", group: "App", label: "General", icon: Power, order: 0, intro: "How TimeTracker starts.", Body: GeneralPage, rows: GENERAL_ROWS });
   registerSettingsPage({
     id: "appearance",
     group: "App",
@@ -50,11 +41,8 @@ export function registerCoreSettingsPages() {
     order: 10,
     intro: "How TimeTracker looks. Changes apply right away.",
     Body: AppearancePage,
-    sections: [
-      { id: "look", title: "Look", keywords: ["Light mode scheme", "Dark mode scheme", "scheme", "theme", "dark mode", "Accent", "color", "colour"] },
-      { id: "dates", title: "Dates", keywords: ["Calendar title", "Day title", "month", "weekday"] },
-      { id: "text", title: "Text", keywords: ["Text size", "font", "zoom"] },
-    ],
+    keywords: ["theme", "look"],
+    rows: APPEARANCE_ROWS,
   });
   registerSettingsPage({
     id: "shortcuts",
@@ -64,10 +52,8 @@ export function registerCoreSettingsPages() {
     order: 20,
     intro: "Click a shortcut and press the new keys. Backspace unbinds, Escape cancels.",
     Body: ShortcutsPage,
-    sections: [
-      { id: "global-shortcut", title: "Global shortcut", keywords: ["Start timer (system-wide)", "hotkey", "system-wide"] },
-      { id: "command-shortcuts", title: "In TimeTracker", keywords: ["keybindings", "keys", "commands"] },
-    ],
+    keywords: ["keys", "keybindings", "hotkeys"],
+    rows: shortcutRows,
   });
   registerSettingsPage({
     id: "capture",
@@ -77,12 +63,8 @@ export function registerCoreSettingsPages() {
     order: 10,
     intro: "What the tracker records. It never records keystrokes, screenshots, audio, your clipboard or page content, and nothing leaves this Mac.",
     Body: CapturePage,
-    sections: [
-      { id: "recorded", title: "Recorded", keywords: ["Capture page addresses in browsers", "URL", "Capture document paths", "documents", "files"] },
-      { id: "excluded-apps", title: "Excluded apps", keywords: ["exclude", "ignore", "privacy", "Add app"] },
-      { id: "excluded-websites", title: "Excluded websites", keywords: ["domain", "website", "exclude", "privacy"] },
-      { id: "external-sources", title: "External sources", keywords: ["CLI", "command line", "planner"] },
-    ],
+    keywords: ["privacy"],
+    rows: CAPTURE_ROWS,
   });
   registerSettingsPage({
     id: "tracker",
@@ -92,7 +74,8 @@ export function registerCoreSettingsPages() {
     order: 20,
     intro: "When time counts as away, and when TimeTracker asks about it.",
     Body: TrackerPage,
-    sections: [{ id: "away", title: "Away", keywords: ["Away after", "idle", "Ask what I did after being away", "away prompt", "For longer than"] }],
+    keywords: ["away", "idle"],
+    rows: TRACKER_ROWS,
   });
   registerSettingsPage({
     id: "timeline",
@@ -102,14 +85,8 @@ export function registerCoreSettingsPages() {
     order: 30,
     intro: "How the Day view shows your activity.",
     Body: TimelinePage,
-    sections: [
-      {
-        id: "lanes",
-        title: "Lanes",
-        keywords: ["Summary lane", "Summary interval", "Show all activity", "Compact activity", "Group by app and website", "Join short gaps", "Hide activity shorter than", "Titles", "Time snapping", "snap", "grid"],
-      },
-      { id: "apps", title: "Apps", keywords: ["Hidden", "Own lane", "hide"] },
-    ],
+    keywords: ["Day view", "lanes"],
+    rows: TIMELINE_ROWS,
   });
   registerSettingsPage({
     id: "data",
@@ -119,11 +96,9 @@ export function registerCoreSettingsPages() {
     order: 0,
     intro: "Where TimeTracker keeps your activity and recordings. Everything stays on this Mac.",
     Body: DataPage,
-    sections: [
-      { id: "folder", title: "Folder", keywords: ["Location", "Reveal in Finder", "Move", "database"] },
-      { id: "contents", title: "Contents", keywords: ["Activities", "Recordings", "Projects", "First activity", "Size on disk"] },
-      { id: "backup", title: "Backup", keywords: ["JSON backup", "Export backup", "export"] },
-      { id: "mcp", title: "MCP server", keywords: ["Claude", "Expose activity to the MCP server", "AI"] },
-    ],
+    keywords: ["privacy", "storage", "backup"],
+    rows: DATA_ROWS,
   });
+  registerSettingsPage({ id: "status", group: "System", label: "Status", icon: Gauge, order: 10, Body: StatusPage, keywords: ["diagnostics"], rows: STATUS_ROWS });
+  registerSettingsPage({ id: "about", group: "System", label: "About", icon: Info, order: 20, Body: AboutPage, keywords: ["version"], rows: ABOUT_ROWS });
 }

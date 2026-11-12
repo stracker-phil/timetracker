@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { fuzzyScore, parsePrefix, score } from "./parse";
+import { fuzzyScore, score } from "../../lib/rank";
+import { parsePrefix } from "./parse";
 
 describe("parsePrefix", () => {
   it.each([

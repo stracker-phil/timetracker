@@ -78,6 +78,7 @@ export function FieldError({ id, message }: { id: string; message?: string | nul
 type TextFieldProps = InputKind & {
   label: string;
   description?: ReactNode;
+  anchor?: string;
   value: string;
   onCommit: Commit;
   suffix?: string;
@@ -85,12 +86,12 @@ type TextFieldProps = InputKind & {
 };
 
 /** A row with a buffered input and the error of its last refused value below it. */
-export function TextField({ label, description, suffix, ...input }: TextFieldProps) {
+export function TextField({ label, description, anchor, suffix, ...input }: TextFieldProps) {
   const id = useId();
   const errorId = `${id}-error`;
   const [error, setError] = useState<string | null>(null);
   return (
-    <Row label={label} description={description} htmlFor={id}>
+    <Row label={label} description={description} anchor={anchor} htmlFor={id}>
       <div className="settings-field">
         <div className="settings-input">
           <BufferedInput

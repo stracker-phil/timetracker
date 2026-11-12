@@ -1,3 +1,4 @@
+pub mod about;
 pub mod activity;
 mod app;
 pub mod app_icons;

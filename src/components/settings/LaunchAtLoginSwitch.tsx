@@ -14,6 +14,7 @@ export function LaunchAtLoginSwitch() {
   return (
     <Switch
       label="Launch at login"
+      anchor="launch-at-login"
       description="Starts TimeTracker in the menu bar when you log in, without opening the window."
       checked={changed ?? installed ?? false}
       onChange={(enabled) => void change(enabled)}

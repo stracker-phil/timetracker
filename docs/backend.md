@@ -87,7 +87,7 @@ Settings ([ADR 0034](adr/0034-settings-is-a-window-of-its-own.md)): label `setti
 hidden title, built hidden on first use. `window::settings::open(app, page)` (the `open_settings` command,
 the bus's `app:settings` and `app:settings:<page>`: the menu, the tray, links and `timetracker run`) shows it
 and brings it forward;
-the page or section id goes in as `?page=` the first time and as `open_settings` after. Closing it hides it
+the page or row id goes in as `?page=` the first time and as `open_settings` after. Closing it hides it
 (`window::close_requested`), so it reopens on its page. `show_welcome` shows the main window and runs its
 `welcome.show` there (`window::run_in_main`).
 
@@ -155,6 +155,7 @@ Registered in `handlers.rs` (`handlers()`, one `generate_handler!` list). Comman
 | `menu_sync` (`menu/sync.rs`) | `state: MenuState { enabled, checked }` (the calling window's page command ids) | – (stored by window label; the menu's `page:` items show the focused window's) | – |
 | `run_command` (`bus/app.rs`) | `id: String` | – (runs a bus command, [Command bus](#command-bus)) | `not_found` (unknown id), `invalid_input` (can't run now), the command's own |
 | `menu_commands` (`menu/palette.rs`) | – | `MenuCommand[] { menu, label, command, keys, checked }`: every menu item in menu order but Command Palette…, app items only while enabled, `page:` items all (the page filters them) | – |
+| `app_status` (`about.rs`) | – | `AppStatus { name, version, debug, capture, settingsFolder, database, logFolder, commandLine }` for Settings → Status and About (`capture`: `real` or `demo`, `capture_kind`; `commandLine.link`: `installed`, `notInstalled`, or `notApplicable` in debug builds, `command_line`) | – |
 | `data_info` (`db/commands.rs`) | – | `DataInfo { dir, file, sizeBytes, activities, recordings, projects, firstActivity, firstActivityLabel, available, error, binaryPath }` (`binaryPath`: `~/.local/bin/timetracker` when that link exists, else this executable; for the `claude mcp add` line) | – (errors are reported inside) |
 | `data_move` (`db/commands.rs`) | `path: String` | `DataInfo` of the new folder ([data.md](data.md#moving-the-data-folder)) | `invalid_input` (a refused folder), `io`, `db` |
 | `backup_export` (`db/commands.rs`) | `path: String` (absolute) | `BackupWritten { bytes, recordings, activities }` | `db`, `io`, `invalid_input` |
@@ -619,7 +620,7 @@ through the CLI and MCP, share the list and the review.
 | `AWAY_PROMPT_CHANGED_EVENT` | `away_prompt_changed` | `AwayPrompt`, only to the `away` window, when a new span replaces the open prompt's |
 | `SETTINGS_CHANGED_EVENT` | `settings_changed` | the saved `Settings`, to every window after every save (`commands::settings_saved`) |
 | `KEYBINDINGS_CHANGED_EVENT` | `keybindings_changed` | the saved `Keybindings`, to every window (`set_keybindings`) |
-| `OPEN_SETTINGS_EVENT` | `open_settings` | a page or section id, to the `settings` window |
+| `OPEN_SETTINGS_EVENT` | `open_settings` | a page or row id, to the `settings` window |
 
 `DataKind` is `activity | recordings | projects | tags | rules | settings`; `day` is a `Day` (`YYYY-MM-DD`)
 or `null` when every day may have changed. `events::data_changed(app, kind, day)` emits it; external
@@ -1135,7 +1136,7 @@ action is a command with an id, which the menu bar, the tray, the page (`run_com
 | Id | Title | Does | Enabled / checked |
 |---|---|---|---|
 | `app:settings` | Settings… | `window::settings::open(app, None)` | |
-| `app:settings:<page>` (hidden family) | Settings Page | Settings at a page or section id | |
+| `app:settings:<page>` (hidden family) | Settings Page | Settings at a page, or scrolled to a row id | |
 | `app:show` | Show TimeTracker | `window::show_main` | |
 | `window:close` (hidden) | Close Window | `window::close_focused` | |
 | `app:background` | Hide to Menu Bar | `window::hide_to_menu_bar` | |

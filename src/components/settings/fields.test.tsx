@@ -105,7 +105,7 @@ describe("a field on a settings page", () => {
     seedQuery(SETTINGS_KEY, settings());
   });
 
-  const renderTracker = () => renderWithClient(<SettingsWindow page="tracker" onPage={() => {}} />);
+  const renderTracker = () => renderWithClient(<SettingsWindow request={{ id: "tracker" }} onOpen={() => {}} />);
 
   it("shows Rust's invalid_input message under the field, keeps the text and raises no toast", async () => {
     mocked.updateSettings.mockRejectedValue({ kind: "invalid_input", message: "Away time must be shorter than a day.", code: null });

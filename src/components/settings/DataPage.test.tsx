@@ -22,7 +22,7 @@ async function renderDataPage(patch: Parameters<typeof dataInfo>[0] = {}, settin
   installCommands();
   renderWithClient(
     <>
-      <SettingsWindow page="data" onPage={() => {}} />
+      <SettingsWindow request={{ id: "data" }} onOpen={() => {}} />
       <Toasts />
     </>,
   );

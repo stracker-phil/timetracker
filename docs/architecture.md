@@ -208,6 +208,7 @@ src-tauri/
   src/state.rs               AppState
   src/error.rs lock.rs       AppError (+ ErrorKind), poison-tolerant lock helpers
   src/store/                 JsonFile, JsonStore, settings/, keybindings.rs, ui_state.rs
+  src/about.rs               the build's facts for Settings → Status and About (app_status)
   src/commands.rs            settings, keybindings, ui state, misc; feature commands sit in their module
   src/tray.rs window/ deep_link.rs   tray, window helpers, timetracker:// links
   src/bus/                   command bus: mod.rs (CommandBus, families), command.rs (builder), commands.rs (app commands, page:), app.rs (host, run_command)

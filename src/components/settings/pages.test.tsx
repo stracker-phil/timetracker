@@ -18,7 +18,7 @@ function renderGeneral(patch: Parameters<typeof resetStore>[0] = {}) {
   resetStore(patch);
   seedQuery(SETTINGS_KEY, settings());
   installCommands();
-  return renderWithClient(<SettingsWindow page="general" onPage={() => {}} />);
+  return renderWithClient(<SettingsWindow request={{ id: "general" }} onOpen={() => {}} />);
 }
 
 describe("Settings General page", () => {
@@ -27,6 +27,12 @@ describe("Settings General page", () => {
   it("offers the launch at login switch", () => {
     renderGeneral();
     expect(screen.getByRole("switch", { name: "Launch at login" })).toBeInTheDocument();
+  });
+
+  it("lists Launch at login and the Welcome sheet in one group without a heading", () => {
+    renderGeneral();
+    expect(screen.getByText("Welcome sheet")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 3 })).not.toBeInTheDocument();
   });
 
   describe("Show welcome again", () => {

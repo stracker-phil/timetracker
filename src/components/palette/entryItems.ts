@@ -2,7 +2,7 @@ import type { FoundEntry } from "../../api";
 import { formatClock } from "../../lib/format";
 import { NO_PROJECT } from "../../state/slices/suggestions";
 import { useStore } from "../../state/store";
-import { score } from "./parse";
+import { score } from "../../lib/rank";
 import type { Item } from "./usePaletteItems";
 
 const fields = (e: FoundEntry) => [e.project ?? NO_PROJECT, e.note, e.client ?? "", e.tag ?? "", e.by ?? ""];

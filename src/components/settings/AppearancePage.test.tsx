@@ -19,7 +19,7 @@ function renderPage(patch: Parameters<typeof settings>[0] = {}) {
   resetStore();
   seedQuery(SETTINGS_KEY, settings(patch));
   installCommands();
-  return renderWithClient(<SettingsWindow page="appearance" onPage={() => {}} />);
+  return renderWithClient(<SettingsWindow request={{ id: "appearance" }} onOpen={() => {}} />);
 }
 
 describe("Settings Appearance page", () => {

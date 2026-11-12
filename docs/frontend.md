@@ -377,7 +377,7 @@ project, note and tag, a running recording's or a suggested timer's) and `stopTi
 tagged by `kind`.
 The bus commands `timer:start` (⌘T), `timer:stop` (⌘⇧. while one runs) and `timer:toggle` run in Rust; the page
 keeps their keys (`busCommands.ts`). The status
-bar shows the running timer (`⏱ Acme 1:23`, then ` · Suggested` while suggested). Settings → Shortcuts has a Global shortcut group above the in-app commands: the
+bar shows the running timer (`⏱ Acme 1:23`, then ` · Suggested` while suggested). Settings → Shortcuts has a System-wide group ("Open timer picker") above the in-app commands: the
 recorder saves `timerShortcut` through `saveTimerShortcut`, which shows Rust's refusal under the row. Every
 bound shortcut, global or in-app, has an X ("Remove shortcut for …") that saves it as `null`.
 
@@ -523,17 +523,22 @@ shortcuts, follows Rust's events (`useEvents`, so `settings_changed` and `keybin
 Settings window (`lib/settingsWindow.ts`), keeps `window-blurred` on `<html>` while the window is inactive
 (`lib/windowFocus.ts`, the page list dims) and shows errors as toasts. The main window's `handleKeydown` is
 not installed there: `handleSettingsKeydown` (`commands/settingsWindow.ts`) runs only the `settings` scope,
-active only in this window: `settings.search` (⌘⇧F, focuses the search field) and `settings.close` (Escape,
+active only in this window: `settings.search` (⌘F, focuses the search field) and `settings.close` (Escape,
 `api.hideWindow`, unless a text field has focus or a `[role=dialog]` is open). ⌘, ⌘W and the Settings menu
 items are Rust's.
 
 `components/settings/SettingsWindow.tsx` renders the pages registered in `registry/settingsPages.ts`: the
-page list (a drag strip, the "Search Settings" field, the groups; `settingsGroups(query)` matches page labels,
-group names and each section's title and `keywords`, shows the section a page was found by beside it, "No
-Results" when nothing matches, ↵ opens the first hit) and the page (its title in the drag strip; only the body
-scrolls). A page registers `sections` (`id`, `title`, `keywords`: its row labels); `resolveSettingsPage(id)`
-takes a page or a section id and returns `{ page, section }`, and `controls.tsx`'s `Group section` (through `SectionTarget`) scrolls the
-section's group to the top. A page's `Body` gets `{ s, set, commit }`: `set(patch)` saves `{ ...current,
+page list (a drag strip, the "Search Settings" field, the groups from `settingsGroups()`) and the page (its
+title in the drag strip; only the body scrolls). Each page module exports its rows (`SettingsRow`: `id` = the
+row's `anchor`, `title` = its label, `keywords` for synonyms, `under` = the anchor to reveal while the row is
+hidden; Shortcuts builds them from the commands, `shortcutRows()`), and `pages.tsx` registers them with the
+page. Typing replaces the list with one list of matching pages and rows, best first (`searchSettings`, ranked
+by `settingsScore` in `lib/rank.ts`, the palette's scorer): a row hit is two lines, the page and the row's
+title; ↵ opens the first; "No Results" when nothing matches. A hit, `?page=` or `open_settings` with a row id
+becomes a `SettingsRequest` (a new object each time); `resolveSettingsPage(id)` returns `{ page, row }`, and the
+`Row` or `Group` with that `anchor` (through `ScrollTarget`) scrolls into view and is washed in the accent once
+(`.found`, `--motion-highlight`), again on every new request. `searchIndex.test.tsx` renders every page and
+fails on an anchor without an entry, an entry without its row or a title that isn't the label. A page's `Body` gets `{ s, set, commit }`: `set(patch)` saves `{ ...current,
 ...patch }` quietly, `commit(patch)` does too but resolves an `invalid_input` message, which `fields.tsx`'s
 `TextField` / `NumberField` (a `BufferedInput` that commits on blur or ↵) show in red under the field
 (`FieldError`), as for a number outside its range. `pages.tsx` registers the core pages
@@ -544,11 +549,13 @@ section's group to the top. A page's `Body` gets `{ s, set, commit }`: `set(patc
 |---|---|
 | App → General (order 0) | `LaunchAtLoginSwitch` (`LaunchAtLoginSwitch.tsx`, also on the welcome sheet): checked from `autostartStatus()` (the LaunchAgent, not the stored setting), changed through `setLaunchAtLogin` (`settings` slice: `api.autostartSet`, then the store's `settings.launchAtLogin` is updated so a later save keeps it); "Show welcome again" (`showWelcomeAgain`) calls `api.showWelcome()` in the Settings window, which shows the main window with its welcome sheet (`welcome.show` there calls `showWelcome`) |
 | App → Appearance | "Light mode scheme" and "Dark mode scheme", stacked rows with three tiles each (`SchemePicker`, a miniature window per scheme through `schemeLook`, pressed for that mode's `lightScheme` or `darkScheme`), accent row (`AccentSwatches withSystem`: System first, then the nine hues), Dates (`calendarTitle`: short, full; `dayTitle`: long, short; segmented controls), Text size (`textSize`: small, medium, large; a segmented control over `TEXT_SIZES`) |
-| App → Shortcuts | `ShortcutsPage`: every command with its binding except `menuOnly` ones; record, reset or unbind |
+| App → Shortcuts | `ShortcutsPage`: the System-wide timer key, then every command except `menuOnly` ones, grouped by where its key works ("In the main window", "In Day, Week, Month and Reports", "In the Day view", …, "In the Settings window"); record or unbind; a key another command holds asks in a Reassign sheet (`holderOf`, `reassign` in `commands/shortcutEdits.ts`), saved as one change; Reset only while the key differs from the default, and recording the default drops the override (`bind`). Hidden buttons keep their slot |
 | Tracking → Capture | `CapturePage` (`CapturePage.tsx`): address and document switches, excluded apps (an "Add app…" picker listing `appsSeen(30)`), excluded websites (a field; Enter adds) |
 | Tracking → Tracker | `TrackerPage`: away after (idle minutes), the away prompt switch and, `nested` under it, "For longer than" (a minutes popup as wide as the number field) |
 | Tracking → Timeline | `TimelinePage` (`TimelinePage.tsx`): `TimelineControls` (summary lane and its interval slider, show all activity, compact, group by app, Join short gaps (`continuity`), Hide activity shorter than (`noise`), both labelled in minutes through `SegmentedControl`'s `labels`, titles, time snapping; each saved quietly), then Apps from `appsList()`: per app its `AppIcon` (by `appKey`), its name and tracked time (never the bundle id), Hidden and Own lane |
 | System → Data | the data folder (a stacked Location row: Reveal in Finder and Move…, the path under them; Move…: `chooseFolder` → a `Modal` sheet that says the database is copied, tracking pauses meanwhile and the old files stay → `dataMove` with the Move button busy (`Moving…`, Escape ignored) → toast "Data moved to …", settings and the page's `DataInfo` reload; an `invalid_input` refusal shows under the row, other errors toast), counts, first activity, size on disk, Export backup… (save panel → `backupExport`, toast "Backup written"); an alert when the store could not be opened |
+| System → Status | `StatusPage`: build and version, capture (real or demo windows), the Accessibility permission and the tracker's line (`useTracker`), the settings folder, database, log folder and the `timetracker` command's link, from `appStatus()` (Rust `about::app_status`) |
+| System → About | `AboutPage`: the version, Show Data Folder, Open Log Folder and Open README (the bus commands `app:dataFolder`, `app:logs`, `app:readme`) |
 
 A change saves through `saveSettings` (`api.updateSettings`) and applies at once.
 

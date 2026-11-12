@@ -187,8 +187,32 @@ export function isRecordingTarget(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest("[data-recording]");
 }
 
-function scopesOverlap(a: Scope, b: Scope): boolean {
+/** Whether a key in one scope can fire where the other is active: the same scope or one inside the other. */
+export function scopesOverlap(a: Scope, b: Scope): boolean {
   return a === b || isAncestor(a, b) || isAncestor(b, a);
+}
+
+interface Conflict {
+  binding: string;
+  a: Command;
+  b: Command;
+}
+
+/** Pairs of commands that share a key where both can fire; Settings → Shortcuts never saves one (it asks to
+ *  reassign), so only a hand-edited `keybindings.json` or a new default can bring one in. */
+export function conflicts(custom: Overrides = overrides): Conflict[] {
+  const list = allCommands();
+  const out: Conflict[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const ba = bindingFor(list[i].id, custom);
+    if (!ba) continue;
+    for (let j = i + 1; j < list.length; j++) {
+      if (bindingFor(list[j].id, custom) === ba && scopesOverlap(list[i].scope, list[j].scope)) {
+        out.push({ binding: ba, a: list[i], b: list[j] });
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -205,23 +229,3 @@ export function resolveKeydown(e: KeyLike & { target?: EventTarget | null }, act
   return matches[0] ?? null;
 }
 
-interface Conflict {
-  binding: string;
-  a: Command;
-  b: Command;
-}
-
-export function conflicts(custom: Overrides = overrides): Conflict[] {
-  const list = allCommands();
-  const out: Conflict[] = [];
-  for (let i = 0; i < list.length; i++) {
-    const ba = bindingFor(list[i].id, custom);
-    if (!ba) continue;
-    for (let j = i + 1; j < list.length; j++) {
-      if (bindingFor(list[j].id, custom) === ba && scopesOverlap(list[i].scope, list[j].scope)) {
-        out.push({ binding: ba, a: list[i], b: list[j] });
-      }
-    }
-  }
-  return out;
-}

@@ -17,7 +17,7 @@ function SummaryMinutes({ value }: { value: number }) {
   const id = useId();
   const index = Math.max(0, SUMMARY_MINUTES.findIndex((m) => m === value));
   return (
-    <Row label="Summary interval" description="Each interval shows the app with the most time in it." htmlFor={id}>
+    <Row label="Summary interval" anchor="summary-interval" description="Each interval shows the app with the most time in it." htmlFor={id}>
       <div className="settings-input">
         <input
           id={id}
@@ -44,13 +44,14 @@ function SummaryMinutes({ value }: { value: number }) {
 export function TimelineControls({ timeline }: { timeline: TimelineSettings }) {
   return (
     <>
-      <Switch label="Summary lane" description="One lane with the main app of each interval." checked={timeline.summaryLane} onChange={(summaryLane) => saveTimeline({ summaryLane })} />
+      <Switch label="Summary lane" anchor="summary-lane" description="One lane with the main app of each interval." checked={timeline.summaryLane} onChange={(summaryLane) => saveTimeline({ summaryLane })} />
       {timeline.summaryLane && <SummaryMinutes value={timeline.summaryMinutes} />}
-      <Switch label="Show all activity" description="The activity lane next to the summary." checked={timeline.showAllActivity} onChange={(showAllActivity) => saveTimeline({ showAllActivity })} />
-      <Switch label="Compact activity" description="Shorter rows, one line of text per activity." checked={timeline.compact} onChange={(compact) => saveTimeline({ compact })} />
-      <Switch label="Group by app and website" description="One activity per app, whatever its windows are called." checked={timeline.groupByApp} onChange={(groupByApp) => saveTimeline({ groupByApp })} />
+      <Switch label="Show all activity" anchor="show-all-activity" description="The activity lane next to the summary." checked={timeline.showAllActivity} onChange={(showAllActivity) => saveTimeline({ showAllActivity })} />
+      <Switch label="Compact activity" anchor="compact-activity" description="Shorter rows, one line of text per activity." checked={timeline.compact} onChange={(compact) => saveTimeline({ compact })} />
+      <Switch label="Group by app and website" anchor="group-by-app" description="One activity per app, whatever its windows are called." checked={timeline.groupByApp} onChange={(groupByApp) => saveTimeline({ groupByApp })} />
       <Segmented
         label="Join short gaps"
+        anchor="join-short-gaps"
         description="Activity of the same app with a shorter gap between shows as one."
         options={CONTINUITY}
         labels={CONTINUITY_LABELS}
@@ -59,15 +60,17 @@ export function TimelineControls({ timeline }: { timeline: TimelineSettings }) {
       />
       <Segmented
         label="Hide activity shorter than"
+        anchor="hide-short-activity"
         description="Short activity leaves the timeline but still counts toward the day's time."
         options={NOISE}
         labels={NOISE_LABELS}
         value={timeline.noise}
         onChange={(noise) => saveTimeline({ noise })}
       />
-      <Segmented label="Titles" description="Label activity with the document or page name, or with the app." options={TITLES} value={timeline.titles} onChange={(titles) => saveTimeline({ titles })} />
+      <Segmented label="Titles" anchor="titles" description="Label activity with the document or page name, or with the app." options={TITLES} value={timeline.titles} onChange={(titles) => saveTimeline({ titles })} />
       <Segmented
         label="Time snapping (minutes)"
+        anchor="time-snapping"
         description="The grid recordings snap to."
         options={SNAP_MINUTES}
         value={String(timeline.snapMinutes)}

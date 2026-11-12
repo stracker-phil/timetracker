@@ -3,12 +3,13 @@
 use tauri::ipc::Invoke;
 
 use crate::{
-    activity, app_icons, autostart, away_prompt, bus, calendar, commands, day, db, help, menu,
-    projects, recordings, remote, reports, reveal, rules, timers, tracker,
+    about, activity, app_icons, autostart, away_prompt, bus, calendar, commands, day, db, help,
+    menu, projects, recordings, remote, reports, reveal, rules, timers, tracker,
 };
 
 pub fn handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
+        about::app_status,
         commands::get_settings,
         commands::update_settings,
         commands::open_settings,

@@ -14,6 +14,7 @@ import { SettingsApp } from "./SettingsApp";
 const mocked = vi.mocked(api, true);
 
 const heading = () => screen.findByRole("heading", { level: 2 });
+const rowOf = (label: string) => screen.getByLabelText(label).closest<HTMLElement>(".settings-row")!;
 
 async function renderAt(query = "") {
   window.history.replaceState(null, "", `/${query}`);
@@ -44,19 +45,39 @@ describe("SettingsApp", () => {
       expect(await heading()).toHaveTextContent("Capture");
     });
 
-    it("opens at the page holding a section named by ?page= and scrolls to it", async () => {
+    it("opens at the page holding a row named by ?page=, scrolled to the row and washed", async () => {
       const scrollIntoView = vi.fn();
       Element.prototype.scrollIntoView = scrollIntoView;
-      await renderAt("?page=away");
+      await renderAt("?page=away-after");
       expect(await heading()).toHaveTextContent("Tracker");
-      expect(scrollIntoView.mock.contexts).toHaveLength(1);
-      expect(scrollIntoView.mock.contexts[0]).toContainElement(screen.getByLabelText("Away after"));
+      expect(scrollIntoView.mock.contexts).toEqual([rowOf("Away after")]);
+      expect(rowOf("Away after")).toHaveClass("found");
     });
 
     it("switches page when Rust sends open_settings", async () => {
       await renderAt("?page=capture");
       emit("open_settings", "shortcuts");
       expect(await screen.findByRole("heading", { level: 2, name: "Shortcuts" })).toBeInTheDocument();
+    });
+
+    it("opens the page of a row Rust names in open_settings and washes the row", async () => {
+      const scrollIntoView = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      await renderAt("?page=capture");
+      emit("open_settings", "away-after");
+      expect(await screen.findByRole("heading", { level: 2, name: "Tracker" })).toBeInTheDocument();
+      expect(scrollIntoView.mock.contexts).toEqual([rowOf("Away after")]);
+      expect(rowOf("Away after")).toHaveClass("found");
+    });
+
+    it("washes the row again when Rust sends the same open_settings twice", async () => {
+      const scrollIntoView = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      await renderAt("?page=capture");
+      emit("open_settings", "away-after");
+      await screen.findByRole("heading", { level: 2, name: "Tracker" });
+      emit("open_settings", "away-after");
+      expect(scrollIntoView.mock.contexts).toEqual([rowOf("Away after"), rowOf("Away after")]);
     });
   });
 

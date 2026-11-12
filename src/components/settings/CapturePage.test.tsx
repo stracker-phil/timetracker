@@ -30,7 +30,7 @@ function renderPage(page: "capture" | "tracker", capture: Partial<Capture> = {})
   installCommands();
   return renderWithClient(
     <>
-      <SettingsWindow page={page} onPage={() => {}} />
+      <SettingsWindow request={{ id: page }} onOpen={() => {}} />
       <MenuHost />
     </>,
   );
@@ -93,9 +93,10 @@ describe("Settings Capture page", () => {
   });
 
   describe("Excluded apps", () => {
-    it("says no apps are excluded when the list is empty", () => {
+    it("always offers the Exclude an app row, with or without excluded apps", () => {
       renderPage("capture");
-      expect(screen.getByText("No excluded apps")).toBeInTheDocument();
+      expect(screen.getByText("Exclude an app")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Add app/ })).toBeInTheDocument();
     });
 
     it("labels an excluded bundle id with the app name once it is known", async () => {
@@ -180,13 +181,13 @@ describe("Settings Capture page external sources", () => {
     renderPage("capture");
     expect(await screen.findByText("planner")).toBeInTheDocument();
     expect(screen.getByText("calendar")).toBeInTheDocument();
-    expect(screen.queryByText("No external sources yet")).not.toBeInTheDocument();
+    expect(screen.getByText("Add a source")).toBeInTheDocument();
   });
 
-  it("says there are none yet and shows the CLI example when no source exists", async () => {
+  it("shows the Add a source row with the CLI example when no source exists", async () => {
     mocked.activitySources.mockResolvedValue([]);
     renderPage("capture");
-    expect(await screen.findByText("No external sources yet")).toBeInTheDocument();
+    expect(await screen.findByText("Add a source")).toBeInTheDocument();
     expect(screen.getByText(/timetracker activity add/)).toBeInTheDocument();
   });
 });
@@ -234,7 +235,7 @@ describe("Settings Tracker page", () => {
       installCommands();
       renderWithClient(
         <>
-          <SettingsWindow page="tracker" onPage={() => {}} />
+          <SettingsWindow request={{ id: "tracker" }} onOpen={() => {}} />
           <MenuHost />
         </>,
       );

@@ -22,6 +22,7 @@ const DATED_VIEWS: View[] = ["day", "week", "month", "reports"];
 export * from "./pageCommands";
 export * from "./registry";
 export * from "./scopes";
+export * from "./shortcutEdits";
 
 /** Registers the core scopes; safe to call again (tests and re-installs do). A view's scope is active while it shows. */
 export function registerCoreScopes() {

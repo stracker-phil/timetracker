@@ -3,7 +3,7 @@ import { Plus, Search, X } from "lucide-react";
 import { useState } from "react";
 import { SETTINGS_LIMITS, type AppSeen, type CaptureSettings } from "../../api";
 import { formatDuration } from "../../lib/format";
-import type { SettingsPageProps } from "../../registry/settingsPages";
+import type { SettingsPageProps, SettingsRow } from "../../registry/settingsPages";
 import { InsetField } from "../Field";
 import { PopUpButton } from "../menu";
 import { Modal } from "../Modal";
@@ -62,13 +62,13 @@ function ExcludedApps({ capture, setCapture }: { capture: CaptureSettings; setCa
   const remove = (id: string) => setCapture({ excludedApps: capture.excludedApps.filter((a) => a !== id) });
 
   return (
-    <Group title="Excluded apps" section="excluded-apps">
+    <Group title="Excluded apps">
       {capture.excludedApps.map((id) => (
         <Row key={id} label={nameOf(id)} description={<span className="mono">{id}</span>}>
           <RemoveButton label={`Remove ${nameOf(id)}`} onClick={() => remove(id)} />
         </Row>
       ))}
-      <Row label={capture.excludedApps.length === 0 ? "No excluded apps" : "Another app"} description="While an excluded app is in front, nothing is recorded; the time stays a gap.">
+      <Row label="Exclude an app" anchor="exclude-app" description="While an excluded app is in front, nothing is recorded; the time stays a gap.">
         <button type="button" className="btn" onClick={() => setPicking(true)}>
           <Plus size="1.077rem" /> Add app…
         </button>
@@ -101,13 +101,13 @@ function ExcludedSites({ capture, setCapture }: { capture: CaptureSettings; setC
     setCapture({ excludedDomains: [...capture.excludedDomains, domain] });
   };
   return (
-    <Group title="Excluded websites" section="excluded-websites">
+    <Group title="Excluded websites">
       {capture.excludedDomains.map((domain) => (
         <Row key={domain} label={domain}>
           <RemoveButton label={`Remove ${domain}`} onClick={() => remove(domain)} />
         </Row>
       ))}
-      <Row label="Add a website" description={error ? <span role="alert">{error}</span> : "The domain and every subdomain of it, in every browser."}>
+      <Row label="Exclude a website" anchor="exclude-website" description={error ? <span role="alert">{error}</span> : "The domain and every subdomain of it, in every browser."}>
         <InsetField icon={<Plus size="1.077rem" />}>
           <input
             aria-label="Website to exclude"
@@ -128,13 +128,14 @@ function ExcludedSites({ capture, setCapture }: { capture: CaptureSettings; setC
 function ExternalSources() {
   const { data: sources } = useActivitySources();
   return (
-    <Group title="External sources" section="external-sources">
+    <Group title="External sources">
       {sources?.map((name) => (
         <Row key={name} label={name} />
       ))}
       <Row
         stacked
-        label={sources?.length ? "Add another" : "No external sources yet"}
+        label="Add a source"
+        anchor="add-source"
         description="Other apps, such as a planner, add their activity with the timetracker command. Each source gets its own lane next to the tracker's."
       >
         <code className="mono cli-example">{CLI_EXAMPLE}</code>
@@ -143,20 +144,30 @@ function ExternalSources() {
   );
 }
 
+export const CAPTURE_ROWS: SettingsRow[] = [
+  { id: "capture-urls", title: "Capture page addresses in browsers", keywords: ["URL", "address", "browser", "website"] },
+  { id: "capture-documents", title: "Capture document paths", keywords: ["files", "documents", "path"] },
+  { id: "exclude-app", title: "Exclude an app", keywords: ["excluded apps", "ignore", "privacy"] },
+  { id: "exclude-website", title: "Exclude a website", keywords: ["excluded websites", "domain", "ignore", "privacy"] },
+  { id: "add-source", title: "Add a source", keywords: ["external sources", "CLI", "command line", "planner"] },
+];
+
 export function CapturePage({ s, set }: SettingsPageProps) {
   const capture = s.capture;
   const setCapture = (patch: Partial<CaptureSettings>) => set({ capture: { ...capture, ...patch } });
   return (
     <>
-      <Group title="Recorded" section="recorded">
+      <Group title="Recorded">
         <Switch
           label="Capture page addresses in browsers"
+          anchor="capture-urls"
           description="macOS asks once per browser whether TimeTracker may read its address bar. Firefox cannot be read; only its window titles are recorded."
           checked={capture.captureUrls}
           onChange={(captureUrls) => setCapture({ captureUrls })}
         />
         <Switch
           label="Capture document paths"
+          anchor="capture-documents"
           description="The file open in the front window, for apps that report it, such as TextEdit, Pages, Preview and Xcode."
           checked={capture.captureDocuments}
           onChange={(captureDocuments) => setCapture({ captureDocuments })}
@@ -175,12 +186,19 @@ const AWAY_PROMPT_MINUTES = [5, 10, 15, 20, 30, 45, 60];
 const awayPromptChoices = (current: number) =>
   AWAY_PROMPT_MINUTES.includes(current) ? AWAY_PROMPT_MINUTES : [...AWAY_PROMPT_MINUTES, current].sort((a, b) => a - b);
 
+export const TRACKER_ROWS: SettingsRow[] = [
+  { id: "away-after", title: "Away after", keywords: ["idle", "inactive", "minutes"] },
+  { id: "away-prompt", title: "Ask what I did after being away", keywords: ["away prompt", "idle"] },
+  { id: "away-prompt-minutes", title: "For longer than", keywords: ["away prompt", "minutes"] },
+];
+
 export function TrackerPage({ s, set, commit }: SettingsPageProps) {
   const tracker = s.tracker;
   return (
-    <Group section="away">
+    <Group>
       <NumberField
         label="Away after"
+        anchor="away-after"
         description="Minutes without keyboard or mouse input before the time counts as away."
         suffix="min"
         value={tracker.idleMinutes}
@@ -190,11 +208,12 @@ export function TrackerPage({ s, set, commit }: SettingsPageProps) {
       />
       <Switch
         label="Ask what I did after being away"
+        anchor="away-prompt"
         description="After a long away time, a small window asks for the project to record it for. Pauses never ask."
         checked={tracker.awayPromptEnabled}
         onChange={(awayPromptEnabled) => set({ tracker: { ...tracker, awayPromptEnabled } })}
       />
-      <Row label="For longer than" htmlFor="settings-away-prompt-minutes" nested>
+      <Row label="For longer than" anchor="away-prompt-minutes" htmlFor="settings-away-prompt-minutes" nested>
         <div className="settings-input">
           <PopUpButton
             id="settings-away-prompt-minutes"
