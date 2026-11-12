@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
+import { TooltipHost } from "../../components/TooltipHost";
 import { api, toAppError } from "../../api";
 import { applyInitialLook } from "../../lib/theme";
 import "../../styles";
@@ -15,6 +16,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ErrorBoundary>
       <TimerPicker />
+      <TooltipHost />
     </ErrorBoundary>
   </React.StrictMode>,
 );

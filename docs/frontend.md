@@ -247,7 +247,7 @@ Shell components in `components/`: `Toolbar` (the unified toolbar every view ren
 optional `detail` and the actions as children; a drag region), `Sidebar` (a drag strip
 under the window buttons, `MiniCalendar`, Hours, the pages of `views.ts` from Reports on, `SidebarStatus`), `StatusBar`, `EmptyView`, `Modal`
 (`variant`: `sheet`, `panel`, `popover`, `bare`), `menu/` (`openMenu`, `openContextMenu`, `MenuHost`, `PopUpButton`; docs/ux.md → Menus), `Toasts`, `Field` (`InsetField`, `KeyCap`),
-`Splitter`, `ErrorBoundary`, `CommandPalette` (`palette/`), `ShortcutsDialog`, `Dialogs`, `AppIcon`, and
+`Splitter`, `ErrorBoundary`, `TooltipHost` (one per window: every `title` becomes its styled tooltip, cut-off text shows in full; [ux.md](ux.md#tooltips)), `CommandPalette` (`palette/`), `ShortcutsDialog`, `Dialogs`, `AppIcon`, and
 `useAnchoredStyle` (a popover's fixed place under the element matching a selector, left- or right-aligned to it:
 the date picker, View options).
 

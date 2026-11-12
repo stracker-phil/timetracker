@@ -62,3 +62,4 @@ it; they state the decision as it stands in TimeTracker. The numbers in this tab
 | [0049](0049-the-settings-search-finds-every-row.md) | The Settings search finds every row | Accepted (2026-11-12), implemented |
 | [0050](0050-shortcuts-reassign-keys-and-reset-only-off-the-default.md) | Settings → Shortcuts reassigns keys and resets only off the default | Accepted (2026-11-12), implemented |
 | [0051](0051-settings-has-status-and-about-pages.md) | Settings has Status and About pages | Accepted (2026-11-12), implemented |
+| [0052](0052-one-tooltip-host-per-window.md) | One tooltip host per window | Accepted (2026-11-12), implemented |

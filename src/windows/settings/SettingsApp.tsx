@@ -5,6 +5,7 @@ import { handleSettingsKeydown } from "../../commands/settingsWindow";
 import { MenuHost } from "../../components/menu";
 import { SettingsWindow, type SettingsRequest } from "../../components/settings/SettingsWindow";
 import { Toasts } from "../../components/Toasts";
+import { TooltipHost } from "../../components/TooltipHost";
 import { disposeAll } from "../../lib/disposeAll";
 import { markSettingsWindow } from "../../lib/settingsWindow";
 import { useErrorToasts } from "../../lib/useErrorToasts";
@@ -48,6 +49,7 @@ function SettingsAppContent() {
       <SettingsWindow request={request} onOpen={open} />
       <MenuHost />
       <Toasts />
+      <TooltipHost />
     </>
   );
 }

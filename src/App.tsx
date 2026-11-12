@@ -16,6 +16,7 @@ import { WeekView } from "./components/calendar/WeekView";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { Toasts } from "./components/Toasts";
+import { TooltipHost } from "./components/TooltipHost";
 import { handleKeydown, installCommands, listenPageCommands, runMenuCommand } from "./commands";
 import { installMenuSync } from "./commands/menu";
 import { answerRemote } from "./commands/remote";
@@ -135,6 +136,7 @@ function Shell() {
       <CommandPalette />
       <MenuHost />
       <Toasts />
+      <TooltipHost />
     </>
   );
 }

@@ -372,6 +372,15 @@ focus (a block, recording, suggestion or card marked `.focused`, also set by a c
 card show their accent outline only while `<html data-input="keyboard">` is set (`lib/inputModality.ts`): a
 key press outside a text field (or Tab in one) sets it, a pointer press clears it.
 
+## Tooltips
+
+One `TooltipHost` per window ([ADR 0052](adr/0052-one-tooltip-host-per-window.md)) takes over every `title`
+(it becomes `data-tooltip`; an icon-only control keeps an `aria-label`): after 450ms, at once within 600ms of
+the last one, on keyboard focus, and for text cut off with an ellipsis, which shows in full. It sits below the
+control, above it without room, at most 420px wide and 8px inside the window, small and dark in every scheme
+(`--tooltip-*`), rising in over `--motion-fast`; a press, a key, the wheel or leaving hides it. A tooltip that
+names a key ends with the current binding ("View options (⌘J)", `useBindingLabel`), never a spelled key.
+
 ## Overlays
 
 Palette, popovers, context menus, toasts and dialogs: `--pop` with `--shadow` (a hairline ring and a soft

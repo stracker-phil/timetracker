@@ -27,6 +27,19 @@
 /* A row of controls switching to another view shows its new state at once (useGlide). */
 .motion-off, .motion-off * { transition: none !important; }
 
+/* The window's tooltip (components/TooltipHost.tsx): small and dark in every scheme, rising in. Its own width
+   wherever it starts, so a control at the window's edge doesn't squeeze it before TooltipHost moves it inside. */
+.tooltip {
+  position: fixed; z-index: 80; width: max-content; max-width: min(420px, calc(100vw - 16px)); padding: 4px 8px;
+  border-radius: var(--radius-sm); transform: translateX(-50%);
+  border: 1px solid var(--tooltip-border); background: var(--tooltip-bg); color: var(--tooltip-text); box-shadow: var(--shadow-small);
+  font-size: var(--fs-meta); font-weight: 500; line-height: 1.35; pointer-events: none; white-space: pre-line;
+  animation: tooltip-in var(--motion-fast) var(--ease-out);
+}
+@keyframes tooltip-in { from { opacity: 0; transform: translateX(-50%) translateY(-2px); } }
+.tooltip--above { animation-name: tooltip-in-above; }
+@keyframes tooltip-in-above { from { opacity: 0; transform: translateX(-50%) translateY(2px); } }
+
 /* A row or card whose content just changed (useFlash): an accent wash that fades out; no size or position change. */
 .flash { animation: flash var(--motion-highlight) var(--ease-out); }
 @keyframes flash { from { box-shadow: inset 0 0 0 100vmax color-mix(in srgb, var(--accent) 18%, transparent); } }
