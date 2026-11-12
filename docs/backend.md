@@ -582,7 +582,10 @@ through the CLI and MCP, share the list and the review.
   what the edit left out does not come back. A running stored suggestion (a suggested timer) is neither
   approved nor dismissed until it stops (ADR 0046): `approve`, `approve_edited` and `approve_patched` refuse it
   (`invalid_input`, "The suggested timer is still running; stop it first"), `approve_all`, `approve_rule` and
-  `dismiss` skip it among others, and `dismiss` refuses when only running ones are left. `input_of` refuses a suggestion without a project ("The
+  `dismiss` skip it among others, and `dismiss` refuses when only running ones are left. Its finished pieces
+  (a timer that continued today's finished suggestion with the same fields) are settled without it (`Scope::Finished`):
+  approving records them, dismissing drops them, and either leaves the stored suggestion with only its open
+  start. `input_of` refuses a suggestion without a project ("The
   suggestion has no project yet; pick one first") unless the approval names one (`approve_patched`'s
   patch, `approve_edited`'s input), so `approve` and `approve_all` change nothing when one of them lacks it.
 - Stored suggestions are written by `recordings/stored.rs`: `Recordings::create_suggestion(input, source)`

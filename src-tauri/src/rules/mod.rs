@@ -2043,7 +2043,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn approving_a_running_suggestion_whose_running_time_is_recorded_is_refused_while_it_runs()
+    async fn approving_the_finished_piece_of_a_timer_whose_running_time_is_recorded_records_only_the_finished_span()
      {
         let w = World::new().await;
         let today = Day::of(now_ms());
@@ -2064,15 +2064,21 @@ mod tests {
         assert_eq!(shown.len(), 1);
         assert!(!shown[0].running);
 
-        let err = approve(&w.service(), &w.settings, today, &shown[0].id)
+        let change = approve(&w.service(), &w.settings, today, &shown[0].id)
             .await
-            .unwrap_err();
+            .unwrap();
 
-        assert_eq!(err.kind(), ErrorKind::InvalidInput);
-        assert_eq!(w.recordings().await, [covering]);
+        assert_eq!(
+            spans_of(&change.value),
+            [(on(today, 0, 10), Some(on(today, 0, 20)))]
+        );
+        let recorded = w.recordings().await;
+        assert_eq!(recorded.len(), 2);
+        assert!(recorded.contains(&covering));
+        assert!(recorded.contains(&change.value));
         assert_eq!(
             stored_suggestions::running(&w.db).await.unwrap(),
-            Some(running)
+            Some(running_without_spans(&running))
         );
     }
 
@@ -2232,6 +2238,203 @@ mod tests {
         assert_eq!(change.value, 1);
         assert!(w.stored_of(today).await.is_empty());
         assert_eq!(crate::timers::current(&w.db).await.unwrap(), None);
+    }
+
+    async fn finished_piece(w: &World, today: Day) -> Suggestion {
+        let piece = w
+            .suggestions(today)
+            .await
+            .into_iter()
+            .find(|s| !s.running)
+            .expect("a finished piece");
+        assert_eq!(
+            (piece.start, piece.end),
+            (on(today, 0, 10), on(today, 0, 20))
+        );
+        piece
+    }
+
+    fn running_without_spans(running: &StoredSuggestion) -> StoredSuggestion {
+        StoredSuggestion {
+            spans: Vec::new(),
+            ..running.clone()
+        }
+    }
+
+    #[tokio::test]
+    async fn approving_the_finished_piece_of_a_continued_timer_records_only_its_finished_spans() {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let running = timer_suggestion(&w, today, true).await;
+        let finished = finished_piece(&w, today).await;
+        let running_id = running_piece(&w, today).await.id;
+
+        let change = approve(&w.service(), &w.settings, today, &finished.id)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            spans_of(&change.value),
+            [(on(today, 0, 10), Some(on(today, 0, 20)))]
+        );
+        assert_eq!(change.value.note, "from claude");
+        assert_eq!(w.recordings().await, [change.value]);
+        assert_eq!(w.stored_of(today).await, [running_without_spans(&running)]);
+        let shown = w.suggestions(today).await;
+        assert_eq!(shown.len(), 1);
+        assert!(shown[0].running);
+        assert_eq!(shown[0].id, running_id);
+    }
+
+    #[tokio::test]
+    async fn undoing_the_approval_of_a_finished_piece_gives_the_timer_its_finished_span_back() {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let running = timer_suggestion(&w, today, true).await;
+        let finished = finished_piece(&w, today).await;
+        approve(&w.service(), &w.settings, today, &finished.id)
+            .await
+            .unwrap();
+
+        w.service().undo().await.unwrap();
+
+        assert!(w.recordings().await.is_empty());
+        assert_eq!(w.stored_of(today).await, [running]);
+        assert_eq!(w.suggestions(today).await.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn dismissing_the_finished_piece_of_a_continued_timer_drops_its_spans_and_the_timer_runs_on()
+     {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let running = timer_suggestion(&w, today, true).await;
+        let finished = finished_piece(&w, today).await;
+        let running_id = running_piece(&w, today).await.id;
+
+        let change = dismiss(&w.service(), &w.settings, today, &[finished.id])
+            .await
+            .unwrap();
+
+        assert_eq!(change.value, 1);
+        assert!(w.recordings().await.is_empty());
+        assert_eq!(w.stored_of(today).await, [running_without_spans(&running)]);
+        let shown = w.suggestions(today).await;
+        assert_eq!(shown.len(), 1);
+        assert!(shown[0].running);
+        assert_eq!(shown[0].id, running_id);
+        assert_eq!(
+            crate::timers::current(&w.db).await.unwrap(),
+            Some(crate::timers::Timer::Suggestion(running_without_spans(
+                &running
+            )))
+        );
+    }
+
+    #[tokio::test]
+    async fn approving_the_finished_piece_of_a_continued_timer_as_edited_leaves_the_timer_running()
+    {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let running = timer_suggestion(&w, today, true).await;
+        let finished = finished_piece(&w, today).await;
+        let edited = RecordingInput {
+            project_id: w.project.id.clone(),
+            spans: vec![Span {
+                start: on(today, 5, 0),
+                end: on(today, 6, 0),
+            }],
+            note: "edited".into(),
+            tag_id: None,
+        };
+
+        let change = approve_edited(
+            &w.service(),
+            &w.settings,
+            today,
+            &finished.id,
+            edited,
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            spans_of(&change.value),
+            [(on(today, 5, 0), Some(on(today, 6, 0)))]
+        );
+        assert_eq!(change.value.note, "edited");
+        assert_eq!(w.recordings().await, [change.value]);
+        assert_eq!(w.stored_of(today).await, [running_without_spans(&running)]);
+    }
+
+    #[tokio::test]
+    async fn approving_the_finished_piece_of_a_continued_timer_patched_leaves_the_timer_running() {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let running = timer_suggestion(&w, today, true).await;
+        let finished = finished_piece(&w, today).await;
+
+        let change = approve_patched(
+            &w.service(),
+            &w.settings,
+            today,
+            &finished.id,
+            note_patch("patched"),
+            Overlap::Cancel,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            spans_of(&change.value),
+            [(on(today, 0, 10), Some(on(today, 0, 20)))]
+        );
+        assert_eq!(change.value.note, "patched");
+        assert_eq!(w.recordings().await, [change.value]);
+        assert_eq!(w.stored_of(today).await, [running_without_spans(&running)]);
+    }
+
+    #[tokio::test]
+    async fn approving_all_pieces_of_a_continued_timer_records_the_finished_ones_and_skips_the_running_one()
+     {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let running = timer_suggestion(&w, today, true).await;
+        let shown = w.suggestions(today).await;
+        assert_eq!(shown.len(), 2);
+
+        let change = approve_all(&w.service(), &w.settings, today, &ids_of(&shown))
+            .await
+            .unwrap();
+
+        assert_eq!(change.value.len(), 1);
+        assert_eq!(
+            spans_of(&change.value[0]),
+            [(on(today, 0, 10), Some(on(today, 0, 20)))]
+        );
+        assert_eq!(w.stored_of(today).await, [running_without_spans(&running)]);
+        assert!(running_piece(&w, today).await.running);
+    }
+
+    #[tokio::test]
+    async fn the_running_piece_of_a_continued_timer_is_still_refused_after_its_finished_piece_is_settled()
+     {
+        let w = World::new().await;
+        let today = Day::of(now_ms());
+        let running = timer_suggestion(&w, today, true).await;
+        let finished = finished_piece(&w, today).await;
+        approve(&w.service(), &w.settings, today, &finished.id)
+            .await
+            .unwrap();
+        let piece = running_piece(&w, today).await;
+
+        let err = approve(&w.service(), &w.settings, today, &piece.id)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(w.stored_of(today).await, [running_without_spans(&running)]);
     }
 
     #[tokio::test]

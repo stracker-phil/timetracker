@@ -3,7 +3,8 @@
 //! stale id is `not_found`. A stored suggestion is approved and dismissed whole: every piece of it the day
 //! shows becomes one recording's spans, and the stored suggestion is deleted with it. A running one (a
 //! suggested timer) is neither approved nor dismissed until its timer stops (ADR 0046): alone it is refused,
-//! among others it is skipped.
+//! among others it is skipped. Its finished pieces, from an earlier suggestion it continued, are settled
+//! without it.
 
 use super::suggestions_of;
 use super::types::Suggestion;
@@ -19,11 +20,48 @@ use crate::store::settings::Settings;
 const NO_PROJECT: &str = "The suggestion has no project yet; pick one first";
 const RUNNING: &str = "The suggested timer is still running; stop it first";
 
+/// What settling a suggestion takes: all of it, or only the finished pieces of a stored one whose timer
+/// still runs.
+enum Scope {
+    Whole,
+    Finished(StoredSuggestion),
+}
+
+impl Scope {
+    fn holds(&self, piece: &Suggestion) -> bool {
+        match self {
+            Scope::Whole => true,
+            Scope::Finished(stored) => stored.open_start.is_some_and(|open| piece.end <= open),
+        }
+    }
+}
+
+/// What settling `suggestion` takes; None while it is the running part of a suggested timer.
+async fn scope_of(service: &Recordings<'_>, suggestion: &Suggestion) -> AppResult<Option<Scope>> {
+    let Some(id) = &suggestion.stored_id else {
+        return Ok(Some(Scope::Whole));
+    };
+    let stored = stored_suggestions::get(service.db, id).await?;
+    if !stored.is_running() {
+        return Ok(Some(Scope::Whole));
+    }
+    let scope = Scope::Finished(stored);
+    Ok(scope.holds(suggestion).then_some(scope))
+}
+
+/// Refuses to settle `suggestion` while it is the running part of a suggested timer.
+async fn settleable(service: &Recordings<'_>, suggestion: &Suggestion) -> AppResult<Scope> {
+    scope_of(service, suggestion)
+        .await?
+        .ok_or_else(|| AppError::InvalidInput(RUNNING.into()))
+}
+
 /// What approving `suggestion` records, under `project_id` when given (an edit); `shown` are the day's
-/// suggestions, for a stored one's other pieces. Refused when neither names a project (ADR 0030).
+/// suggestions, for a stored one's other pieces in `scope`. Refused when neither names a project (ADR 0030).
 fn input_of(
     suggestion: &Suggestion,
     shown: &[Suggestion],
+    scope: &Scope,
     project_id: Option<String>,
 ) -> AppResult<RecordingInput> {
     let project_id = project_id
@@ -32,7 +70,7 @@ fn input_of(
     let pieces: Vec<&Suggestion> = match &suggestion.stored_id {
         Some(id) => shown
             .iter()
-            .filter(|s| s.stored_id.as_ref() == Some(id))
+            .filter(|s| s.stored_id.as_ref() == Some(id) && scope.holds(s))
             .collect(),
         None => vec![suggestion],
     };
@@ -51,12 +89,23 @@ fn input_of(
 }
 
 /// What settles `suggestion` once approved or dismissed: a rule's dismissals (one per rule, each over all
-/// of its time), or the stored suggestion's deletion.
+/// of its time), the stored suggestion's deletion, or, while its timer runs, its finished spans' removal.
 async fn settling(
     service: &Recordings<'_>,
     day: Day,
     suggestion: &Suggestion,
+    scope: Scope,
 ) -> AppResult<Vec<Op>> {
+    if let Scope::Finished(stored) = scope {
+        let after = StoredSuggestion {
+            spans: Vec::new(),
+            ..stored.clone()
+        };
+        return Ok(vec![Op::Suggestion {
+            before: Some(stored),
+            after: Some(after),
+        }]);
+    }
     if let Some(id) = &suggestion.stored_id {
         return Ok(vec![deleted(
             stored_suggestions::get(service.db, id).await?,
@@ -80,25 +129,6 @@ fn deleted(suggestion: StoredSuggestion) -> Op {
     Op::Suggestion {
         before: Some(suggestion),
         after: None,
-    }
-}
-
-/// The stored suggestion `suggestion` shows a piece of, while it runs as a timer.
-async fn running_stored(
-    service: &Recordings<'_>,
-    suggestion: &Suggestion,
-) -> AppResult<Option<StoredSuggestion>> {
-    let Some(id) = &suggestion.stored_id else {
-        return Ok(None);
-    };
-    Ok(Some(stored_suggestions::get(service.db, id).await?).filter(StoredSuggestion::is_running))
-}
-
-/// Refuses to settle `suggestion` while it runs as a timer.
-async fn refuse_running(service: &Recordings<'_>, suggestion: &Suggestion) -> AppResult<()> {
-    match running_stored(service, suggestion).await? {
-        Some(_) => Err(AppError::InvalidInput(RUNNING.into())),
-        None => Ok(()),
     }
 }
 
@@ -155,17 +185,32 @@ async fn find_all(
     find_where(service, settings, day, |s| ids.contains(&s.id), gone).await
 }
 
-/// What approving `suggestion` settles besides creating its recording: a stored one is deleted, a rule's
-/// needs nothing (its time is recorded).
+/// What approving `suggestion` settles besides creating its recording: a stored one is deleted (or loses
+/// its finished spans), a rule's needs nothing (its time is recorded).
 async fn settled_by_approval(
     service: &Recordings<'_>,
     day: Day,
     suggestion: &Suggestion,
+    scope: Scope,
 ) -> AppResult<Vec<Op>> {
     match suggestion.stored_id {
-        Some(_) => settling(service, day, suggestion).await,
+        Some(_) => settling(service, day, suggestion, scope).await,
         None => Ok(Vec::new()),
     }
+}
+
+/// One entry per stored suggestion, each with its scope; a running part is skipped.
+async fn settleable_of(
+    service: &Recordings<'_>,
+    found: Vec<Suggestion>,
+) -> AppResult<Vec<(Suggestion, Scope)>> {
+    let mut waiting = Vec::new();
+    for suggestion in one_per_stored(found) {
+        if let Some(scope) = scope_of(service, &suggestion).await? {
+            waiting.push((suggestion, scope));
+        }
+    }
+    Ok(waiting)
 }
 
 async fn approve_found(
@@ -173,17 +218,13 @@ async fn approve_found(
     day: Day,
     Found { found, shown }: Found,
 ) -> AppResult<Change<Vec<Recording>>> {
-    let mut waiting = Vec::new();
-    for suggestion in one_per_stored(found) {
-        if running_stored(service, &suggestion).await?.is_none() {
-            waiting.push(suggestion);
-        }
-    }
+    let waiting = settleable_of(service, found).await?;
     let label = suggestions_label("Approve", waiting.len());
     let mut inputs = Vec::new();
-    for suggestion in &waiting {
-        let settles = settled_by_approval(service, day, suggestion).await?;
-        inputs.push((input_of(suggestion, &shown, None)?, settles));
+    for (suggestion, scope) in waiting {
+        let input = input_of(&suggestion, &shown, &scope, None)?;
+        let settles = settled_by_approval(service, day, &suggestion, scope).await?;
+        inputs.push((input, settles));
     }
     service.create_all_with(inputs, label).await
 }
@@ -198,14 +239,14 @@ pub async fn approve(
 ) -> AppResult<Change<Recording>> {
     let Found { found, shown } = find_all(service, settings, day, &[id.to_string()]).await?;
     let suggestion = &found[0];
-    refuse_running(service, suggestion).await?;
-    let input = input_of(suggestion, &shown, None)?;
-    let settles = settled_by_approval(service, day, suggestion).await?;
+    let scope = settleable(service, suggestion).await?;
+    let input = input_of(suggestion, &shown, &scope, None)?;
+    let settles = settled_by_approval(service, day, suggestion, scope).await?;
     service.create_with(input, Overlap::Cancel, settles).await
 }
 
 /// Records `input`, the suggestion `id` as the owner edited it, and dismisses the rest of the suggestion,
-/// as one undoable change. A running one takes only `input`'s project, note and tag.
+/// as one undoable change. A running one is refused; a finished piece of it settles only its finished spans.
 pub async fn approve_edited(
     service: &Recordings<'_>,
     settings: &Settings,
@@ -216,13 +257,14 @@ pub async fn approve_edited(
 ) -> AppResult<Change<Recording>> {
     let Found { found, .. } = find_all(service, settings, day, &[id.to_string()]).await?;
     let suggestion = &found[0];
-    refuse_running(service, suggestion).await?;
-    let settles = settling(service, day, suggestion).await?;
+    let scope = settleable(service, suggestion).await?;
+    let settles = settling(service, day, suggestion, scope).await?;
     service.create_with(input, overlap, settles).await
 }
 
 /// Records the suggestion `id` of `day` (a stored one with all of its pieces) with `patch` applied, and
-/// settles the rest of it, as one undoable change. A running one takes no spans.
+/// settles the rest of it, as one undoable change. A running one is refused; a finished piece of it settles
+/// only its finished spans.
 pub async fn approve_patched(
     service: &Recordings<'_>,
     settings: &Settings,
@@ -233,15 +275,15 @@ pub async fn approve_patched(
 ) -> AppResult<Change<Recording>> {
     let Found { found, shown } = find_all(service, settings, day, &[id.to_string()]).await?;
     let suggestion = &found[0];
-    refuse_running(service, suggestion).await?;
-    let base = input_of(suggestion, &shown, patch.project_id)?;
+    let scope = settleable(service, suggestion).await?;
+    let base = input_of(suggestion, &shown, &scope, patch.project_id)?;
     let input = RecordingInput {
         spans: patch.spans.unwrap_or(base.spans),
         note: patch.note.unwrap_or(base.note),
         tag_id: patch.tag_id.unwrap_or(base.tag_id),
         ..base
     };
-    let settles = settling(service, day, suggestion).await?;
+    let settles = settling(service, day, suggestion, scope).await?;
     service.create_with(input, overlap, settles).await
 }
 
@@ -283,18 +325,14 @@ pub async fn dismiss(
     day: Day,
     ids: &[String],
 ) -> AppResult<Change<usize>> {
-    let mut found = Vec::new();
-    for suggestion in one_per_stored(find_all(service, settings, day, ids).await?.found) {
-        if running_stored(service, &suggestion).await?.is_none() {
-            found.push(suggestion);
-        }
-    }
-    if found.is_empty() {
+    let found = find_all(service, settings, day, ids).await?.found;
+    let waiting = settleable_of(service, found).await?;
+    if waiting.is_empty() {
         return Err(AppError::InvalidInput(RUNNING.into()));
     }
     let mut settles = Vec::new();
-    for suggestion in &found {
-        settles.push(settling(service, day, suggestion).await?);
+    for (suggestion, scope) in waiting {
+        settles.push(settling(service, day, &suggestion, scope).await?);
     }
     service.dismiss_with(settles).await
 }
