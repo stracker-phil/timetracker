@@ -32,5 +32,8 @@ description: Finish a development step in TimeTracker - clean up and review the 
    the release build as `~/Applications/TimeTracker.app` and `timetracker`, and restarts the running app on
    it, so the user's app always matches the last commit; then the script commits "Release X.Y.Z" and tags
    `vX.Y.Z` (never pushed).
-8. Report to the user: what changed, the `ci` summary, open review questions, and that the release app was
+8. If this step added an ADR that other apps of the family could share, ask the owner whether to propose it
+   for the family catalog (the user-level `app-blueprint` skill, mode `record`). Only ask: never edit the
+   catalog yourself, and drop it when the owner says no.
+9. Report to the user: what changed, the `ci` summary, open review questions, and that the release app was
    installed, with its new version.

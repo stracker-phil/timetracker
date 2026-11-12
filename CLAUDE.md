@@ -6,9 +6,17 @@ built for copying. See README.md for the product and CLI.
 
 The app looks native: it reads as a macOS app beside Calendar and System Settings, with the system font,
 inset groups, a unified toolbar and AppKit control metrics (ADR 0024, `docs/ux.md`). No editor color schemes,
-monospace text outside machine text, outlined cards or badges. Taskboard (`../taskboard`) and Daybook
-(`../daybook`), the author's sibling apps, are the references for the look, the process and newer decisions
-(`docs/README.md` → Sibling apps).
+monospace text outside machine text, outlined cards or badges.
+
+TimeTracker is part of the owner's family of macOS apps and inherits its architecture, process and look from
+the family catalog (the user-level `app-blueprint` skill). The sibling apps (`docs/README.md` → Sibling apps):
+
+- **Taskboard** (`../taskboard`): the newest decisions, scripts and process
+- **Daybook** (`../daybook`): the command bus, extra windows, the menu bar
+- **DataBee** (`../databee`): plugins and ports
+- **Launcher** (`../project-launcher`): the Settings search over every row, Settings → Shortcuts
+
+Read them; never write to them. TimeTracker differs only where its job differs; each deviation has an ADR.
 
 ## Rules
 
@@ -28,6 +36,7 @@ monospace text outside machine text, outlined cards or badges. Taskboard (`../ta
 - The implementation plan lives in `docs/plan/` (gitignored): `README.md` plus one file per step. Work one
   step per session, in its order; when a step is done, set its status from PENDING to DONE in
   `docs/plan/README.md` (the only change a step makes there).
+- Changes to the family catalog go through the owner (`app-blueprint`, mode `record`); never edit it from here.
 
 ## Docs
 Technical docs live in `docs/` (index: `docs/README.md`). Read `docs/architecture.md` and the page of the
@@ -40,8 +49,8 @@ line number.
 - Rust backend in `src-tauri/` (rustup stable; Homebrew rustup is keg-only: `/opt/homebrew/opt/rustup/bin`)
 - Tauri 2 + React 19 + TypeScript in `src/`, bun as package manager, zustand, TanStack Query, lucide-react
 - macOS 27, Apple Silicon only
-- Sibling apps (read-only): Taskboard `../taskboard`, Daybook `../daybook`, DataBee `../databee` (same author,
-  stack and conventions; `docs/README.md` → Sibling apps)
+- Sibling apps (read-only): Taskboard `../taskboard`, Daybook `../daybook`, DataBee `../databee`, Launcher
+  `../project-launcher` (same author, stack and conventions; `docs/README.md` → Sibling apps)
 
 ## Architecture
 - Rust owns all logic; React only renders. Only `api.ts` files call `invoke`/`listen` (`src/api/index.ts`

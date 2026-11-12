@@ -5,8 +5,9 @@ most a page; the docs pages explain how. A Decision names the alternatives it re
 is never edited: a new record supersedes it, and a dated amendment under Status only corrects facts that
 changed.
 
-Records inherited from Taskboard, Daybook or DataBee say so under Status; they state the decision as it
-stands in TimeTracker. The numbers in this table are TimeTracker's.
+Records inherited from Taskboard, Daybook, DataBee or Launcher, or taken from the family catalog (the
+`app-blueprint` skill), say so under Status, with the catalog's slug and the sibling record that implements
+it; they state the decision as it stands in TimeTracker. The numbers in this table are TimeTracker's.
 
 | No. | Title | Status |
 |---|---|---|
@@ -57,3 +58,4 @@ stands in TimeTracker. The numbers in this table are TimeTracker's.
 | [0045](0045-a-suggested-timer-stays-editable-while-it-runs.md) | A suggested timer stays editable while it runs | Accepted (2026-11-11), implemented |
 | [0046](0046-a-running-suggestion-is-settled-only-after-it-stops.md) | A running suggestion is settled only after it stops | Accepted (2026-11-11), implemented |
 | [0047](0047-a-major-version-needs-the-owners-approval.md) | A major version needs the owner's approval | Accepted (2026-11-11), implemented |
+| [0048](0048-a-read-only-mcp-server.md) | A read-only MCP server, with writes as suggestions | Accepted (2026-11-12), implemented |

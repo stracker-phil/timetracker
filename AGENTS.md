@@ -11,7 +11,7 @@ support. As shipped it builds and runs on **macOS on Apple Silicon** only; every
 - Rust owns all logic; React only renders. Read [docs/architecture.md](docs/architecture.md) before changing
   code, and the page of the layer you touch ([docs/README.md](docs/README.md) is the index).
 - [CLAUDE.md](CLAUDE.md) and [.claude/rules/](.claude/rules/) are the maintainer's conventions (tests,
-  commits). Follow them in this repo; in a fork, keep what serves you.
+  commits, demo data). Follow them in this repo; in a fork, keep what serves you.
 - IPC types in `src/api/types.gen.ts` are generated from Rust with ts-rs (`bun run types`); never edit them.
 - No network: the app has no HTTP client and its CSP allows IPC only ([ADR 0013](docs/adr/0013-no-network.md)).
 - Builds are signed by `scripts/sign-app.sh`: an Apple Development certificate if the Mac has one (else a
